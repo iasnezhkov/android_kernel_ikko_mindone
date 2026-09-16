@@ -1,0 +1,61 @@
+// SPDX-License-Identifier: (GPL-2.0 OR MIT)
+/* MT6789 gpu blocks -- split out of the SoC node, one subsystem per file. */
+
+&soc {
+	mali: mali@13000000 {
+		compatible = "mediatek,mali", "arm,mali-valhall";
+		reg = <0x00 0x13000000 0x00 0x4000>;
+		interrupts = <GIC_SPI 396 IRQ_TYPE_LEVEL_HIGH 0 GIC_SPI 397 IRQ_TYPE_LEVEL_HIGH 0 GIC_SPI 398 IRQ_TYPE_LEVEL_HIGH 0 GIC_SPI 399 IRQ_TYPE_LEVEL_HIGH 0 GIC_SPI 400 IRQ_TYPE_LEVEL_HIGH 0>;
+		interrupt-names = "GPU", "MMU", "JOB", "EVENT", "PWR";
+		operating-points-v2 = <&gpu_mali_opp>;
+		#cooling-cells = <0x02>;
+		ged-supply = <&ged>;
+	};
+
+	gpufreq: gpufreq {
+		compatible = "mediatek,gpufreq";
+		reg = <0x00 0x13fbf000 0x00 0x1000 0x00 0x10006000 0x00 0x1000 0x00 0x1021c000 0x00 0x1000 0x00 0x1020e000 0x00 0x1000 0x00 0x10042000 0x00 0x1000 0x00 0x10001000 0x00 0x1000 0x00 0x10023000 0x00 0x1000 0x00 0x1002b000 0x00 0x1000 0x00 0x10000000 0x00 0x1000 0x00 0x11c10000 0x00 0x1000 0x00 0x10215000 0x00 0x1000>;
+		reg-names = "mfg_top_config", "sleep", "nth_emicfg_reg", "infracfg", "fmem_ao_debug_ctrl", "infracfg_ao", "infra_ao_debug_ctrl", "infra_ao1_debug_ctrl", "topckgen", "efuse", "infra_bcrm";
+		clocks = <&topckgen_clk CLK_TOP_MFG_PLL_SEL &topckgen_clk CLK_TOP_MFG_REF_SEL &topckgen_clk CLK_TOP_MFGPLL &topckgen_clk CLK_TOP_MFG_REF &mfg_top_config_clk CLK_MFGCFG_BG3D>;
+		clock-names = "clk_mux", "clk_ref_mux", "clk_main_parent", "clk_sub_parent", "subsys_bg3d";
+		_vgpu-supply = <&mt6358_vgpu_reg>;
+		_vsram_gpu-supply = <&mt6358_vsram_gpu_reg>;
+		nvmem-cells = <&efuse_segment>;
+		nvmem-cell-names = "efuse_segment_cell";
+		fhctl-supply = <&fhctl>;
+		gpufreq_wrapper-supply = <&gpufreq_wrapper>;
+	};
+
+	gpufreq_wrapper: gpufreq_wrapper {
+		compatible = "mediatek,gpufreq_wrapper";
+		gpufreq-version = <0x02>;
+		dual-buck = <0x00>;
+		gpueb-support = <0x00>;
+	};
+
+	ged: ged {
+		compatible = "mediatek,ged";
+		gpufreq-supply = <&gpufreq>;
+	};
+
+	g3d_dvfs@13fbb000 {
+		compatible = "mediatek,g3d_dvfs";
+		reg = <0x00 0x13fbb000 0x00 0x1000>;
+	};
+
+	g3d_config@13fbc000 {
+		compatible = "mediatek,g3d_config";
+		reg = <0x00 0x13fbc000 0x00 0x1000>;
+	};
+
+	g3d_config@13fbd000 {
+		compatible = "mediatek,g3d_config";
+		reg = <0x00 0x13fbd000 0x00 0x1000>;
+	};
+
+	g3d_config@13fbf000 {
+		compatible = "mediatek,g3d_config";
+		reg = <0x00 0x13fbf000 0x00 0x1000>;
+	};
+
+};

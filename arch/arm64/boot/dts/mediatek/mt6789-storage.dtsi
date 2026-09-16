@@ -1,0 +1,78 @@
+// SPDX-License-Identifier: (GPL-2.0 OR MIT)
+/* MT6789 storage blocks -- split out of the SoC node, one subsystem per file. */
+
+&soc {
+	ufshci: ufshci@11270000 {
+		compatible = "mediatek,mt8183-ufshci";
+		reg = <0x00 0x11270000 0x00 0x2300>;
+		interrupts = <GIC_SPI 137 IRQ_TYPE_LEVEL_HIGH 0>;
+		clocks = <&infracfg_ao_clk CLK_IFRAO_UFS &infracfg_ao_clk CLK_IFRAO_UFS_SAP_BCLK &infracfg_ao_clk CLK_IFRAO_UNIPRO_TICK &infracfg_ao_clk CLK_IFRAO_UNIPRO_SYSCLK &infracfg_ao_clk CLK_IFRAO_UFS_AES &topckgen_clk CLK_TOP_UFS_SEL>;
+		clock-names = "ufs", "ufs_mp", "unipro_tick", "unipro_sys", "ufs_aes", "ufs_ck";
+		freq-table-hz = <0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00>;
+		vcc-supply = <&mt6358_vemc_reg>;
+		resets = <&infracfg_rst 0x01 &infracfg_rst 0x2 &infracfg_rst 0x3>;
+		reset-names = "hci_rst", "unipro_rst", "crypto_rst";
+		bootmode = <&chosen>;
+		mediatek,ufs-qos;
+	};
+
+	mmc0: mmc@11230000 {
+		compatible = "mediatek,mt6789-mmc";
+		reg = <0x00 0x11230000 0x00 0x10000 0x00 0x11f50000 0x00 0x1000>;
+		interrupts = <GIC_SPI 131 IRQ_TYPE_LEVEL_HIGH 0>;
+		clocks = <&topckgen_clk CLK_TOP_MSDC50_0_HCLK_SEL &topckgen_clk CLK_TOP_MSDC50_0_SEL &topckgen_clk CLK_TOP_AES_MSDCFDE_SEL &infracfg_ao_clk CLK_IFRAO_MSDC0 &infracfg_ao_clk CLK_IFRAO_MSDC0_SRC &infracfg_ao_clk CLK_IFRAO_MSDC0_AES>;
+		clock-names = "bus_clk", "source", "crypto_clk", "hclk", "source_cg", "crypto_cg";
+		status = "okay";
+		host-index = <0x00>;
+		pinctrl-names = "default", "state_uhs", "pull_down";
+		pinctrl-0 = <&mmc0_pins_default>;
+		pinctrl-1 = <&mmc0_pins_uhs>;
+		pinctrl-2 = <&mmc0_pins_pull_down>;
+		bus-width = <0x08>;
+		max-frequency = <0xbebc200>;
+		ocr-voltage = <0x30000>;
+		cap-mmc-highspeed;
+		mmc-ddr-1_8v;
+		mmc-hs200-1_8v;
+		mmc-hs400-1_8v;
+		no-sdio;
+		no-sd;
+		hs400-ds-delay = <0x12814>;
+		vmmc-supply = <&mt6358_vemc_reg>;
+		non-removable;
+		supports-cqe;
+		dvfsrc-vcore-supply = <&dvfsrc_vcore>;
+		req-vcore = <0x9eb10>;
+	};
+
+	mmc1: mmc@11240000 {
+		compatible = "mediatek,mt6789-mmc";
+		reg = <0x00 0x11240000 0x00 0x1000 0x00 0x11ef0000 0x00 0x1000>;
+		interrupts = <GIC_SPI 135 IRQ_TYPE_LEVEL_HIGH 0>;
+		clocks = <&topckgen_clk CLK_TOP_MSDC30_1_SEL &infracfg_ao_clk CLK_IFRAO_MSDC1 &infracfg_ao_clk CLK_IFRAO_MSDC1_SRC>;
+		clock-names = "source", "hclk", "source_cg";
+		status = "okay";
+		host-index = <0x01>;
+		pinctrl-names = "default", "state_uhs", "pull_down";
+		pinctrl-0 = <&mmc1_pins_default>;
+		pinctrl-1 = <&mmc1_pins_uhs>;
+		pinctrl-2 = <&mmc1_pins_pull_down>;
+		bus-width = <0x04>;
+		max-frequency = <0xbebc200>;
+		ocr-voltage = <0x30000>;
+		cap-sd-highspeed;
+		sd-uhs-sdr12;
+		sd-uhs-sdr25;
+		sd-uhs-sdr50;
+		sd-uhs-sdr104;
+		sd-uhs-ddr50;
+		cd-debounce-delay-ms = <0x00>;
+		cd-gpios = <&pio 14 GPIO_ACTIVE_LOW>;
+		vmmc-supply = <&mt6358_vmch_eint_high>;
+		vqmmc-supply = <&mt6358_vmc_reg>;
+		no-mmc;
+		dvfsrc-vcore-supply = <&dvfsrc_vcore>;
+		req-vcore = <0x9eb10>;
+	};
+
+};

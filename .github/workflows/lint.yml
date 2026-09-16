@@ -1,0 +1,60 @@
+name: tree hygiene
+
+# This branch is a historical snapshot (see README.md) and does not carry the out-of-tree
+# module tree or its own docs/ directory -- both live only on android16-6.12. What this checks
+# is still worth automating: no absolute paths from anyone's machine, no references to trees
+# outside this repository, English only, no binaries, in the files this branch actually owns.
+#
+# This deliberately does NOT build the kernel. A kernel build needs a pinned clang and tens of
+# minutes; what breaks in practice is hygiene, and catching that in seconds is worth more than a
+# build that nobody waits for.
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  hygiene:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: No absolute paths from a developer machine
+        run: |
+          set -eu
+          paths="README.md build.sh arch/arm64/boot/dts/mediatek arch/arm64/configs/mindone_defconfig kernel/signal.c kernel/printk/printk.c kernel/watchdog.c drivers/misc drivers/firmware/arm_scmi drivers/iommu/dma-iommu.c drivers/ufs/host/ufs-mediatek.c drivers/android include/trace/hooks include/linux/mindone_earlylog.h include/linux/mindone_ringlog.h arch/arm64/kernel/mindone_ringlog.c arch/arm64/kernel/mindone_earlylog.c arch/arm64/kernel/watchdog_hld.c"
+          if git grep -nIE '/(home|Users)/[^ /]+/' -- $paths; then
+            echo "absolute paths from someone's machine do not belong in a published tree"
+            exit 1
+          fi
+
+      - name: English only, in the files this branch owns
+        run: |
+          set -eu
+          paths="README.md build.sh arch/arm64/boot/dts/mediatek arch/arm64/configs/mindone_defconfig kernel/signal.c kernel/printk/printk.c kernel/watchdog.c drivers/misc drivers/firmware/arm_scmi drivers/iommu/dma-iommu.c drivers/ufs/host/ufs-mediatek.c drivers/android include/trace/hooks include/linux/mindone_earlylog.h include/linux/mindone_ringlog.h arch/arm64/kernel/mindone_ringlog.c arch/arm64/kernel/mindone_earlylog.c arch/arm64/kernel/watchdog_hld.c"
+          if git grep -nIP '[\x{0400}-\x{04FF}]' -- $paths; then
+            echo "non-English text found in a file this branch owns"
+            exit 1
+          fi
+
+      - name: No references to a private notes document or private scripts
+        run: |
+          set -eu
+          # README.md is excluded here on purpose: it deliberately says "see docs/BUILD.md on
+          # branch android16-6.12" -- a real cross-branch pointer, not a dangling private citation.
+          paths="build.sh arch/arm64/boot/dts/mediatek arch/arm64/configs/mindone_defconfig kernel/signal.c kernel/printk/printk.c kernel/watchdog.c drivers/misc drivers/firmware/arm_scmi drivers/iommu/dma-iommu.c drivers/ufs/host/ufs-mediatek.c drivers/android include/trace/hooks include/linux/mindone_earlylog.h include/linux/mindone_ringlog.h arch/arm64/kernel/mindone_ringlog.c arch/arm64/kernel/mindone_earlylog.c arch/arm64/kernel/watchdog_hld.c"
+          if git grep -nIE 'docs/[A-Za-z0-9_.-]+\.(md|txt)|tools/scripts/[A-Za-z0-9_.-]+\.(py|sh)' -- $paths; then
+            echo "this branch has no docs/ directory and no tools/scripts/ -- a citation of either is dangling"
+            exit 1
+          fi
+
+      - name: No binaries committed in the files this branch owns
+        run: |
+          set -eu
+          fail=0
+          while IFS= read -r f; do
+            case "$(file -b "$f")" in
+              *ELF*|*"ar archive"*) echo "binary committed: $f"; fail=1 ;;
+            esac
+          done < <(git ls-files arch/arm64/boot/dts/mediatek drivers/misc)
+          [ "$fail" = 0 ] || { echo "binaries must not be committed"; exit 1; }

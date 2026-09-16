@@ -1,0 +1,102 @@
+// SPDX-License-Identifier: (GPL-2.0 OR MIT)
+/* MT6789 usb blocks -- split out of the SoC node, one subsystem per file. */
+
+&soc {
+	extcon_usb: extcon_usb {
+		compatible = "mediatek,extcon-usb";
+		vbus-supply = <&eta6965_otg_vbus>;
+		vbus-voltage;
+		vbus-current;
+		charger = <&eta6965_chg>;
+		tcpc = "type_c_port0";
+		mediatek,bypss-typec-sink = <1>;
+		mediatek,u2;
+
+		port {
+
+			usb_role: endpoint@0 {
+				remote-endpoint = <&musb_drd_switch>;
+			};
+		};
+	};
+
+	usb: usb0@11200000 {
+		compatible = "mediatek,mt6789-usb20";
+		reg = <0x00 0x11200000 0x00 0x10000 0x00 0x11f40000 0x00 0x10000>;
+		interrupts = <GIC_SPI 128 IRQ_TYPE_LEVEL_HIGH 0>;
+		clocks = <&infracfg_ao_clk CLK_IFRAO_SSUSB &topckgen_clk CLK_TOP_USB_TOP_SEL &apmixedsys_clk CLK_APMIXED_USBPLL>;
+		clock-names = "sys_clk", "ref_clk", "src_clk";
+		phys = <&u2port0 0x3>;
+		mode = <0x02>;
+		multipoint = <0x01>;
+		num_eps = <0x10>;
+		interrupt-names = "mc";
+		dr_mode = "otg";
+		usb-role-switch;
+		cdp-block;
+		wakeup-source;
+		pericfg = <&pericfg>;
+		infracg = <&infracfg_ao>;
+
+		port {
+
+			musb_drd_switch: endpoint@0 {
+				remote-endpoint = <&usb_role>;
+			};
+		};
+	};
+
+	u2phy0: usb-phy@11f40000 {
+		compatible = "mediatek,generic-tphy-v2";
+		#address-cells = <0x02>;
+		#size-cells = <0x02>;
+		ranges;
+		status = "okay";
+
+		u2port0: usb-phy@11f40000 {
+			reg = <0x00 0x11f40000 0x00 0x700>;
+			clocks = <&clk26m>;
+			clock-names = "ref";
+			#phy-cells = <0x01>;
+			mediatek,eye-vrt = <0x04>;
+			mediatek,eye-term = <0x04>;
+			mediatek,rev4 = <0x01>;
+			mediatek,rx_sqth = <0x05>;
+			mediatek,discth = <0x07>;
+			nvmem-cells = <&u2_phy_data>;
+			nvmem-cell-names = "intr_cal";
+			nvmem-cell-masks = <0x1f>;
+			status = "okay";
+		};
+	};
+
+	u3fpgaphy: usb-phy {
+		compatible = "mediatek,fpga-u3phy";
+		mediatek,ippc = <0x11f40000>;
+		#address-cells = <0x02>;
+		#size-cells = <0x02>;
+		fpga_i2c_physical_base = <0x11eb0000>;
+		status = "disabled";
+
+		u3fpgaport0: usb-phy@0 {
+			chip-id = <0xa60931a>;
+			port = <0x00>;
+			pclk_phase = <0x17>;
+			#phy-cells = <0x01>;
+		};
+	};
+
+	usb_boost: usb_boost_manager {
+		compatible = "mediatek,usb_boost", "mediatek,mt6789-usb_boost";
+		interconnects = <&dvfsrc 0x17 &dvfsrc 0x00>;
+		interconnect-names = "icc-bw";
+		required-opps = <&dvfsrc_freq_opp0>;
+		small-core = <0x13d620>;
+	};
+
+	usb_meta: usb_meta {
+		compatible = "mediatek,usb_meta";
+		udc = <&usb>;
+	};
+
+};

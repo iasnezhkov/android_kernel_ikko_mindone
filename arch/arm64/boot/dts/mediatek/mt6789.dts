@@ -1,0 +1,386 @@
+// SPDX-License-Identifier: GPL-2.0
+/* MINDONE: boot-minimal DTS for mt6789, ACK 6.1.175. Assembled from a 5.10
+ * reference tree for this SoC, trimmed to the boot-to-init-without-display
+ * gate, cross-checked node-by-node against native upstream 6.16 and the
+ * actual paired C drivers. Excludes display/mtk_iommu/camera/connac/scpsys. */
+/dts-v1/;
+#include <dt-bindings/clock/mt6789-clk.h>
+#include <dt-bindings/interrupt-controller/arm-gic.h>
+#include <dt-bindings/interrupt-controller/irq.h>
+#include <dt-bindings/soc/mediatek,boot-mode.h>
+#include <dt-bindings/reset/ti-syscon.h>
+
+/ {
+	model = "iKKO MindOne (mt6789, boot-minimal)";
+	compatible = "ikko,mindone", "mediatek,mt6789";
+	interrupt-parent = <&gic>;
+	#address-cells = <2>;
+	#size-cells = <2>;
+
+	chosen: chosen {
+		bootargs = "console=ttyS0,921600n8 earlycon=uart8250,mmio32,0x11002000 root=/dev/ram rw loglevel=8 ignore_loglevel printk.always_kmsg_dump=1 ramoops.mem_address=0x48090000 ramoops.mem_size=0xe0000 ramoops.console_size=0x80000 ramoops.record_size=0x30000 ramoops.pmsg_size=0x10000 ramoops.ecc=0 hung_task_panic=1 hung_task_timeout_secs=8 softlockup_panic=1 watchdog_thresh=3";
+		stdout-path = "serial0:921600n8";
+	};
+
+	/* MINDONE: node path is plain "memory" (no unit-address), matching the
+	 * real stock 5.10 DTB for this device -- LK runtime-patches this node's
+	 * reg from the 1GiB placeholder to the real 8GiB range and needs the
+	 * path to match exactly. */
+	memory {
+		device_type = "memory";
+		reg = <0 0x40000000 0 0x40000000>;
+	};
+
+	/* MINDONE: matches the real stock 5.10 DTB byte-for-byte (reg/size/
+	 * alignment); the only reserved-memory content on this device in any
+	 * source checked -- TEE/ATF/SCP/MCUPM/modem carve-outs are protected
+	 * below the kernel-DTB level instead. ssmr = MTK Secure Shared Memory
+	 * Region; harmless even though nothing here currently allocates from
+	 * it. */
+	reserved-memory {
+		#address-cells = <2>;
+		#size-cells = <2>;
+		ranges;
+
+		ssmr_cma_mem: ssmr-reserved-cma_memory {
+			compatible = "shared-dma-pool";
+			reusable;
+			size = <0 0x10000000>;
+			alignment = <0 0x1000000>;
+		};
+	};
+
+	psci {
+		compatible = "arm,psci-1.0";
+		method = "smc";
+	};
+
+	cpus {
+		#address-cells = <1>;
+		#size-cells = <0>;
+		cpu0: cpu@000 {
+			device_type = "cpu";
+			compatible = "arm,cortex-a55";
+			reg = <0x0000>;
+			enable-method = "psci";
+			capacity-dmips-mhz = <383>;
+		};
+		cpu1: cpu@001 {
+			device_type = "cpu";
+			compatible = "arm,cortex-a55";
+			reg = <0x0100>;
+			enable-method = "psci";
+			capacity-dmips-mhz = <383>;
+		};
+		cpu2: cpu@002 {
+			device_type = "cpu";
+			compatible = "arm,cortex-a55";
+			reg = <0x0200>;
+			enable-method = "psci";
+			capacity-dmips-mhz = <383>;
+		};
+		cpu3: cpu@003 {
+			device_type = "cpu";
+			compatible = "arm,cortex-a55";
+			reg = <0x0300>;
+			enable-method = "psci";
+			capacity-dmips-mhz = <383>;
+		};
+		cpu4: cpu@004 {
+			device_type = "cpu";
+			compatible = "arm,cortex-a55";
+			reg = <0x0400>;
+			enable-method = "psci";
+			capacity-dmips-mhz = <383>;
+		};
+		cpu5: cpu@005 {
+			device_type = "cpu";
+			compatible = "arm,cortex-a55";
+			reg = <0x0500>;
+			enable-method = "psci";
+			capacity-dmips-mhz = <383>;
+		};
+		cpu6: cpu@100 {
+			device_type = "cpu";
+			compatible = "arm,cortex-a76";
+			reg = <0x0600>;
+			enable-method = "psci";
+			capacity-dmips-mhz = <1024>;
+		};
+		cpu7: cpu@101 {
+			device_type = "cpu";
+			compatible = "arm,cortex-a76";
+			reg = <0x0700>;
+			enable-method = "psci";
+			capacity-dmips-mhz = <1024>;
+		};
+		cpu-map {
+			cluster0 {
+				core0 { cpu = <&cpu0>; };
+				core1 { cpu = <&cpu1>; };
+				core2 { cpu = <&cpu2>; };
+				core3 { cpu = <&cpu3>; };
+				core4 { cpu = <&cpu4>; };
+				core5 { cpu = <&cpu5>; };
+			};
+			cluster1 {
+				core0 { cpu = <&cpu6>; };
+				core1 { cpu = <&cpu7>; };
+			};
+		};
+	};
+
+	gic: interrupt-controller {
+		compatible = "arm,gic-v3";
+		#interrupt-cells = <4>;
+		#address-cells = <2>;
+		#size-cells = <2>;
+		#redistributor-regions = <1>;
+		interrupt-parent = <&gic>;
+		interrupt-controller;
+		reg = <0 0x0c000000 0 0x40000>, /* distributor */
+		      <0 0x0c040000 0 0x200000>; /* redistributor */
+		interrupts = <GIC_PPI 9 IRQ_TYPE_LEVEL_HIGH 0>;
+	};
+
+	timer: timer {
+		compatible = "arm,armv8-timer";
+		interrupt-parent = <&gic>;
+		interrupts = <GIC_PPI 13 IRQ_TYPE_LEVEL_HIGH 0>,
+			     <GIC_PPI 14 IRQ_TYPE_LEVEL_HIGH 0>,
+			     <GIC_PPI 11 IRQ_TYPE_LEVEL_HIGH 0>,
+			     <GIC_PPI 10 IRQ_TYPE_LEVEL_HIGH 0>;
+		clock-frequency = <13000000>;
+	};
+
+	clocks {
+		clk26m: clk26m {
+			compatible = "fixed-clock";
+			#clock-cells = <0>;
+			clock-frequency = <26000000>;
+		};
+	};
+
+	soc {
+		#address-cells = <2>;
+		#size-cells = <2>;
+		compatible = "simple-bus";
+		ranges;
+
+		topckgen_clk: syscon@10000000 {
+			compatible = "mediatek,mt6789-topckgen", "syscon";
+			reg = <0 0x10000000 0 0x1000>;
+			#clock-cells = <1>;
+		};
+
+		infracfg_ao_clk: syscon@10001000 {
+			compatible = "mediatek,mt6789-infracfg_ao", "syscon", "simple-mfd";
+			reg = <0 0x10001000 0 0x1000>;
+			#clock-cells = <1>;
+
+			/* MINDONE: verbatim from the MT6789 reference tree. reset IDs
+			 * 1/2/3 consumed by ufs below (id 0 = lvts_ap, unused, harmless).
+			 * Driver drivers/reset/reset-ti-syscon.c is already in ACK
+			 * common61 byte-for-byte -- only CONFIG_RESET_TI_SYSCON=y
+			 * is needed. */
+			infracfg_rst: reset-controller {
+				compatible = "ti,syscon-reset";
+				#reset-cells = <1>;
+
+				ti,reset-bits = <
+					0x120 0 0x124 0 0 0
+					(ASSERT_SET | DEASSERT_SET | STATUS_NONE) /* 0: lvts_ap */
+
+					0x130 15 0x134 15 0 0
+					(ASSERT_SET | DEASSERT_SET | STATUS_NONE) /* 1: ufshci */
+					0x140  7 0x144  7 0 0
+					(ASSERT_SET | DEASSERT_SET | STATUS_NONE) /* 2: unipro */
+					0x150 21 0x154 21 0 0
+					(ASSERT_SET | DEASSERT_SET | STATUS_NONE) /* 3: ufs-crypto */
+				>;
+			};
+		};
+
+		apmixedsys_clk: syscon@1000c000 {
+			compatible = "mediatek,mt6789-apmixedsys", "syscon";
+			reg = <0 0x1000c000 0 0x1000>;
+			#clock-cells = <1>;
+		};
+
+		eint: apirq@1000b000 {
+			compatible = "mediatek,mt6983-eint";
+			reg = <0 0x1000b000 0 0x1000>;
+			reg-name = "eint";
+			mediatek,total-pin-number = <160>;
+			mediatek,instance-num = <1>;
+			interrupts = <GIC_SPI 244 IRQ_TYPE_LEVEL_HIGH 0>;
+		};
+
+		pio: pinctrl {
+			compatible = "mediatek,mt6789-pinctrl";
+			reg = <0 0x10005000 0 0x1000>,
+			      <0 0x11c30000 0 0x1000>,
+			      <0 0x11d10000 0 0x1000>,
+			      <0 0x11d40000 0 0x1000>,
+			      <0 0x11e20000 0 0x1000>,
+			      <0 0x11e60000 0 0x1000>,
+			      <0 0x11ea0000 0 0x1000>;
+			reg-names = "gpio",
+				    "iocfg_rb",
+				    "iocfg_bm",
+				    "iocfg_br",
+				    "iocfg_lm",
+				    "iocfg_bl",
+				    "iocfg_rt";
+			gpio-controller;
+			#gpio-cells = <2>;
+			gpio-ranges = <&pio 0 0 188>;
+			interrupt-controller;
+			#interrupt-cells = <2>;
+			mediatek,eint = <&eint>;
+		};
+
+		watchdog: watchdog@10007000 {
+			compatible = "mediatek,mt6789-wdt",
+				     "mediatek,mt6589-wdt",
+				     "syscon", "simple-mfd";
+			reg = <0 0x10007000 0 0x100>;
+			reboot-mode {
+				compatible = "syscon-reboot-mode";
+				offset = <0x24>;
+				mask = <0xf>;
+				mode-charger = <BOOT_CHARGER>;
+				mode-recovery = <BOOT_RECOVERY>;
+				mode-bootloader = <BOOT_BOOTLOADER>;
+				mode-dm-verity-dev-corrupt = <BOOT_DM_VERITY>;
+				mode-kpoc = <BOOT_KPOC>;
+				mode-ddr-reserve = <BOOT_DDR_RSVD>;
+				mode-meta = <BOOT_META>;
+				mode-rpmbpk = <BOOT_RPMBPK>;
+			};
+		};
+
+		uart0: serial@11002000 {
+			compatible = "mediatek,mt6577-uart";
+			reg = <0 0x11002000 0 0x1000>;
+			interrupts = <GIC_SPI 141 IRQ_TYPE_LEVEL_HIGH 0>;
+			clocks = <&clk26m>, <&infracfg_ao_clk CLK_IFRAO_UART0>;
+			clock-names = "baud", "bus";
+		};
+
+		/* MINDONE: compatible/reg/interrupts from the reference tree,
+		 * clocks trimmed+corrected.
+		 * Driver drivers/soc/mediatek/mtk-pmic-wrap.c already in ACK
+		 * common61; this session added the missing mt6789 host regs-table
+		 * + of_pwrap_match_tbl entry there (C-only, no DTS-visible effect). */
+		pwrap: pwrap@10026000 {
+			compatible = "mediatek,mt6789-pwrap";
+			reg = <0 0x10026000 0 0x1000>;
+			reg-names = "pwrap";
+			interrupts = <GIC_SPI 252 IRQ_TYPE_LEVEL_HIGH 0>; /* 4th cell added: our gic is #interrupt-cells=<4> */
+			clocks = <&infracfg_ao_clk CLK_IFRAO_PMIC_AP>,
+				 <&infracfg_ao_clk CLK_IFRAO_PMIC_TMR>;
+			clock-names = "spi", "wrap";
+			assigned-clocks = <&topckgen_clk CLK_TOP_PWRAP_ULPOSC_SEL>;
+			assigned-clock-parents = <&topckgen_clk CLK_TOP_OSC_D10>;
+		};
+
+		/* MINDONE: verbatim from the reference tree. Needed only because
+		 * mt6366.dtsi phandle-references this label (dtc errors without it);
+		 * its own driver isn't built in
+		 * this minimal config, so the node sits inert -- only DT
+		 * phandle-consistency is required here. */
+		clock_buffer_ctrl: clock_buffer_ctrl {
+			compatible = "mediatek,clock_buffer_ctrl";
+			mediatek,xo-buf-hwbblpm-mask = <1 0 0 0 0 0 0>;
+			mediatek,xo-buf-hwbblpm-bypass = <0 0 0 0 0 0 0>;
+
+			pmif = <&pwrap 0>;
+			mediatek,enable;
+		};
+
+		/* MINDONE: structure from native upstream 6.16 (mt6789-next)
+		 * mt6789.dtsi, not the reference tree -- paired with the native
+		 * ufs-mediatek.c C driver being ported in, which needs the generic
+		 * PHY framework binding. reg corrected from native's 0x01fa0000 to
+		 * 0x11fa0000 (matches unit-address); not confirmed against a
+		 * register manual. */
+		ufsphy: ufs-phy@11fa0000 {
+			compatible = "mediatek,mt6789-ufsphy",
+				     "mediatek,mt8183-ufsphy";
+			reg = <0 0x11fa0000 0 0xc000>;
+			clocks = <&infracfg_ao_clk CLK_IFRAO_UNIPRO_SYSCLK>,
+				 <&infracfg_ao_clk CLK_IFRAO_UFS_SAP_BCLK>;
+			clock-names = "unipro", "mp";
+			#phy-cells = <0>;
+		};
+
+		/* MINDONE: structure from native mt6789.dtsi, paired with native
+		 * ufs-mediatek.c. resets/reset-names from infracfg_rst above
+		 * (confirmed by string name in both driver versions). vcc-supply
+		 * and mediatek,ufs-disable-mcq/ufs-broken-vcc: reference-board
+		 * derived, conservative choices for first bring-up. No `status`
+		 * property = enabled by default (UFS is primary storage here, not
+		 * eMMC). */
+		ufs: ufs@11270000 {
+			compatible = "mediatek,mt6789-ufshci",
+				     "mediatek,mt8183-ufshci";
+			reg = <0 0x11270000 0 0x2300>;
+			interrupts = <GIC_SPI 137 IRQ_TYPE_LEVEL_HIGH 0>;
+			phys = <&ufsphy>;
+
+			clocks = <&infracfg_ao_clk CLK_IFRAO_UFS>,
+				 <&topckgen_clk CLK_TOP_UFS_SEL>;
+			clock-names = "ufs", "ufs_sel";
+			freq-table-hz = <0 0>, <0 0>;
+
+			/* vccq2 is ext ldo */
+			vcc-supply = <&mt6358_vemc_reg>;
+
+			resets = <&infracfg_rst 1>, <&infracfg_rst 2>,
+				 <&infracfg_rst 3>;
+			reset-names = "hci_rst", "unipro_rst", "crypto_rst";
+
+			mediatek,ufs-disable-mcq;
+			mediatek,ufs-broken-vcc;
+		};
+
+		/* MINDONE: verbatim from the reference tree, lower priority than
+		 * ufs above -- both disabled by default (reference board only
+		 * re-enables them via its own board overlay), staged here for
+		 * parity/completeness only. Driver drivers/mmc/host/mtk-sd.c
+		 * exists in ACK common61 but its of_device_id has no mt6789 entry;
+		 * not added since this path is inactive by default. */
+		mmc0: mmc@11230000 {
+			compatible = "mediatek,mt6789-mmc";
+			reg = <0 0x11230000 0 0x10000>,
+			      <0 0x11f50000 0 0x1000>;
+			interrupts = <GIC_SPI 131 IRQ_TYPE_LEVEL_HIGH 0>;
+			clocks = <&topckgen_clk CLK_TOP_MSDC50_0_HCLK_SEL>,
+				<&topckgen_clk CLK_TOP_MSDC50_0_SEL>,
+				<&topckgen_clk CLK_TOP_AES_MSDCFDE_SEL>,
+				<&infracfg_ao_clk CLK_IFRAO_MSDC0>,
+				<&infracfg_ao_clk CLK_IFRAO_MSDC0_SRC>,
+				<&infracfg_ao_clk CLK_IFRAO_MSDC0_AES>;
+			clock-names = "bus_clk", "source", "crypto_clk",
+				"hclk", "source_cg", "crypto_cg";
+			status = "disabled";
+		};
+
+		mmc1: mmc@11240000 {
+			compatible = "mediatek,mt6789-mmc";
+			reg = <0 0x11240000 0 0x1000>,
+			      <0 0x11ef0000 0 0x1000>;
+			interrupts = <GIC_SPI 135 IRQ_TYPE_LEVEL_HIGH 0>;
+			clocks = <&topckgen_clk CLK_TOP_MSDC30_1_SEL>,
+				<&infracfg_ao_clk CLK_IFRAO_MSDC1>,
+				<&infracfg_ao_clk CLK_IFRAO_MSDC1_SRC>;
+			clock-names = "source", "hclk", "source_cg";
+			status = "disabled";
+		};
+	};
+};
+
+/* MINDONE: PMIC overlay, wholesale copy from the reference tree (0 diff);
+ * provides mt6358_vemc_reg (referenced by ufs above) among other regulators. */
+#include "mt6366.dtsi"
