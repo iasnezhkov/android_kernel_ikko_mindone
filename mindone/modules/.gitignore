@@ -1,0 +1,38 @@
+# Out-of-tree vendor module sources.
+# Keep: .c/.h/.py/.sh/.mk/Makefile/Kconfig/.txt/.tsv (source + notes).
+# Ignore: everything kbuild, the toolchain or our own scripts regenerate from that source.
+
+*.o
+*.ko
+*.ko.unstripped
+*.unstripped
+*.mod
+*.mod.c
+*.mod.o
+*.cmd
+.*.cmd
+*.d
+*.order
+*.symvers
+Module.symvers
+modules.order
+*.log
+*.log.*
+*.k6bringup
+*.timestamp
+*.bak
+*.bak*
+*.orig
+*.orig*
+.thinlto-cache/
+__pycache__/
+*.pyc
+*.ko.dbg
+
+# written by build-all-modules.py to record which kernel release a directory was last
+# built against -- build state, not source
+.mindone-built-for
+.combined-symvers-*
+
+# local-only checker patterns (see tree-lint.py)
+tools/scripts/extra-forbidden.txt

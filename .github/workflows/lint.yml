@@ -1,0 +1,52 @@
+name: tree hygiene
+
+# The tree has rules that are easy to state and easy to break by accident: no absolute paths
+# from anyone's machine, no references to other source trees, English only in code, no binaries.
+# A person cannot hold that in their head across 5 000 files, so it runs here on every push.
+#
+# This deliberately does NOT build the kernel. A kernel build needs a pinned clang and tens of
+# minutes; what breaks in practice is hygiene, and catching that in seconds is worth more than a
+# build that nobody waits for.
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  hygiene:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: No references to trees outside this repository
+        run: python3 mindone/modules/tools/scripts/extpathcheck.py
+
+      - name: Source hygiene (paths, language, stray files)
+        run: python3 mindone/modules/tools/scripts/tree-lint.py --fail
+
+      - name: No binaries committed
+        run: |
+          set -e
+          found=0
+          while IFS= read -r f; do
+            case "$(file -b "$f")" in
+              *ELF*|*"ar archive"*)
+                echo "binary committed: $f"; found=1 ;;
+            esac
+          done < <(git ls-files mindone)
+          [ "$found" = "0" ] || { echo "binaries must not be committed"; exit 1; }
+
+      - name: Every docs/ reference resolves to a file that is here
+        run: |
+          set -eu
+          fail=0
+          for ref in $(git grep -hoE 'docs/[A-Za-z0-9_-]+\.md' -- mindone arch/arm64/boot/dts/mediatek arch/arm64/configs docs README.md CONTRIBUTING.md build.sh | sort -u); do
+            [ -f "$ref" ] || { echo "comment points at a file this repository does not contain: $ref"; fail=1; }
+          done
+          [ "$fail" = 0 ] || { echo "use a bare marker, not a path -- see CONTRIBUTING.md"; exit 1; }
+
+      - name: Python tools parse
+        run: |
+          for f in mindone/modules/tools/scripts/*.py; do
+            python3 -m py_compile "$f"
+          done

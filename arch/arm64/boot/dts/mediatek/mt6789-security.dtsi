@@ -1,0 +1,178 @@
+// SPDX-License-Identifier: (GPL-2.0 OR MIT)
+/* MT6789 security blocks - split out of the soc node by tools/scripts/dts-socsplit.py */
+
+&soc {
+	dfd_mcu: dfd_mcu@c530000 {
+		compatible = "mediatek,dfd_mcu";
+		enabled = <0x01>;
+		hw_version = <0x1e>;
+		sw_version = <0x01>;
+		dfd_timeout = <0x1f4>;
+		buf_length = <0x100000>;
+		buf_addr_align = <0x1000000>;
+		nr_max_core = <0x08>;
+		nr_big_core = <0x02>;
+		nr_rs_entry_little = <0x06>;
+		nr_rs_entry_big = <0x02>;
+		nr_header_row = <0x00>;
+		chip_id_offset = <0x18>;
+		check_pattern_offset = <0x00>;
+		dfd_disable_efuse = <0xffffffff 0xffffffff>;
+
+		dfd_cache: dfd_cache {
+			enabled = <0x00>;
+			dfd_timeout = <0x2710>;
+			buf_length = <0x800000>;
+			tap_en = <0x43ff>;
+		};
+	};
+
+	sej@1000a000 {
+		compatible = "mediatek,sej";
+		reg = <0x00 0x1000a000 0x00 0x1000>;
+		interrupts = <GIC_SPI 262 IRQ_TYPE_LEVEL_HIGH 0>;
+	};
+
+	mbist_ao@10013000 {
+		compatible = "mediatek,mbist_ao";
+		reg = <0x00 0x10013000 0x00 0x1000>;
+	};
+
+	aes_top0@10016000 {
+		compatible = "mediatek,aes_top0";
+		reg = <0x00 0x10016000 0x00 0x1000>;
+	};
+
+	masp: masp@1000a000 {
+		compatible = "mediatek,masp";
+		reg = <0x00 0x1000a000 0x00 0x1000>;
+		interrupts = <GIC_SPI 230 IRQ_TYPE_LEVEL_HIGH 0>;
+	};
+
+	teeperf {
+		compatible = "mediatek,teeperf";
+		cpu-type = <0x02>;
+		cpu-map = <0x02>;
+	};
+
+	mobicore: mobicore {
+		compatible = "trustonic,mobicore";
+		interrupts = <GIC_SPI 115 IRQ_TYPE_EDGE_RISING 0>;
+	};
+
+	security_ao@1001a000 {
+		compatible = "mediatek,security_ao";
+		reg = <0x00 0x1001a000 0x00 0x1000>;
+	};
+
+	devapc_ao_mm@1001c000 {
+		compatible = "mediatek,devapc_ao_mm";
+		reg = <0x00 0x1001c000 0x00 0x1000>;
+	};
+
+	devapc_ao_infra_peri@10022000 {
+		compatible = "mediatek,devapc_ao_infra_peri";
+		reg = <0x00 0x10022000 0x00 0x1000>;
+	};
+
+	devapc_ao_infra_peri@10023000 {
+		compatible = "mediatek,devapc_ao_infra_peri";
+		reg = <0x00 0x10023000 0x00 0x1000>;
+	};
+
+	devapc@10207000 {
+		compatible = "mediatek,mt6789-devapc";
+		reg = <0x00 0x10207000 0x00 0x1000 0x00 0x10274000 0x00 0x1000 0x00 0x10275000 0x00 0x1000 0x00 0x11020000 0x00 0x1000 0x00 0x10030000 0x00 0x1000 0x00 0x1020e000 0x00 0x1000 0x00 0x10033000 0x00 0x1000 0x00 0x10c000 0x00 0x1000>;
+		interrupts = <GIC_SPI 219 IRQ_TYPE_LEVEL_HIGH 0>;
+	};
+
+	infra_mbist@1020d000 {
+		compatible = "mediatek,infra_mbist";
+		reg = <0x00 0x1020d000 0x00 0x1000>;
+	};
+
+	trng@1020f000 {
+		compatible = "mediatek,trng";
+		reg = <0x00 0x1020f000 0x00 0x1000>;
+		interrupts = <GIC_SPI 239 IRQ_TYPE_LEVEL_HIGH 0>;
+	};
+
+	dxcc_sec@10210000 {
+		compatible = "mediatek,dxcc_sec";
+		reg = <0x00 0x10210000 0x00 0x1000>;
+		interrupts = <GIC_SPI 240 IRQ_TYPE_LEVEL_HIGH 0>;
+	};
+
+	dbg_tracker2@10218000 {
+		compatible = "mediatek,dbg_tracker2";
+		reg = <0x00 0x10218000 0x00 0x1000>;
+	};
+
+	device_mpu_low@1021a000 {
+		compatible = "mediatek,device_mpu_low";
+		reg = <0x00 0x1021a000 0x00 0x1000>;
+		prot-base = <0x00 0x40000000>;
+		prot-size = <0x04 0x00>;
+		page-size = <0x200000>;
+		interrupts = <GIC_SPI 220 IRQ_TYPE_LEVEL_HIGH 0>;
+	};
+
+	infra_device_mpu@1021b000 {
+		compatible = "mediatek,infra_device_mpu";
+		reg = <0x00 0x1021b000 0x00 0x1000>;
+	};
+
+	efuse: efuse@11c10000 {
+		compatible = "mediatek,devinfo";
+		reg = <0x00 0x11c10000 0x00 0x10000>;
+		#address-cells = <0x01>;
+		#size-cells = <0x01>;
+
+		efuse_segment: segment@78 {
+			reg = <0x78 0x04>;
+		};
+
+		u2_phy_data: u2_phy_data {
+			reg = <0x1b0 0x04>;
+		};
+
+		lvts_e_data1: data1 {
+			reg = <0x1b4 0x2c>;
+		};
+
+		lvts_e_data2: data2 {
+			reg = <0x2f8 0x08>;
+		};
+
+		lkginfo: lkg {
+			reg = <0x218 0x18>;
+		};
+	};
+
+	lvts: lvts@1100B000 {
+		compatible = "mediatek,mt6789-lvts";
+		#thermal-sensor-cells = <0x01>;
+		reg = <0x00 0x1100b000 0x00 0x1000>;
+		interrupts = <GIC_SPI 201 IRQ_TYPE_LEVEL_HIGH 0>;
+		clocks = <&infracfg_ao_clk CLK_IFRAO_THERM>;
+		clock-names = "lvts_clk";
+		resets = <&infracfg_rst 0x00>;
+		nvmem-cells = <&lvts_e_data1 &lvts_e_data2>;
+		nvmem-cell-names = "e_data1", "e_data2";
+	};
+
+	dfd@13e00000 {
+		compatible = "mediatek,dfd";
+		reg = <0x00 0x13e00000 0x00 0x112000>;
+	};
+
+	mbist@17060000 {
+		compatible = "mediatek,mbist";
+		reg = <0x00 0x17060000 0x00 0x10000>;
+	};
+
+	mtee_svp: mtee_svp {
+		compatible = "medaitek,svp";
+	};
+
+};

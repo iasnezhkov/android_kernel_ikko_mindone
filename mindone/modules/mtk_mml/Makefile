@@ -1,0 +1,7 @@
+# ../include/: MediaTek platform headers mirrored at their kernel-tree paths (shared by all modules)
+obj-m += mtk_mml.o
+mtk_mml-objs := mtk-mml-driver.o mtk-mml-core.o mtk-mml-tile.o mtk-mml-pq-core.o mtk-mml-drm-adaptor.o mtk-mml-dle-adaptor.o mtk-mml-buf.o mtk-mml-sys.o tile_core.o tile_mdp_func.o DpTileScaler.o mtk-mml-aal.o mtk-mml-color.o mtk-mml-fg.o mtk-mml-hdr.o mtk-mml-mutex.o mtk-mml-rdma.o mtk-mml-rsz.o mtk-mml-tcc.o mtk-mml-tdshp.o mtk-mml-wrot.o mtk-mml-mmp.o mtk-mml-test.o
+ccflags-y += -DCONFIG_MTK_SLBC_MODULE=1 -DCONFIG_INTERCONNECT_MTK_EXTENSION=1 -DCONFIG_MTK_MML_DEBUG=1 -DCONFIG_MMPROFILE=1 -DCONFIG_MTK_CMDQ_MBOX_EXT=1 -Wno-error -Wno-error=strict-prototypes -Wno-error=incompatible-pointer-types -Wno-error=int-conversion -I$(src) -I$(src)/../include/drivers/gpu/drm/mediatek/mediatek_v2 -I$(src)/../include/drivers/devfreq -I$(src)/../include/drivers/dma-buf/heaps -I$(src)/../include/drivers/misc/mediatek/mmdvfs -I$(src)/../include/drivers/misc/mediatek/smi -I$(src)/../include/drivers/misc/mediatek/include -I$(src)/../include/drivers/misc/mediatek/include/mt-plat -I$(src)/../include/drivers/iommu -I$(src)/../include/drivers/misc/mediatek/mtk-interconnect -I$(src)/../include/drivers/misc/mediatek/cmdq/mailbox -I$(src)/../include/drivers/misc/mediatek/slbc -I$(src)/../include/drivers/misc/mediatek/mmp
+ccflags-y += -DCONFIG_MTK_SMI=1
+ccflags-y += -I$(src)/../include/include
+ccflags-y += -I$(src)/../include

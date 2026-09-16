@@ -1,0 +1,4 @@
+# ../include/: MediaTek platform headers mirrored at their kernel-tree paths (shared by all modules)
+obj-m += mtk_dvfsrc_helper.o
+mtk_dvfsrc_helper-objs := dvfsrc-helper.o dvfsrc-debug-v3.o dvfsrc-sysfs.o dvfsrc-debug-v2.o dvfsrc-met.o dvfsrc-met-v6873.o dvfsrc-met-v6765.o dvfsrc-met-v6768.o dvfsrc-met-v6983.o mt6761_qos_config_stub.o
+ccflags-y += -I$(src)/../include/include -DCONFIG_MTK_AEE_FEATURE=1 -DCONFIG_MTK_DRAMC=1  -DCONFIG_MTK_DVFSRC=1 -DCONFIG_MTK_DVFSRC_HELPER=1 -DCONFIG_MTK_DVFSRC_MET=1 -DCONFIG_MTK_DVFSRC_MET_MT6761=1 -DCONFIG_MTK_DVFSRC_MET_MT6765=1 -DCONFIG_MTK_DVFSRC_MET_MT6768=1 -DCONFIG_MTK_DVFSRC_MET_MT6873=1 -Wno-error -Wno-error=strict-prototypes -Wno-error=incompatible-pointer-types -Wno-error=int-conversion -I$(src) -I$(src)/../include/drivers/misc/mediatek/include/mt-plat 

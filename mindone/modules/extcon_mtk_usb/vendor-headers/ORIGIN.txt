@@ -1,0 +1,16 @@
+Origin of these headers
+=======================
+
+Six MediaTek headers, copied byte for byte and NOT modified, from a published
+MT6789 kernel source release for the same SoC (a vendor GPL release, Linux 5.10). They are
+exactly the headers extcon_mtk_usb actually compiles against, per its own
+dependency file; the panel/DRM headers from the same directory were deliberately
+not taken, because they are compiled out here via
+#if IS_ENABLED(CONFIG_DRM_MEDIATEK).
+
+They are kept verbatim on purpose: if they ever drift, diff against the upstream
+release rather than editing them here, so the copy stays a copy.
+
+Licensing: these carry MediaTek's own headers, published under GPL-2.0 as part of
+a kernel source release. Attribution is stated here rather than omitted, because
+that is what the license requires and what lets anyone verify the copy.

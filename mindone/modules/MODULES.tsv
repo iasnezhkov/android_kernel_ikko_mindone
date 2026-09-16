@@ -1,0 +1,347 @@
+# MODULES.tsv — generated summary of the out-of-tree kernel modules in this repository.
+# Regenerated 2026-09-15 from the directories here, the shipped module set's build manifest,
+# and the device tree's modules.load* files. Do not hand-edit: regenerate instead.
+# module = kernel module name (matches modules.load) | file = .ko filename |
+# stage(s) = which boot stage ships it (1-ramdisk = first-stage init, 2-dlkm = vendor_dlkm, recovery) |
+# build_dir = subdirectory here holding the module's Makefile (M= for kbuild).
+module	file	stage(s)	build_dir
+8250_mtk		-	8250_mtk
+adapter_class	adapter_class.ko	1-ramdisk,recovery	adapter_class
+adsp	adsp.ko	1-ramdisk	adsp
+aee_aed	aee_aed.ko	1-ramdisk,recovery	aee_aed
+aee_hangdet	aee_hangdet.ko	1-ramdisk,recovery	aee_hangdet
+aee_rs	aee_rs.ko	1-ramdisk,recovery	aee_rs
+archcounter_timesync	archcounter_timesync.ko	1-ramdisk	archcounter_timesync
+arm_dsu_pmu	arm_dsu_pmu.ko	1-ramdisk	arm_dsu_pmu
+ashmem	ashmem.ko	1-ramdisk	ashmem
+atf_logger	atf_logger.ko	1-ramdisk	atf_logger
+audio_ipi	audio_ipi.ko	1-ramdisk	audio_ipi
+backlight_cooling	backlight_cooling.ko	1-ramdisk	backlight_cooling
+blocktag	blocktag.ko	1-ramdisk,recovery	blocktag
+board_temp	board_temp.ko	1-ramdisk	board_temp
+bootprof	bootprof.ko	1-ramdisk,recovery	bootprof
+bt_drv_connac1x	bt_drv_connac1x.ko	1-ramdisk	bt_drv_connac1x
+btif_drv	btif_drv.ko	1-ramdisk	btif_drv
+c2k_usb	c2k_usb.ko	1-ramdisk	c2k_usb
+c2k_usb_f_via_atc	c2k_usb_f_via_atc.ko	1-ramdisk	c2k_usb_f_via_atc
+c2k_usb_f_via_ets	c2k_usb_f_via_ets.ko	1-ramdisk	c2k_usb_f_via_ets
+c2k_usb_f_via_gps	c2k_usb_f_via_gps.ko	1-ramdisk	c2k_usb_f_via_gps
+c2k_usb_f_via_modem	c2k_usb_f_via_modem.ko	1-ramdisk	c2k_usb_f_via_modem
+c2k_usb_f_via_pcv	c2k_usb_f_via_pcv.ko	1-ramdisk	c2k_usb_f_via_pcv
+cam_qos	cam_qos.ko	1-ramdisk	cam_qos
+camera_dip_isp6s	camera_dip_isp6s.ko	1-ramdisk	camera_dip_isp6s
+camera_eeprom	camera_eeprom.ko	1-ramdisk	camera_eeprom
+camera_fdvt_isp51	camera_fdvt_isp51.ko	1-ramdisk	camera_fdvt_isp51
+camera_isp	camera_isp.ko	1-ramdisk	camera_isp
+camera_mem	camera_mem.ko	1-ramdisk	camera_mem
+camera_rsc_isp60	camera_rsc_isp60.ko	1-ramdisk	camera_rsc_isp60
+ccci_auxadc		-	ccci_auxadc
+ccci_ccif	ccci_ccif.ko	1-ramdisk	ccci_ccif
+ccci_dpmaif	ccci_dpmaif.ko	1-ramdisk	ccci_dpmaif
+ccci_fsm_scp	ccci_fsm_scp.ko	1-ramdisk	ccci_fsm_scp
+ccci_cldma	ccci_cldma.ko	1-ramdisk	ccci_md_all
+ccci_md_all	ccci_md_all.ko	1-ramdisk	ccci_md_all
+ccci_md_clk	ccci_md_clk.ko	1-ramdisk	ccci_md_clk
+ccci_rtc	ccci_rtc.ko	1-ramdisk	ccci_rtc
+ccci_util_lib	ccci_util_lib.ko	1-ramdisk	ccci_util_lib
+ccmni	ccmni.ko	1-ramdisk	ccmni
+charger_class	charger_class.ko	1-ramdisk,recovery	charger_class
+charger_cooling	charger_cooling.ko	1-ramdisk	charger_cooling
+clk_bringup	clk_bringup.ko	1-ramdisk,recovery	clk_bringup
+clk_chk_mt6789		-	clk_chk_mt6789
+clk_common		-	clk_common
+clk_dbg_mt6789		-	clk_dbg_mt6789
+clk_disable_unused	clk_disable_unused.ko	1-ramdisk	clk_disable_unused
+clk_fmeter_mt6789	clk_fmeter_mt6789.ko	1-ramdisk,recovery	clk_fmeter_mt6789
+clk_mt6789_audiosys	clk_mt6789_audiosys.ko	1-ramdisk,recovery	clk_mt6789_audiosys
+clk_mt6789_bus	clk_mt6789_bus.ko	1-ramdisk,recovery	clk_mt6789_bus
+clk_mt6789_cam	clk_mt6789_cam.ko	1-ramdisk,recovery	clk_mt6789_cam
+clk_mt6789_disp_dsc	clk_mt6789_disp_dsc.ko	1-ramdisk,recovery	clk_mt6789_disp_dsc
+clk_mt6789_i2c	clk_mt6789_i2c.ko	1-ramdisk,recovery	clk_mt6789_i2c
+clk_mt6789_img	clk_mt6789_img.ko	1-ramdisk,recovery	clk_mt6789_img
+clk_mt6789_impen	clk_mt6789_impen.ko	1-ramdisk,recovery	clk_mt6789_impen
+clk_mt6789_mfgcfg	clk_mt6789_mfgcfg.ko	1-ramdisk,recovery	clk_mt6789_mfgcfg
+clk_mt6789_mmsys	clk_mt6789_mmsys.ko	1-ramdisk,recovery	clk_mt6789_mmsys
+clk_mt6789_vcodec	clk_mt6789_vcodec.ko	1-ramdisk,recovery	clk_mt6789_vcodec
+clkbuf	clkbuf.ko	1-ramdisk,recovery	clkbuf
+cmdq_helper_inf	cmdq_helper_inf.ko	1-ramdisk,recovery	cmdq_helper_inf
+cmdq_platform_mt6789	cmdq_platform_mt6789.ko	1-ramdisk,recovery	cmdq_platform_mt6789
+cmdq_sec_drv	cmdq_sec_drv.ko	1-ramdisk	cmdq_sec_drv
+cmdq_test	cmdq_test.ko	1-ramdisk	cmdq_test
+connadp	connadp.ko	1-ramdisk	connadp
+connfem	connfem.ko	1-ramdisk	connfem
+connscp		-	connscp
+cpudvfs	cpudvfs.ko	1-ramdisk	cpudvfs
+cpufreq_sugov_ext	cpufreq_sugov_ext.ko	1-ramdisk	cpufreq_sugov_ext
+cpuqos_v3	cpuqos_v3.ko	1-ramdisk	cpuqos_v3
+cqhci	cqhci.ko	1-ramdisk,recovery	cqhci
+dbgtop_drm	dbgtop_drm.ko	1-ramdisk,recovery	dbgtop_drm
+device_apc_common	device_apc_common.ko	1-ramdisk,recovery	device_apc_common
+device_apc_mt6789	device_apc_mt6789.ko	1-ramdisk,recovery	device_apc_mt6789
+devmpu	devmpu.ko	1-ramdisk	devmpu
+dmabuf_deferred_free		-	dmabuf_deferred_free
+dmabuf_page_pool		-	dmabuf_page_pool
+dptmo		-	dptmo
+drm_dp_helper_provider		-	drm_dp_helper_provider
+drm_gem_dma_helper_provider		-	drm_gem_dma_helper_provider
+emi	emi.ko	1-ramdisk,recovery	emi
+emi_mpu	emi_mpu.ko	1-ramdisk,recovery	emi_mpu
+eta6965_charger	eta6965_charger.ko	1-ramdisk,recovery	eta6965_charger
+extcon_mtk_usb	extcon_mtk_usb.ko	1-ramdisk,recovery	extcon_mtk_usb
+extdev_io_class	extdev_io_class.ko	1-ramdisk,recovery	extdev_io_class
+fhctl	fhctl.ko	1-ramdisk	fhctl
+fixchg		-	fixchg
+flashlight	flashlight.ko	1-ramdisk	flashlight
+flashlights_dummy_gpio	flashlights_dummy_gpio.ko	1-ramdisk	flashlights_dummy_gpio
+flashlights_lm3643		-	flashlights_lm3643
+fmradio_drv_mt6631_6635		-	fmradio_drv_mt6631_6635
+ft3519		-	ft3519
+ged	ged.ko	1-ramdisk	ged
+gps_drv_stp	gps_drv_stp.ko	1-ramdisk	gps_drv_stp
+gps_pwr	gps_pwr.ko	1-ramdisk	gps_pwr
+gps_scp		-	gps_scp
+gpueb	gpueb.ko	1-ramdisk	gpueb
+gz_ipc_mod	gz_ipc_mod.ko	1-ramdisk	gz_ipc_mod
+gz_irq_mod	gz_irq_mod.ko	1-ramdisk	gz_irq_mod
+gz_log_mod	gz_log_mod.ko	1-ramdisk	gz_log_mod
+gz_main_mod	gz_main_mod.ko	1-ramdisk	gz_main_mod
+gz_trusty_mod	gz_trusty_mod.ko	1-ramdisk	gz_trusty_mod
+gz_tz_system	gz_tz_system.ko	1-ramdisk	gz_tz_system
+gz_virtio_mod	gz_virtio_mod.ko	1-ramdisk	gz_virtio_mod
+haptic		-	haptic
+haptic_nv	haptic_nv.ko	1-ramdisk	haptic_nv
+hf_manager	hf_manager.ko	1-ramdisk	hf_manager
+hynitron_touch	hynitron_touch.ko	1-ramdisk	hynitron_touch
+i2c_mt65xx	i2c_mt65xx.ko	1-ramdisk,recovery	i2c_mt65xx
+imgsensor_isp6s	imgsensor_isp6s.ko	1-ramdisk	imgsensor_isp6s
+industrialio_triggered_buffer		-	industrialio_triggered_buffer
+iommu_debug	iommu_debug.ko	1-ramdisk,recovery	iommu_debug
+iommu_gz	iommu_gz.ko	1-ramdisk	iommu_gz
+iommu_secure	iommu_secure.ko	1-ramdisk,recovery	iommu_secure
+iommu_test	iommu_test.ko	1-ramdisk,recovery	iommu_test
+irq_dbg	irq_dbg.ko	1-ramdisk,recovery	irq_dbg
+jobskip		-	jobskip
+kfifo_buf	kfifo_buf.ko	1-ramdisk,recovery	kfifo_buf
+ktrace		-	ktrace
+leds_mtk	leds_mtk.ko	1-ramdisk,recovery	leds_mtk
+leds_mtk_disp	leds_mtk_disp.ko	1-ramdisk	leds_mtk_disp
+leds_mtk_pwm	leds_mtk_pwm.ko	1-ramdisk	leds_mtk_pwm
+load_track		-	load_track
+log_store	log_store.ko	1-ramdisk,recovery	log_store
+main2af	main2af.ko	1-ramdisk	main2af
+main3af	main3af.ko	1-ramdisk	main3af
+mainaf	mainaf.ko	1-ramdisk	mainaf
+mali_kbase_mt6789	mali_kbase_mt6789.ko	1-ramdisk	mali_kbase_clean
+mcDrvModule	mcDrvModule.ko	1-ramdisk,recovery	mcDrvModule
+mcupm	mcupm.ko	1-ramdisk	mcupm
+md_cooling_all	md_cooling_all.ko	1-ramdisk	md_cooling_all
+mddp		-	mddp
+mdp_drv_mt6789	mdp_drv_mt6789.ko	1-ramdisk	mdp_drv_mt6789
+mediatek_cpufreq_hw	mediatek_cpufreq_hw.ko	1-ramdisk	mediatek_cpufreq_hw
+mediatek_drm	mediatek_drm.ko	1-ramdisk	mediatek_drm_v2
+meta	meta.ko	1-ramdisk,recovery	meta
+mindone_ctlfail		-	mindone_ctlfail
+mindone_mpuperm		-	mindone_mpuperm
+ntty_restore	ntty_restore.ko	1-ramdisk	mindone_ntty_restore
+mindone_panicdump		-	mindone_panicdump
+mindone_pmic_guard		-	mindone_pmic_guard
+mindone_ptydbg		-	mindone_ptydbg
+mindone_rfldo		-	mindone_rfldo
+mindone_thermal	mindone_thermal.ko	1-ramdisk	mindone_thermal
+mindone_ufs_screen	mindone_ufs_screen.ko	1-ramdisk	mindone_ufs_screen
+mindone_usblock_shim		-	mindone_usblock_shim
+mkp		-	mkp
+mmprofile	mmprofile.ko	1-ramdisk,recovery	mmprofile
+mmqos_common	mmqos_common.ko	1-ramdisk,recovery	mmqos_common
+mmqos_mt6789	mmqos_mt6789.ko	1-ramdisk,recovery	mmqos_mt6789
+mmqos_wrapper		-	mmqos_wrapper
+monitor_hang		-	monitor_hang
+mrdump	mrdump.ko	1-ramdisk,recovery	mrdump
+mt6358_accdet	mt6358_accdet.ko	1-ramdisk	mt6358_accdet
+mt6358_battery	mt6358_battery.ko	1-ramdisk,recovery	mt6358_battery
+mt6358_regulator	mt6358_regulator.ko	1-ramdisk,recovery	mt6358_regulator
+mt635x_auxadc	mt635x_auxadc.ko	1-ramdisk,recovery	mt635x_auxadc
+mt6397	mt6397.ko	1-ramdisk,recovery	mt6397
+mt63xx_debug	mt63xx_debug.ko	1-ramdisk,recovery	mt63xx_debug
+mt6577_auxadc	mt6577_auxadc.ko	1-ramdisk	mt6577_auxadc
+mt6789_dcm	mt6789_dcm.ko	1-ramdisk,recovery	mt6789_dcm
+mt6789_mt6366	mt6789_mt6366.ko	1-ramdisk	mt6789_mt6366
+mtk_afe_external	mtk_afe_external.ko	1-ramdisk	mtk_afe_external
+mtk_battery_oc_throttling	mtk_battery_oc_throttling.ko	1-ramdisk,recovery	mtk_battery_oc_throttling
+mtk_boot_common	mtk_boot_common.ko	1-ramdisk	mtk_boot_common
+mtk_bp_thl	mtk_bp_thl.ko	1-ramdisk	mtk_bp_thl
+mtk_btcvsd	mtk_btcvsd.ko	1-ramdisk	mtk_btcvsd
+mtk_charger_algorithm_class	mtk_charger_algorithm_class.ko	1-ramdisk,recovery	mtk_charger_algorithm_class
+mtk_charger_framework	mtk_charger_framework.ko	1-ramdisk,recovery	mtk_charger_framework
+mtk_chg_det	mtk_chg_det.ko	1-ramdisk	mtk_chg_det
+mtk_chg_type_det	mtk_chg_type_det.ko	1-ramdisk,recovery	mtk_chg_type_det
+mtk_cm_ipi	mtk_cm_ipi.ko	1-ramdisk	mtk_cm_ipi
+mtk_cm_mgr	mtk_cm_mgr.ko	1-ramdisk	mtk_cm_mgr
+mtk_cm_mgr_mt6789	mtk_cm_mgr_mt6789.ko	1-ramdisk	mtk_cm_mgr_mt6789
+mtk_cmdq_drv_ext	mtk_cmdq_drv_ext.ko	1-ramdisk,recovery	mtk_cmdq_drv_ext
+mtk_core_ctl		-	mtk_core_ctl
+mtk_cpu_power_throttling	mtk_cpu_power_throttling.ko	1-ramdisk	mtk_cpu_power_throttling
+mtk_dcm	mtk_dcm.ko	1-ramdisk,recovery	mtk_dcm
+mtk_disp_notify	mtk_disp_notify.ko	1-ramdisk,recovery	mtk_disp_notify
+mtk_disp_sec	mtk_disp_sec.ko	1-ramdisk	mtk_disp_sec
+mtk_dramc	mtk_dramc.ko	1-ramdisk,recovery	mtk_dramc
+mtk_dvfsrc	mtk_dvfsrc.ko	1-ramdisk,recovery	mtk_dvfsrc
+mtk_dvfsrc_devfreq	mtk_dvfsrc_devfreq.ko	1-ramdisk	mtk_dvfsrc_devfreq
+mtk_dvfsrc_helper	mtk_dvfsrc_helper.ko	1-ramdisk	mtk_dvfsrc_helper
+mtk_dvfsrc_regulator	mtk_dvfsrc_regulator.ko	1-ramdisk,recovery	mtk_dvfsrc_regulator
+mtk_dvfsrc_start	mtk_dvfsrc_start.ko	1-ramdisk	mtk_dvfsrc_start
+mtk_dynamic_loading_throttling	mtk_dynamic_loading_throttling.ko	1-ramdisk,recovery	mtk_dynamic_loading_throttling
+mtk_emi	mtk_emi.ko	1-ramdisk,recovery	mtk_emi
+mtk_fpsgo		-	mtk_fpsgo
+mtk_gpu_hal	mtk_gpu_hal.ko	1-ramdisk	mtk_gpu_hal
+mtk_gpu_power_throttling	mtk_gpu_power_throttling.ko	1-ramdisk	mtk_gpu_power_throttling
+mtk_gpu_qos	mtk_gpu_qos.ko	1-ramdisk	mtk_gpu_qos
+mtk_gpufreq_mt6789	mtk_gpufreq_mt6789.ko	1-ramdisk	mtk_gpufreq_mt6789
+mtk_gpufreq_wrapper	mtk_gpufreq_wrapper.ko	1-ramdisk	mtk_gpufreq_wrapper
+mtk_heap_debug	mtk_heap_debug.ko	1-ramdisk	mtk_heap_debug
+mtk_icc_core	mtk_icc_core.ko	1-ramdisk,recovery	mtk_icc_core
+mtk_iommu	mtk_iommu.ko	1-ramdisk	mtk_iommu
+mtk_irtx_pwm		-	mtk_irtx_pwm
+mtk_jpeg	mtk_jpeg.ko	1-ramdisk	mtk_jpeg
+mtk_kpd	mtk_kpd.ko	1-ramdisk,recovery	mtk_kpd
+mtk_low_battery_throttling	mtk_low_battery_throttling.ko	1-ramdisk,recovery	mtk_low_battery_throttling
+mtk_lpm	mtk_lpm.ko	1-ramdisk	mtk_lpm
+mtk_lpm_dbg_common_v1	mtk_lpm_dbg_common_v1.ko	1-ramdisk	mtk_lpm_dbg_common_v1
+mtk_lpm_dbg_mt6789	mtk_lpm_dbg_mt6789.ko	1-ramdisk	mtk_lpm_dbg_mt6789
+mtk_lpm_plat_v1	mtk_lpm_plat_v1.ko	1-ramdisk	mtk_lpm_plat_v1
+mtk_mbox	mtk_mbox.ko	1-ramdisk,recovery	mtk_mbox
+mtk_mbox_mailbox	mtk_mbox_mailbox.ko	1-ramdisk,recovery	mtk_mbox_mailbox
+mtk_md_power_throttling	mtk_md_power_throttling.ko	1-ramdisk	mtk_md_power_throttling
+mtk_mdpm	mtk_mdpm.ko	1-ramdisk,recovery	mtk_mdpm
+mtk_mm_heap	mtk_mm_heap.ko	1-ramdisk,recovery	mtk_mm_heap
+mtk_mmc	mtk_mmc.ko	1-ramdisk,recovery	mtk_mmc
+mtk_mmc_autok	mtk_mmc_autok.ko	1-ramdisk,recovery	mtk_mmc_autok
+mtk_mmdvfs	mtk_mmdvfs.ko	1-ramdisk,recovery	mtk_mmdvfs
+mtk_mmdvfs_debug	mtk_mmdvfs_debug.ko	1-ramdisk,recovery	mtk_mmdvfs_debug
+mtk_mml	mtk_mml.ko	1-ramdisk,recovery	mtk_mml
+mtk_panel_ext	mtk_panel_ext.ko	1-ramdisk,recovery	mtk_panel_ext
+mtk_pbm	mtk_pbm.ko	1-ramdisk,recovery	mtk_pbm
+mtk_pd_adapter	mtk_pd_adapter.ko	1-ramdisk,recovery	mtk_pd_adapter
+mtk_pd_charging	mtk_pd_charging.ko	1-ramdisk,recovery	mtk_pd_charging
+mtk_perf_common		-	mtk_perf_common
+mtk_perf_ioctl	mtk_perf_ioctl.ko	1-ramdisk	mtk_perf_ioctl
+mtk_pm_domain_disable_unused	mtk_pm_domain_disable_unused.ko	1-ramdisk	mtk_pm_domain_disable_unused
+mtk_pmic_keys	mtk_pmic_keys.ko	1-ramdisk,recovery	mtk_pmic_keys
+mtk_pmic_wrap	mtk_pmic_wrap.ko	1-ramdisk,recovery	mtk_pmic_wrap
+mtk_printk_ctrl	mtk_printk_ctrl.ko	1-ramdisk,recovery	mtk_printk_ctrl
+mtk_pwm	mtk_pwm.ko	1-ramdisk	mtk_pwm
+mtk_qos	mtk_qos.ko	1-ramdisk	mtk_qos
+mtk_rpmsg_mbox	mtk_rpmsg_mbox.ko	1-ramdisk,recovery	mtk_rpmsg_mbox
+mtk_scp_audio	mtk_scp_audio.ko	1-ramdisk	mtk_scp_audio
+mtk_scp_audiocommon	mtk_scp_audiocommon.ko	1-ramdisk	mtk_scp_audiocommon
+mtk_scp_ultra	mtk_scp_ultra.ko	1-ramdisk	mtk_scp_ultra
+mtk_scp_vow	mtk_scp_vow.ko	1-ramdisk	mtk_scp_vow
+mtk_scpsys	mtk_scpsys.ko	1-ramdisk,recovery	mtk_scpsys
+mtk_scpsys_bringup	mtk_scpsys_bringup.ko	1-ramdisk,recovery	mtk_scpsys_bringup
+mtk_scpsys_mt6789		-	mtk_scpsys_mt6789
+mtk_sec_heap	mtk_sec_heap.ko	1-ramdisk	mtk_sec_heap
+mtk_slbc	mtk_slbc.ko	1-ramdisk	mtk_slbc
+mtk_smi	mtk_smi.ko	1-ramdisk,recovery	mtk_smi
+mtk_smi_dbg	mtk_smi_dbg.ko	1-ramdisk,recovery	mtk_smi_dbg
+mtk_socinfo	mtk_socinfo.ko	1-ramdisk	mtk_socinfo
+mtk_sp_spk_amp	mtk_sp_spk_amp.ko	1-ramdisk	mtk_sp_spk_amp
+mtk_spmi_pmic	mtk_spmi_pmic.ko	1-ramdisk,recovery	mtk_spmi_pmic
+mtk_ssc	mtk_ssc.ko	1-ramdisk	mtk_ssc
+mtk_ssc_dbg_v2	mtk_ssc_dbg_v2.ko	1-ramdisk	mtk_ssc_dbg_v2
+mtk_swpm	mtk_swpm.ko	1-ramdisk	mtk_swpm
+mtk_swpm_dbg_common_v1		-	mtk_swpm_dbg_common_v1
+mtk_swpm_dbg_v6789		-	mtk_swpm_dbg_v6789
+mtk_swpm_perf_arm_pmu	mtk_swpm_perf_arm_pmu.ko	1-ramdisk	mtk_swpm_perf_arm_pmu
+mtk_sync	mtk_sync.ko	1-ramdisk,recovery	mtk_sync
+mtk_tee_gpapi		-	mtk_tee_gpapi
+mtk_tinysys_ipi	mtk_tinysys_ipi.ko	1-ramdisk,recovery	mtk_tinysys_ipi
+mtk_u_ether	mtk_u_ether.ko	1-ramdisk	mtk_u_ether
+mtk_uart_apdma	mtk_uart_apdma.ko	1-ramdisk,recovery	mtk_uart_apdma
+mtk_usb_f_rndis	mtk_usb_f_rndis.ko	1-ramdisk	mtk_usb_f_rndis
+mtk_vcodec_common	mtk_vcodec_common.ko	1-ramdisk	mtk_vcodec_common
+mtk_vcodec_dec_v1	mtk_vcodec_dec_v1.ko	1-ramdisk	mtk_vcodec_dec_v1
+mtk_vcodec_enc_v1	mtk_vcodec_enc_v1.ko	1-ramdisk	mtk_vcodec_enc_v1
+mtk_vcu	mtk_vcu.ko	1-ramdisk	mtk_vcu
+mtk_vow	mtk_vow.ko	1-ramdisk	mtk_vow
+mtk_wdt	mtk_wdt.ko	1-ramdisk,recovery	mtk_wdt
+musb_boost	musb_boost.ko	1-ramdisk,recovery	musb_boost
+musb_hdrc	musb_hdrc.ko	1-ramdisk	musb_hdrc_recon
+musb_main	musb_main.ko	1-ramdisk	musb_main
+nvmem_mt635x_efuse	nvmem_mt635x_efuse.ko	1-ramdisk	nvmem_mt635x_efuse
+nvmem_mtk_devinfo	nvmem_mtk_devinfo.ko	1-ramdisk,recovery	nvmem_mtk_devinfo
+panel_ch13721c_fhd_dsi_vdo_amoled_ocp2133	panel_ch13721c_fhd_dsi_vdo_amoled_ocp2133.ko	1-ramdisk,recovery	panel_ch13721c_fhd_dsi_vdo_amoled_ocp2133
+panel_sd5302h_fhd1240_dsi_vdo_amoled_ocp2133	panel_sd5302h_fhd1240_dsi_vdo_amoled_ocp2133.ko	1-ramdisk,recovery	panel_sd5302h_fhd1240_dsi_vdo_amoled_ocp2133_61
+pd_chk_mt6789		-	pd_chk_mt6789
+pd_dbg_info	pd_dbg_info.ko	1-ramdisk,recovery	pd_dbg_info
+pdrev_selfres		-	pdrev_selfres
+phy_generic	phy_generic.ko	1-ramdisk,recovery	phy_generic
+phy_mtk_tphy	phy_mtk_tphy.ko	1-ramdisk,recovery	phy_mtk_tphy
+phy_mtk_ufs		-	phy_mtk_ufs
+pidmap	pidmap.ko	1-ramdisk,recovery	pidmap
+pinctrl_mt6789		-	pinctrl_mt6789
+pmic_lbat_service	pmic_lbat_service.ko	1-ramdisk,recovery	pmic_lbat_service
+pmic_lvsys_notify	pmic_lvsys_notify.ko	1-ramdisk,recovery	pmic_lvsys_notify
+pmic_temp	pmic_temp.ko	1-ramdisk	pmic_temp
+pmsr	pmsr.ko	1-ramdisk	pmsr
+pn553	pn553.ko	1-ramdisk,recovery	pn553
+pwm_mtk_disp	pwm_mtk_disp.ko	1-ramdisk,recovery	pwm_mtk_disp
+reboot_mode	reboot_mode.ko	1-ramdisk,recovery	reboot_mode
+regulator_vibrator		-	regulator_vibrator
+reset_ti_syscon		-	reset_ti_syscon
+roleshim		-	roleshim
+rpmb	rpmb.ko	1-ramdisk,recovery	rpmb
+rpmb_mtk	rpmb_mtk.ko	1-ramdisk	rpmb_mtk
+rps_perf	rps_perf.ko	1-ramdisk	rps_perf
+rt4831a_drv	rt4831a_drv.ko	1-ramdisk,recovery	rt4831a_drv
+rt_pd_manager	rt_pd_manager.ko	1-ramdisk,recovery	rt_pd_manager
+rtc_mt6397	rtc_mt6397.ko	1-ramdisk,recovery	rtc_mt6397
+scheduler		-	scheduler
+scp	scp.ko	1-ramdisk	scp
+sec		-	sec
+sec_rng	sec_rng.ko	1-ramdisk,recovery	sec_rng
+sensorhub	sensorhub.ko	1-ramdisk	sensorhub
+silead		-	silead
+sileadfp	sileadfp.ko	1-ramdisk,recovery	sileadfp
+smcwatch		-	smcwatch
+snd_soc_audiodsp_common	snd_soc_audiodsp_common.ko	1-ramdisk	snd_soc_audiodsp_common
+snd_soc_aw87xxx	snd_soc_aw87xxx.ko	1-ramdisk	snd_soc_aw87xxx
+snd_soc_mt6366	snd_soc_mt6366.ko	1-ramdisk	snd_soc_mt6366
+snd_soc_mt6789_afe	snd_soc_mt6789_afe.ko	1-ramdisk	snd_soc_mt6789_afe
+snd_soc_mtk_common	snd_soc_mtk_common.ko	1-ramdisk	snd_soc_mtk_common
+snd_soc_mtk_scp_ultra	snd_soc_mtk_scp_ultra.ko	1-ramdisk	snd_soc_mtk_scp_ultra
+soc_temp_lvts	soc_temp_lvts.ko	1-ramdisk	soc_temp_lvts
+spi_mt65xx	spi_mt65xx.ko	1-ramdisk,recovery	spi_mt65xx
+spmi_mtk_pmif	spmi_mtk_pmif.ko	1-ramdisk,recovery	spmi_mtk_pmif
+spmtwam	spmtwam.ko	1-ramdisk	spmtwam
+sspm_v3	sspm_v3.ko	1-ramdisk	sspm_v3
+sub2af	sub2af.ko	1-ramdisk	sub2af
+subaf	subaf.ko	1-ramdisk	subaf
+syscon_reboot_mode	syscon_reboot_mode.ko	1-ramdisk	syscon_reboot_mode
+system_heap	system_heap.ko	1-ramdisk,recovery	system_heap
+task_turbo	task_turbo.ko	1-ramdisk	task_turbo
+tcpc_class	tcpc_class.ko	1-ramdisk	tcpc_class
+tcpc_rt1711h	tcpc_rt1711h.ko	1-ramdisk	tcpc_rt1711h
+tcpci_late_sync	tcpci_late_sync.ko	1-ramdisk	tcpci_late_sync
+teeperf	teeperf.ko	1-ramdisk,recovery	teeperf
+thermal_generic_adc	thermal_generic_adc.ko	1-ramdisk	thermal_generic_adc
+thermal_interface	thermal_interface.ko	1-ramdisk	thermal_interface
+thermal_trace	thermal_trace.ko	1-ramdisk	thermal_trace
+tinysys_scmi	tinysys_scmi.ko	1-ramdisk,recovery	tinysys_scmi
+tkcore	tkcore.ko	1-ramdisk,recovery	tkcore
+tkcore_drv	tkcore_drv.ko	1-ramdisk,recovery	tkcore_drv
+trace_mmstat		-	trace_mmstat
+trusted_mem	trusted_mem.ko	1-ramdisk	trusted_mem
+ufs_mtk_rpmb	ufs_mtk_rpmb.ko	1-ramdisk	ufs_mtk_rpmb
+uload_ind		-	uload_ind
+usbpowerclear		-	usbpowerclear
+usbpsy	usbpsy.ko	1-ramdisk	usbpsy
+vblankarm		-	vblankarm
+vcp	vcp.ko	1-ramdisk	vcp
+vcp_status	vcp_status.ko	1-ramdisk	vcp_status
+vdec_fmt	vdec_fmt.ko	1-ramdisk	vdec_fmt
+widevine_driver	widevine_driver.ko	1-ramdisk	widevine_driver
+wlan_drv_gen4m_6789	wlan_drv_gen4m_6789.ko	1-ramdisk	wlan_drv_gen4m_6789
+wmt_chrdev_wifi	wmt_chrdev_wifi.ko	1-ramdisk	wmt_chrdev_wifi
+wmt_drv	wmt_drv.ko	1-ramdisk	wmt_drv
+zram		-	zram
+zsmalloc		-	zsmalloc

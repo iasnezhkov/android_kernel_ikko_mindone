@@ -1,0 +1,72 @@
+diff --git a/drivers/gpu/drm/panfrost/panfrost_drv.c b/drivers/gpu/drm/panfrost/panfrost_drv.c
+index 59415a84c..f930e5873 100644
+--- a/drivers/gpu/drm/panfrost/panfrost_drv.c
++++ b/drivers/gpu/drm/panfrost/panfrost_drv.c
+@@ -656,6 +656,25 @@ static const struct panfrost_compatible amlogic_data = {
+ 	.vendor_quirk = panfrost_gpu_amlogic_quirk,
+ };
+ 
++/*
++ * MINDONE: entry for mt6789, ported from mt6789-next (torvalds/linux,
++ * commit 2ed59e432779, 2025-08-26), device/mainline/panfrost-mt6789-compatible-table.c.excerpt.
++ * WARNING: in OUR version of struct panfrost_compatible (same panel, ~/kernel6/common61)
++ * the pm_features/gpu_quirks fields are absent (a newer upstream addition) -- the
++ * OLD entry form is used (like mt8183 below), without .pm_features/.gpu_quirks.
++ * This means: GPU_QUIRK_FORCE_AARCH64_PGTABLE and the special GPU_PM_CLK_DIS/VREG_OFF
++ * suspend path from mainline are NOT APPLIED HERE -- the driver takes the common (older) path.
++ * This is a HYPOTHESIS of sufficiency: not verified on real hardware (no DT node, no Mesa).
++ */
++static const char * const mediatek_mt6789_supplies[] = { "mali", NULL };
++static const char * const mediatek_mt6789_pm_domains[] = { "core0", "core1" };
++static const struct panfrost_compatible mediatek_mt6789_data = {
++	.num_supplies = ARRAY_SIZE(mediatek_mt6789_supplies) - 1,
++	.supply_names = mediatek_mt6789_supplies,
++	.num_pm_domains = ARRAY_SIZE(mediatek_mt6789_pm_domains),
++	.pm_domain_names = mediatek_mt6789_pm_domains,
++};
++
+ static const char * const mediatek_mt8183_supplies[] = { "mali", "sram", NULL };
+ static const char * const mediatek_mt8183_pm_domains[] = { "core0", "core1", "core2" };
+ static const struct panfrost_compatible mediatek_mt8183_data = {
+@@ -682,6 +701,7 @@ static const struct of_device_id dt_match[] = {
+ 	{ .compatible = "arm,mali-t880", .data = &default_data, },
+ 	{ .compatible = "arm,mali-bifrost", .data = &default_data, },
+ 	{ .compatible = "arm,mali-valhall-jm", .data = &default_data, },
++	{ .compatible = "mediatek,mt6789-mali", .data = &mediatek_mt6789_data },
+ 	{ .compatible = "mediatek,mt8183-mali", .data = &mediatek_mt8183_data },
+ 	{}
+ };
+diff --git a/drivers/soc/mediatek/mtk-pm-domains.c b/drivers/soc/mediatek/mtk-pm-domains.c
+index 832adb570..8b965a316 100644
+--- a/drivers/soc/mediatek/mtk-pm-domains.c
++++ b/drivers/soc/mediatek/mtk-pm-domains.c
+@@ -22,6 +22,7 @@
+ #include "mt8183-pm-domains.h"
+ #include "mt8186-pm-domains.h"
+ #include "mt8192-pm-domains.h"
++#include "mt6789-pm-domains.h"
+ #include "mt8195-pm-domains.h"
+ 
+ #define MTK_POLL_DELAY_US		10
+@@ -570,6 +571,10 @@ static const struct of_device_id scpsys_of_match[] = {
+ 		.compatible = "mediatek,mt8173-power-controller",
+ 		.data = &mt8173_scpsys_data,
+ 	},
++	{
++		.compatible = "mediatek,mt6789-power-controller",
++		.data = &mt6789_scpsys_data,
++	},
+ 	{
+ 		.compatible = "mediatek,mt8183-power-controller",
+ 		.data = &mt8183_scpsys_data,
+@@ -671,4 +676,9 @@ static struct platform_driver scpsys_pm_domain_driver = {
+ 		.of_match_table = scpsys_of_match,
+ 	},
+ };
+-builtin_platform_driver(scpsys_pm_domain_driver);
++/* MINDONE: only to test compilability AS A LOADABLE module -- in reality this
++ * driver is builtin-only (Kconfig bool), see the explanation in the plan. */
++module_platform_driver(scpsys_pm_domain_driver);
++MODULE_LICENSE("GPL");
++MODULE_DESCRIPTION("MINDONE compile-only test build, not for real use");
++

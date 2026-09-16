@@ -1,0 +1,60 @@
+// SPDX-License-Identifier: (GPL-2.0 OR MIT)
+/* MT6789 connectivity blocks - split out of the soc node by tools/scripts/dts-socsplit.py */
+
+&soc {
+	nfc_gpio: nfc_gpio {
+		compatible = "mediatek,nfc-gpio-v2";
+		gpio-rst = <0x96>;
+		gpio-rst-std = <0x49 0x96 0x00>;
+		gpio-irq = <0x01>;
+		gpio-irq-std = <0x49 0x01 0x00>;
+	};
+
+	irq_nfc: irq_nfc {
+		compatible = "mediatek,irq_nfc";
+		gpio-irq = <0x49 0x01 0x00>;
+	};
+
+	irtx_pwm: irtx_pwm {
+		compatible = "mediatek,irtx-pwm";
+		pwm_ch = <0x01>;
+		pwm_data_invert = <0x00>;
+		pwm-supply = "vio28";
+	};
+
+	btif: btif@1100c000 {
+		compatible = "mediatek,btif";
+		reg = <0x00 0x1100c000 0x00 0x1000 0x00 0x10217b00 0x00 0x80 0x00 0x10217b80 0x00 0x80>;
+		interrupts = <GIC_SPI 190 IRQ_TYPE_LEVEL_HIGH 0 GIC_SPI 184 IRQ_TYPE_LEVEL_HIGH 0 GIC_SPI 185 IRQ_TYPE_LEVEL_HIGH 0>;
+		clocks = <&infracfg_ao_clk CLK_IFRAO_BTIF &infracfg_ao_clk CLK_IFRAO_AP_DMA>;
+		clock-names = "btifc", "apdmac";
+	};
+
+	consys: consys@18002000 {
+		compatible = "mediatek,mt6789-consys";
+		#thermal-sensor-cells = <0x00>;
+		#address-cells = <0x02>;
+		#size-cells = <0x02>;
+		reg = <0x00 0x18002000 0x00 0x1000 0x00 0x10007000 0x00 0x100 0x00 0x10001000 0x00 0x1000 0x00 0x10006000 0x00 0x1000 0x00 0x18007000 0x00 0x1000 0x00 0x180b1000 0x00 0x1000 0x00 0x180a3000 0x00 0x1000 0x00 0x180a5000 0x00 0x800 0x00 0x180c1000 0x00 0x1000 0x00 0x18004000 0x00 0x1000 0x00 0x1024c000 0x00 0x40 0x00 0x10003000 0x00 0x1000>;
+		interrupts = <GIC_SPI 410 IRQ_TYPE_LEVEL_HIGH 0 GIC_SPI 111 IRQ_TYPE_LEVEL_HIGH 0 GIC_SPI 411 IRQ_TYPE_LEVEL_HIGH 0>;
+		power-domains = <&scpsys MT6789_POWER_DOMAIN_CONN>;
+		emi-addr = <0x00>;
+		emi-size = <0x500000>;
+		emi-alignment = <0x1000000>;
+		emi-max-addr = <0x80000000>;
+		pmic = <&pmic>;
+		clocks = <&infracfg_ao_clk CLK_IFRAO_CCIF4_AP>;
+		clock-names = "ccif";
+	};
+
+	wifi: wifi@18000000 {
+		compatible = "mediatek,wifi";
+		reg = <0x00 0x18000000 0x00 0x100000>;
+		interrupts = <GIC_SPI 409 IRQ_TYPE_LEVEL_HIGH 0>;
+		emi-addr = <0x00>;
+		emi-size = <0x600000>;
+		emi-alignment = <0x1000000>;
+		emi-max-addr = <0xc0000000>;
+	};
+
+};

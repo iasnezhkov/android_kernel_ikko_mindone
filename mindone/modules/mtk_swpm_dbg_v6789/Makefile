@@ -1,0 +1,4 @@
+# ../include/: MediaTek platform headers mirrored at their kernel-tree paths (shared by all modules)
+obj-m += mtk-swpm-dbg-v6789.o
+mtk-swpm-dbg-v6789-y += swpm_v6789.o swpm_v6789_ext.o swpm_v6789_dbg_init.o
+ccflags-y += -I$(src)/../include/drivers/thermal/mediatek -Wno-error -I$(src) -I$(src)/../include/include -I$(src)/../include/drivers/misc/mediatek/include -I$(src)/../include/drivers/misc/mediatek/include/mt-plat -I$(src)/../include/drivers/misc/mediatek/swpm/inc -I$(src)/../include/drivers/misc/mediatek/swpm/mtk_swpm_fs -I$(src)/../include/drivers/misc/mediatek/swpm/modules/include -I$(src)/../include/drivers/misc/mediatek/swpm/modules/debug/v1 -I$(src)/../include/drivers/misc/mediatek/swpm/modules/debug/v6789  -DCONFIG_MTK_TINYSYS_SSPM_SUPPORT=1 -DMTK_SWPM_KERNEL_MODULE -I$(src)/../include/drivers/misc/mediatek/sspm/v2

@@ -1,0 +1,4 @@
+# ../include/: MediaTek platform headers mirrored at their kernel-tree paths (shared by all modules)
+obj-m += mtk_perf_common.o
+mtk_perf_common-objs := perf_common.o perf_tracker.o perf_freq_tracker.o
+ccflags-y += -I$(src)/../include/include -DCONFIG_ARM64=1 -DCONFIG_MTK_BLOCK_IO_TRACER=1 -DCONFIG_MTK_CHARGER=1 -DCONFIG_MTK_DRAMC=1 -DCONFIG_MTK_DVFSRC=1 -DCONFIG_MTK_GPU_SWPM_SUPPORT=1 -DCONFIG_MTK_PERF_TRACKER=1 -DCONFIG_MTK_QOS_FRAMEWORK=1 -Wno-error -Wno-error=strict-prototypes -Wno-error=incompatible-pointer-types -Wno-error=int-conversion -I$(src) -I$(src)/../include/drivers/misc/mediatek/qos -I$(src)/../include/drivers/misc/mediatek/include -I$(src)/../include/drivers/misc/mediatek/include/mt-plat -I$(src)/../include/drivers/scsi/ufs -I$(src)/../include/drivers/misc/mediatek/cpufreq_v2/inc

@@ -1,0 +1,4 @@
+# ../include/: MediaTek platform headers mirrored at their kernel-tree paths (shared by all modules)
+obj-m += mtk_printk_ctrl.o
+ccflags-y += -Wno-error -I$(src) -I$(src)/../include/drivers/misc/mediatek/include/mt-plat -I$(src)/../include/kernel
+ccflags-y += -DCONFIG_MTK_PRINTK=1

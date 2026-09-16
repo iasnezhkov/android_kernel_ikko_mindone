@@ -1,0 +1,1 @@
+obj-m += smcwatch.o

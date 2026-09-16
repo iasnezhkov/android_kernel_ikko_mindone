@@ -1,0 +1,4 @@
+# ../include/: MediaTek platform headers mirrored at their kernel-tree paths (shared by all modules)
+obj-m += mrdump.o
+mrdump-objs := mboot_params.o mrdump_control.o mrdump_mini.o mrdump_panic.o mrdump_helper.o mrdump_arm64.o
+ccflags-y += -DCONFIG_64BIT=1 -DCONFIG_ARM64=1 -DCONFIG_CGROUP_SCHED=1 -DCONFIG_FAIR_GROUP_SCHED=1 -DCONFIG_KALLSYMS=1 -DCONFIG_KALLSYMS_BASE_RELATIVE=1 -DCONFIG_MODULES=1 -DCONFIG_MTK_AEE_HANGDET=1 -DCONFIG_MTK_AEE_IPANIC=1 -DCONFIG_RANDOMIZE_BASE=1 -DCONFIG_SCHEDSTATS=1 -DCONFIG_SMP=1 -DCONFIG_SPARSEMEM_VMEMMAP=1 -DCONFIG_SYSFS=1 -Wno-error -Wno-error=implicit-int -Wno-error=strict-prototypes -Wno-error=incompatible-pointer-types -Wno-error=int-conversion -I$(src)  -I$(srctree)/kernel/ -I$(src)/../include/drivers/staging/android -I$(src)/../include/drivers/misc/mediatek/include -DCONFIG_MTK_AEE_AED=1 -DCONFIG_MTK_HANG_DETECT=1 -include linux/sched/cputime.h
