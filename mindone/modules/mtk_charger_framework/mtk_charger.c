@@ -2762,7 +2762,12 @@ static void kpoc_power_off_check(struct mtk_charger *info)
 
 static void charger_status_check(struct mtk_charger *info)
 {
-	union power_supply_propval online, status;
+	/* MINDONE-CHG-STATUS: same class as in mtk_battery.c -- a failed
+	 * get_property() leaves the propval untouched, so start from defined
+	 * values instead of whatever is on the stack. */
+	union power_supply_propval online = { .intval = 0 };
+	union power_supply_propval status = {
+		.intval = POWER_SUPPLY_STATUS_UNKNOWN };
 	struct power_supply *chg_psy = NULL;
 	int ret;
 	bool charging = true;
@@ -3205,6 +3210,7 @@ static int psy_charger_property_is_writeable(struct power_supply *psy,
 static enum power_supply_property charger_psy_properties[] = {
 	POWER_SUPPLY_PROP_ONLINE,
 	POWER_SUPPLY_PROP_PRESENT,
+	POWER_SUPPLY_PROP_STATUS,
 	POWER_SUPPLY_PROP_VOLTAGE_MAX,
 	POWER_SUPPLY_PROP_VOLTAGE_NOW,
 	POWER_SUPPLY_PROP_TEMP,
@@ -3265,6 +3271,31 @@ static int psy_charger_get_property(struct power_supply *psy,
 			val->intval = true;
 		else
 			val->intval = false;
+		break;
+	case POWER_SUPPLY_PROP_STATUS:
+		/*
+		 * MINDONE-CHG-STATUS: this psy never implemented STATUS, so
+		 * power_supply_get_property() fell through to -EINVAL and left
+		 * the caller's propval untouched.  mtk_battery.c does not check
+		 * that return value, so the battery psy latched whatever was on
+		 * the stack and reported "Not charging" to userspace while the
+		 * charger IC was actually pushing ~460 mA into the cell.
+		 * Report the charger's own state instead.
+		 */
+		if (!is_charger_exist(info)) {
+			val->intval = POWER_SUPPLY_STATUS_DISCHARGING;
+			break;
+		}
+
+		val->intval = POWER_SUPPLY_STATUS_NOT_CHARGING;
+		if (chg != NULL) {
+			bool done = false, en = false;
+
+			if (charger_dev_is_charging_done(chg, &done) == 0 && done)
+				val->intval = POWER_SUPPLY_STATUS_FULL;
+			else if (charger_dev_is_enabled(chg, &en) == 0 && en)
+				val->intval = POWER_SUPPLY_STATUS_CHARGING;
+		}
 		break;
 	case POWER_SUPPLY_PROP_VOLTAGE_MAX:
 		val->intval = info->enable_hv_charging;

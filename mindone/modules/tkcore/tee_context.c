@@ -259,7 +259,7 @@ struct tee_shm *tee_context_alloc_shm_tmp(struct tee_context *ctx,
 	shm = tkcore_alloc_shm(ctx->tee, size,
 			TEE_SHM_MAPPED | TEE_SHM_TEMP | type);
 	if (IS_ERR_OR_NULL(shm)) {
-		pr_err("buffer allocation failed (%ld)\n",
+		pr_err_ratelimited("buffer allocation failed (%ld)\n",
 			PTR_ERR(shm));
 		return shm;
 	}

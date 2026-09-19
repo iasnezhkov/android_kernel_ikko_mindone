@@ -101,7 +101,7 @@ static int tee_session_open_be(struct tee_session *sess,
 	sess->sessid = 0;
 	ret = _init_tee_cmd(sess, cmd_io, &cmd);
 	if (ret) {
-		pr_err(
+		pr_err_ratelimited(
 			"init tee command failed with 0x%08x\n",
 			ret);
 		goto out;
@@ -407,7 +407,7 @@ struct tee_session *tee_session_create_and_open(struct tee_context *ctx,
 	ret = tee_session_open_be(sess, cmd_io);
 	mutex_lock(&tee->lock);
 	if (ret || !sess->sessid || cmd_io->err) {
-		pr_err(
+		pr_err_ratelimited(
 			"ERROR ret=%d (err=0x%08x, org=%d,  sessid=0x%08x)\n",
 			ret, cmd_io->err,
 			cmd_io->origin, sess->sessid);
@@ -442,7 +442,7 @@ int tee_session_create_fd(struct tee_context *ctx, struct tee_cmd_io *cmd_io)
 	sess = tee_session_create_and_open(ctx, cmd_io);
 	if (IS_ERR_OR_NULL(sess)) {
 		ret = PTR_ERR(sess);
-		pr_warn(
+		pr_warn_ratelimited(
 			"ERROR can't create the session (ret=%d, err=0x%08x, org=%d)\n",
 			ret, cmd_io->err, cmd_io->origin);
 		cmd_io->fd_sess = -1;

@@ -343,8 +343,18 @@ static int mtk_battery_get_charge_now_uah(struct mtk_battery *gm)
 	if (ret < 0)
 		return gm->ui_soc * q_max * 1000 / 100;
 
+	/*
+	 * MINDONE-CC-UNITS: GAUGE_PROP_COULOMB is in 0.1 mAh units, not mAh, so
+	 * the delta converts to uAh with *100 -- the same 0.1-unit convention
+	 * the CURRENT_NOW case above already applies to the gauge's current
+	 * register (ibat_now * 100). The original *1000 inflated the
+	 * within-percent delta by exactly 10x: measured on the device while
+	 * ui_soc sat on 33% and the charger delivered a steady ~460 mA,
+	 * charge_counter climbed 78000 uAh in 61 s where the real charge
+	 * delivered was ~7800 uAh.
+	 */
 	now_uah = gm->cc_anchor_uah +
-		(long long)(car - gm->cc_anchor_car) * 1000LL;
+		(long long)(car - gm->cc_anchor_car) * 100LL;
 
 	/* Coulomb-counter drift/calibration error must never surface as a value
 	 * outside the physically sane [0, charge_full] range. */
@@ -554,16 +564,76 @@ static int battery_psy_set_property(struct power_supply *psy,
 	return ret;
 }
 
+/*
+ * MINDONE-CHG-STATUS-LIVE: the battery status implied by the charger's state
+ * right now. It used to be computed only inside the external_power_changed
+ * callback, so it was only as fresh as the last event -- and the event that
+ * mattered could be missing: after a USB re-plug the plug-in event arrived
+ * while charging was not enabled yet (NOT_CHARGING latched), and when the
+ * charger enabled charging a moment later nothing announced it, so the battery
+ * said "Not charging" with ~300 mA going into the cell until the next plug
+ * event. battery_update() now calls this too, so the status follows the
+ * charger on every periodic update instead of waiting for an event.
+ * online/status return what the charger psy reported, for the caller's use.
+ */
+static int mtk_battery_status_from_chg(struct power_supply *chg_psy,
+				       union power_supply_propval *online,
+				       union power_supply_propval *status)
+{
+	union power_supply_propval dv2_online = { .intval = 0 };
+	struct power_supply *dv2_chg_psy;
+	int ret;
+
+	if (power_supply_get_property(chg_psy, POWER_SUPPLY_PROP_ONLINE, online))
+		online->intval = 0;
+	/*
+	 * Charger psy without STATUS: VBUS presence is then the only thing we
+	 * know, so treat it as charging rather than inventing NOT_CHARGING.
+	 */
+	if (power_supply_get_property(chg_psy, POWER_SUPPLY_PROP_STATUS, status))
+		status->intval = POWER_SUPPLY_STATUS_UNKNOWN;
+
+	if (!online->intval)
+		return POWER_SUPPLY_STATUS_DISCHARGING;
+	if (status->intval != POWER_SUPPLY_STATUS_NOT_CHARGING)
+		return POWER_SUPPLY_STATUS_CHARGING;
+
+	/* The divider charger may be carrying the current instead. The vendor
+	 * code never dropped the reference power_supply_get_by_name() takes. */
+	dv2_chg_psy = power_supply_get_by_name("mtk-mst-div-chg");
+	if (!IS_ERR_OR_NULL(dv2_chg_psy)) {
+		ret = power_supply_get_property(dv2_chg_psy,
+			POWER_SUPPLY_PROP_ONLINE, &dv2_online);
+		power_supply_put(dv2_chg_psy);
+		if (!ret && dv2_online.intval) {
+			status->intval = POWER_SUPPLY_STATUS_CHARGING;
+			return POWER_SUPPLY_STATUS_CHARGING;
+		}
+	}
+	return POWER_SUPPLY_STATUS_NOT_CHARGING;
+}
+
 static void mtk_battery_external_power_changed(struct power_supply *psy)
 {
 	struct mtk_battery *gm;
 	struct battery_data *bs_data;
-	union power_supply_propval online, status, vbat0;
-	union power_supply_propval prop_type;
+	/*
+	 * MINDONE-CHG-STATUS: these used to be left uninitialised and every
+	 * power_supply_get_property() return value below was discarded.  A psy
+	 * that does not implement a property returns -EINVAL without touching
+	 * the propval, so the charging state was decided from stack garbage --
+	 * which is why the battery reported "Not charging" for the whole life
+	 * of the build while the charger IC was pushing ~460 mA.
+	 */
+	union power_supply_propval online = { .intval = 0 };
+	union power_supply_propval status = {
+		.intval = POWER_SUPPLY_STATUS_UNKNOWN };
+	union power_supply_propval vbat0 = { .intval = 0 };
+	union power_supply_propval prop_type = {
+		.intval = POWER_SUPPLY_TYPE_UNKNOWN };
 	int cur_chr_type = 0, old_vbat0 = 0;
 
 	struct power_supply *chg_psy = NULL;
-	struct power_supply *dv2_chg_psy = NULL;
 	int ret;
 
 	gm = psy->drv_data;
@@ -582,40 +652,16 @@ static void mtk_battery_external_power_changed(struct power_supply *psy)
 		bm_err("%s retry to get chg_psy\n", __func__);
 		bs_data->chg_psy = chg_psy;
 	} else {
-		ret = power_supply_get_property(chg_psy,
-			POWER_SUPPLY_PROP_ONLINE, &online);
-
-		ret = power_supply_get_property(chg_psy,
-			POWER_SUPPLY_PROP_STATUS, &status);
+		bs_data->bat_status =
+			mtk_battery_status_from_chg(chg_psy, &online, &status);
 
 		ret = power_supply_get_property(chg_psy,
 			POWER_SUPPLY_PROP_ENERGY_EMPTY, &vbat0);
+		if (ret)
+			vbat0.intval = gm->vbat0_flag;
 
-		if (!online.intval) {
-			bs_data->bat_status = POWER_SUPPLY_STATUS_DISCHARGING;
-		} else {
-			if (status.intval == POWER_SUPPLY_STATUS_NOT_CHARGING) {
-				bs_data->bat_status =
-					POWER_SUPPLY_STATUS_NOT_CHARGING;
-
-				dv2_chg_psy = power_supply_get_by_name("mtk-mst-div-chg");
-				if (!IS_ERR_OR_NULL(dv2_chg_psy)) {
-					ret = power_supply_get_property(dv2_chg_psy,
-						POWER_SUPPLY_PROP_ONLINE, &online);
-					if (online.intval) {
-						bs_data->bat_status =
-							POWER_SUPPLY_STATUS_CHARGING;
-						status.intval =
-							POWER_SUPPLY_STATUS_CHARGING;
-					}
-				}
-			} else {
-				bs_data->bat_status =
-					POWER_SUPPLY_STATUS_CHARGING;
-			}
-
+		if (online.intval)
 			fg_sw_bat_cycle_accu(gm);
-		}
 
 		if (status.intval == POWER_SUPPLY_STATUS_FULL
 			&& gm->b_EOC != true) {
@@ -627,12 +673,13 @@ static void mtk_battery_external_power_changed(struct power_supply *psy)
 		} else
 			gm->b_EOC = false;
 		
-		pr_err("gezi %s------------------------%d\n", __func__,__LINE__);//prize
 		battery_update(gm);
 
 		/* check charger type */
 		ret = power_supply_get_property(chg_psy,
 			POWER_SUPPLY_PROP_USB_TYPE, &prop_type);
+		if (ret)
+			prop_type.intval = gm->chr_type;
 
 		/* plug in out */
 		cur_chr_type = prop_type.intval;
@@ -942,7 +989,23 @@ int force_get_tbat(struct mtk_battery *gm, bool update)
 		return gm->fixed_bat_tmp;
 	}
 
-	bat_temperature_val = force_get_tbat_internal(gm, true);
+	/*
+	 * MINDONE-TBAT-UPDATE: this used to hardcode true and silently discard
+	 * the caller's "update" argument, so force_get_tbat(gm, false) -- which
+	 * reads as "the cached value is fine" -- still forced a live PMIC AUXADC
+	 * conversion. Every caller in tree passes true today, so this changes no
+	 * behaviour now; it stops the argument from lying to the next caller who
+	 * does not want to pay for a conversion. force_get_tbat_internal() already
+	 * implements the cached path (it returns pre_bat_temperature_val, and the
+	 * -1 initial value forces a real read on the first call regardless).
+	 *
+	 * Worth knowing before adding a cached caller: POWER_SUPPLY_PROP_TEMP goes
+	 * through here on every single read of /sys/class/power_supply/battery/temp,
+	 * with no rate limiting at all. Measured on the device: 0.31 conversions/s
+	 * on battery (68476 over one 61 h uptime) and 2.55/s while charging, which
+	 * cost 464 of ~3370 system wakeups and 56 aborted suspends.
+	 */
+	bat_temperature_val = force_get_tbat_internal(gm, update);
 
 	if (bat_temperature_val == -EHOSTDOWN)
 		return gm->cur_bat_temp;
@@ -2191,6 +2254,17 @@ void battery_update(struct mtk_battery *gm)
 	 * this is safe to call from battery_update()'s many other call sites
 	 * (charger plug/unplug, EOC, ...) without re-anchoring on every one. */
 	mtk_battery_cc_anchor_update(gm);
+
+	/* MINDONE-CHG-STATUS-LIVE: follow the charger here too, not only on its
+	 * events (see mtk_battery_status_from_chg()). */
+	if (!IS_ERR_OR_NULL(bat_data->chg_psy)) {
+		union power_supply_propval online = { .intval = 0 };
+		union power_supply_propval status = {
+			.intval = POWER_SUPPLY_STATUS_UNKNOWN };
+
+		bat_data->bat_status = mtk_battery_status_from_chg(
+			bat_data->chg_psy, &online, &status);
+	}
 
 	power_supply_changed(bat_psy);
 

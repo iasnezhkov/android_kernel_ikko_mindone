@@ -832,7 +832,8 @@ static struct tee_shm *tz_alloc(struct tee *tee, size_t size, uint32_t flags)
 	shm->resv.paddr = tkcore_shm_pool_alloc(tee->dev, ptee->shm_pool,
 						shm->size_alloc, ALLOC_ALIGN);
 	if (!shm->resv.paddr) {
-		pr_err("tkcoredrv: %s cannot alloc memory, size 0x%lx\n",
+		/* MINDONE-TEE-POOLDIAG: see tee_mem.c -- one flood per retry. */
+		pr_err_ratelimited("tkcoredrv: %s cannot alloc memory, size 0x%lx\n",
 			__func__, (unsigned long) shm->size_alloc);
 		devm_kfree(tee->dev, shm);
 		return ERR_PTR(-ENOMEM);

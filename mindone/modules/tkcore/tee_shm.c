@@ -22,9 +22,29 @@
 
 #include <linux/sched.h>
 #include <linux/mm.h>
+#include <linux/moduleparam.h>
 
 #include "tee_core_priv.h"
 #include "tee_shm.h"
+
+/*
+ * MINDONE-TEE-POOLREF switch (see tee_shm_free_io()). On by default: proven on
+ * the device with the release switched on live, where one Gatekeeper PIN
+ * verify had leaked 1.1-1.3 MiB of the 16 MiB pool (three verifies and one
+ * Wi-Fi reconnect: 2.7 -> 6.3 MiB) and with the release on, ten verifies moved
+ * it by 24 KiB while the release ran 2375 times, with no warning of any kind.
+ * Kept as a switch as a way back without a flash:
+ *   echo 0 > /sys/module/tkcore/parameters/release_rpc_pool_ref
+ * Switching at any moment is safe in both directions: the reference is taken
+ * unconditionally when teed gets the fd, and is dropped (or, when off, kept)
+ * exactly once when that fd is closed. rpc_pool_ref_drops counts the drops.
+ */
+static bool release_rpc_pool_ref = true;
+module_param(release_rpc_pool_ref, bool, 0644);
+MODULE_PARM_DESC(release_rpc_pool_ref,
+	"release the pool reference an RPC fd holds when teed closes it");
+static unsigned int rpc_pool_ref_drops;
+module_param(rpc_pool_ref_drops, uint, 0444);
 
 int __weak sg_nents(struct scatterlist *sg)
 {
@@ -52,7 +72,8 @@ static struct tee_shm *tee_shm_alloc_static(struct tee *tee, size_t size,
 
 	shm = tee->ops->alloc(tee, size, flags);
 	if (IS_ERR_OR_NULL(shm)) {
-		pr_err("allocation failed (s=%d,flags=0x%08x) err=%ld\n",
+		/* MINDONE-TEE-POOLDIAG: see tkcore_drv/tee_mem.c. */
+		pr_err_ratelimited("allocation failed (s=%d,flags=0x%08x) err=%ld\n",
 			(int) size, flags, PTR_ERR(shm));
 		goto exit;
 	}
@@ -529,7 +550,7 @@ struct tee_shm *tee_shm_alloc_from_rpc(struct tee *tee, size_t size,
 	shm = tkcore_alloc_shm(tee, size,
 		TEE_SHM_TEMP | TEE_SHM_FROM_RPC | extra_flags);
 	if (IS_ERR_OR_NULL(shm)) {
-		pr_err("buffer allocation failed (%ld)\n",
+		pr_err_ratelimited("buffer allocation failed (%ld)\n",
 			PTR_ERR(shm));
 		goto out;
 	}
@@ -836,7 +857,7 @@ int tee_shm_alloc_io_perm(struct tee_context *ctx, struct tee_shm_io *shm_io)
 	mutex_lock(&tee->lock);
 	shm = tkcore_alloc_shm(tee, shm_io->size, shm_io->flags);
 	if (IS_ERR_OR_NULL(shm)) {
-		pr_err("buffer allocation failed (%ld)\n",
+		pr_err_ratelimited("buffer allocation failed (%ld)\n",
 			PTR_ERR(shm));
 		ret = PTR_ERR(shm);
 		goto out;
@@ -881,7 +902,7 @@ int tee_shm_alloc_io(struct tee_context *ctx, struct tee_shm_io *shm_io)
 	mutex_lock(&tee->lock);
 	shm = tkcore_alloc_shm(tee, shm_io->size, shm_io->flags);
 	if (IS_ERR_OR_NULL(shm)) {
-		pr_err("buffer allocation failed (%ld)\n",
+		pr_err_ratelimited("buffer allocation failed (%ld)\n",
 			PTR_ERR(shm));
 		ret = PTR_ERR(shm);
 		goto out;
@@ -941,6 +962,44 @@ void tee_shm_free_io(struct tee_shm *shm)
 		WARN_ON(shm->rpc_dmabuf_refs <= 0);
 		if (shm->rpc_dmabuf_refs > 0)
 			shm->rpc_dmabuf_refs--;
+
+		/*
+		 * MINDONE-TEE-POOLREF: tee_shm_fd_for_rpc() takes FOUR pins for the
+		 * fd it hands teed, not the three the comment above lists: tee_get(),
+		 * tee_context_get(), get_device() -- and a reference on the backing
+		 * store itself (shm_inc_ref()/tee_ns_shm_inc_ref()). Only the first
+		 * three were released here, so every RPC buffer teed was ever given
+		 * an fd for kept that fourth reference for good: the pool chunk's
+		 * counter went 1->2 at fd creation and never came back down, so
+		 * tkcore_shm_pool_free() returned 1 ("still referenced") instead of
+		 * releasing the chunk, and shm_pool->used never shrank -- not even
+		 * when the secure world later asked for the buffer to be freed for
+		 * real via rpc_want_free.
+		 *
+		 * The tee_shm accounting stayed balanced throughout (tee_dec_stats()
+		 * runs on the rpc_want_free path regardless), which is why the sysfs
+		 * "stat" shm counter reads 0/N on a device whose pool is bleeding --
+		 * it hid this until the 16 MiB region ran dry. On the device that was
+		 * ~one 4 KiB chunk a minute: the pool was exhausted in under 61 h,
+		 * which killed the KeyMint HAL and, through Wi-Fi MAC randomisation
+		 * (MacAddressUtil -> keystore HMAC), stalled the whole Wi-Fi state
+		 * machine so no scan ever completed.
+		 *
+		 * Drop it here, symmetrically with the other three, and before
+		 * tee_shm_rpc_maybe_finalize(): when rpc_want_free is set, that call
+		 * then takes the chunk 1->0 and actually returns it to the pool. The
+		 * counter cannot reach 0 at this point -- the allocation's own
+		 * reference is released only inside maybe_finalize(), which has not
+		 * run yet -- so this never frees shm out from under that call.
+		 */
+		if (READ_ONCE(release_rpc_pool_ref)) {
+			if (shm_test_nonsecure(shm->flags))
+				tee_shm_free_ns(shm);
+			else
+				tee->ops->free(shm);
+			rpc_pool_ref_drops++;	/* under tee->lock */
+		}
+
 		tee_shm_rpc_maybe_finalize(tee, shm);
 
 		tee_put(tee);
