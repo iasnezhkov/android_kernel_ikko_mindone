@@ -437,6 +437,17 @@ static const struct drm_panel_funcs lcm_drm_funcs = {
  */
 static struct mtk_panel_params ext_params = {
 	.pll_clk = 430,
+	/* MINDONE: keep the data lanes in HS through HFP and drop to LP once per
+	 * frame (vertical blanking) instead of once per line. With the stock
+	 * default (per-line LP) every line pays two LP<->HS transitions, about
+	 * 2 * data_phy_cycle * 4 lanes ~= 208 byte clocks, which the 172 bytes
+	 * of HFP+HBP cannot absorb at 860 Mbps: the line grows from 8.02 us to
+	 * ~8.5 us and the frame from 10.42 ms (96 Hz) to ~11.04 ms. Measured on
+	 * the device 19.09: kernel lcm_fps_ctx_get 11.03-11.05 ms (fps=9057),
+	 * LK fps=9049, SurfaceFlinger "ideal period 10.42ms: period = 11.07ms".
+	 * mtk_dsi_config_vdo_timing() sets HFP_HS_EN and shortens the blanking
+	 * lines by the LP overhead when this is on. Not in the stock binary. */
+	.vdo_per_frame_lp_enable = 1,
 	/* MINDONE: the panel self-check is turned OFF here.
 	 * Entry [1] of lcm_esd_check_table reads register 0xFB and expects 0x11; 0xFB
 	 * is not standard MIPI DCS and belongs to a DIFFERENT controller (JD9365D)
