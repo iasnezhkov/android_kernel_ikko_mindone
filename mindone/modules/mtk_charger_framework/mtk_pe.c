@@ -640,9 +640,7 @@ static int _pe_init_algo(struct chg_alg_device *alg)
 		pe->state = PE_HW_READY;
 
 	log_level = pe_hal_get_log_level(alg);
-	pr_notice("%s: log_level=%d", __func__, log_level);
-	
-	log_level = 3;//prize 
+	pe_dbg("%s: log_level=%d\n", __func__, log_level);
 	
 	pdpe_set_state(pe,PDPE_WORK_INIT_DONE);//prize 
 	

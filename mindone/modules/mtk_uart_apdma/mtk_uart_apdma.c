@@ -23,7 +23,7 @@
 #include <linux/slab.h>
 #include <linux/spinlock.h>
 
-#include "../virt-dma.h"
+#include <virt-dma.h>
 
 /* The default number of virtual channel */
 #define MTK_UART_APDMA_NR_VCHANS	8

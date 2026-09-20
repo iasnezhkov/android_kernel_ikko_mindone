@@ -1524,6 +1524,13 @@ static const struct thermal_zone_device_ops psy_tzd_ops = {
 	.get_temp = power_supply_read_temp,
 };
 
+static const struct thermal_trip psy_tzd_trip = {
+	.temperature = THERMAL_TEMP_INVALID,
+	.hysteresis = 0,
+	.type = THERMAL_TRIP_PASSIVE,
+	.flags = THERMAL_TRIP_FLAG_RW,
+};
+
 static int psy_register_thermal(struct power_supply *psy)
 {
 	int ret;
@@ -1537,8 +1544,8 @@ static int psy_register_thermal(struct power_supply *psy)
 		struct thermal_zone_params tzp = {
 			.no_hwmon = IS_ENABLED(CONFIG_POWER_SUPPLY_HWMON)
 		};
-		psy->tzd = thermal_tripless_zone_device_register(psy->desc->name,
-				psy, &psy_tzd_ops, &tzp);
+		psy->tzd = thermal_zone_device_register_with_trips(psy->desc->name,
+				&psy_tzd_trip, 1, psy, &psy_tzd_ops, &tzp, 0, 0);
 		if (IS_ERR(psy->tzd))
 			return PTR_ERR(psy->tzd);
 		ret = thermal_zone_device_enable(psy->tzd);

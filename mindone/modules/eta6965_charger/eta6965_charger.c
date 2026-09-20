@@ -96,6 +96,7 @@ struct eta6965_device {
 	struct charger_device	*chg_dev;	/* MTK charger_class */
 	bool			otg_active;	/* boost/OTG mode (the device itself drives VBUS) */
 	struct regulator_dev	*otg_vbus_rdev;	/* usb-otg-vbus, see USB-OTG-VBUS REGULATOR (F891) */
+	bool			suspended;	/* between our noirq suspend and resume: the i2c adapter sleeps */
 };
 
 /* ===== I2C access (config_interface(reg,val,mask,shift) from the disassembly) ===== */
@@ -255,9 +256,8 @@ static int eta_op_set_cv(struct charger_device *dev, u32 uV)
 		code = CV_MAX_CODE;
 	return eta6965_update_bits(eta, ETA6965_REG_04, REG04_VREG_MASK, (u8)(code << 3));
 }
-static int eta_op_get_cv(struct charger_device *dev, u32 *uV)
+static int eta6965_get_cv_uV(struct eta6965_device *eta, u32 *uV)
 {
-	struct eta6965_device *eta = charger_get_data(dev);
 	u8 v; int ret = eta6965_read_byte(eta, ETA6965_REG_04, &v);
 	if (!ret) {
 		u8 code = (v & REG04_VREG_MASK) >> 3;
@@ -266,6 +266,10 @@ static int eta_op_get_cv(struct charger_device *dev, u32 *uV)
 		*uV = CV_BASE_UV + code * CV_STEP_UV;
 	}
 	return ret;
+}
+static int eta_op_get_cv(struct charger_device *dev, u32 *uV)
+{
+	return eta6965_get_cv_uV(charger_get_data(dev), uV);
 }
 static int eta_op_set_iinlim(struct charger_device *dev, u32 uA)
 {
@@ -497,8 +501,14 @@ static int eta6965_psy_get_property(struct power_supply *psy,
 	enum power_supply_type type;
 	enum power_supply_usb_type usb_type;
 	u8 reg08, vbus_stat, chrg_stat;
-	u32 uA;
+	u32 uA, uV;
 	int ret;
+
+	/* MINDONE 19.09 (BACKLOG O61): a wakeup during suspend runs power_supply_changed_work while
+	 * i2c-5 is still suspended; the read then hit "i2c i2c-5: Transfer while suspended" (WARN,
+	 * -ESHUTDOWN). -ENODATA makes the uevent skip the property instead of aborting it. */
+	if (READ_ONCE(eta->suspended))
+		return -ENODATA;
 
 	ret = eta6965_read_byte(eta, ETA6965_REG_08, &reg08);
 	if (ret)
@@ -554,6 +564,15 @@ static int eta6965_psy_get_property(struct power_supply *psy,
 			return ret;
 		val->intval = uA;
 		break;
+	case POWER_SUPPLY_PROP_CONSTANT_CHARGE_VOLTAGE:
+		/* MINDONE 19.09: the battery psy (mt6358_battery) forwards this property here through its
+		 * "charger" phandle; without it every battery uevent logged "driver failed to report
+		 * `constant_charge_voltage' property: -22" (357 times in the logs of 11 boots). */
+		ret = eta6965_get_cv_uV(eta, &uV);
+		if (ret)
+			return ret;
+		val->intval = uV;
+		break;
 	default:
 		return -EINVAL;
 	}
@@ -589,6 +608,7 @@ static enum power_supply_property eta6965_psy_properties[] = {
 	POWER_SUPPLY_PROP_USB_TYPE,
 	POWER_SUPPLY_PROP_VOLTAGE_MAX,
 	POWER_SUPPLY_PROP_CURRENT_MAX,
+	POWER_SUPPLY_PROP_CONSTANT_CHARGE_VOLTAGE,
 };
 
 static enum power_supply_usb_type eta6965_psy_usb_types[] __maybe_unused = {
@@ -698,8 +718,33 @@ MODULE_DEVICE_TABLE(of, eta6965_of_match);
 static const struct i2c_device_id eta6965_i2c_id[] = { { "eta6965", 0 }, { } };
 MODULE_DEVICE_TABLE(i2c, eta6965_i2c_id);
 
+/* The i2c client's noirq suspend runs before its adapter's and its noirq resume after the
+ * adapter's, so the flag covers exactly the window in which the bus cannot be used. */
+static int eta6965_suspend_noirq(struct device *dev)
+{
+	struct eta6965_device *eta = i2c_get_clientdata(to_i2c_client(dev));
+
+	if (eta)
+		WRITE_ONCE(eta->suspended, true);
+	return 0;
+}
+
+static int eta6965_resume_noirq(struct device *dev)
+{
+	struct eta6965_device *eta = i2c_get_clientdata(to_i2c_client(dev));
+
+	if (eta)
+		WRITE_ONCE(eta->suspended, false);
+	return 0;
+}
+
+static const struct dev_pm_ops eta6965_pm_ops = {
+	NOIRQ_SYSTEM_SLEEP_PM_OPS(eta6965_suspend_noirq, eta6965_resume_noirq)
+};
+
 static struct i2c_driver eta6965_driver = {
-	.driver = { .name = "eta6965_charger", .of_match_table = eta6965_of_match },
+	.driver = { .name = "eta6965_charger", .of_match_table = eta6965_of_match,
+		    .pm = pm_sleep_ptr(&eta6965_pm_ops) },
 	MINDONE_I2C_PROBE(eta6965_probe),
 	.remove = eta6965_remove,
 	.id_table = eta6965_i2c_id,

@@ -1238,6 +1238,7 @@ static const struct of_device_id mt6789_pinctrl_of_match[] = {
 	{ .compatible = "mediatek,mt6789-pinctrl", },
 	{ }
 };
+MODULE_DEVICE_TABLE(of, mt6789_pinctrl_of_match);
 
 static int mt6789_pinctrl_probe(struct platform_device *pdev)
 {

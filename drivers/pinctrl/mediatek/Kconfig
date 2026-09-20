@@ -264,7 +264,7 @@ config PINCTRL_MT6397
 	select PINCTRL_MTK
 
 config PINCTRL_MT6789
-	bool "Mediatek MT6789 pin control"
+	tristate "Mediatek MT6789 pin control"
 	depends on OF
 	depends on ARM64 || COMPILE_TEST
 	default ARM64 && ARCH_MEDIATEK

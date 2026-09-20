@@ -641,7 +641,7 @@ static void dpmaif_traffic_monitor_func(struct timer_list *t)
 	unsigned long isr_rem_nsec;
 	int i, q_state = 0;
 
-	CCCI_ERROR_LOG(-1, TAG,
+	CCCI_REPEAT_LOG(-1, TAG,
 		"[%s] g_dp_uid_mask_count = %u\n",
 		__func__, g_dp_uid_mask_count);
 

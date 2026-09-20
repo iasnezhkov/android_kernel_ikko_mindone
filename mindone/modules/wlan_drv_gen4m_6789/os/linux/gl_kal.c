@@ -8891,6 +8891,9 @@ end:
  * s2idle wakeup storm (wlan0 IRQ 340 kept waking the AP ~1/s, F3393). A PM
  * notifier on PM_SUSPEND_PREPARE fires on EVERY s2idle entry instead;
  * PM_POST_SUSPEND restores. Bench-verifiable via forced suspend. */
+static uint32_t mindone_wifi_os_filter;
+static bool mindone_wifi_os_filter_saved;
+
 static int mindone_wifi_pm_event(struct notifier_block *nb,
 				 unsigned long event, void *unused)
 {
@@ -8907,13 +8910,21 @@ static int mindone_wifi_pm_event(struct notifier_block *nb,
 		 * Bench-verified via forced suspend before trusting. */
 		uint32_t f = PARAM_PACKET_FILTER_DIRECTED, len = 0;
 
+		mindone_wifi_os_filter = prGlueInfo->prAdapter->u4OsPacketFilter &
+					 PARAM_PACKET_FILTER_SUPPORTED;
+		mindone_wifi_os_filter_saved = true;
 		wlanSetSuspendMode(prGlueInfo, TRUE);
 		kalIoctl(prGlueInfo, wlanoidSetCurrentPacketFilter, &f,
 			 sizeof(f), FALSE, FALSE, TRUE, &len);
-		pr_info("MINDONE-WIFI-PMSUSP: suspend -> unicast-only filter (0x%x)\n", f);
+		pr_info("MINDONE-WIFI-PMSUSP: suspend -> unicast-only filter (0x%x), OS filter 0x%x saved\n",
+			f, mindone_wifi_os_filter);
 	} else if (event == PM_POST_SUSPEND) {
-		uint32_t f = prGlueInfo->prAdapter->u4OsPacketFilter, len = 0;
+		uint32_t f = prGlueInfo->prAdapter->u4OsPacketFilter &
+			     PARAM_PACKET_FILTER_SUPPORTED, len = 0;
 
+		if (mindone_wifi_os_filter_saved)
+			f = mindone_wifi_os_filter;
+		mindone_wifi_os_filter_saved = false;
 		kalIoctl(prGlueInfo, wlanoidSetCurrentPacketFilter, &f,
 			 sizeof(f), FALSE, FALSE, TRUE, &len);
 		wlanSetSuspendMode(prGlueInfo, FALSE);

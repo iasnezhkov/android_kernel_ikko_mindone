@@ -2657,11 +2657,22 @@ static void stop_activity(struct musb *musb)
 		musb->g.speed = USB_SPEED_UNKNOWN;
 
 	/* deactivate the hardware */
-	if (musb->softconnect) {
+	if (musb->power) {
+		if (musb->softconnect) {
+			musb->softconnect = 0;
+			musb_pullup(musb, 0, false);
+		}
+		musb_stop(musb);
+	} else {
+		/* MINDONE 19.09 (BACKLOG O61): adbd rebinding the gadget while the controller is
+		 * already off (cable out, clocks unprepared) went through musb_stop() and tried nine
+		 * register accesses; usb_enable_clock() refused each (WARN in musb_io.h) - without
+		 * that guard an unclocked access stalls the bus (see the note at the top of
+		 * musb_core.c). The hardware is already down: only reset the software state. */
 		musb->softconnect = 0;
-		musb_pullup(musb, 0, false);
+		musb->is_active = 0;
+		DBG(0, "%s: controller off, no register access\n", __func__);
 	}
-	musb_stop(musb);
 
 	/* killing any outstanding requests will quiesce the driver;
 	 * then report disconnect

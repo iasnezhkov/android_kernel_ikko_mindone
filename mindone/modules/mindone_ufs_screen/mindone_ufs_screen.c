@@ -36,7 +36,9 @@ static DEFINE_MUTEX(lock);
 static void set_floor(bool on)
 {
 	mutex_lock(&lock);
-	if (!ufs_dev || !screen_on_khz)
+	/* screen_on_khz = 0 only stops new pins; an active one is still released on display off,
+	 * otherwise writing 0 while the screen is on left the floor pinned until reboot (19.09). */
+	if (!ufs_dev || (on && !screen_on_khz))
 		goto out;
 	if (on && !req_active) {
 		/* Returns 1 when the aggregate constraint changed, 0 when it did not, <0 on error:

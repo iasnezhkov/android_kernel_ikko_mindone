@@ -142,7 +142,6 @@ mediatek_drm	mediatek_drm.ko	1-ramdisk	mediatek_drm_v2
 meta	meta.ko	1-ramdisk,recovery	meta
 mindone_ctlfail		-	mindone_ctlfail
 mindone_mpuperm		-	mindone_mpuperm
-ntty_restore	ntty_restore.ko	1-ramdisk	mindone_ntty_restore
 mindone_panicdump		-	mindone_panicdump
 mindone_pmic_guard		-	mindone_pmic_guard
 mindone_ptydbg		-	mindone_ptydbg

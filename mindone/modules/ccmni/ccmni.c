@@ -1850,7 +1850,7 @@ static void ccmni_dump(int md_id, int ccmni_idx, unsigned int flag)
 	/* ccmni diff from ccmni_tmp for MD IRAT */
 	ccmni = (struct ccmni_instance *)netdev_priv(dev);
 	dev_queue = netdev_get_tx_queue(dev, 0);
-	CCMNI_INF_MSG(md_id, "to:clr(%lu:%lu)\r\n",
+	CCMNI_DBG_MSG(md_id, "to:clr(%lu:%lu)\r\n",
 		timeout_flush_num, clear_flush_num);
 	if (ctlb->ccci_ops->md_ability & MODEM_CAP_CCMNI_MQ) {
 		ack_queue = netdev_get_tx_queue(dev, CCMNI_TXQ_FAST);
@@ -1862,7 +1862,7 @@ static void ccmni_dump(int md_id, int ccmni_idx, unsigned int flag)
 		/* stats.tx_packets is count by ccmni, bstats.
 		 * packets is count by qdisc in net device layer
 		 */
-		CCMNI_INF_MSG(md_id,
+		CCMNI_DBG_MSG(md_id,
 			"%s(%d,%d), irat_MD%d, rx=(%ld,%ld,%d), tx=(%ld,%llu,%lld), txq_len=(%d,%d), tx_drop=(%ld,%d,%d), rx_drop=(%ld,%ld), tx_busy=(%ld,%ld), sta=(0x%lx,0x%x,0x%lx,0x%lx)\n",
 				  dev->name,
 				  atomic_read(&ccmni->usage),

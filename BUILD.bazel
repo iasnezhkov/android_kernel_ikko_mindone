@@ -1795,6 +1795,7 @@ ddk_headers(
         ":all_headers_allowlist_common_globs",
         ":all_headers_allowlist_exynos",
         ":all_headers_allowlist_vivo",
+        ":all_headers_allowlist_mindone",
         ":pkvm_headers_aarch64",
         ":xhci_headers",
     ],
@@ -1804,7 +1805,19 @@ ddk_headers(
     linux_includes = [
         "arch/arm64/include",
         "arch/arm64/include/uapi",
+        "drivers/android",
+        "drivers/clk/mediatek",
+        "drivers/devfreq",
         "drivers/dma",
+        "drivers/dma/mediatek",
+        "drivers/firmware/arm_scmi",
+        "drivers/gpu/drm",
+        "drivers/mmc/core",
+        "drivers/mmc/host",
+        "drivers/pinctrl/mediatek",
+        "drivers/usb/gadget/function",
+        "kernel",
+        "net",
         "drivers/extcon",
         "drivers/pci",
         "drivers/pci/controller/dwc",
@@ -1969,6 +1982,33 @@ ddk_headers(
         "mm/internal.h",
         "mm/swap.h",
     ],
+    visibility = ["//visibility:private"],
+)
+
+ddk_headers(
+    name = "all_headers_root_mindone",
+    hdrs = [":all_headers_allowlist_mindone"],
+    linux_includes = ["."],
+    visibility = ["//visibility:public"],
+)
+
+ddk_headers(
+    name = "all_headers_allowlist_mindone",
+    hdrs = glob([
+        "drivers/clk/mediatek/*.h",
+        "drivers/devfreq/*.h",
+        "drivers/dma/*.h",
+        "drivers/dma/mediatek/*.h",
+        "drivers/firmware/arm_scmi/*.h",
+        "drivers/gpu/drm/*.h",
+        "drivers/mmc/core/*.h",
+        "drivers/mmc/host/*.h",
+        "drivers/pinctrl/mediatek/*.h",
+        "drivers/usb/gadget/function/*.h",
+        "kernel/printk/*.h",
+        "kernel/sched/*.h",
+        "net/wireless/*.h",
+    ]),
     visibility = ["//visibility:private"],
 )
 
@@ -3399,4 +3439,5 @@ pkg_zip(
 
 exports_files([
     "Makefile",
+    "gki/aarch64/symbols/mindone",
 ])

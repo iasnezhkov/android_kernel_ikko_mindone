@@ -22,18 +22,24 @@
 > between commits, some hardware is unfinished, and nothing here is certified by anyone.
 > Read [Status](#-status) before depending on it.
 
-## 🎯 What two commands give you
+## 🎯 What this tree is for
 
-From a clean clone: the `Image`, the DTB, and the **290 modules the device actually boots on**.
+The kernel binary is **Google's**. This repository is the device half: the tree that describes the
+hardware, the configuration fragment that turns on what this board needs, and the ~289 drivers it
+loads on top of a Generic Kernel Image.
 
 ```
+kernel           //common:kernel_aarch64 — Google's GKI, built or taken as a prebuilt
+this repository  device tree + mindone.fragment + 282 out-of-tree drivers
+contract         gki/aarch64/symbols/mindone — the symbols those drivers need from GKI
 module_layout    0x35c04eb7
-kernel.release   6.12.92-4k+
-modules built    290 / 290 — nothing failing the ABI gate
 ```
 
-Those numbers are what a correct build produces. If yours differ, something is wrong, and
-**[docs/BUILD.md](docs/BUILD.md)** says what.
+> **Status.** The standalone build below — this tree producing its own `vmlinux` — is what runs on
+> the device today, and the numbers it produces are `module_layout 0x35c04eb7` and 289 modules
+> loaded. The GKI build is the direction, and the parts of it that are measured rather than
+> assumed are in **[docs/BUILD.md](docs/BUILD.md)**: 1809 symbols the drivers take from `vmlinux`,
+> 34 of them outside GKI's KMI, and 5 of those 34 exported by patches this project carries.
 
 No confidential vendor material went into this, and there was no vendor support or
 collaboration of any kind. The base is Google's Android Common Kernel. The device tree was
@@ -48,24 +54,42 @@ to change.
 
 | | |
 |---|---|
-| **Kernel** | Google ACK `android16-6.12-lts` (`6.12.92`) + ~60 commits of device support |
+| **Kernel** | Google ACK `android16-6.12-lts` (`6.12.92`); the goal is to stop building it and consume `//common:kernel_aarch64` instead |
 | **Device tree** | `mindone.dts` + 18 `mt6789-*.dtsi`, rebuilt from the stock DTB, **zero `dtc` warnings** |
-| **Config** | `arch/arm64/configs/mindone_defconfig`, 752 enabled options |
-| **Drivers** | `mindone/modules/` — 339 buildable directories, 5 638 source files |
-| **Load order** | `mindone/modules/modules.load` — the real 290, in the order the device loads them |
+| **Config** | `mindone/mindone.fragment` on top of `gki_defconfig`, checked on every build by Kleaf's `check_defconfig`. `arch/arm64/configs/mindone_defconfig` is the equivalent for the plain `make` path |
+| **Drivers** | `mindone/modules/` — 282 `ddk_module` targets, 339 buildable directories, 5 638 source files |
+| **KMI** | `gki/aarch64/symbols/mindone` — what those drivers need from the kernel, in the format Google's own tooling writes |
+| **Load order** | `mindone/modules/modules.load` — the real 289, in the order the device loads them |
 
 🚫 No blobs, no firmware, no bootloader, no prebuilt binaries — **verified by file content, not
 by extension.** Proprietary userspace is extracted by each user from their own device.
 
 ## 🚀 Build
 
+Android 16 dropped non-Bzlmod kernel builds, so **Kleaf**, the Bazel build Google ships with the
+ACK, is the supported entry point. The workspace is the ACK repo manifest with `kernel/common`
+replaced by this repository:
+
+```sh
+tools/bazel build //common/mindone:mindone_modules_install
+```
+
+The plain `make` path still works and needs nothing but this repository and a clang, which is why
+it is the one **[docs/BUILD.md](docs/BUILD.md)** walks through end to end:
+
 ```sh
 TOOLCHAIN=/opt/toolchains/llvm-19.1.4-aarch64 ./build.sh ../k612-out
 ```
 
-> 🔴 **The clang version is load-bearing.** clang **19.1.4** (the kernel.org prebuilt). A
-> different one changes symbol CRCs and `module_layout`, and every module then refuses to load
-> without saying why.
+> 🔴 **The clang version matters, though less than it first looks.** Measured on this tree: the
+> kernel.org **19.1.4** prebuilt and the AOSP **r536225** clang that Kleaf uses give the same
+> `module_layout` and module sets whose imported symbols match byte for byte. A clang from a
+> different major version does change symbol CRCs, and every module then refuses to load without
+> saying why.
+
+> 🔴 **Memory.** Generating BTF (`pahole`) peaks near **14.4 GiB**. Under that ceiling the build
+> dies with a bare `Killed` and `FAILED: load BTF from vmlinux: Invalid argument`, naming nothing.
+> In a container or VM, check the limit that applies to the build, not the machine's total.
 
 Modules, ABI checking, and the path to a flashable image → **[docs/BUILD.md](docs/BUILD.md)**.
 
@@ -94,7 +118,7 @@ kernel. Every change says what the original did and why it had to go.</td></tr>
 | `mindone_pmic_guard` | re-arms PMIC interrupt enables after resume; a lost `pwrap` write used to leave the power key dead until reboot |
 | `mindone_ufs_screen`, `mindone_rfldo` | storage and RF regulator behaviour specific to this board |
 | `mindone_panicdump`, `mindone_ctlfail`, `mindone_ptydbg` | bring-up instrumentation that kept paying off, so it stayed |
-| `mindone_mpuperm`, `mindone_ntty_restore`, `mindone_usblock_shim` | memory-protection, line-discipline and USB wakelock workarounds |
+| `mindone_mpuperm`, `mindone_usblock_shim` | memory-protection and USB wakelock workarounds |
 
 </details>
 

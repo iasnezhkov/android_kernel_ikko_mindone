@@ -48,6 +48,7 @@ bool lpm_plat_is_mcusys_off(void);
 bool lpm_plat_is_cluster_off(int cpu);
 
 int lpm_plat_apmcu_init(void);
+void lpm_plat_apmcu_exit(void);
 int lpm_plat_apmcu_early_init(void);
 
 #endif

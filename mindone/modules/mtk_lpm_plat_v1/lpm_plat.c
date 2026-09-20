@@ -106,6 +106,7 @@ lpm_plat_init_fail:
 
 static void __exit lpm_plat_exit(void)
 {
+	lpm_plat_apmcu_exit();
 }
 
 module_init(lpm_plat_init);

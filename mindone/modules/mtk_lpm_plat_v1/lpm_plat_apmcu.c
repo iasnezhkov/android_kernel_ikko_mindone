@@ -12,6 +12,9 @@
 #include <linux/kthread.h>
 #include <linux/delay.h>
 #include <linux/time.h>
+#include <linux/timekeeping.h>
+#include <linux/workqueue.h>
+#include <linux/moduleparam.h>
 
 #include <lpm.h>
 
@@ -34,6 +37,15 @@ static struct task_struct *lpm_plat_task;
 
 /* qos */
 static struct pm_qos_request lpm_plat_qos_req;
+
+/* MINDONE 19.09 (BACKLOG O54): keep the boot-time cpu-off block (latency QoS 2 us, WFI only) for
+ * this long after boot instead of lifting it at module init. Lifted at init, the governor kept
+ * picking mcusysoff/system_bus while ATF refused them (PSCI deny, cpuidle `rejected`): ~600k
+ * rejections/s over 8 CPUs from 16.5 to 28 s of boot on B7, ~230k/s at 24-28 s on B8 (VOW gone),
+ * 1-7/s later. MediaTek does the same on MT6833 (MCUPM ready and 60 s). 0 = lift at init. */
+static unsigned int boot_idle_block_ms = 30000;
+module_param(boot_idle_block_ms, uint, 0444);
+MODULE_PARM_DESC(boot_idle_block_ms, "keep deep idle blocked until this uptime (ms); 0 = lift at init");
 
 #define lpm_plat_qos_init()\
 	cpu_latency_qos_add_request(&lpm_plat_qos_req,\
@@ -382,6 +394,36 @@ static int __init lpm_plat_mcusys_ctrl_init(void)
 	return plat_node_ready() ? 0 : -1;
 }
 
+#if !IS_ENABLED(CONFIG_MTK_LPM_MT6833)
+static void lpm_plat_boot_allow_fn(struct work_struct *work)
+{
+	lpm_cpu_off_allow();
+	lpm_plat_cpuhp_init();
+	pr_info("[name:lpm] deep idle allowed at %llu ms of boot\n",
+		ktime_get_boottime_ns() / NSEC_PER_MSEC);
+}
+static DECLARE_DELAYED_WORK(lpm_plat_boot_allow_work, lpm_plat_boot_allow_fn);
+
+static void lpm_plat_boot_allow_schedule(void)
+{
+	u64 up_ms = ktime_get_boottime_ns() / NSEC_PER_MSEC;
+
+	if (!boot_idle_block_ms || up_ms >= boot_idle_block_ms) {
+		lpm_plat_boot_allow_fn(NULL);
+		return;
+	}
+	schedule_delayed_work(&lpm_plat_boot_allow_work,
+			      msecs_to_jiffies(boot_idle_block_ms - (unsigned int)up_ms));
+}
+#endif
+
+void lpm_plat_apmcu_exit(void)
+{
+#if !IS_ENABLED(CONFIG_MTK_LPM_MT6833)
+	cancel_delayed_work_sync(&lpm_plat_boot_allow_work);
+#endif
+}
+
 int __init lpm_plat_apmcu_init(void)
 {
 #if IS_ENABLED(CONFIG_MTK_LPM_MT6833)
@@ -420,8 +462,7 @@ int __init lpm_plat_apmcu_init(void)
 	else
 		pr_notice("Create thread fail @ %s()\n", __func__);
 #else
-	lpm_cpu_off_allow();
-	lpm_plat_cpuhp_init();
+	lpm_plat_boot_allow_schedule();
 #endif
 	return 0;
 }

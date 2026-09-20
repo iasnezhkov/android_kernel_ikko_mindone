@@ -321,13 +321,11 @@ struct wireless_dev *mtk_p2p_cfg80211_add_iface(struct wiphy *wiphy,
 			sizeof(struct wireless_dev));
 		prWdev->netdev = prNewNetDevice;
 		prWdev->iftype = type;
-		prNewNetDevice->ieee80211_ptr = prWdev;
-		/* register destructor function for virtual interface */
-#if KERNEL_VERSION(4, 14, 0) <= CFG80211_VERSION_CODE
-		prNewNetDevice->priv_destructor = mtk_vif_destructor;
-#else
-		prNewNetDevice->destructor = mtk_vif_destructor;
+#if KERNEL_VERSION(5, 12, 0) <= CFG80211_VERSION_CODE
+		prWdev->identifier = 0;
+		INIT_LIST_HEAD(&prWdev->list);
 #endif
+		prNewNetDevice->ieee80211_ptr = prWdev;
 		/* The prOrigWdev is used to do error handle. If return fail,
 		 * set the gprP2pRoleWdev[u4Idx] to original value.
 		 * Expect that the gprP2pRoleWdev[0] = gprP2pWdev, and the
@@ -349,12 +347,22 @@ struct wireless_dev *mtk_p2p_cfg80211_add_iface(struct wiphy *wiphy,
 		/* net device initialize */
 
 		/* register for net device */
+#if KERNEL_VERSION(5, 12, 0) <= CFG80211_VERSION_CODE
+		if (cfg80211_register_netdevice(
+			    prP2pInfo->aprRoleHandler) < 0) {
+#else
 		if (register_netdevice(prP2pInfo->aprRoleHandler) < 0) {
+#endif
 			DBGLOG(INIT, WARN,
 				"unable to register netdevice for p2p\n");
 			break;
 
 		} else {
+#if KERNEL_VERSION(4, 14, 0) <= CFG80211_VERSION_CODE
+			prNewNetDevice->priv_destructor = mtk_vif_destructor;
+#else
+			prNewNetDevice->destructor = mtk_vif_destructor;
+#endif
 			DBGLOG(P2P, TRACE, "register_netdev OK\n");
 			prGlueInfo->prAdapter->rP2PNetRegState =
 				ENUM_NET_REG_STATE_REGISTERED;
@@ -668,7 +676,11 @@ int mtk_p2p_cfg80211_del_iface(struct wiphy *wiphy, struct wireless_dev *wdev)
 	netif_tx_stop_all_queues(UnregRoleHander);
 
 	/* Here are functions which need rtnl_lock */
+#if KERNEL_VERSION(5, 12, 0) <= CFG80211_VERSION_CODE
+	cfg80211_unregister_netdevice(UnregRoleHander);
+#else
 	unregister_netdevice(UnregRoleHander);
+#endif
 	/* free is called at destructor */
 	/* free_netdev(UnregRoleHander); */
 

@@ -513,7 +513,10 @@ static int battery_psy_get_property(struct power_supply *psy,
 		}
 		if (IS_ERR_OR_NULL(bs_data->chg_psy)) {
 			bm_err("%s Couldn't get chg_psy\n", __func__);
-			ret = 4350;
+			/* MINDONE 19.09: was `ret = 4350`, a positive "error" with val left unset;
+			 * report the 4.35 V default CV in uV instead. */
+			val->intval = 4350000;
+			ret = 0;
 		} else {
 			ret = power_supply_get_property(bs_data->chg_psy,
 				POWER_SUPPLY_PROP_CONSTANT_CHARGE_VOLTAGE, val);
@@ -967,6 +970,8 @@ int force_get_tbat_internal(struct mtk_battery *gm, bool update)
 				pre_fg_current_state, pre_fg_current_temp,
 				pre_fg_r_value,
 				pre_bat_temperature_val2, tmp_time.tv_sec);
+
+			pre_bat_temperature_val = bat_temperature_val;
 		}
 	} else {
 		bat_temperature_val = pre_bat_temperature_val;
@@ -975,8 +980,12 @@ int force_get_tbat_internal(struct mtk_battery *gm, bool update)
 	return bat_temperature_val;
 }
 
+#define TBAT_MIN_CONV_INTERVAL_MS	5000
+
 int force_get_tbat(struct mtk_battery *gm, bool update)
 {
+	static ktime_t last_conv_time;
+	static bool last_conv_done;
 	int bat_temperature_val = 0;
 
 	if (gm->is_probe_done == false) {
@@ -989,26 +998,21 @@ int force_get_tbat(struct mtk_battery *gm, bool update)
 		return gm->fixed_bat_tmp;
 	}
 
-	/*
-	 * MINDONE-TBAT-UPDATE: this used to hardcode true and silently discard
-	 * the caller's "update" argument, so force_get_tbat(gm, false) -- which
-	 * reads as "the cached value is fine" -- still forced a live PMIC AUXADC
-	 * conversion. Every caller in tree passes true today, so this changes no
-	 * behaviour now; it stops the argument from lying to the next caller who
-	 * does not want to pay for a conversion. force_get_tbat_internal() already
-	 * implements the cached path (it returns pre_bat_temperature_val, and the
-	 * -1 initial value forces a real read on the first call regardless).
-	 *
-	 * Worth knowing before adding a cached caller: POWER_SUPPLY_PROP_TEMP goes
-	 * through here on every single read of /sys/class/power_supply/battery/temp,
-	 * with no rate limiting at all. Measured on the device: 0.31 conversions/s
-	 * on battery (68476 over one 61 h uptime) and 2.55/s while charging, which
-	 * cost 464 of ~3370 system wakeups and 56 aborted suspends.
-	 */
+	if (update && last_conv_done &&
+	    ktime_before(ktime_get_boottime(),
+			 ktime_add_ms(last_conv_time,
+				      TBAT_MIN_CONV_INTERVAL_MS)))
+		update = false;
+
 	bat_temperature_val = force_get_tbat_internal(gm, update);
 
 	if (bat_temperature_val == -EHOSTDOWN)
 		return gm->cur_bat_temp;
+
+	if (update) {
+		last_conv_time = ktime_get_boottime();
+		last_conv_done = true;
+	}
 
 	gm->cur_bat_temp = bat_temperature_val;
 

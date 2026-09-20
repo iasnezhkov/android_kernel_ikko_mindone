@@ -270,6 +270,7 @@ static int mindone_cluster_setup(struct mindone_cluster *c)
 	c->trips[0].temperature = *c->trip_param;
 	c->trips[0].hysteresis = hyst;
 	c->trips[0].type = THERMAL_TRIP_PASSIVE;
+	c->trips[0].flags = THERMAL_TRIP_FLAG_RW;
 
 	snprintf(c->cdev_type, sizeof(c->cdev_type), "cpufreq-cpu%d", c->first_cpu);
 #if LINUX_VERSION_CODE < KERNEL_VERSION(6, 11, 0)
@@ -553,6 +554,7 @@ static int mindone_gpu_setup(struct mindone_gpu *g)
 	g->trips[0].temperature = gpu_trip;
 	g->trips[0].hysteresis = hyst;
 	g->trips[0].type = THERMAL_TRIP_PASSIVE;
+	g->trips[0].flags = THERMAL_TRIP_FLAG_RW;
 
 	/* cdev first: on >= 6.11 the core binds through .should_bind() at zone registration. */
 	g->cdev = thermal_cooling_device_register("mindone-gpufreq", g, &mindone_gpu_cdev_ops);

@@ -3,6 +3,84 @@
 From a clean clone to a module set the device will load. Every command here is meant to be
 copied as-is, except the clone URL in step 2, which is the only placeholder.
 
+## Where this is going, and where it is now
+
+The target is the arrangement Google intends for a device kernel: **the kernel binary comes from
+GKI, and this tree builds only the drivers on top of it.** Nothing here would produce a `vmlinux`;
+`kernel_build` would name `//common:kernel_aarch64` as its `base_kernel`, and the contract between
+the two sides would be the symbol list at `gki/aarch64/symbols/mindone`.
+
+What is true today, and what is not:
+
+| | |
+|---|---|
+| ✅ runs on the device | this tree building its own `vmlinux`, with the MediaTek platform code compiled in |
+| ✅ builds with Kleaf | `//common/mindone:mindone` and the 282 `ddk_module` targets, hermetic toolchain |
+| ✅ measured | 1809 symbols the out-of-tree drivers take from `vmlinux`; **34** of them outside the KMI that GKI actually exports |
+| ✅ measured | GKI supplies **109 of the 116** in-tree modules this configuration builds; six of the rest are needed, `cfg80211` and `mac80211` among them, because GKI builds no Wi-Fi stack |
+| ✅ measured | the configuration distance is **43 options**: 16 already `tristate`, 7 belonging to modules this tree builds anyway, 6 that follow from other choices, 7 kernel features GKI does without, 2 with out-of-tree sources already here, and 1 that needed a Kconfig change — `PINCTRL_MT6789`, now `tristate` |
+| ❌ not done | the mixed `kernel_build`, the first-stage load order with the pin controller as a module, and any of it running on hardware |
+
+Of those 34 symbols, **5 exist only because this tree patches the common kernel to export them** —
+`_text`, `put_task_stack`, `log_buf_addr_get`, `log_buf_len_get`, `cpuidle_driver_state_disabled`,
+for four MediaTek diagnostic modules. A GKI kernel will never have them. Keeping those modules and
+consuming GKI are mutually exclusive, and that is the decision the move turns on, not a technical
+obstacle.
+
+The load order question has a measured answer too. On this device's tree, 16 nodes take pin states,
+13 take EINT interrupts from the pin controller (the main PMIC among them) and 7 take GPIOs —
+**and UFS is in none of the three**, so the boot device does not depend on the pin controller and
+moving it into a module cannot cost the root filesystem. Everything else reaches it through the
+PMIC and waits on `-EPROBE_DEFER`, which needs `pinctrl-mt6789.ko` early in `modules.load`.
+
+## Building it with Kleaf
+
+Android 16 dropped non-Bzlmod kernel builds, so Bazel is the only entry point Google supports. The
+workspace is the ACK manifest with `kernel/common` replaced by this repository:
+
+```sh
+repo init -u https://android.googlesource.com/kernel/manifest -b common-android16-6.12 \
+          --depth=1 --no-tags
+mkdir -p .repo/local_manifests
+cat > .repo/local_manifests/mindone.xml <<'X'
+<?xml version="1.0" encoding="UTF-8"?>
+<manifest>
+  <remove-project name="kernel/common" />
+  <remote name="mindone" fetch="https://github.com/" />
+  <project path="common" name="<owner>/<this-repo>" remote="mindone"
+           revision="android16-6.12" clone-depth="1" />
+</manifest>
+X
+repo sync -c -j8 --no-tags
+tools/bazel build //common/mindone:mindone //common/mindone:mindone_modules_install
+```
+
+| target | what it is |
+|---|---|
+| `//common/mindone:mindone` | the kernel: `gki_defconfig` plus `mindone/mindone.fragment`, 116 in-tree modules |
+| `//common/mindone/modules:mindone_modules` | the out-of-tree drivers, one `ddk_module` each |
+| `//common/mindone:mindone_modules_install` | both of the above, staged together |
+| `//common/mindone:mindone_abi` | the KMI symbol list targets |
+
+🔴 **Memory.** Generating BTF (`pahole`) peaks near **14.4 GiB** on this kernel. Below that ceiling
+it is killed with a bare `Killed` and `FAILED: load BTF from vmlinux: Invalid argument`, naming
+nothing. In a container or a VM, check the limit that applies to the build rather than the total
+the machine reports.
+
+The configuration is `gki_defconfig` plus a fragment rather than a defconfig of its own, so Kleaf's
+`check_defconfig` verifies on every build that the result still says what the fragment claims. That
+check is what first caught an option this tree believed was off and was not.
+
+`kernel.release` differs between the two paths: `6.12.92-4k+` from `make`,
+`6.12.92-android16-6-maybe-dirty-4k` from Kleaf, which appends its own localversion and marks a
+tree built without `--config=stamp`.
+
+## Building it with make
+
+The rest of this document. It needs nothing but this repository and a clang, produces the same
+`module_layout 0x35c04eb7`, and module sets from the two paths import the same symbols byte for
+byte.
+
 ## What you need
 
 | | |
