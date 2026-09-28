@@ -9,7 +9,6 @@
 #include <linux/atomic.h>
 #include <linux/kthread.h>
 #include <linux/hrtimer.h>
-#include <linux/version.h>
 
 #include <linux/sched/rt.h>
 #include <uapi/linux/sched/types.h>

@@ -108,11 +108,7 @@ const size_t __aux_stream_offset =
 
 static bool timeline_is_permitted(void)
 {
-#if KERNEL_VERSION(5, 8, 0) <= LINUX_VERSION_CODE
 	return kbase_unprivileged_global_profiling || perfmon_capable();
-#else
-	return kbase_unprivileged_global_profiling || capable(CAP_SYS_ADMIN);
-#endif
 }
 
 /**

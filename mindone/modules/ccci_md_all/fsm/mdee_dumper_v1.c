@@ -25,8 +25,8 @@ static void ccci_aed_v1(struct ccci_fsm_ee *mdee, unsigned int dump_flag,
 {
 	void *ex_log_addr = NULL;
 	int ex_log_len = 0;
-	void *md_img_addr = NULL;
-	int md_img_len = 0;
+	void *md_img_addr __maybe_unused = NULL;
+	int md_img_len __maybe_unused = 0;
 	int info_str_len = 0;
 	char *buff;		/*[AED_STR_LEN]; */
 #if IS_ENABLED(CONFIG_MTK_AEE_FEATURE)

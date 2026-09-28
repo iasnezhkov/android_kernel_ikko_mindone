@@ -28,7 +28,6 @@
 #define _KBASE_DEFS_H_
 
 #include <mali_kbase_config.h>
-#include <mindone/compat.h>
 #include <mali_base_hwconfig_features.h>
 #include <mali_base_hwconfig_issues.h>
 #include <mali_kbase_mem_lowlevel.h>
@@ -513,7 +512,7 @@ struct kbase_mem_pool {
 	u8                  group_id;
 	spinlock_t          pool_lock;
 	struct list_head    page_list;
-	MINDONE_SHRINKER_MEMBER(reclaim);
+	struct shrinker *reclaim;
 
 	struct kbase_mem_pool *next_pool;
 
@@ -1052,9 +1051,7 @@ struct kbase_device {
 #if IS_ENABLED(CONFIG_REGULATOR)
 	struct regulator *regulators[BASE_MAX_NR_CLOCKS_REGULATORS];
 	unsigned int nr_regulators;
-#if (KERNEL_VERSION(4, 10, 0) <= LINUX_VERSION_CODE)
 	struct opp_table *opp_table;
-#endif /* (KERNEL_VERSION(4, 10, 0) <= LINUX_VERSION_CODE */
 #endif /* CONFIG_REGULATOR */
 	char devname[DEVNAME_SIZE];
 	u32  id;
@@ -1200,11 +1197,7 @@ struct kbase_device {
 #endif
 	bool poweroff_pending;
 
-#if (KERNEL_VERSION(4, 4, 0) <= LINUX_VERSION_CODE)
 	bool infinite_cache_active_default;
-#else
-	u32 infinite_cache_active_default;
-#endif
 	struct kbase_mem_pool_group_config mem_pool_defaults;
 
 	u32 current_gpu_coherency_mode;
@@ -1864,7 +1857,7 @@ struct kbase_context {
 
 	struct kbase_mem_pool_group mem_pools;
 
-	MINDONE_SHRINKER_MEMBER(reclaim);
+	struct shrinker *reclaim;
 	struct list_head        evict_list;
 	atomic_t evict_nents;
 

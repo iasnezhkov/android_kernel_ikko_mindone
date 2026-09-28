@@ -96,7 +96,7 @@ void trusted_mem_core_profile_dump(struct trusted_mem_device *mem_device)
 			profile_entry_str[idx].str);
 		pr_info("[%d]   invoke count: %lld\n", mem_device->mem_type,
 			data->item[idx].count);
-		pr_info("[%d]   spend time: %lld.%06lld sec\n",
+		pr_info("[%d]   spend time: %lld.%06ld sec\n",
 			mem_device->mem_type, data->item[idx].sec,
 			NSEC_TO_US(data->item[idx].nsec));
 		pr_info("[%d]   average one time: %lld msec (%06lld usec)\n",

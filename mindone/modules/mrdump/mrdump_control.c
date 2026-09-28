@@ -55,83 +55,31 @@ static inline u64 read_kernel_pac_mask(void)
 }
 #endif
 
-#if IS_ENABLED(CONFIG_KALLSYMS)
-#if !IS_ENABLED(CONFIG_KALLSYMS_BASE_RELATIVE)
 static void mrdump_cblock_kallsyms_init(struct mrdump_ksyms_param *kparam)
 {
 	struct mrdump_ksyms_param tmp_kp;
-	unsigned long start_addr;
+	struct aee_kallsyms_layout layout;
 
 	memset(&tmp_kp, 0, sizeof(struct mrdump_ksyms_param));
-	start_addr = (unsigned long)kallsyms_addresses;
-	tmp_kp.tag[0] = 'K';
-	tmp_kp.tag[1] = 'S';
-	tmp_kp.tag[2] = 'Y';
-	tmp_kp.tag[3] = 'M';
-
-	switch (sizeof(unsigned long)) {
-	case 4:
-		tmp_kp.flag = KSYM_32;
-		break;
-	case 8:
-		tmp_kp.flag = KSYM_64;
-		break;
-	default:
-		BUILD_BUG();
+	if (aee_get_kallsyms_layout(&layout)) {
+		tmp_kp.tag[0] = 'K';
+		tmp_kp.tag[1] = 'S';
+		tmp_kp.tag[2] = 'Y';
+		tmp_kp.tag[3] = 'M';
+		tmp_kp.flag = (1U << MKP_BIT_SHIFT_RELATIVE) |
+			      (1U << MKP_BIT_SHIFT_ARCH64);
+		tmp_kp.start_addr = __pa_symbol(layout.start);
+		tmp_kp.size = layout.size;
+		tmp_kp.crc = crc32(0, (unsigned char *)layout.start, layout.size);
+		tmp_kp.addresses_off = layout.offsets_off;
+		tmp_kp.num_syms_off = layout.num_syms_off;
+		tmp_kp.names_off = layout.names_off;
+		tmp_kp.markers_off = layout.markers_off;
+		tmp_kp.token_table_off = layout.token_table_off;
+		tmp_kp.token_index_off = layout.token_index_off;
 	}
-	tmp_kp.start_addr = __pa_symbol(start_addr);
-	tmp_kp.size = (unsigned long)&kallsyms_token_index - start_addr + 512;
-	tmp_kp.crc = crc32(0, (unsigned char *)start_addr, tmp_kp.size);
-	tmp_kp.addresses_off = (unsigned long)&kallsyms_addresses - start_addr;
-	tmp_kp.num_syms_off = (unsigned long)&kallsyms_num_syms - start_addr;
-	tmp_kp.names_off = (unsigned long)&kallsyms_names - start_addr;
-	tmp_kp.markers_off = (unsigned long)&kallsyms_markers - start_addr;
-	tmp_kp.token_table_off =
-		(unsigned long)&kallsyms_token_table - start_addr;
-	tmp_kp.token_index_off =
-		(unsigned long)&kallsyms_token_index - start_addr;
 	memcpy_toio(kparam, &tmp_kp, sizeof(struct mrdump_ksyms_param));
 }
-#else
-static void mrdump_cblock_kallsyms_init(struct mrdump_ksyms_param *kparam)
-{
-	struct mrdump_ksyms_param tmp_kp;
-	unsigned long start_addr;
-
-	memset(&tmp_kp, 0, sizeof(struct mrdump_ksyms_param));
-	start_addr = aee_get_kallsyms_addresses();
-	tmp_kp.tag[0] = 'K';
-	tmp_kp.tag[1] = 'S';
-	tmp_kp.tag[2] = 'Y';
-	tmp_kp.tag[3] = 'M';
-	tmp_kp.flag |= 1 << MKP_BIT_SHIFT_RELATIVE;
-#if IS_ENABLED(CONFIG_KALLSYMS_ABSOLUTE_PERCPU)
-	tmp_kp.flag |= 1 << MKP_BIT_SHIFT_ABS_PERCPU;
-#endif
-	switch (sizeof(unsigned long)) {
-	case 4:
-		break;
-	case 8:
-		tmp_kp.flag |= 1 << MKP_BIT_SHIFT_ARCH64;
-		break;
-	default:
-		BUILD_BUG();
-	}
-
-	tmp_kp.start_addr = __pa_symbol(start_addr);
-	tmp_kp.size = (u32)(aee_get_kti_addresses() - start_addr + 512);
-	tmp_kp.crc = crc32(0, (unsigned char *)start_addr, tmp_kp.size);
-	tmp_kp.addresses_off = 0;
-	tmp_kp.num_syms_off = (u32)aee_get_kns_off();
-	tmp_kp.names_off = (u32)aee_get_kn_off();
-	tmp_kp.markers_off = (u32)aee_get_km_off();
-	tmp_kp.token_table_off = (u32)aee_get_ktt_off();
-	tmp_kp.token_index_off = (u32)aee_get_kti_off();
-
-	memcpy_toio(kparam, &tmp_kp, sizeof(struct mrdump_ksyms_param));
-}
-#endif
-#endif
 
 void mrdump_cblock_late_init(void)
 {
@@ -143,9 +91,7 @@ void mrdump_cblock_late_init(void)
 	}
 
 	machdesc_p = &mrdump_cblock->machdesc;
-#if IS_ENABLED(CONFIG_KALLSYMS)
 	mrdump_cblock_kallsyms_init(&machdesc_p->kallsyms);
-#endif
 	machdesc_p->kimage_stext = (uint64_t)aee_get_text();
 	machdesc_p->kimage_etext = (uint64_t)aee_get_etext();
 	machdesc_p->kimage_stext_real = (uint64_t)aee_get_stext();
@@ -218,12 +164,8 @@ __init void mrdump_cblock_init(const struct mrdump_params *mparams)
 
 	machdesc_p->struct_page_size = (uint32_t)sizeof(struct page);
 
-#ifdef MODULE
 	mrdump_cblock->machdesc_crc = crc32(0, machdesc_p,
 			sizeof(struct mrdump_machdesc));
-#else
-	mrdump_cblock_late_init();
-#endif
 
 #if IS_ENABLED(CONFIG_SYSFS)
 	if (sysfs_create_group(kernel_kobj, &attr_group)) {

@@ -13,7 +13,6 @@
 #define pr_fmt(fmt) "dma_heap: system "fmt
 
 #include <linux/dma-buf.h>
-#include <mindone/compat.h>
 #include <linux/dma-mapping.h>
 #include <linux/dma-heap.h>
 #include <linux/err.h>
@@ -455,13 +454,6 @@ static void *system_heap_do_vmap(struct system_heap_buffer *buffer)
 	return vaddr;
 }
 
-/* KERNEL 6.1: the signature changed ("dma-buf: use iosys_map for vmap/vunmap" series).
- * Was:  void *(*vmap)(struct dma_buf *)
- * Now:  int   (*vmap)(struct dma_buf *, struct iosys_map *)
- * The old implementation returned the mapped address in the return register and
- * NEVER touched the passed-in struct - the caller got it filled with stack
- * garbage and used it as a real pointer. Same defect class as the display
- * module (F1756). */
 static int system_heap_vmap(struct dma_buf *dmabuf, struct iosys_map *map)
 {
 	struct system_heap_buffer *buffer = dmabuf->priv;
@@ -609,7 +601,7 @@ static void mtk_mm_heap_dma_buf_release(struct dma_buf *dmabuf)
 	deferred_free(&buffer->deferred_free, system_heap_buf_free, npages);
 
 	if (atomic64_sub_return(buf_len, &dma_heap_normal_total) < 0) {
-		pr_info("warn: %s, total memory underflow, 0x%lx!!, reset as 0\n",
+		pr_info("warn: %s, total memory underflow, 0x%llx!!, reset as 0\n",
 			__func__, atomic64_read(&dma_heap_normal_total));
 		atomic64_set(&dma_heap_normal_total, 0);
 	}
@@ -638,7 +630,7 @@ static void system_heap_dma_buf_release(struct dma_buf *dmabuf)
 	deferred_free(&buffer->deferred_free, system_heap_buf_free, npages);
 
 	if (atomic64_sub_return(buf_len, &dma_heap_normal_total) < 0) {
-		pr_info("warn: %s, total memory underflow, 0x%lx!!, reset as 0\n",
+		pr_info("warn: %s, total memory underflow, 0x%llx!!, reset as 0\n",
 			__func__, atomic64_read(&dma_heap_normal_total));
 		atomic64_set(&dma_heap_normal_total, 0);
 	}
@@ -706,8 +698,8 @@ static struct page *alloc_largest_available(unsigned long size,
 
 static struct dma_buf *system_heap_do_allocate(struct dma_heap *heap,
 					       unsigned long len,
-					       mindone_heap_fd_flags_t fd_flags,
-					       mindone_heap_flags_t heap_flags,
+					       u32 fd_flags,
+					       u64 heap_flags,
 					       bool uncached,
 					       const struct dma_buf_ops *ops)
 {
@@ -843,8 +835,8 @@ free_buffer:
 
 static struct dma_buf *system_heap_allocate(struct dma_heap *heap,
 					    unsigned long len,
-					    mindone_heap_fd_flags_t fd_flags,
-					    mindone_heap_flags_t heap_flags)
+					    u32 fd_flags,
+					    u64 heap_flags)
 {
 	return system_heap_do_allocate(heap, len, fd_flags, heap_flags, false,
 				       &system_heap_buf_ops);
@@ -852,8 +844,8 @@ static struct dma_buf *system_heap_allocate(struct dma_heap *heap,
 
 static struct dma_buf *mtk_mm_heap_allocate(struct dma_heap *heap,
 					    unsigned long len,
-					    mindone_heap_fd_flags_t fd_flags,
-					    mindone_heap_flags_t heap_flags)
+					    u32 fd_flags,
+					    u64 heap_flags)
 {
 	return system_heap_do_allocate(heap, len, fd_flags, heap_flags, false,
 				       &mtk_mm_heap_buf_ops);
@@ -886,8 +878,8 @@ static const struct dma_heap_ops mtk_mm_heap_ops = {
 
 static struct dma_buf *system_uncached_heap_allocate(struct dma_heap *heap,
 						     unsigned long len,
-						     mindone_heap_fd_flags_t fd_flags,
-						     mindone_heap_flags_t heap_flags)
+						     u32 fd_flags,
+						     u64 heap_flags)
 {
 	return system_heap_do_allocate(heap, len, fd_flags, heap_flags, true,
 				       &system_heap_buf_ops);
@@ -895,8 +887,8 @@ static struct dma_buf *system_uncached_heap_allocate(struct dma_heap *heap,
 
 static struct dma_buf *mtk_mm_uncached_heap_allocate(struct dma_heap *heap,
 						     unsigned long len,
-						     mindone_heap_fd_flags_t fd_flags,
-						     mindone_heap_flags_t heap_flags)
+						     u32 fd_flags,
+						     u64 heap_flags)
 {
 	return system_heap_do_allocate(heap, len, fd_flags, heap_flags, true,
 				       &mtk_mm_heap_buf_ops);
@@ -905,8 +897,8 @@ static struct dma_buf *mtk_mm_uncached_heap_allocate(struct dma_heap *heap,
 /* Dummy function to be used until we can call coerce_mask_and_coherent */
 static struct dma_buf *uncached_heap_not_initialized(struct dma_heap *heap,
 						     unsigned long len,
-						     mindone_heap_fd_flags_t fd_flags,
-						     mindone_heap_flags_t heap_flags)
+						     u32 fd_flags,
+						     u64 heap_flags)
 {
 	return ERR_PTR(-EBUSY);
 }
@@ -950,9 +942,9 @@ static int system_buf_priv_dump(const struct dma_buf *dmabuf,
 				continue;
 
 			dmabuf_dump(s,
-				    "\tbuf_priv: tab:%-2d dom:%-2d map:%d iova:0x%-12lx attr:0x%-4lx dir:%-2d dev:%s\n",
+				    "\tbuf_priv: tab:%-2d dom:%-2d map:%d iova:0x%-12llx attr:0x%-4lx dir:%-2d dev:%s\n",
 				    i, j, mapped,
-				    sg_dma_address(sgt->sgl),
+				    (unsigned long long)sg_dma_address(sgt->sgl),
 				    buf->dev_info[i][j].map_attrs,
 				    buf->dev_info[i][j].direction,
 				    dev_name(dev));
@@ -993,8 +985,6 @@ static struct mtk_heap_priv_info system_heap_priv = {
 
 static int set_heap_dev_dma(struct device *heap_dev)
 {
-	int err = 0;
-
 	if (!heap_dev)
 		return -EINVAL;
 
@@ -1007,12 +997,7 @@ static int set_heap_dev_dma(struct device *heap_dev)
 		if (!heap_dev->dma_parms)
 			return -ENOMEM;
 
-		err = MINDONE_DMA_SET_MAX_SEG_SIZE(heap_dev, (unsigned int)DMA_BIT_MASK(64));
-		if (err) {
-			devm_kfree(heap_dev, heap_dev->dma_parms);
-			dev_err(heap_dev, "Failed to set DMA segment size, err:%d\n", err);
-			return err;
-		}
+		dma_set_max_seg_size(heap_dev, (unsigned int)DMA_BIT_MASK(64));
 	}
 
 	return 0;
@@ -1146,8 +1131,8 @@ void dmabuf_release_check(const struct dma_buf *dmabuf)
 				iova = sg_dma_address(attach_obj->sgt->sgl);
 			device_name = dev_name(attach_obj->dev);
 			dmabuf_dump(NULL,
-				    "attach[%d]: iova:0x%-12lx attr:%-4lx dir:%-2d dev:%s\n",
-				    attach_cnt, iova,
+				    "attach[%d]: iova:0x%-12llx attr:%-4lx dir:%-2d dev:%s\n",
+				    attach_cnt, (unsigned long long)iova,
 				    attach_obj->dma_map_attrs,
 				    attach_obj->dir,
 				    device_name);

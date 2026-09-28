@@ -18,7 +18,6 @@
 #include <linux/slab.h>
 #include <linux/device.h>
 #include <linux/debugfs.h>
-#include <linux/version.h>
 
 #include "main.h"
 #include "logging.h"

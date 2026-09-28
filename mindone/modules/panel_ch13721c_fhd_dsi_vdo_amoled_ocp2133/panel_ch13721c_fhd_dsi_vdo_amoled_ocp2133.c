@@ -466,12 +466,6 @@ static int lcm_probe(struct mipi_dsi_device *dsi)
 	 * kernels); 4 lanes inferred from ext_params.pll_clk, see above. */
 	dsi->lanes = 4;
 	dsi->format = MIPI_DSI_FMT_RGB888;
-	/* MIPI_DSI_MODE_EOT_PACKET (kernel <6.x: "do send EOT packets", the
-	 * behavior this driver wants) was removed upstream; EOT packets are
-	 * sent unconditionally now, and the surviving flag
-	 * MIPI_DSI_MODE_NO_EOT_PACKET means the OPPOSITE (suppress them) --
-	 * so the correct 6.1 port is to just drop the bit, not translate it,
-	 * since the wanted behavior (EOT packets sent) is now the default. */
 	dsi->mode_flags = MIPI_DSI_MODE_VIDEO | MIPI_DSI_MODE_VIDEO_SYNC_PULSE
 			 | MIPI_DSI_MODE_LPM;
 

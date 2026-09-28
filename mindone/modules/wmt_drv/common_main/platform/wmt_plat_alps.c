@@ -35,8 +35,6 @@
 #endif
 #define DFT_TAG         "[WMT-PLAT]"
 
-#include <linux/version.h>
-
 /*******************************************************************************
 *                    E X T E R N A L   R E F E R E N C E S
 ********************************************************************************
@@ -44,13 +42,6 @@
 #include <linux/delay.h>
 
 /* ALPS header files */
-#if (LINUX_VERSION_CODE < KERNEL_VERSION(4, 19, 0))
-#ifndef CONFIG_RTC_DRV_MT6397
-#include <mtk_rtc.h>
-#else
-#include <linux/mfd/mt6397/rtc_misc.h>
-#endif
-#endif
 
 #ifdef CONFIG_MTK_MT6306_GPIO_SUPPORT
 #include <mtk_6306_gpio.h>
@@ -854,10 +845,6 @@ static INT32 wmt_plat_rtc_ctrl(ENUM_PIN_STATE state)
 {
 	switch (state) {
 	case PIN_STA_INIT:
-#if (LINUX_VERSION_CODE < KERNEL_VERSION(4, 15, 0))
-		rtc_gpio_enable_32k(RTC_GPIO_USER_GPS);
-		WMT_DBG_FUNC("WMT-PLAT:RTC init\n");
-#endif
 		break;
 	case PIN_STA_SHOW:
 		WMT_INFO_FUNC("WMT-PLAT:RTC PIN_STA_SHOW start\n");

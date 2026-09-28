@@ -14,7 +14,7 @@
 
 #include "fscmd-trace.h"
 
-#include <linux/sched/clock.h>	/* sched_clock: 6.12 no longer pulls it in implicitly */
+#include <linux/sched/clock.h>
 #define MAX_LOG_NR       (10000) /* entries size of total log */
 #define MAX_RW_LOG_NR    (2000) /* entries size of total log */
 #define MAX_OTHER_LOG_NR (6000) /* entries size of total log */

@@ -4,7 +4,6 @@
  */
 
 #include <linux/list.h>
-#include <mindone/compat.h>
 #include <linux/device.h>
 #include <linux/module.h>
 #include <linux/kernel.h>
@@ -282,10 +281,6 @@ static void init_smem_regions(struct ccci_smem_region *regions,
 			(unsigned long)regions[i].base_md_view_phy,
 			regions[i].size);
 
-		if (regions[i].id == SMEM_USER_RAW_MDSS_DBG)
-			MINDONE_MRDUMP_MINI_ADD_EXTRA_FILE((unsigned long)regions[i].base_ap_view_vir,
-					(unsigned long)regions[i].base_ap_view_phy, regions[i].size,
-					"EXTRA_MDSS");
 	}
 }
 
@@ -547,6 +542,7 @@ void ccci_md_smem_layout_config(struct ccci_modem *md)
 			update_smem_region(&md1_6293_noncacheable_fat[i]);
 			if (md_resv_mem_size != md1_6293_noncacheable_fat[i].size)
 				offset_adjust_flag = 1;
+			break;
 		default:
 			break;
 		}
@@ -652,7 +648,6 @@ void ccci_md_smem_layout_config(struct ccci_modem *md)
 	/* md_smem_layout_parsing(md); */
 }
 
-/* MINDONE-CONNMD (F3204/F3205): INFRACFG_AO+0x39C = MD-CONSYS smem >> 16 (bits [19:0]), same as stock (0x8d60) */
 void mindone_connmd_window(int md_id)
 {
 	int size = 0;
@@ -661,19 +656,19 @@ void mindone_connmd_window(int md_id)
 	u32 old, neu;
 
 	if (!mdphy || !size) {
-		pr_notice("MINDONE-CONNMD: no MD_CONSYS smem (addr=0x%llx size=%d) - window left as is\n",
+		pr_err("ccci: no MD_CONSYS smem (addr=0x%llx size=%d), CONSYS-MD window left as is\n",
 			(unsigned long long)mdphy, size);
 		return;
 	}
 	reg = ioremap(0x10001000 + 0x39C, 4);
 	if (!reg) {
-		pr_notice("MINDONE-CONNMD: ioremap INFRACFG_AO+0x39C failed\n");
+		pr_err("ccci: ioremap INFRACFG_AO+0x39C failed\n");
 		return;
 	}
 	old = readl(reg);
 	neu = (old & ~0xFFFFFu) | ((u32)(mdphy >> 16) & 0xFFFFFu);
 	writel(neu, reg);
-	pr_notice("MINDONE-CONNMD: INFRACFG_AO+0x39C (CONSYS MD direct path) old=0x%x new=0x%x readback=0x%x (MD_CONSYS smem 0x%llx size 0x%x)\n",
+	pr_debug("ccci: INFRACFG_AO+0x39C (CONSYS MD direct path) old=0x%x new=0x%x readback=0x%x (MD_CONSYS smem 0x%llx size 0x%x)\n",
 		old, neu, readl(reg), (unsigned long long)mdphy, size);
 	iounmap(reg);
 }
@@ -795,13 +790,6 @@ void ccci_md_config(struct ccci_modem *md)
 		md->mem_layout.md_bank4_cacheable_total.base_ap_view_vir,
 		md->mem_layout.md_bank4_cacheable_total.base_md_view_phy);
 
-	/* MINDONE-CONNMD (F3204/F3205): the CONNSYS "MD direct path" window
-	 * (INFRACFG_AO+0x39C, CONSYS_EMI_AP_MD_OFFSET) is written by wmt_drv on
-	 * stock (mt6789.c consys_emi_set_remapping_reg) from
-	 * get_smem_phy_start_addr(MD_CONSYS); here wmt_drv loads in stage 1,
-	 * before ccci_md_all, and does not export the symbol, so the window
-	 * stays 0x8000 (-> 0x80000000, AP memory) -> once ready, MD hits
-	 * 0x80000044 -> EMI-MPU violation -> EE 0x305. Write the window here. */
 	/* call moved to modem_sys1.c md_cd_smem_sub_region_init_new (MD start): here the MD_CONSYS table is still empty (v15 boot1) */
 
 	/* updae image info */

@@ -10,15 +10,6 @@
 #include "kd_imgsensor.h"
 
 struct stCAM_CAL_LIST_STRUCT g_camCalList[] = {
-	/* MINDONE 11.09: this device's sensor is IMX766 (0x0766), and it was NOT in
-	 * this list. Because of that the calibration driver did not know the OTP
-	 * chip address and HAL got a hard failure: "Getting CAMERA_CAM_CAL_DATA_3A_GAIN
-	 * from cam_cal driver fail", ERR_NO_PDAF, ERR_NO_PARTNO, "No LSC OTP data" --
-	 * i.e. autofocus, white balance and shading correction all dropped out at once
-	 * (F4133).
-	 * Address 0xA0 is taken from the sensor driver itself: IMX766_EEPROM_READ_ID in
-	 * common/v1_1/imx766_mipi_raw/imx766_eeprom.c:27.
-	 */
 	{IMX766_SENSOR_ID, 0xA0, Common_read_region},
 	/*Below is commom sensor */
 	{IMX519_SENSOR_ID, 0xA0, Common_read_region},

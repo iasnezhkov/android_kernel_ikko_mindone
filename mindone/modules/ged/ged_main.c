@@ -543,7 +543,7 @@ GED_ERROR check_eb_config(void)
 
 	gpueb_node = of_find_compatible_node(NULL, NULL, "mediatek,gpueb");
 	if (!gpueb_node) {
-		GED_LOGE("No gpueb node.");
+		GED_LOGI("No gpueb node.");
 		g_ged_gpueb_support = 0;
 	} else {
 		ret = of_property_read_u32(gpueb_node, "gpueb-support",
@@ -554,7 +554,7 @@ GED_ERROR check_eb_config(void)
 
 	fdvfs_node = of_find_compatible_node(NULL, NULL, "mediatek,gpu_fdvfs");
 	if (!fdvfs_node) {
-		GED_LOGE("No fdvfs node.");
+		GED_LOGI("No fdvfs node.");
 		g_ged_fdvfs_support = 0;
 		g_ged_gpu_freq_notify_support = 0;
 		g_ged_gpueb_support = 0;
@@ -587,7 +587,7 @@ GED_ERROR check_afs_config(void)
 
 	gpu_afs_node = of_find_compatible_node(NULL, NULL, "mediatek,gpu_afs");
 	if (!gpu_afs_node) {
-		GED_LOGE("No gpu afs node.");
+		GED_LOGI("No gpu afs node.");
 		g_ged_slide_window_support = -1;
 	} else {
 		ret = of_property_read_u32(gpu_afs_node, "afs-policy-support",
@@ -609,23 +609,9 @@ GED_ERROR check_afs_config(void)
  * ged driver probe
  */
 
-/* MINDONE-GED-LIMIT: step-by-step bisection limiter, tools/scripts/patch-ged-limit.py.
- * -1 (default) -- disabled. N -- run steps 1..N and return -ENODEV.
- */
-static int mindone_ged_limit = -1;
-module_param(mindone_ged_limit, int, 0444);
-MODULE_PARM_DESC(mindone_ged_limit, "stop ged_pdrv_probe after step N");
-
-#define MINDONE_GED_STOP(n) do { \
-	if (mindone_ged_limit >= 0 && (n) >= mindone_ged_limit) { \
-		pr_info("MINDONE-GED-LIMIT: stopping before step %d\n", (n)); \
-		return -ENODEV; \
-	} \
-} while (0)
 
 static int ged_pdrv_probe(struct platform_device *pdev)
 {
-	MINDONE_GED_STOP(0);
 	GED_ERROR err = GED_OK;
 
 	GED_LOGI("@%s: start to probe ged driver\n", __func__);
@@ -643,7 +629,6 @@ static int ged_pdrv_probe(struct platform_device *pdev)
 	g_fastdvfs_mode		= 0;
 	g_fastdvfs_margin   = 0;
 	g_loading_slide_enable = 0;
-	MINDONE_GED_STOP(1);
 	err = check_eb_config();
 	if (unlikely(err != GED_OK)) {
 		GED_LOGE("Failed to check ged config!\n");
@@ -658,14 +643,12 @@ static int ged_pdrv_probe(struct platform_device *pdev)
 	}
 #endif
 
-	MINDONE_GED_STOP(2);
 	err = check_afs_config();
 	if (unlikely(err != GED_OK)) {
 		GED_LOGE("Failed to check ged config!\n");
 		goto ERROR;
 	}
 
-	MINDONE_GED_STOP(3);
 	err = ged_sysfs_init();
 	if (unlikely(err != GED_OK)) {
 		GED_LOGE("Failed to init sys FS!\n");
@@ -673,7 +656,6 @@ static int ged_pdrv_probe(struct platform_device *pdev)
 	}
 
 #ifdef GED_DEBUG_FS
-	MINDONE_GED_STOP(4);
 	err = ged_debugFS_init();
 	if (unlikely(err != GED_OK)) {
 		GED_LOGE("Failed to init debug FS!\n");
@@ -681,14 +663,12 @@ static int ged_pdrv_probe(struct platform_device *pdev)
 	}
 #endif
 
-	MINDONE_GED_STOP(5);
 	err = ged_log_system_init();
 	if (unlikely(err != GED_OK)) {
 		GED_LOGE("Failed to create gedlog entry!\n");
 		goto ERROR;
 	}
 
-	MINDONE_GED_STOP(6);
 	err = ged_hal_init();
 	if (unlikely(err != GED_OK)) {
 		GED_LOGE("Failed to create hal entry!\n");
@@ -696,7 +676,6 @@ static int ged_pdrv_probe(struct platform_device *pdev)
 	}
 
 #ifdef GED_DCS_POLICY
-	MINDONE_GED_STOP(7);
 	err = ged_dcs_init_platform_info();
 	if (unlikely(err != GED_OK)) {
 		GED_LOGE("Failed to init DCS platform info!\n");
@@ -704,42 +683,36 @@ static int ged_pdrv_probe(struct platform_device *pdev)
 	}
 #endif
 
-	MINDONE_GED_STOP(8);
 	err = ged_gpufreq_init();
 	if (unlikely(err != GED_OK)) {
 		GED_LOGE("Failed to init GPU Freq!\n");
 		goto ERROR;
 	}
 
-	MINDONE_GED_STOP(9);
 	err = ged_notify_sw_vsync_system_init();
 	if (unlikely(err != GED_OK)) {
 		GED_LOGE("Failed to init notify sw vsync!\n");
 		goto ERROR;
 	}
 
-	MINDONE_GED_STOP(10);
 	err = ged_dvfs_system_init();
 	if (unlikely(err != GED_OK)) {
 		GED_LOGE("Failed to init common dvfs!\n");
 		goto ERROR;
 	}
 
-	MINDONE_GED_STOP(11);
 	err = ged_ge_init();
 	if (unlikely(err != GED_OK)) {
 		GED_LOGE("Failed to init gralloc_extra!\n");
 		goto ERROR;
 	}
 
-	MINDONE_GED_STOP(12);
 	err = ged_kpi_system_init();
 	if (unlikely(err != GED_OK)) {
 		GED_LOGE("Failed to init KPI!\n");
 		goto ERROR;
 	}
 
-	MINDONE_GED_STOP(13);
 	err = ged_gpu_tuner_init();
 	if (unlikely(err != GED_OK)) {
 		GED_LOGE("Failed to init GPU Tuner!\n");
@@ -866,27 +839,9 @@ static int ged_init(void)
 {
 	GED_ERROR err = GED_OK;
 
-	/* MINDONE-GED-INIT0: exit module init BEFORE the driver registers.
-	 * Checks whether the crash is in the module load itself or already in binding.
-	 */
-	if (mindone_ged_limit == 0) {
-		pr_info("MINDONE-GED-INIT0: exit before platform_driver_register\n");
-		return -ENODEV;
-	}
-
 	GED_LOGI("@%s: start to init ged driver\n", __func__);
 
 	/* register platform driver */
-	/* MINDONE-GED-NOREG: skip driver registration, but still return SUCCESS.
-	 * Distinguishes "the module load itself crashes" from "registration/binding
-	 * crashes". Returning success matters: an error from module_init makes the
-	 * load itself fail, which is fatal to stage-1 init on its own (F595) --
-	 * already made that mistake once.
-	 */
-	if (mindone_ged_limit == -2) {
-		pr_info("MINDONE-GED-NOREG: registration skipped\n");
-		return 0;
-	}
 	err = platform_driver_register(&g_ged_pdrv);
 	if (err) {
 		GED_LOGE("@%s: failed to register ged driver\n", __func__);

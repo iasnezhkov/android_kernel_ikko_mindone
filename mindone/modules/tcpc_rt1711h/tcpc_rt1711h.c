@@ -4,7 +4,6 @@
  */
 
 #include <linux/init.h>
-#include <mindone/compat.h>
 #include <linux/module.h>
 #include <linux/device.h>
 #include <linux/slab.h>
@@ -18,7 +17,6 @@
 #include <linux/workqueue.h>
 #include <linux/kthread.h>
 #include <linux/cpu.h>
-#include <linux/version.h>
 #include <uapi/linux/sched/types.h>
 #include <linux/sched/clock.h>
 
@@ -1277,9 +1275,9 @@ static int rt1711_get_message(struct tcpc_device *tcpc, uint32_t *payload,
 			uint16_t *msg_head, enum tcpm_transmit_type *frame_type)
 {
 	struct rt1711_chip *chip = tcpc_get_dev_data(tcpc);
-	int rv;
+	int rv, now, tries = 0;
 	uint8_t type, cnt = 0,cur_cnt;
-	uint8_t buf[4];
+	uint8_t buf[4] = { 0 };
 	const uint16_t alert_rx =
 		TCPC_V10_REG_ALERT_RX_STATUS|TCPC_V10_REG_RX_OVERFLOW;
 //prize add by lipengpeng 20220729 start 
@@ -1297,13 +1295,15 @@ static int rt1711_get_message(struct tcpc_device *tcpc, uint32_t *payload,
 			rv = rt1711_block_read(chip->client, TCPC_V10_REG_RX_DATA, cnt,
 					(uint8_t *) payload);
 		}
-		cur_cnt = rt1711_i2c_read8(tcpc, TCPC_V10_REG_RX_BYTE_CNT);
-		 
-		if(cur_cnt <0)
+		if (rv < 0)
 			break;
+		now = rt1711_i2c_read8(tcpc, TCPC_V10_REG_RX_BYTE_CNT);
+		if (now < 0)
+			break;
+		cur_cnt = now;
 		if(cur_cnt >3)
 			cur_cnt -=3;
-    }while(cur_cnt != cnt);
+    }while(cur_cnt != cnt && ++tries < 5);
 //prize add by lipengpeng 20220729 end 	 
 	/* Read complete, clear RX status alert bit */
 	tcpci_alert_status_clear(tcpc, alert_rx);
@@ -1625,10 +1625,6 @@ if ((chip->chip_id >= RT1715_DID_D) || (chip->chip_id == SC2150A_DID || chip->ch
 //prize add by lipengpeng 20220530 start
 #define SC2150A_VID			0x311C
 #define SC2150A_PID			0x2150
-/* MINDONE: VID actually read from the TCPC on this board (see the fact log).
- * The DTS names the chip "richtek,rt1715" (device/dts/dtbo_a-overlay0.dts), but the
- * original check only knew RT1711H(0x29cf)/SC2150A(0x311c) -- not rt1715. EXPERIMENTAL,
- * not confirmed that 0x6dcf is the genuine rt1715 VID (see the fix script's docstring). */
 #define RT1715_MINDONE_VID		0x6dcf
 //prize add by lipengpeng 20220530 end
 static inline int rt1711h_check_revision(struct i2c_client *client)
@@ -1763,9 +1759,6 @@ err_regmap_init:
 	return ret;
 }
 
-/* i2c_driver.remove returns void since 6.1 (commit ed5c2f5fd10d) -- the int form only
- * warned here because ccflags relax -Wincompatible-pointer-types; 7 other modules in this
- * tree were already converted. */
 static void rt1711_i2c_remove(struct i2c_client *client)
 {
 	struct rt1711_chip *chip = i2c_get_clientdata(client);
@@ -1874,7 +1867,7 @@ static struct i2c_driver rt1711_driver = {
 		.of_match_table = rt_match_table,
 		.pm = RT1711_PM_OPS,
 	},
-	MINDONE_I2C_PROBE(rt1711_i2c_probe),
+	.probe = rt1711_i2c_probe,
 	.remove = rt1711_i2c_remove,
 	.shutdown = rt1711_shutdown,
 	.id_table = rt1711_id_table,

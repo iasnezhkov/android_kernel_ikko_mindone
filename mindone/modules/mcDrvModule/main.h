@@ -20,7 +20,6 @@
 #include <linux/slab.h>		/* gfp_t */
 #include <linux/fs.h>		/* struct inode and struct file */
 #include <linux/mutex.h>
-#include <linux/version.h>
 
 #define MC_VERSION(major, minor) \
 		((((major) & 0x0000ffff) << 16) | ((minor) & 0x0000ffff))

@@ -10,9 +10,6 @@
 #include <linux/wait.h>
 #include <linux/module.h>
 
-/* MINDONE (F3592): same trade-off as port_proxy.c, but shared-memory ports use a full HZ. */
-static int mindone_smem_wake_ms = 1000;
-module_param(mindone_smem_wake_ms, int, 0644);
 #include <linux/poll.h>
 #ifdef CONFIG_COMPAT
 #include <linux/compat.h>
@@ -347,8 +344,7 @@ int port_smem_rx_wakeup(struct port_t *port)
 	smem_port->wakeup = 0xFFFFFFFF;
 	spin_unlock_irqrestore(&smem_port->write_lock, flags);
 
-	__pm_wakeup_event(port->rx_wakelock, mindone_smem_wake_ms > 0 ?
-		(unsigned int)mindone_smem_wake_ms : jiffies_to_msecs(HZ));
+	__pm_wakeup_event(port->rx_wakelock, jiffies_to_msecs(HZ));
 	CCCI_DEBUG_LOG(md_id, TAG, "wakeup port.\n");
 #ifdef DEBUG_FOR_CCB
 	smem_port->last_rx_wk_time = local_clock();

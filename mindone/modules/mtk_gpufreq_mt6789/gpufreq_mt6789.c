@@ -14,79 +14,7 @@
  * ===============================================
  */
 #include <linux/module.h>
-#include <linux/reboot.h>
-#include <linux/moduleparam.h>
-/* STEP-BY-STEP PROBE (same technique that found F438). Measured:
- * modpre=mtk_gpufreq_mt6789 -> 0x2, modname -> 0x800: bind never completes.
- * Splitting it into steps. `mtk_gpufreq_mt6789.mindone_gf_stop=N` -- cleanly
- * reboot BEFORE step N: 21 entry · 22 after bringup · 23 after platform info
- * · 24 after gpudfd · 25 after regulator · 26 EB-mode branch · 27 bind end.
- * emergency_restart, NOT machine_restart: the latter isn't exported to
- * modules (F431).
- */
-static int mindone_gf_stop;
-module_param(mindone_gf_stop, int, 0644);
-/* SPLITTING EXPERIMENT (F441). Mark 20 (init entry) gives 0x2, mark 21 (bind
- * entry) gives 0x800, i.e. it hangs INSIDE platform_driver_register. This flag
- * makes init return success WITHOUT registering the driver.
- * Reads as: boot proceeds further => the cause is definitely in
- * registration/binding.
- * Side benefit: the module STAYS loaded, so its symbols stay available to
- * neighbors -- `mtk_gpu_qos.ko` takes two from it (F442), and simply removing
- * the module would break that neighbor.
- */
-static int mindone_gf_skip_register;
-module_param(mindone_gf_skip_register, int, 0644);
-static /* MINDONE: skip the first N matching hits (F667) */
-static int mindone_gf_skip;
-module_param(mindone_gf_skip, int, 0644);
-/* MINDONE: externally tunable springboard-table step (F670/F671 diagnostics).
- * Default 0 means "use the stock MAX_BUCK_DIFF", behavior unchanged.
- * A nonzero value overrides the threshold ONLY in __gpufreq_set_springboard().
- */
-static int mindone_max_buck_diff;
-module_param(mindone_max_buck_diff, int, 0644);
-
-/* GUARD BEFORE REMOVING GPU POWER.
- * Measured: the bus-idle poll is called EXACTLY 3 times per run, while domain
- * power-off happens 14-24 times (reproduced across six runs). So in the vast
- * majority of cases power is cut WITHOUT verifying the bus went idle.
- * F1158 established the mechanism verbatim: "the poll is a guard BEFORE power
- * off; timing out leads to powering off domains with the bus not stopped" --
- * and a fix along those lines turned out HARMFUL. This does the opposite:
- * the guard runs on EVERY power-off, with no timeout bailout at all.
- * F1999 measured that on a healthy bus the poll completes on the FIRST read
- * (reads=1). */
-static int mindone_guard_bus_idle = 1;
-module_param(mindone_guard_bus_idle, int, 0644);
-MODULE_PARM_DESC(mindone_guard_bus_idle, "1 = poll bus idle before EVERY power-off");
-
-static unsigned long long mindone_guard_calls;
-module_param_named(mindone_guard_bus_idle_calls, mindone_guard_calls, ullong, 0444);
-
-/* MINDONE-BUSIDLE-TIMEOUT (F2428/F1157): 1 = the bus-idle poll timed out on
- * the LAST call -- the caller (__gpufreq_power_control) must read this flag
- * and NOT remove power if it's set. */
-static int mindone_bi_timed_out;
-module_param_named(mindone_bus_idle_timeout, mindone_bi_timed_out, int, 0444);
-/* Power/DVFS trace lines (MINDONE-PROT/OFF/COMMIT/VS/GPUFREQ-P*): 15k lines per boot when
- * always on, so they are off by default; echo 1 > /sys/module/mtk_gpufreq_mt6789/parameters/
- * mindone_gf_trace turns them on for a diagnosis session. */
-static int mindone_gf_trace;
-module_param(mindone_gf_trace, int, 0644);
-#define MINDONE_TRACE(fmt, ...) do { if (mindone_gf_trace) pr_notice(fmt, ##__VA_ARGS__); } while (0)
-
-#define MINDONE_MARK_MAX 1024
-static unsigned char mindone_gf_seen[MINDONE_MARK_MAX];
-void mindone_gf_mark(int step)
-{
-	if (mindone_gf_stop > 0 && step >= mindone_gf_stop) {
-		if (step >= 0 && step < MINDONE_MARK_MAX &&
-		    mindone_gf_seen[step]++ < mindone_gf_skip)
-			return;
-		emergency_restart();
-	}
-}
+static bool g_bus_idle_timeout;
 #include <linux/platform_device.h>
 #include <linux/ioport.h>
 #include <linux/err.h>
@@ -137,19 +65,14 @@ static void __gpufreq_dump_bringup_status(struct platform_device *pdev);
 static void __gpufreq_measure_power(void);
 static void __gpufreq_set_springboard(void);
 static void __iomem *__gpufreq_of_ioremap(const char *node_name, int idx);
-static int __gpufreq_pause_dvfs(void);
-static void __gpufreq_resume_dvfs(void);
+static int __maybe_unused __gpufreq_pause_dvfs(void);
+static void __maybe_unused __gpufreq_resume_dvfs(void);
 static void __gpufreq_interpolate_volt(void);
 static void __gpufreq_apply_aging(unsigned int apply_aging);
 static void __gpufreq_apply_adjust(struct gpufreq_adj_info *adj_table, int adj_num);
 /* dvfs function */
 static int __gpufreq_custom_commit_gpu(unsigned int target_freq,
 	unsigned int target_volt, enum gpufreq_dvfs_state key);
-/* MINDONE-FHDECL: this is a function POINTER (clk-mtk.h:296), not a function.
- * Without this declaration, `-Wno-error=implicit-function-declaration` causes a
- * jump to the variable's address instead of a call through its value -- the CPU
- * ends up executing data.
- */
 extern bool (*mtk_fh_set_rate)(const char *name, unsigned long dds, int postdiv);
 static int __gpufreq_freq_scale_gpu(unsigned int freq_old, unsigned int freq_new);
 static int __gpufreq_volt_scale_gpu(
@@ -167,10 +90,10 @@ static unsigned int __gpufreq_get_real_vsram(void);
 static enum gpufreq_posdiv __gpufreq_get_real_posdiv_gpu(void);
 static enum gpufreq_posdiv __gpufreq_get_posdiv_by_fgpu(unsigned int freq);
 /* aging sensor function */
-static void __gpufreq_asensor_read_register(u32 *a_tn_lvt_cnt, u32 *a_tn_ulvt_cnt);
-static unsigned int __gpufreq_asensor_read_efuse(u32 *a_t0_lvt_rt, u32 *a_t0_ulvt_rt,
+static void __maybe_unused __gpufreq_asensor_read_register(u32 *a_tn_lvt_cnt, u32 *a_tn_ulvt_cnt);
+static unsigned int __maybe_unused __gpufreq_asensor_read_efuse(u32 *a_t0_lvt_rt, u32 *a_t0_ulvt_rt,
 	u32 *a_shift_error, u32 *efuse_error);
-static unsigned int __gpufreq_get_aging_table_idx(u32 a_t0_lvt_rt, u32 a_t0_ulvt_rt,
+static unsigned int __maybe_unused __gpufreq_get_aging_table_idx(u32 a_t0_lvt_rt, u32 a_t0_ulvt_rt,
 	u32 a_shift_error, u32 efuse_error, u32 a_tn_lvt_cnt, u32 a_tn_ulvt_cnt,
 	unsigned int is_efuse_read_success);
 /* power control function */
@@ -187,7 +110,7 @@ static int __gpufreq_buck_control(enum gpufreq_power_state power);
 /* init function */
 static void __gpufreq_init_shader_present(void);
 static void __gpufreq_segment_adjustment(struct platform_device *pdev);
-static void __gpufreq_custom_adjustment(void);
+static void __maybe_unused __gpufreq_custom_adjustment(void);
 static void __gpufreq_avs_adjustment(void);
 static void __gpufreq_aging_adjustment(void);
 static int __gpufreq_init_opp_idx(void);
@@ -230,17 +153,17 @@ static void __iomem *g_infra_ao_debug_ctrl;
 static void __iomem *g_infra_ao1_debug_ctrl;
 static void __iomem *g_fmem_ao_debug_ctrl;
 static void __iomem *g_efuse_base;
-static void __iomem *g_mfg_cpe_control_base;
-static void __iomem *g_mfg_cpe_sensor_base;
+static void __iomem *g_mfg_cpe_control_base __maybe_unused;
+static void __iomem *g_mfg_cpe_sensor_base __maybe_unused;
 static void __iomem *g_mali_base;
-static void __iomem *g_infra_ao_mem_base;
+static void __iomem *g_infra_ao_mem_base __maybe_unused;
 static void __iomem *g_topckgen_base;
 static void __iomem *g_infra_bcrm_base;
 static struct gpufreq_pmic_info *g_pmic;
 static struct gpufreq_clk_info *g_clk;
-static struct gpufreq_mtcmos_info *g_mtcmos;
+static struct gpufreq_mtcmos_info *g_mtcmos __maybe_unused;
 static struct gpufreq_status g_gpu;
-static struct gpufreq_asensor_info g_asensor_info;
+static struct gpufreq_asensor_info g_asensor_info __maybe_unused;
 static unsigned int g_shader_present;
 static unsigned int g_stress_test_enable;
 static unsigned int g_gpueb_support;
@@ -714,7 +637,7 @@ unsigned int __gpufreq_get_dyn_pstack(unsigned int freq, unsigned int volt)
 int __gpufreq_power_control(enum gpufreq_power_state power)
 {
 	int ret = 0;
-	u32 val;
+	u32 val __maybe_unused;
 
 	GPUFREQ_TRACE_START("power=%d", power);
 
@@ -734,20 +657,9 @@ int __gpufreq_power_control(enum gpufreq_power_state power)
 	__gpufreq_footprint_power_count(g_gpu.power_count);
 
 	if (power == POWER_ON && g_gpu.power_count == 1) {
-		mindone_gf_mark(400);
 		__gpufreq_footprint_power_step(GPUFREQ_POWER_STEP_01);
 
 		/* control Buck */
-		MINDONE_TRACE("MINDONE-GPUFREQ-P2: enter __gpufreq_power_control POWER_ON, buck about to start\n");
-		/* MINDONE INSTRUMENTATION: bus and protection state BEFORE every power-on.
-		 * Two hypotheses remain -- a bus stall and a trip to EL3 (F1940). This
-		 * print shows the EMI and INFRA protection registers; the last logged
-		 * state before the stall will show whether the bus was already unusual. */
-		if (g_infracfg_ao_base)
-			MINDONE_TRACE("MINDONE-PROT[on]: STA1=0x%08x STA1_1=0x%08x STA1_2=0x%08x\n",
-				readl(g_infracfg_ao_base + 0x228),
-				readl(g_infracfg_ao_base + 0x258),
-				readl(g_infracfg_ao_base + 0x724));
 		ret = __gpufreq_buck_control(POWER_ON);
 		if (unlikely(ret)) {
 			GPUFREQ_LOGE("fail to control Buck: On (%d)", ret);
@@ -756,9 +668,7 @@ int __gpufreq_power_control(enum gpufreq_power_state power)
 		}
 		__gpufreq_footprint_power_step(GPUFREQ_POWER_STEP_02);
 
-		mindone_gf_mark(401);
 		/* control MTCMOS */
-		MINDONE_TRACE("MINDONE-GPUFREQ-P3: buck control done (VGPU+VSRAM_GPU regulators on)\n");
 		ret = __gpufreq_mtcmos_control(POWER_ON);
 		if (unlikely(ret < 0)) {
 			GPUFREQ_LOGE("fail to control MTCMOS: On (%d)", ret);
@@ -767,7 +677,6 @@ int __gpufreq_power_control(enum gpufreq_power_state power)
 		}
 		__gpufreq_footprint_power_step(GPUFREQ_POWER_STEP_03);
 
-		mindone_gf_mark(402);
 		/* control clock */
 		ret = __gpufreq_clock_control(POWER_ON);
 		if (unlikely(ret)) {
@@ -778,7 +687,6 @@ int __gpufreq_power_control(enum gpufreq_power_state power)
 
 		__gpufreq_footprint_power_step(GPUFREQ_POWER_STEP_04);
 
-		mindone_gf_mark(403);
 		/* free DVFS when power on */
 		g_dvfs_state &= ~DVFS_POWEROFF;
 	} else if (power == POWER_OFF && g_gpu.power_count == 0) {
@@ -788,30 +696,17 @@ int __gpufreq_power_control(enum gpufreq_power_state power)
 		g_dvfs_state |= DVFS_POWEROFF;
 		__gpufreq_footprint_power_step(GPUFREQ_POWER_STEP_06);
 
-		/* GUARD: make sure the bus went idle BEFORE removing power.
-		 * Without it, domains get cut under an unfinished transaction (see F1158). */
-		if (mindone_guard_bus_idle) {
-			mindone_guard_calls++;
-			if (mindone_guard_calls <= 3)
-				MINDONE_TRACE("MINDONE-GUARD: bus-idle guard call %llu before power off\n",
-					  mindone_guard_calls);
-			__gpufreq_check_bus_idle();
-			if (mindone_bi_timed_out) {
-				/* MINDONE-OFF-ABORT (F2428, implementing the F1157 plan):
-				 * the bus did not report idle within 1s -- do NOT remove
-				 * power under an unfinished transaction. Domains stay as-is
-				 * (usually on); the next POWER_OFF will try again. */
-				GPUFREQ_LOGE("bus not idle after timeout, aborting power-off (MTCMOS stays as-is)");
-				pr_err("MINDONE-OFF-ABORT: bus-idle timeout, keeping MTCMOS domains as-is\n");
-				ret = GPUFREQ_EINVAL;
-				goto done_unlock;
-			}
+		__gpufreq_check_bus_idle();
+		if (g_bus_idle_timeout) {
+			GPUFREQ_LOGE("bus not idle after timeout, power-off aborted, GPU stays on");
+			g_gpu.power_count++;
+			g_dvfs_state &= ~DVFS_POWEROFF;
+			ret = GPUFREQ_EINVAL;
+			goto done_unlock;
 		}
 
 		/* control clock */
-		MINDONE_TRACE("MINDONE-OFF-1: entering clock power-off\n");
 		ret = __gpufreq_clock_control(POWER_OFF);
-		MINDONE_TRACE("MINDONE-OFF-2: clocks off, ret=%d\n", ret);
 		if (unlikely(ret)) {
 			GPUFREQ_LOGE("fail to control CLOCK: Off (%d)", ret);
 			ret = GPUFREQ_EINVAL;
@@ -820,19 +715,7 @@ int __gpufreq_power_control(enum gpufreq_power_state power)
 		__gpufreq_footprint_power_step(GPUFREQ_POWER_STEP_07);
 
 		/* control MTCMOS */
-		if (g_infracfg_ao_base)
-			MINDONE_TRACE("MINDONE-PROT[before-mtcmos]: STA1=0x%08x STA1_1=0x%08x STA1_2=0x%08x\n",
-				readl(g_infracfg_ao_base + 0x228),
-				readl(g_infracfg_ao_base + 0x258),
-				readl(g_infracfg_ao_base + 0x724));
-		MINDONE_TRACE("MINDONE-OFF-3: entering MTCMOS domain power-off\n");
 		ret = __gpufreq_mtcmos_control(POWER_OFF);
-		MINDONE_TRACE("MINDONE-OFF-4: MTCMOS domains off, ret=%d\n", ret);
-		if (g_infracfg_ao_base)
-			MINDONE_TRACE("MINDONE-PROT[after-mtcmos]: STA1=0x%08x STA1_1=0x%08x STA1_2=0x%08x\n",
-				readl(g_infracfg_ao_base + 0x228),
-				readl(g_infracfg_ao_base + 0x258),
-				readl(g_infracfg_ao_base + 0x724));
 		if (unlikely(ret < 0)) {
 			GPUFREQ_LOGE("fail to control MTCMOS: Off (%d)", ret);
 			ret = GPUFREQ_EINVAL;
@@ -841,9 +724,7 @@ int __gpufreq_power_control(enum gpufreq_power_state power)
 		__gpufreq_footprint_power_step(GPUFREQ_POWER_STEP_08);
 
 		/* control Buck */
-		MINDONE_TRACE("MINDONE-OFF-5: entering regulator power-off\n");
 		ret = __gpufreq_buck_control(POWER_OFF);
-		MINDONE_TRACE("MINDONE-OFF-6: regulators off, ret=%d\n", ret);
 		if (unlikely(ret)) {
 			GPUFREQ_LOGE("fail to control Buck: Off (%d)", ret);
 			ret = GPUFREQ_EINVAL;
@@ -861,7 +742,6 @@ done_unlock:
 		(0x10006000 + 0x16C), readl(g_sleep + 0x16C));
 
 	mutex_unlock(&gpufreq_lock);
-	MINDONE_TRACE("MINDONE-GPUFREQ-P13: __gpufreq_power_control about to return, ret=%d\n", ret);
 
 	GPUFREQ_TRACE_END();
 
@@ -924,27 +804,6 @@ int __gpufreq_generic_commit_gpu(int target_oppidx, enum gpufreq_dvfs_state key)
 	GPUFREQ_LOGD("begin to commit GPU OPP index: (%d->%d)",
 		cur_oppidx, target_oppidx);
 
-	/* MINDONE: capture ALL the numbers before switching the operating point,
-	 * in one measurement. The two loops below iterate sb_table; if it's not
-	 * populated, they never terminate.
-	 */
-	MINDONE_TRACE("MINDONE-COMMIT: target_oppidx=%d opp_num=%d dvfs_state=0x%x\n",
-		target_oppidx, opp_num, g_dvfs_state);
-	MINDONE_TRACE("MINDONE-COMMIT: cur  idx=%d freq=%u volt=%u vsram=%u\n",
-		cur_oppidx, cur_freq, cur_volt, cur_vsram);
-	MINDONE_TRACE("MINDONE-COMMIT: targ idx=%d freq=%u volt=%u vsram=%u\n",
-		target_oppidx, target_freq, target_volt, target_vsram);
-	MINDONE_TRACE("MINDONE-COMMIT: sb_table=%p opp_table=%p\n", sb_table, opp_table);
-	if (sb_table && cur_oppidx >= 0 && cur_oppidx < opp_num)
-		MINDONE_TRACE("MINDONE-COMMIT: sb[cur].up=%d sb[cur].down=%d\n",
-			sb_table[cur_oppidx].up, sb_table[cur_oppidx].down);
-	else
-		MINDONE_TRACE("MINDONE-COMMIT: sb_table UNAVAILABLE or cur_oppidx out of table\n");
-	MINDONE_TRACE("MINDONE-COMMIT: branch=%s\n",
-		target_freq == cur_freq ? "voltage only" :
-		(target_freq > cur_freq ? "up" : "down"));
-	mindone_gf_mark(600);
-
 	/* todo: GED log buffer (gpufreq_pr_logbuf) */
 
 	if (target_freq == cur_freq) {
@@ -956,9 +815,7 @@ int __gpufreq_generic_commit_gpu(int target_oppidx, enum gpufreq_dvfs_state key)
 				cur_volt, target_volt, cur_vsram, target_vsram);
 			goto done_unlock;
 		}
-		mindone_gf_mark(620);
 	} else if (target_freq > cur_freq) {
-		mindone_gf_mark(630);
 		/* voltage scaling */
 		while (target_volt != cur_volt) {
 			sb_idx = target_oppidx > sb_table[cur_oppidx].up ?
@@ -978,7 +835,6 @@ int __gpufreq_generic_commit_gpu(int target_oppidx, enum gpufreq_dvfs_state key)
 			cur_volt = opp_table[sb_idx].volt;
 			cur_vsram = opp_table[sb_idx].vsram;
 		}
-		mindone_gf_mark(634);
 		/* frequency scaling */
 		ret = __gpufreq_freq_scale_gpu(cur_freq, target_freq);
 		if (unlikely(ret)) {
@@ -1026,11 +882,9 @@ int __gpufreq_generic_commit_gpu(int target_oppidx, enum gpufreq_dvfs_state key)
 	g_gpu.cur_oppidx = target_oppidx;
 #endif /* GPUFREQ_HISTORY_ENABLE */
 	__gpufreq_footprint_oppidx(target_oppidx);
-	mindone_gf_mark(621);
 
 done_unlock:
 	mutex_unlock(&gpufreq_lock);
-	mindone_gf_mark(622);
 
 done:
 	GPUFREQ_TRACE_END();
@@ -1056,7 +910,6 @@ int __gpufreq_fix_target_oppidx_gpu(int oppidx)
 	int opp_num = g_gpu.opp_num;
 	int ret = GPUFREQ_SUCCESS;
 
-	mindone_gf_mark(30);
 	ret = __gpufreq_power_control(POWER_ON);
 	if (unlikely(ret < 0)) {
 		GPUFREQ_LOGE("fail to control power state: %d (%d)", POWER_ON, ret);
@@ -1153,36 +1006,10 @@ void __gpufreq_set_timestamp(void)
 	writel(0x00000003, g_mfg_top_base + 0x130);
 }
 
-/* PROBE FOR F1995. The bus-idle poll is the only place the CPU waits on
- * hardware with no limit or failure report. An infinite LOOP can't explain
- * our symptom (F845's watchdog would catch a spinning CPU); the first read
- * never returning CAN. Two marks around that read discriminate it (declared
- * before measuring): "BEFORE-READ" with no "DONE" => stuck on the bus access;
- * "DONE" => poll innocent. Printed only for the first calls to avoid ring
- * buffer flooding. mindone_skip_bus_idle=1 skips the poll entirely -- the
- * switch F1157 assumed existed, which F1993 showed never did. */
-static int mindone_skip_bus_idle;
-module_param(mindone_skip_bus_idle, int, 0644);
-MODULE_PARM_DESC(mindone_skip_bus_idle, "1 -- do not poll bus idle at all");
-
-static unsigned long long mindone_bi_calls;
-module_param_named(mindone_bus_idle_calls, mindone_bi_calls, ullong, 0444);
-static unsigned long long mindone_bi_done;
-module_param_named(mindone_bus_idle_done, mindone_bi_done, ullong, 0444);
-
-#define MINDONE_BI_LOUD 3	/* how many of the first calls to print */
-
 void __gpufreq_check_bus_idle(void)
 {
 	u32 val;
 	unsigned long long reads = 0;
-	unsigned long long n = ++mindone_bi_calls;
-
-	if (mindone_skip_bus_idle) {
-		if (n <= MINDONE_BI_LOUD)
-			MINDONE_TRACE("MINDONE-BUSIDLE: call %llu SKIPPED-BY-PARAM\n", n);
-		return;
-	}
 
 	/* MFG_QCHANNEL_CON (0x13fb_f0b4) bit [1:0] = 0x1 */
 	writel(0x00000001, g_mfg_top_base + 0xB4);
@@ -1190,22 +1017,13 @@ void __gpufreq_check_bus_idle(void)
 	/* set register MFG_DEBUG_SEL (0x13fb_f170) bit [7:0] = 0x03 */
 	writel(0x00000003, g_mfg_top_base + 0x170);
 
-	if (n <= MINDONE_BI_LOUD)
-		MINDONE_TRACE("MINDONE-BUSIDLE: call %llu BEFORE-READ-0x178\n", n);
 
 	/*
 	 * polling register MFG_DEBUG_TOP (0x13fb_f178) bit 2 = 0x1
 	 * 1 for bus idle
 	 * 0 for bus non-idle
 	 */
-	/* MINDONE-BUSIDLE-TIMEOUT (F2428): the only poll with no time limit in the
-	 * entire GPU power path -- the other 20 loops are already bounded (F1138).
-	 * Limit 1s = 100000 x 10us -- the same number mainline uses to bound THIS
-	 * SAME handshake (F1989, drivers/soc/mediatek/mtk-pm-domains.c,
-	 * regmap_read_poll_timeout). On timeout we do NOT exit silently (a
-	 * retracted F1155/F1158 fix did that and it turned out harmful) -- we set
-	 * a flag for the caller, which must leave power as-is. */
-	mindone_bi_timed_out = 0;
+	g_bus_idle_timeout = false;
 	do {
 		val = readl(g_mfg_top_base + 0x178);
 		reads++;
@@ -1215,20 +1033,14 @@ void __gpufreq_check_bus_idle(void)
 	} while (reads < 100000);
 
 	if ((val & 0x4) != 0x4) {
-		mindone_bi_timed_out = 1;
-		pr_err("MINDONE-BUSIDLE-TIMEOUT: bus not idle after 1s, reads=%llu val=0x%08x\n",
-			reads, val);
+		g_bus_idle_timeout = true;
+		GPUFREQ_LOGE("bus not idle after 1s, reads=%llu val=0x%08x", reads, val);
 	}
-
-	mindone_bi_done++;
-	if (n <= MINDONE_BI_LOUD)
-		MINDONE_TRACE("MINDONE-BUSIDLE: call %llu DONE reads=%llu val=0x%08x\n",
-			  n, reads, val);
 }
 
 void __gpufreq_dump_infra_status(void)
 {
-	u32 val = 0;
+	u32 val __maybe_unused = 0;
 
 	GPUFREQ_LOGI("== [GPUFREQ INFRA STATUS] ==");
 	GPUFREQ_LOGI("GPU[%d] Freq: %d, Vgpu: %d, Vsram: %d",
@@ -1615,27 +1427,11 @@ static int __gpufreq_freq_scale_gpu(unsigned int freq_old, unsigned int freq_new
 #endif
 
 	if (parking) {
-		MINDONE_TRACE("MINDONE-FH: pointer=%p parking=%d %u->%u posdiv %d->%d pcw=0x%x\n",
-			mtk_fh_set_rate, parking, freq_old, freq_new,
-			cur_posdiv, target_posdiv, pcw);
-		mindone_gf_mark(700);
 		/* freq scale up */
 		if (freq_new > freq_old) {
 			/* 1. change PCW by hopping */
-			/* MINDONE-FHNULL: the pointer is filled in by the `fhctl` module,
-			 * which is not in this image, so it is NULL. The stock check is
-			 * dead at the preprocessor level (`GPUFREQ_FHCTL_ENABLE` is never
-			 * defined anywhere), and the call used to jump through null.
-			 */
 			if (unlikely(!mtk_fh_set_rate)) {
-				/* MINDONE: there is no frequency-hopping driver. Write the
-				 * CONSISTENT value as a whole -- multiplier, divider, and
-				 * apply bit in one write. Otherwise the divider would change
-				 * without the multiplier, the readback would not match the
-				 * target, and the driver would stall the GPU. */
 				pll = (0x80000000) | (target_posdiv << POSDIV_SHIFT) | pcw;
-				MINDONE_TRACE("MINDONE-FHDIRECT: direct write CON1=0x%08x (pcw=0x%x posdiv=%d)\n",
-					pll, pcw, target_posdiv);
 				writel(pll, MFGPLL_CON1);
 				udelay(20);
 				ret = true;
@@ -1661,20 +1457,8 @@ static int __gpufreq_freq_scale_gpu(unsigned int freq_old, unsigned int freq_new
 			/* 3. wait until PLL stable */
 			udelay(20);
 			/* 4. change PCW by hopping */
-			/* MINDONE-FHNULL: the pointer is filled in by the `fhctl` module,
-			 * which is not in this image, so it is NULL. The stock check is
-			 * dead at the preprocessor level (`GPUFREQ_FHCTL_ENABLE` is never
-			 * defined anywhere), and the call used to jump through null.
-			 */
 			if (unlikely(!mtk_fh_set_rate)) {
-				/* MINDONE: there is no frequency-hopping driver. Write the
-				 * CONSISTENT value as a whole -- multiplier, divider, and
-				 * apply bit in one write. Otherwise the divider would change
-				 * without the multiplier, the readback would not match the
-				 * target, and the driver would stall the GPU. */
 				pll = (0x80000000) | (target_posdiv << POSDIV_SHIFT) | pcw;
-				MINDONE_TRACE("MINDONE-FHDIRECT: direct write CON1=0x%08x (pcw=0x%x posdiv=%d)\n",
-					pll, pcw, target_posdiv);
 				writel(pll, MFGPLL_CON1);
 				udelay(20);
 				ret = true;
@@ -1787,9 +1571,6 @@ static int __gpufreq_volt_scale_gpu(
 	/* volt scaling up */
 	if (vgpu_new > vgpu_old) {
 		/* scale-up volt */
-		MINDONE_TRACE("MINDONE-VU: RAISING vgpu %u->%u vsram %u->%u\n",
-			vgpu_old, vgpu_new, vsram_old, vsram_new);
-		mindone_gf_mark(631);
 		t_settle_vgpu =
 			__gpufreq_settle_time_vgpu(
 				true, (vgpu_new - vgpu_old));
@@ -1802,8 +1583,6 @@ static int __gpufreq_volt_scale_gpu(
 				vsram_new * 10,
 				VSRAM_MAX_VOLT * 10 + 125);
 		if (unlikely(ret)) {
-			MINDONE_TRACE("MINDONE-VU-ERR: regulator_set_voltage(vsram) returned FAST, ret=%d\n", ret);
-			mindone_gf_mark(640);
 			__gpufreq_abort(GPUFREQ_PMIC_EXCEPTION, "fail to set VSRAM_G (%d)", ret);
 			goto done;
 		}
@@ -1816,15 +1595,11 @@ static int __gpufreq_volt_scale_gpu(
 		}
 #endif
 
-		MINDONE_TRACE("MINDONE-VU: vsram set, ret=%d\n", ret);
-		mindone_gf_mark(632);
 		ret = regulator_set_voltage(
 				g_pmic->reg_vgpu,
 				vgpu_new * 10,
 				VGPU_MAX_VOLT * 10 + 125);
 		if (unlikely(ret)) {
-			MINDONE_TRACE("MINDONE-VU-ERR: regulator_set_voltage(vgpu) returned FAST, ret=%d\n", ret);
-			mindone_gf_mark(641);
 			__gpufreq_abort(GPUFREQ_PMIC_EXCEPTION, "fail to set VGPU (%d)", ret);
 			goto done;
 		}
@@ -1835,13 +1610,8 @@ static int __gpufreq_volt_scale_gpu(
 		__gpufreq_record_history_entry();
 #endif
 
-		MINDONE_TRACE("MINDONE-VU: vgpu set, ret=%d\n", ret);
-		mindone_gf_mark(633);
 	} else if (vgpu_new < vgpu_old) {
 		/* scale-down volt */
-		MINDONE_TRACE("MINDONE-VS: LOWERING branch vgpu %u->%u vsram %u->%u\n",
-			vgpu_old, vgpu_new, vsram_old, vsram_new);
-		mindone_gf_mark(610);
 		t_settle_vgpu =
 			__gpufreq_settle_time_vgpu(
 				false, (vgpu_old - vgpu_new));
@@ -1864,8 +1634,6 @@ static int __gpufreq_volt_scale_gpu(
 		__gpufreq_record_history_entry();
 #endif
 
-		MINDONE_TRACE("MINDONE-VS: vgpu set, ret=%d\n", ret);
-		mindone_gf_mark(611);
 		ret = regulator_set_voltage(
 				g_pmic->reg_vsram_gpu,
 				vsram_new * 10,
@@ -1882,8 +1650,6 @@ static int __gpufreq_volt_scale_gpu(
 			__gpufreq_record_history_entry();
 		}
 #endif
-		MINDONE_TRACE("MINDONE-VS: vsram set, ret=%d\n", ret);
-		mindone_gf_mark(612);
 	} else {
 		/* keep volt */
 		ret = GPUFREQ_SUCCESS;
@@ -1892,22 +1658,14 @@ static int __gpufreq_volt_scale_gpu(
 	t_settle = (t_settle_vgpu > t_settle_vsram) ?
 		t_settle_vgpu : t_settle_vsram;
 	udelay(t_settle);
-	MINDONE_TRACE("MINDONE-VS: settle time %u us elapsed\n", t_settle);
-	mindone_gf_mark(613);
 
 	g_gpu.cur_volt = __gpufreq_get_real_vgpu();
-	MINDONE_TRACE("MINDONE-VS: readback vgpu=%u, expected %u\n",
-		g_gpu.cur_volt, vgpu_new);
-	mindone_gf_mark(614);
 	if (unlikely(g_gpu.cur_volt != vgpu_new))
 		__gpufreq_abort(GPUFREQ_GPU_EXCEPTION,
 			"inconsistent scaled Vgpu, cur_volt: %d, target_volt: %d",
 			g_gpu.cur_volt, vgpu_new);
 
 	g_gpu.cur_vsram = __gpufreq_get_real_vsram();
-	MINDONE_TRACE("MINDONE-VS: readback vsram=%u, expected %u\n",
-		g_gpu.cur_vsram, vsram_new);
-	mindone_gf_mark(615);
 	if (unlikely(g_gpu.cur_vsram != vsram_new))
 		__gpufreq_abort(GPUFREQ_GPU_EXCEPTION,
 			"inconsistent scaled Vsram, cur_vsram: %d, target_vsram: %d",
@@ -2106,7 +1864,6 @@ static int __gpufreq_clock_control(enum gpufreq_power_state power)
 	if (power == POWER_ON) {
 
 		ret = clk_prepare_enable(g_clk->clk_mux);
-		MINDONE_TRACE("MINDONE-GPUFREQ-P10: clock control entry, about to enable clk_mux\n");
 		if (unlikely(ret)) {
 			__gpufreq_abort(GPUFREQ_CCF_EXCEPTION,
 				"fail to enable clk_mux (%d)", ret);
@@ -2133,7 +1890,6 @@ static int __gpufreq_clock_control(enum gpufreq_power_state power)
 		}
 
 		ret = clk_prepare_enable(g_clk->subsys_bg3d);
-		MINDONE_TRACE("MINDONE-GPUFREQ-P11: clock source switched to MAIN confirmed\n");
 		if (unlikely(ret)) {
 			__gpufreq_abort(GPUFREQ_CCF_EXCEPTION,
 				"fail to enable subsys_bg3d (%d)", ret);
@@ -2145,7 +1901,6 @@ static int __gpufreq_clock_control(enum gpufreq_power_state power)
 		g_gpu.cg_count++;
 	} else {
 		clk_disable_unprepare(g_clk->subsys_bg3d);
-		MINDONE_TRACE("MINDONE-GPUFREQ-P12: clock control complete (subsys_bg3d + external CG on)\n");
 		__gpufreq_switch_clksrc(CLOCK_SUB);
 		clk_disable_unprepare(g_clk->clk_mux);
 		g_gpu.cg_count--;
@@ -2178,7 +1933,7 @@ static void __gpufreq_mfg0_control(enum gpufreq_power_state power)
 			if (++i > 500) {
 				__gpufreq_footprint_power_step(0xE0);
 				GPUFREQ_LOGE(
-					"MINDONE: domain did not confirm ready (step 0xE0, %s) -- timing out",
+					"domain did not confirm ready (step 0xE0, %s) -- timing out",
 					__func__);
 				return;
 			}
@@ -2201,7 +1956,7 @@ static void __gpufreq_mfg0_control(enum gpufreq_power_state power)
 			if (++i > 500) {
 				__gpufreq_footprint_power_step(0xE1);
 				GPUFREQ_LOGE(
-					"MINDONE: domain did not confirm ready (step 0xE1, %s) -- timing out",
+					"domain did not confirm ready (step 0xE1, %s) -- timing out",
 					__func__);
 				return;
 			}
@@ -2211,7 +1966,6 @@ static void __gpufreq_mfg0_control(enum gpufreq_power_state power)
 		writel((readl(MFG0_PWR_CON) | PWR_ON), MFG0_PWR_CON);
 		/* TINFO="Set PWR_ON_2ND = 1" */
 		writel((readl(MFG0_PWR_CON) | PWR_ON_2ND), MFG0_PWR_CON);
-		MINDONE_TRACE("MINDONE-GPUFREQ-P4: mtcmos control entry, first register write (MFG0_PWR_CON)\n");
 		/* TINFO="Wait until PWR_STATUS = 1 and PWR_STATUS_2ND = 1" */
 		while (((readl(PWR_STATUS) & MFG0_PWR_STA_MASK) != MFG0_PWR_STA_MASK) ||
 			((readl(PWR_STATUS_2ND) & MFG0_PWR_STA_MASK) != MFG0_PWR_STA_MASK)) {
@@ -2219,7 +1973,7 @@ static void __gpufreq_mfg0_control(enum gpufreq_power_state power)
 			if (++i > 500) {
 				__gpufreq_footprint_power_step(0xE2);
 				GPUFREQ_LOGE(
-					"MINDONE: domain did not confirm ready (step 0xE2, %s) -- timing out",
+					"domain did not confirm ready (step 0xE2, %s) -- timing out",
 					__func__);
 				return;
 			}
@@ -2235,14 +1989,13 @@ static void __gpufreq_mfg0_control(enum gpufreq_power_state power)
 		writel((readl(MFG0_PWR_CON) | PWR_RST_B), MFG0_PWR_CON);
 		/* TINFO="Set SRAM_PDN = 0" */
 		writel((readl(MFG0_PWR_CON) & ~SRAM_PDN), MFG0_PWR_CON);
-		MINDONE_TRACE("MINDONE-GPUFREQ-P5: mfg0 up PWR_STATUS=0x%08x\n", g_sleep ? readl(g_sleep + 0x16C) : 0);
 		/* TINFO="Wait until SRAM_PDN_ACK = 0" */
 		while (readl(MFG0_PWR_CON) & SRAM_PDN_ACK) {
 			udelay(10);
 			if (++i > 500) {
 				__gpufreq_footprint_power_step(0xE3);
 				GPUFREQ_LOGE(
-					"MINDONE: domain did not confirm ready (step 0xE3, %s) -- timing out",
+					"domain did not confirm ready (step 0xE3, %s) -- timing out",
 					__func__);
 				return;
 			}
@@ -2263,7 +2016,7 @@ static void __gpufreq_mfg1_control(enum gpufreq_power_state power)
 			if (++i > 500) {
 				__gpufreq_footprint_power_step(0xE4);
 				GPUFREQ_LOGE(
-					"MINDONE: domain did not confirm ready (step 0xE4, %s) -- timing out",
+					"domain did not confirm ready (step 0xE4, %s) -- timing out",
 					__func__);
 				return;
 			}
@@ -2277,7 +2030,7 @@ static void __gpufreq_mfg1_control(enum gpufreq_power_state power)
 			if (++i > 500) {
 				__gpufreq_footprint_power_step(0xE5);
 				GPUFREQ_LOGE(
-					"MINDONE: domain did not confirm ready (step 0xE5, %s) -- timing out",
+					"domain did not confirm ready (step 0xE5, %s) -- timing out",
 					__func__);
 				return;
 			}
@@ -2291,7 +2044,7 @@ static void __gpufreq_mfg1_control(enum gpufreq_power_state power)
 			if (++i > 500) {
 				__gpufreq_footprint_power_step(0xE6);
 				GPUFREQ_LOGE(
-					"MINDONE: domain did not confirm ready (step 0xE6, %s) -- timing out",
+					"domain did not confirm ready (step 0xE6, %s) -- timing out",
 					__func__);
 				return;
 			}
@@ -2305,7 +2058,7 @@ static void __gpufreq_mfg1_control(enum gpufreq_power_state power)
 			if (++i > 500) {
 				__gpufreq_footprint_power_step(0xE7);
 				GPUFREQ_LOGE(
-					"MINDONE: domain did not confirm ready (step 0xE7, %s) -- timing out",
+					"domain did not confirm ready (step 0xE7, %s) -- timing out",
 					__func__);
 				return;
 			}
@@ -2319,7 +2072,7 @@ static void __gpufreq_mfg1_control(enum gpufreq_power_state power)
 			if (++i > 500) {
 				__gpufreq_footprint_power_step(0xE8);
 				GPUFREQ_LOGE(
-					"MINDONE: domain did not confirm ready (step 0xE8, %s) -- timing out",
+					"domain did not confirm ready (step 0xE8, %s) -- timing out",
 					__func__);
 				return;
 			}
@@ -2342,7 +2095,7 @@ static void __gpufreq_mfg1_control(enum gpufreq_power_state power)
 			if (++i > 500) {
 				__gpufreq_footprint_power_step(0xE9);
 				GPUFREQ_LOGE(
-					"MINDONE: domain did not confirm ready (step 0xE9, %s) -- timing out",
+					"domain did not confirm ready (step 0xE9, %s) -- timing out",
 					__func__);
 				return;
 			}
@@ -2359,7 +2112,7 @@ static void __gpufreq_mfg1_control(enum gpufreq_power_state power)
 			if (++i > 500) {
 				__gpufreq_footprint_power_step(0xEA);
 				GPUFREQ_LOGE(
-					"MINDONE: domain did not confirm ready (step 0xEA, %s) -- timing out",
+					"domain did not confirm ready (step 0xEA, %s) -- timing out",
 					__func__);
 				return;
 			}
@@ -2381,7 +2134,7 @@ static void __gpufreq_mfg1_control(enum gpufreq_power_state power)
 			if (++i > 500) {
 				__gpufreq_footprint_power_step(0xEB);
 				GPUFREQ_LOGE(
-					"MINDONE: domain did not confirm ready (step 0xEB, %s) -- timing out",
+					"domain did not confirm ready (step 0xEB, %s) -- timing out",
 					__func__);
 				return;
 			}
@@ -2399,7 +2152,6 @@ static void __gpufreq_mfg1_control(enum gpufreq_power_state power)
 		/* TINFO="Release bus protect" */
 		writel(MFG1_PROT_STEP1_1_MASK, INFRA_TOPAXI_PROTECTEN_2_CLR);
 
-		MINDONE_TRACE("MINDONE-GPUFREQ-P6: mfg1 up PWR_STATUS=0x%08x\n", g_sleep ? readl(g_sleep + 0x16C) : 0);
 		__gpufreq_footprint_power_step(0xEF);
 		/* TINFO="Release bus protect" */
 		writel(MFG1_PROT_STEP1_0_MASK, INFRA_TOPAXI_PROTECTEN_1_CLR);
@@ -2419,7 +2171,7 @@ static void __gpufreq_mfg2_control(enum gpufreq_power_state power)
 			if (++i > 500) {
 				__gpufreq_footprint_power_step(0xF0);
 				GPUFREQ_LOGE(
-					"MINDONE: domain did not confirm ready (step 0xF0, %s) -- timing out",
+					"domain did not confirm ready (step 0xF0, %s) -- timing out",
 					__func__);
 				return;
 			}
@@ -2442,7 +2194,7 @@ static void __gpufreq_mfg2_control(enum gpufreq_power_state power)
 			if (++i > 500) {
 				__gpufreq_footprint_power_step(0xF1);
 				GPUFREQ_LOGE(
-					"MINDONE: domain did not confirm ready (step 0xF1, %s) -- timing out",
+					"domain did not confirm ready (step 0xF1, %s) -- timing out",
 					__func__);
 				return;
 			}
@@ -2459,7 +2211,7 @@ static void __gpufreq_mfg2_control(enum gpufreq_power_state power)
 			if (++i > 500) {
 				__gpufreq_footprint_power_step(0xF2);
 				GPUFREQ_LOGE(
-					"MINDONE: domain did not confirm ready (step 0xF2, %s) -- timing out",
+					"domain did not confirm ready (step 0xF2, %s) -- timing out",
 					__func__);
 				return;
 			}
@@ -2476,13 +2228,12 @@ static void __gpufreq_mfg2_control(enum gpufreq_power_state power)
 		/* TINFO="Set SRAM_PDN = 0" */
 		writel((readl(MFG2_PWR_CON) & ~SRAM_PDN), MFG2_PWR_CON);
 		/* TINFO="Wait until SRAM_PDN_ACK = 0" */
-		MINDONE_TRACE("MINDONE-GPUFREQ-P8: mfg2 up PWR_STATUS=0x%08x\n", g_sleep ? readl(g_sleep + 0x16C) : 0);
 		while (readl(MFG2_PWR_CON) & SRAM_PDN_ACK) {
 			udelay(10);
 			if (++i > 500) {
 				__gpufreq_footprint_power_step(0xF3);
 				GPUFREQ_LOGE(
-					"MINDONE: domain did not confirm ready (step 0xF3, %s) -- timing out",
+					"domain did not confirm ready (step 0xF3, %s) -- timing out",
 					__func__);
 				return;
 			}
@@ -2503,7 +2254,7 @@ static void __gpufreq_mfg3_control(enum gpufreq_power_state power)
 			if (++i > 500) {
 				__gpufreq_footprint_power_step(0xF4);
 				GPUFREQ_LOGE(
-					"MINDONE: domain did not confirm ready (step 0xF4, %s) -- timing out",
+					"domain did not confirm ready (step 0xF4, %s) -- timing out",
 					__func__);
 				return;
 			}
@@ -2526,7 +2277,7 @@ static void __gpufreq_mfg3_control(enum gpufreq_power_state power)
 			if (++i > 500) {
 				__gpufreq_footprint_power_step(0xF5);
 				GPUFREQ_LOGE(
-					"MINDONE: domain did not confirm ready (step 0xF5, %s) -- timing out",
+					"domain did not confirm ready (step 0xF5, %s) -- timing out",
 					__func__);
 				return;
 			}
@@ -2544,7 +2295,7 @@ static void __gpufreq_mfg3_control(enum gpufreq_power_state power)
 			if (++i > 500) {
 				__gpufreq_footprint_power_step(0xF6);
 				GPUFREQ_LOGE(
-					"MINDONE: domain did not confirm ready (step 0xF6, %s) -- timing out",
+					"domain did not confirm ready (step 0xF6, %s) -- timing out",
 					__func__);
 				return;
 			}
@@ -2561,13 +2312,12 @@ static void __gpufreq_mfg3_control(enum gpufreq_power_state power)
 		/* TINFO="Set SRAM_PDN = 0" */
 		writel((readl(MFG3_PWR_CON) & ~SRAM_PDN), MFG3_PWR_CON);
 		/* TINFO="Wait until SRAM_PDN_ACK = 0" */
-		MINDONE_TRACE("MINDONE-GPUFREQ-P9: mfg3 up PWR_STATUS=0x%08x\n", g_sleep ? readl(g_sleep + 0x16C) : 0);
 		while (readl(MFG3_PWR_CON) & SRAM_PDN_ACK) {
 			udelay(10);
 			if (++i > 500) {
 				__gpufreq_footprint_power_step(0xF7);
 				GPUFREQ_LOGE(
-					"MINDONE: domain did not confirm ready (step 0xF7, %s) -- timing out",
+					"domain did not confirm ready (step 0xF7, %s) -- timing out",
 					__func__);
 				return;
 			}
@@ -2579,7 +2329,7 @@ static void __gpufreq_mfg3_control(enum gpufreq_power_state power)
 static int __gpufreq_mtcmos_control(enum gpufreq_power_state power)
 {
 	int ret = GPUFREQ_SUCCESS;
-	u32 val = 0;
+	u32 val __maybe_unused = 0;
 
 	GPUFREQ_TRACE_START("power=%d", power);
 
@@ -2594,7 +2344,6 @@ static int __gpufreq_mtcmos_control(enum gpufreq_power_state power)
 			goto done;
 		}
 		__gpufreq_mfg2_control(POWER_ON);
-		MINDONE_TRACE("MINDONE-GPUFREQ-P7: clk_ref_mux enabled, about to power mfg2\n");
 		__gpufreq_mfg3_control(POWER_ON);
 #else
 		/* MFG1 on by CCF */
@@ -2782,7 +2531,7 @@ static void __gpufreq_set_springboard(void)
 			dst_vsram = opp_table[dst_idx].vsram;
 			/* the smallest valid opp idx can be reached */
 			if (dst_vsram - src_vgpu <=
-				(mindone_max_buck_diff > 0 ? mindone_max_buck_diff : MAX_BUCK_DIFF)) {
+				MAX_BUCK_DIFF) {
 				g_gpu.sb_table[src_idx].up = dst_idx;
 				break;
 			}
@@ -2800,7 +2549,7 @@ static void __gpufreq_set_springboard(void)
 			dst_vgpu = opp_table[dst_idx].volt;
 			/* the largest valid opp idx can be reached */
 			if (src_vsram - dst_vgpu <=
-				(mindone_max_buck_diff > 0 ? mindone_max_buck_diff : MAX_BUCK_DIFF)) {
+				MAX_BUCK_DIFF) {
 				g_gpu.sb_table[src_idx].down = dst_idx;
 				break;
 			}
@@ -2904,7 +2653,7 @@ static void __gpufreq_measure_power(void)
 }
 
 /* API: resume dvfs to free run */
-static void __gpufreq_resume_dvfs(void)
+static void __maybe_unused __gpufreq_resume_dvfs(void)
 {
 	int ret = GPUFREQ_SUCCESS;
 
@@ -2924,7 +2673,7 @@ if (unlikely(ret < 0))
 }
 
 /* API: pause dvfs to given freq and volt */
-static int __gpufreq_pause_dvfs(void)
+static int __maybe_unused __gpufreq_pause_dvfs(void)
 {
 	int ret = GPUFREQ_SUCCESS;
 	/* GPU */
@@ -3132,7 +2881,7 @@ done:
 }
 
 /* API: get Aging sensor data from EFUSE, return if success*/
-static unsigned int __gpufreq_asensor_read_efuse(u32 *a_t0_lvt_rt, u32 *a_t0_ulvt_rt,
+static unsigned int __maybe_unused __gpufreq_asensor_read_efuse(u32 *a_t0_lvt_rt, u32 *a_t0_ulvt_rt,
 	u32 *a_shift_error, u32 *efuse_error)
 {
 #if GPUFREQ_ASENSOR_ENABLE
@@ -3177,7 +2926,7 @@ static unsigned int __gpufreq_asensor_read_efuse(u32 *a_t0_lvt_rt, u32 *a_t0_ulv
 #endif /* GPUFREQ_ASENSOR_ENABLE */
 }
 
-static void __gpufreq_asensor_read_register(u32 *a_tn_lvt_cnt, u32 *a_tn_ulvt_cnt)
+static void __maybe_unused __gpufreq_asensor_read_register(u32 *a_tn_lvt_cnt, u32 *a_tn_ulvt_cnt)
 {
 #if GPUFREQ_ASENSOR_ENABLE
 	u32 aging_data0 = 0, aging_data1 = 0;
@@ -3226,7 +2975,7 @@ static void __gpufreq_asensor_read_register(u32 *a_tn_lvt_cnt, u32 *a_tn_ulvt_cn
 #endif /* GPUFREQ_ASENSOR_ENABLE */
 }
 
-static unsigned int __gpufreq_get_aging_table_idx(u32 a_t0_lvt_rt, u32 a_t0_ulvt_rt,
+static unsigned int __maybe_unused __gpufreq_get_aging_table_idx(u32 a_t0_lvt_rt, u32 a_t0_ulvt_rt,
 	u32 a_shift_error, u32 efuse_error, u32 a_tn_lvt_cnt, u32 a_tn_ulvt_cnt,
 	unsigned int is_efuse_read_success)
 {
@@ -3500,7 +3249,7 @@ static void __gpufreq_avs_adjustment(void)
 #endif /* GPUFREQ_AVS_ENABLE */
 }
 
-static void __gpufreq_custom_adjustment(void)
+static void __maybe_unused __gpufreq_custom_adjustment(void)
 {
 	struct gpufreq_adj_info *custom_adj;
 	int adj_num = 0;
@@ -3679,13 +3428,7 @@ static int __gpufreq_init_segment_id(struct platform_device *pdev)
 	efuse_id = (*efuse_buf & 0xFF);
 	kfree(efuse_buf);
 #else
-	/* MINDONE FIX (F1934/F1935). This used to be a hardcoded 0x0, which per the
-	 * lookup table gave ENG_SEGMENT -- an engineering sample, i.e. the WHOLE
-	 * unbinned table of 45 states with a 1100MHz ceiling at 0.775V. Our chip is
-	 * binned differently: the working 5.10 kernel, where the vendor module is
-	 * built with CONFIG_MTK_DEVINFO and READS the binning, reports segment 1 --
-	 * 38 states with a 1003MHz ceiling. Substituting the real value. */
-	efuse_id = 0x0;   /* temporarily reverted: 0x1 breaks GED (F1937), interferes with observation */
+	efuse_id = 0x0;
 #endif /* CONFIG_MTK_DEVINFO */
 
 	switch (efuse_id) {
@@ -3702,7 +3445,9 @@ static int __gpufreq_init_segment_id(struct platform_device *pdev)
 
 	GPUFREQ_LOGI("efuse_id: 0x%x, segment_id: %d", efuse_id, segment_id);
 
+#if IS_ENABLED(CONFIG_MTK_DEVINFO)
 done:
+#endif
 	g_gpu.segment_id = segment_id;
 
 	return ret;
@@ -3710,7 +3455,7 @@ done:
 
 static int __gpufreq_init_mtcmos(struct platform_device *pdev)
 {
-	struct device *dev = &pdev->dev;
+	struct device *dev __maybe_unused = &pdev->dev;
 	int ret = GPUFREQ_SUCCESS;
 
 #if !GPUFREQ_SELF_CTRL_MTCMOS
@@ -4059,7 +3804,6 @@ static int __gpufreq_pdrv_probe(struct platform_device *pdev)
 {
 	int ret = GPUFREQ_SUCCESS;
 
-	mindone_gf_mark(21);
 
 	GPUFREQ_LOGI("start to probe gpufreq platform driver");
 
@@ -4070,7 +3814,6 @@ static int __gpufreq_pdrv_probe(struct platform_device *pdev)
 		goto done;
 	}
 
-	mindone_gf_mark(22);
 	/* init reg base address and flavor config of the platform in both AP and EB mode */
 	ret = __gpufreq_init_platform_info(pdev);
 	if (unlikely(ret)) {
@@ -4078,7 +3821,6 @@ static int __gpufreq_pdrv_probe(struct platform_device *pdev)
 		goto done;
 	}
 
-	mindone_gf_mark(23);
 	/* init gpu dfd */
 	ret = gpudfd_init(pdev);
 	if (unlikely(ret)) {
@@ -4086,7 +3828,6 @@ static int __gpufreq_pdrv_probe(struct platform_device *pdev)
 		goto done;
 	}
 
-	mindone_gf_mark(24);
 	/* init pmic regulator */
 	ret = __gpufreq_init_pmic(pdev);
 	if (unlikely(ret)) {
@@ -4094,7 +3835,6 @@ static int __gpufreq_pdrv_probe(struct platform_device *pdev)
 		goto done;
 	}
 
-	mindone_gf_mark(25);
 	/* skip most of probe in EB mode */
 	if (g_gpueb_support) {
 		GPUFREQ_LOGI("gpufreq platform probe only init reg_base/dfd/pmic/fp in EB mode");
@@ -4102,7 +3842,6 @@ static int __gpufreq_pdrv_probe(struct platform_device *pdev)
 	}
 
 	/* init clock source */
-	mindone_gf_mark(26);
 	ret = __gpufreq_init_clk(pdev);
 	if (unlikely(ret)) {
 		GPUFREQ_LOGE("fail to init clk (%d)", ret);
@@ -4110,7 +3849,6 @@ static int __gpufreq_pdrv_probe(struct platform_device *pdev)
 	}
 
 	/* init mtcmos power domain */
-	mindone_gf_mark(27);
 	ret = __gpufreq_init_mtcmos(pdev);
 	if (unlikely(ret)) {
 		GPUFREQ_LOGE("fail to init mtcmos (%d)", ret);
@@ -4118,7 +3856,6 @@ static int __gpufreq_pdrv_probe(struct platform_device *pdev)
 	}
 
 	/* init segment id */
-	mindone_gf_mark(28);
 	ret = __gpufreq_init_segment_id(pdev);
 	if (unlikely(ret)) {
 		GPUFREQ_LOGE("fail to init segment id (%d)", ret);
@@ -4126,7 +3863,6 @@ static int __gpufreq_pdrv_probe(struct platform_device *pdev)
 	}
 
 	/* init shader present */
-	mindone_gf_mark(29);
 	__gpufreq_init_shader_present();
 
 	/* power on to init first OPP index */
@@ -4146,11 +3882,9 @@ static int __gpufreq_pdrv_probe(struct platform_device *pdev)
 #endif
 
 	/* init ACP */
-	mindone_gf_mark(31);
 	__gpufreq_init_acp();
 
 	/* init OPP table */
-	mindone_gf_mark(32);
 	ret = __gpufreq_init_opp_table(pdev);
 	if (unlikely(ret)) {
 		GPUFREQ_LOGE("fail to init OPP table (%d)", ret);
@@ -4158,7 +3892,6 @@ static int __gpufreq_pdrv_probe(struct platform_device *pdev)
 	}
 
 	/* init first OPP index by current freq and volt */
-	mindone_gf_mark(33);
 	ret = __gpufreq_init_opp_idx();
 	if (unlikely(ret)) {
 		GPUFREQ_LOGE("fail to init OPP index (%d)", ret);
@@ -4166,7 +3899,6 @@ static int __gpufreq_pdrv_probe(struct platform_device *pdev)
 	}
 
 	/* power off after init first OPP index */
-	mindone_gf_mark(34);
 	if (__gpufreq_power_ctrl_enable())
 		__gpufreq_power_control(POWER_OFF);
 	else
@@ -4174,11 +3906,9 @@ static int __gpufreq_pdrv_probe(struct platform_device *pdev)
 		GPUFREQ_LOGI("power control always on");
 
 	/* init AEE debug */
-	mindone_gf_mark(35);
 	__gpufreq_footprint_power_step_reset();
 	__gpufreq_footprint_oppidx_reset();
 	__gpufreq_footprint_power_count_reset();
-	mindone_gf_mark(36);
 #if GPUFREQ_HISTORY_ENABLE
 	__gpufreq_history_memory_reset();
 #endif
@@ -4231,17 +3961,6 @@ static void __gpufreq_pdrv_remove(struct platform_device *pdev)
 static int __init __gpufreq_init(void)
 {
 	int ret = GPUFREQ_SUCCESS;
-
-	/* CONTROL. Mark 21 at bind entry did not fire. Until it's proven the module
-	 * parameter arrives and init actually starts, this negative result means
-	 * nothing. Mark 20 is the first line of init -- it runs unconditionally.
-	 */
-	mindone_gf_mark(20);
-
-	if (mindone_gf_skip_register) {
-		GPUFREQ_LOGI("mindone: driver registration skipped intentionally");
-		return 0;
-	}
 
 	GPUFREQ_LOGI("start to init gpufreq platform driver");
 

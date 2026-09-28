@@ -12,7 +12,6 @@
  * option) any later version.
  */
 #include <linux/module.h>
-#include <mindone/compat.h>
 #include <linux/kernel.h>
 #include <linux/i2c.h>
 #include <linux/of_gpio.h>
@@ -20,7 +19,6 @@
 #include <linux/device.h>
 #include <linux/firmware.h>
 #include <linux/slab.h>
-#include <linux/version.h>
 #include <linux/input.h>
 #include <linux/interrupt.h>
 #include <linux/debugfs.h>
@@ -49,57 +47,11 @@ static char aw_ram_name[][AW_NAME_MAX] = {
 };
 
 static char aw_rtp_name[][AW_NAME_MAX] = {
-	{"aw862xx_rtp.bin"},
-	{"aw862xx_rtp_Argo_Navis.bin"},
-	{"aw862xx_rtp_Attentive.bin"},
-	{"aw862xx_rtp_Awake.bin"},
-	{"aw862xx_rtp_Bird_Loop.bin"},
-	{"aw862xx_rtp_Brilliant_Times.bin"},
-	{"aw862xx_rtp_Chimey_Phone.bin"},
-	{"aw862xx_rtp_Complex.bin"},
-	{"aw862xx_rtp_Crazy_Dream.bin"},
-	{"aw862xx_rtp_Curve_Ball_Blend.bin"},
-	{"aw862xx_rtp_Digital_Phone.bin"},
-	{"aw862xx_rtp_Electrovision.bin"},
-	{"aw862xx_rtp_Ether_Shake.bin"},
-	{"aw862xx_rtp_Fateful_Words.bin"},
-	{"aw862xx_rtp_Flutey_Phone.bin"},
-	{"aw862xx_rtp_Future_Funk.bin"},
-	{"aw862xx_rtp_Future_Hi_Tech.bin"},
-	{"aw862xx_rtp_Girtab.bin"},
-	{"aw862xx_rtp_Hello.bin"},
-	{"aw862xx_rtp_Hexagon.bin"},
-	{"aw862xx_rtp_Hydra.bin"},
-	{"aw862xx_rtp_Insert_Coin.bin"},
-	{"aw862xx_rtp_Jumping_Dots.bin"},
-	{"aw862xx_rtp_Keys.bin"},
-	{"aw862xx_rtp_Loopy.bin"},
-	{"aw862xx_rtp_Loopy_Lounge.bin"},
-	{"aw862xx_rtp_Modular.bin"},
-	{"aw862xx_rtp_Momentum.bin"},
-	{"aw862xx_rtp_Morning.bin"},
-	{"aw862xx_rtp_Moto.bin"},
-	{"aw862xx_rtp_Natural.bin"},
-	{"aw862xx_rtp_New_Player.bin"},
-	{"aw862xx_rtp_Onward.bin"},
-	{"aw862xx_rtp_Organ_Dub.bin"},
-	{"aw862xx_rtp_Overclocked.bin"},
-	{"aw862xx_rtp_Pegasus.bin"},
-	{"aw862xx_rtp_Pyxis.bin"},
-	{"aw862xx_rtp_Regrade.bin"},
-	{"aw862xx_rtp_Scarabaeus.bin"},
-	{"aw862xx_rtp_Sceptrum.bin"},
-	{"aw862xx_rtp_Simple.bin"},
-	{"aw862xx_rtp_Solarium.bin"},
-	{"aw862xx_rtp_Sparse.bin"},
-	{"aw862xx_rtp_Terrabytes.bin"},
-	{"aw862xx_rtp_Zero_Hour.bin"},
-	{"aw862xx_rtp_Play.bin"},
-	{"aw862xx_rtp_TJINGLE.bin"},
-	{"aw862xx_rtp_Verizon_Airwaves.bin"},
-	{"aw862xx_rtp_City_Lights.bin"},
-	{"aw862xx_rtp_Firefly.bin"},
-	{"aw862xx_rtp_Now_or_Never.bin"},
+	{"haptic_nv_rtp_osc_24K_5s.bin"},
+	{"haptic_nv_rtp.bin"},
+	{"haptic_nv_rtp_autosin.bin"},
+	{"haptic_nv_rtp_lighthouse.bin"},
+	{"haptic_nv_rtp_silk.bin"},
 };
 
 #ifdef AW_TIKTAP
@@ -151,6 +103,8 @@ int haptic_nv_i2c_writes(struct aw_haptic *aw_haptic, uint8_t reg_addr, uint8_t 
 	int ret = -1;
 
 	data = kmalloc(len + 1, GFP_KERNEL);
+	if (!data)
+		return -ENOMEM;
 	data[0] = reg_addr;
 	memcpy(&data[1], buf, len);
 	ret = i2c_master_send(aw_haptic->i2c, data, len + 1);
@@ -203,6 +157,7 @@ ssize_t haptic_nv_read_reg_array(struct aw_haptic *aw_haptic, char *buf, ssize_t
 static void pm_qos_enable(struct aw_haptic *aw_haptic, bool enable)
 {
 #ifdef KERNEL_OVER_5_10
+	mutex_lock(&aw_haptic->qos_lock);
 	if (enable) {
 		if (!cpu_latency_qos_request_active(&aw_haptic->aw_pm_qos_req_vb))
 			cpu_latency_qos_add_request(&aw_haptic->aw_pm_qos_req_vb,
@@ -211,6 +166,7 @@ static void pm_qos_enable(struct aw_haptic *aw_haptic, bool enable)
 		if (cpu_latency_qos_request_active(&aw_haptic->aw_pm_qos_req_vb))
 			cpu_latency_qos_remove_request(&aw_haptic->aw_pm_qos_req_vb);
 	}
+	mutex_unlock(&aw_haptic->qos_lock);
 #else
 	if (enable) {
 		if (!pm_qos_request_active(&aw_haptic->aw_pm_qos_req_vb))
@@ -646,6 +602,7 @@ static int judge_rtp_load_end(struct aw_haptic *aw_haptic)
 		aw_haptic->rtp_cnt = 0;
 		aw_haptic->rtp_init = false;
 		aw_haptic->func->set_rtp_aei(aw_haptic, false);
+		pm_qos_enable(aw_haptic, false);
 		ret = 0;
 	}
 
@@ -2781,13 +2738,9 @@ static struct attribute_group rtp_attribute_group = {
 #ifdef AW_TIKTAP
 static inline unsigned int tiktap_get_sys_msecs(void)
 {
-#if (KERNEL_VERSION(5, 4, 0) <= LINUX_VERSION_CODE)
 	struct timespec64 ts64;
 
 	ktime_get_coarse_real_ts64(&ts64);
-#else
-	struct timespec64 ts64 = current_kernel_time64();
-#endif
 
 	return jiffies_to_msecs(timespec64_to_jiffies(&ts64));
 }
@@ -3110,6 +3063,10 @@ static void vibrator_work_routine(struct work_struct *work)
 	mutex_lock(&aw_haptic->lock);
 	/* Enter standby mode */
 	aw_haptic->func->play_stop(aw_haptic);
+	if (aw_haptic->rtp_init) {
+		aw_haptic->rtp_init = false;
+		pm_qos_enable(aw_haptic, false);
+	}
 	if (aw_haptic->state) {
 #ifdef AW_DURATION_DECIDE_WAVEFORM
 		if (ram_config(aw_haptic, aw_haptic->duration) < 0) {
@@ -3177,6 +3134,10 @@ static void rtp_work_routine(struct work_struct *work)
 	aw_haptic->func->play_stop(aw_haptic);
 	aw_haptic->func->set_rtp_aei(aw_haptic, false);
 	aw_haptic->func->irq_clear(aw_haptic);
+	if (aw_haptic->rtp_init) {
+		aw_haptic->rtp_init = false;
+		pm_qos_enable(aw_haptic, false);
+	}
 	if (!aw_haptic->state) {
 		mutex_unlock(&aw_haptic->lock);
 		return;
@@ -3212,7 +3173,6 @@ static void rtp_work_routine(struct work_struct *work)
 	rtp_play(aw_haptic);
 	if (aw_haptic->play_mode == AW_RTP_MODE)
 		aw_haptic->func->set_rtp_aei(aw_haptic, true);
-	pm_qos_enable(aw_haptic, false);
 	mutex_unlock(&aw_haptic->rtp_lock);
 }
 
@@ -3315,10 +3275,6 @@ static int vibrator_init(struct aw_haptic *aw_haptic)
 	if (!ret)
 		aw_haptic->vib_dev.name = "vibrator_r";
 #else
-	/* MINDONE-VIB-NAME (K1, F3805): LED class name is a module parameter. Stock A15 HAL
-	 * opens /sys/class/leds/aw_vibrator (default, stock genfscon labels it); the LineageOS
-	 * ROM passes haptic_nv.vib_name=vibrator so the standard libhardware LED-class path
-	 * (/sys/class/leds/vibrator/{duration,activate,state}) works without vendor blobs. */
 	aw_haptic->vib_dev.name = mindone_vib_name;
 #endif
 	aw_haptic->vib_dev.brightness_get = brightness_get;
@@ -3360,6 +3316,7 @@ static int vibrator_init(struct aw_haptic *aw_haptic)
 	INIT_WORK(&aw_haptic->rtp_work, rtp_work_routine);
 	mutex_init(&aw_haptic->lock);
 	mutex_init(&aw_haptic->rtp_lock);
+	mutex_init(&aw_haptic->qos_lock);
 	sema_init(&aw_haptic->sema, 1);
 
 	return 0;
@@ -3753,6 +3710,7 @@ static void aw_i2c_remove(struct i2c_client *i2c)
 	cancel_work_sync(&aw_haptic->rtp_work);
 	cancel_work_sync(&aw_haptic->vibrator_work);
 	hrtimer_cancel(&aw_haptic->timer);
+	pm_qos_enable(aw_haptic, false);
 	mutex_destroy(&aw_haptic->lock);
 	mutex_destroy(&aw_haptic->rtp_lock);
 	mutex_destroy(&aw_haptic->haptic_audio.lock);
@@ -3791,6 +3749,7 @@ static int aw_i2c_remove(struct i2c_client *i2c)
 	cancel_work_sync(&aw_haptic->rtp_work);
 	cancel_work_sync(&aw_haptic->vibrator_work);
 	hrtimer_cancel(&aw_haptic->timer);
+	pm_qos_enable(aw_haptic, false);
 	mutex_destroy(&aw_haptic->lock);
 	mutex_destroy(&aw_haptic->rtp_lock);
 	mutex_destroy(&aw_haptic->haptic_audio.lock);
@@ -3813,18 +3772,43 @@ static int aw_i2c_suspend(struct device *dev)
 	int ret = 0;
 	struct aw_haptic *aw_haptic = dev_get_drvdata(dev);
 
-	aw_info("enter");
+	aw_dbg("enter");
 
 	mutex_lock(&aw_haptic->lock);
 	aw_haptic->func->play_stop(aw_haptic);
+	aw_haptic->state = 0;
 	mutex_unlock(&aw_haptic->lock);
+
+	hrtimer_cancel(&aw_haptic->timer);
+	cancel_work_sync(&aw_haptic->vibrator_work);
+
+	mutex_lock(&aw_haptic->haptic_audio.lock);
+	aw_haptic->haptic_audio.suspended_active =
+		hrtimer_active(&aw_haptic->haptic_audio.timer);
+	if (aw_haptic->haptic_audio.suspended_active)
+		hrtimer_cancel(&aw_haptic->haptic_audio.timer);
+	mutex_unlock(&aw_haptic->haptic_audio.lock);
+	cancel_work_sync(&aw_haptic->haptic_audio.work);
 
 	return ret;
 }
 
 static int aw_i2c_resume(struct device *dev)
 {
-	pr_info("<%s>%s enter\n", AW_I2C_NAME, __func__);
+	struct aw_haptic *aw_haptic = dev_get_drvdata(dev);
+	int time;
+
+	pr_debug("<%s>%s enter\n", AW_I2C_NAME, __func__);
+
+	mutex_lock(&aw_haptic->haptic_audio.lock);
+	if (aw_haptic->haptic_audio.suspended_active) {
+		aw_haptic->haptic_audio.suspended_active = false;
+		time = aw_haptic->haptic_audio.timer_val;
+		hrtimer_start(&aw_haptic->haptic_audio.timer,
+			      ktime_set(time / 1000000, (time % 1000000) * 1000),
+			      HRTIMER_MODE_REL);
+	}
+	mutex_unlock(&aw_haptic->haptic_audio.lock);
 
 	return 0;
 }
@@ -3856,8 +3840,9 @@ static struct i2c_driver aw_i2c_driver = {
 #ifdef CONFIG_PM_SLEEP
 		   .pm = &aw_pm_ops,
 #endif
+		   .probe_type = PROBE_PREFER_ASYNCHRONOUS,
 		   },
-	MINDONE_I2C_PROBE(aw_i2c_probe),
+	.probe = aw_i2c_probe,
 	.remove = aw_i2c_remove,
 	.id_table = aw_i2c_id,
 };

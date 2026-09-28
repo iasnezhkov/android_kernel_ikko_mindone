@@ -179,7 +179,7 @@ static const s32 cmdq_max_task_in_secure_thread[
 static const s32 cmdq_tz_cmd_block_size[CMDQ_MAX_SECURE_THREAD_COUNT] = {
 	4 << 12, 4 << 12, 20 << 12, 4 << 12, 4 << 12};
 
-static struct cmdq_sec_helper_fp helper_fp = {
+static struct cmdq_sec_helper_fp __maybe_unused helper_fp = {
 	.sec_insert_backup_cookie_fp = cmdq_sec_insert_backup_cookie,
 	.sec_pkt_wait_complete_fp = cmdq_sec_pkt_wait_complete,
 	.sec_pkt_free_data_fp = cmdq_sec_pkt_free_data,
@@ -805,6 +805,7 @@ static s32 cmdq_sec_session_init(struct cmdq_sec_context *context)
 		if (err)
 			break;
 		context->state = IWC_CONTEXT_INITED;
+		fallthrough;
 	case IWC_CONTEXT_INITED:
 #ifdef CMDQ_GP_SUPPORT
 		if (is_cmdq_gp_support) {
@@ -848,6 +849,7 @@ static s32 cmdq_sec_session_init(struct cmdq_sec_context *context)
 #endif
 
 		context->state = IWC_WSM_ALLOCATED;
+		fallthrough;
 	case IWC_WSM_ALLOCATED:
 #ifdef CMDQ_GP_SUPPORT
 		if (is_cmdq_gp_support) {
@@ -857,6 +859,7 @@ static s32 cmdq_sec_session_init(struct cmdq_sec_context *context)
 		}
 #endif
 		context->state = IWC_SES_OPENED;
+		fallthrough;
 	default:
 		break;
 	}
@@ -1774,9 +1777,9 @@ static int cmdq_sec_probe(struct platform_device *pdev)
 		cmdq->base_pa = res->start;
 		cmdq->base = devm_ioremap(&pdev->dev, res->start, resource_size(res));
 	}
-	if (IS_ERR(cmdq->base)) {
-		cmdq_err("base devm_ioremap failed:%ld", PTR_ERR(cmdq->base));
-		return PTR_ERR(cmdq->base);
+	if (!cmdq->base) {
+		cmdq_err("base devm_ioremap failed");
+		return -ENOMEM;
 	}
 
 	cmdq->clock = devm_clk_get(&pdev->dev, "gce");

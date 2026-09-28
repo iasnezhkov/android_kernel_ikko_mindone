@@ -60,6 +60,7 @@
 		dma-channel-mask = <0x3f>;
 		clocks = <&infracfg_ao_clk CLK_IFRAO_CQ_DMA>;
 		clock-names = "cqdma";
+		status = "disabled";
 	};
 
 	apdma@10217000 {

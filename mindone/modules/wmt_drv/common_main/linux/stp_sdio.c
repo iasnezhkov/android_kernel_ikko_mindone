@@ -185,17 +185,10 @@ static ssize_t stp_sdio_rxdbg_read(struct file *filp, char __user *buf, size_t c
 static ssize_t stp_sdio_rxdbg_write(struct file *filp, const char __user *buf, size_t count,
 			     loff_t *f_pos);
 
-#if (LINUX_VERSION_CODE <= KERNEL_VERSION(5, 6, 0))
-static const struct file_operations stp_sdio_rxdbg_fops = {
-	.read = stp_sdio_rxdbg_read,
-	.write = stp_sdio_rxdbg_write,
-};
-#else
 static const struct proc_ops stp_sdio_rxdbg_fops = {
 	.proc_read = stp_sdio_rxdbg_read,
 	.proc_write = stp_sdio_rxdbg_write,
 };
-#endif
 
 #endif
 
@@ -205,17 +198,10 @@ static struct proc_dir_entry *gStpSdioOwnEntry;
 static ssize_t stp_sdio_own_read(struct file *filp, char __user *buf, size_t count, loff_t *f_pos);
 static ssize_t stp_sdio_own_write(struct file *filp, const char __user *buf, size_t count,
 			   loff_t *f_pos);
-#if (LINUX_VERSION_CODE <= KERNEL_VERSION(5, 6, 0))
-static const struct file_operations stp_sdio_own_fops = {
-	.read = stp_sdio_own_read,
-	.write = stp_sdio_own_write,
-};
-#else
 static const struct proc_ops stp_sdio_own_fops = {
 	.proc_read = stp_sdio_own_read,
 	.proc_write = stp_sdio_own_write,
 };
-#endif
 
 #endif
 
@@ -226,17 +212,10 @@ static struct proc_dir_entry *gStpSdioTxDbgEntry;
 static ssize_t stp_sdio_txdbg_read(struct file *filp, char __user *buf, size_t count, loff_t *f_pos);
 static ssize_t stp_sdio_txdbg_write(struct file *filp, const char __user *buf, size_t count,
 			     loff_t *f_pos);
-#if (LINUX_VERSION_CODE <= KERNEL_VERSION(5, 6, 0))
-static const struct file_operations stp_sdio_txdbg_fops = {
-	.read = stp_sdio_txdbg_read,
-	.write = stp_sdio_txdbg_write,
-};
-#else
 static const struct proc_ops stp_sdio_txdbg_fops = {
 	.proc_read = stp_sdio_txdbg_read,
 	.proc_write = stp_sdio_txdbg_write,
 };
-#endif
 
 #if STP_SDIO_TXDBG
 static INT32 stp_sdio_txdbg_cnt;
@@ -2825,9 +2804,6 @@ static INT32 stp_sdio_remove(const MTK_WCN_HIF_SDIO_CLTCTX clt_ctx)
 	STPSDIO_PR_DBG("destroy STP-SDIO tx_rx_thread\n");
 #else
 
-#if (LINUX_VERSION_CODE < KERNEL_VERSION(6, 6, 0))
-        flush_scheduled_work();
-#endif
 
 	STPSDIO_PR_INFO("flush scheduled work end\n");
 #endif
@@ -3584,9 +3560,6 @@ static VOID stp_sdio_exit(VOID)
 
 	/* 4 <1.2> stop Tx tasklet/Rx work queue of the host */
 
-#if (LINUX_VERSION_CODE < KERNEL_VERSION(6, 6, 0))
-        flush_scheduled_work();
-#endif
 
 	STPSDIO_PR_DBG("flush scheduled work end\n");
 

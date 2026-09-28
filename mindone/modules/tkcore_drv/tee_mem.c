@@ -71,22 +71,6 @@ struct shm_pool {
 
 #define __CALCULATE_RATIO_MEM_USED(a) (((a->used)*100)/(a->size))
 
-/*
- * MINDONE-TEE-POOLSTAT: a read-only view of the pool, so a leak shows up as a
- * trend within minutes rather than as an exhausted pool days later:
- *   cat /sys/module/tkcore_drv/parameters/pool_stat
- *   used=<bytes> size=<bytes> chunks=<blocks in the list> held=<blocks with
- *   a nonzero reference count>
- * There is one pool per device; the last one created is the one shown.
- * pool_stat_lock is held for the whole read, and the pointer is withdrawn
- * under it before the pool is freed -- by tee_shm_pool_destroy(), and by a
- * devres action for the pools that die without it (the pool is devm memory:
- * configure_shm() can fail after creating it, and devres then frees it at
- * unbind). Devres runs actions in reverse order, so the action registered
- * after the pool's allocation always runs before that allocation is freed.
- * A read racing a teardown sees either the live pool or none.
- * Lock order: pool_stat_lock, then pool->lock.
- */
 static DEFINE_MUTEX(pool_stat_lock);
 static struct shm_pool *pool_stat_pool;
 
@@ -545,15 +529,6 @@ failed_out:
 	if (next_chunk)
 		_KFREE(next_chunk);
 
-	/*
-	 * MINDONE-TEE-POOLDIAG: "free" on its own cannot tell an undersized
-	 * pool from an exhausted one -- both report a small number -- so print
-	 * the pool geometry as well.  Rate-limited because this path fired
-	 * ~8000 times in 61 h on the device (every request identical:
-	 * size=0x1000 align=0x1000 from the KeyMint HAL retrying once a
-	 * second) and flooded the kernel ring, evicting the boot log that
-	 * records the pool size in the first place.
-	 */
 	pr_err_ratelimited(
 		"%s() FAILED, size=0x%zx, align=0x%zx free=%zu (pool size=%zu used=%zu)\n",
 		__func__, size, alignment, pool->size - pool->used,
@@ -600,13 +575,6 @@ int tkcore_shm_pool_free(struct device *dev, struct shm_pool *pool,
 				*size = chunk->size;
 
 			if (chunk->counter == 0) {
-				/*
-				 * MINDONE-TEE-POOLLOCK: this returned while still
-				 * holding pool->lock, so a single double-free would
-				 * have deadlocked every later pool operation -- the
-				 * whole TEE, permanently, with no message after this
-				 * one. Every other exit from this function unlocks.
-				 */
 				mutex_unlock(&pool->lock);
 				pr_warn(
 					 "< %s() WARNING, paddr=0x%p already released\n",

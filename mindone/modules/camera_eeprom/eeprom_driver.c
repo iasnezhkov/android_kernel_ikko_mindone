@@ -7,7 +7,6 @@
 
 
 #include <linux/kernel.h>
-#include <mindone/compat.h>
 #include <linux/module.h>
 #include <linux/i2c.h>
 #include <linux/platform_device.h>
@@ -216,9 +215,6 @@ static int EEPROM_HW_i2c_probe(struct i2c_client *client)
 /**********************************************
  * CAMERA_HW_i2c_remove
  **********************************************/
-/* i2c_driver.remove returns void since 6.1 (commit ed5c2f5fd10d) -- the int form only
- * warned here because ccflags relax -Wincompatible-pointer-types; 7 other modules in this
- * tree were already converted. */
 static void EEPROM_HW_i2c_remove(struct i2c_client *client)
 {
 }
@@ -296,18 +292,13 @@ static const struct i2c_device_id
 #if IS_ENABLED(CONFIG_OF)
 static const struct of_device_id EEPROM_HW_i2c_of_ids[] = {
 	{.compatible = "mediatek,camera_main_eeprom",},
-	/* MINDONE: the board's single camera EEPROM node (camera_eeprom0@50 on
-	 * i2c@11eb1000, from the stock dtbo overlay) is described as
-	 * "mediatek,camera_eeprom", not the "..._main_eeprom" this ported driver
-	 * expected, so it stayed unbound and its per-unit calibration (cam_cal) was
-	 * never read. Match the actual node - it is the main camera's EEPROM. */
 	{.compatible = "mediatek,camera_eeprom",},
 	{}
 };
 #endif
 
 struct i2c_driver EEPROM_HW_i2c_driver = {
-	MINDONE_I2C_PROBE(EEPROM_HW_i2c_probe),
+	.probe = EEPROM_HW_i2c_probe,
 	.remove = EEPROM_HW_i2c_remove,
 	.driver = {
 		   .name = CAM_CAL_DRV_NAME,
@@ -331,7 +322,7 @@ static const struct of_device_id EEPROM_HW2_i2c_driver_of_ids[] = {
 #endif
 
 struct i2c_driver EEPROM_HW_i2c_driver2 = {
-	MINDONE_I2C_PROBE(EEPROM_HW_i2c_probe2),
+	.probe = EEPROM_HW_i2c_probe2,
 	.remove = EEPROM_HW_i2c_remove2,
 	.driver = {
 		   .name = CAM_CAL_I2C_DEV2_NAME,
@@ -354,7 +345,7 @@ static const struct of_device_id EEPROM_HW3_i2c_driver_of_ids[] = {
 #endif
 
 struct i2c_driver EEPROM_HW_i2c_driver3 = {
-	MINDONE_I2C_PROBE(EEPROM_HW_i2c_probe3),
+	.probe = EEPROM_HW_i2c_probe3,
 	.remove = EEPROM_HW_i2c_remove3,
 	.driver = {
 		   .name = CAM_CAL_I2C_DEV3_NAME,
@@ -422,8 +413,6 @@ static struct platform_driver g_stEEPROM_HW_Driver = {
  * business function directly (split out of EEPROM_drv_ioctl() below) --
  * no synthetic user buffer, no double indirection through the ioctl vtable.
  */
-/* MINDONE-EEPROM-ERRLOG 30.08: pr_debug -> pr_info inside business() to see WHICH error branch
- * the HAL hits on our kernel (F3108 open question); revert once known. */
 static long EEPROM_drv_ioctl_business(unsigned int a_u4Command,
 	struct stCAM_CAL_INFO_STRUCT *ptempbuf, u8 *pu1Params);
 
@@ -470,7 +459,7 @@ static long EEPROM_drv_compat_ioctl
 
 	if ((ktempbuf.u4Length <= 0) ||
 		(ktempbuf.u4Length > CAM_CAL_MAX_BUF_SIZE)) {
-		pr_info("MINDONE-EEPROM-ERRLOG " "Buffer Length Error!\n");
+		pr_err("eeprom: buffer length error\n");
 		return -EFAULT;
 	}
 
@@ -480,7 +469,7 @@ static long EEPROM_drv_compat_ioctl
 
 	if (copy_from_user(pBuff, payload_ptr, ktempbuf.u4Length)) {
 		kfree(pBuff);
-		pr_info("MINDONE-EEPROM-ERRLOG " "ioctl copy from user failed\n");
+		pr_err("eeprom: ioctl copy from user failed\n");
 		return -EFAULT;
 	}
 
@@ -489,7 +478,7 @@ static long EEPROM_drv_compat_ioctl
 	if (native_cmd == CAM_CALIOC_G_READ) {
 		if (copy_to_user(payload_ptr, pBuff, ktempbuf.u4Length)) {
 			kfree(pBuff);
-			pr_info("MINDONE-EEPROM-ERRLOG " "ioctl copy to user failed\n");
+			pr_err("eeprom: ioctl copy to user failed\n");
 			return -EFAULT;
 		}
 	}
@@ -590,10 +579,6 @@ static long EEPROM_drv_ioctl(struct file *file,
 	return i4RetValue;
 }
 
-/* MINDONE 30.08 (F3108): business() must NOT free ptempbuf/pu1Params - the caller
- * EEPROM_drv_ioctl() reads ptempbuf->u4Length after us and frees both buffers itself.
- * Our 20.08 kfree(ptempbuf) + MTK own kfree(pu1Params) here = UAF + double free
- * (usercopy BUG with poisoned length 0x6b6b6b6b, slub.c:404) on every error path. */
 static long EEPROM_drv_ioctl_business(unsigned int a_u4Command,
 	struct stCAM_CAL_INFO_STRUCT *ptempbuf, u8 *pu1Params)
 {
@@ -823,7 +808,7 @@ static inline int EEPROM_chrdev_register(void)
 		return -EAGAIN;
 	}
 
-	g_drvClass = MINDONE_CLASS_CREATE("CAM_CALdrv1");
+	g_drvClass = class_create("CAM_CALdrv1");
 	if (IS_ERR(g_drvClass)) {
 		int ret = PTR_ERR(g_drvClass);
 
@@ -841,8 +826,6 @@ static void EEPROM_chrdev_unregister(void)
 {
 	/*Release char driver */
 
-	/* MINDONE-EEPROM-EXIT 30.08 (F3110): device first, then class (was reversed: class_destroy
-	 * before device_destroy -> class_find_device on freed class -> panic on rmmod). */
 	device_destroy(g_drvClass, g_devNum);
 	class_destroy(g_drvClass);
 

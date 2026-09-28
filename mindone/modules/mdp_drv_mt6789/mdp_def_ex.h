@@ -156,6 +156,14 @@ struct mdp_simulate {
 	cmdqU32Ptr_t result_size;
 };
 
+struct mdp_iova_unmap {
+	int32_t fd;
+};
+
+struct mdp_iova_cache_ctl {
+	int32_t enable;
+};
+
 #define CMDQ_IOCTL_MAGIC_NUMBER 'x'
 
 #define CMDQ_IOCTL_ASYNC_EXEC _IOW(CMDQ_IOCTL_MAGIC_NUMBER, 20, \
@@ -172,5 +180,11 @@ struct mdp_simulate {
 
 #define CMDQ_IOCTL_SIMULATE _IOR(CMDQ_IOCTL_MAGIC_NUMBER, 25, \
 	struct mdp_simulate)
+
+#define CMDQ_IOCTL_IOVA_UNMAP _IOW(CMDQ_IOCTL_MAGIC_NUMBER, 26, \
+	struct mdp_iova_unmap)
+
+#define CMDQ_IOCTL_IOVA_CACHE _IOW(CMDQ_IOCTL_MAGIC_NUMBER, 27, \
+	struct mdp_iova_cache_ctl)
 
 #endif	/* __MDP_DEF_EX_H__ */

@@ -373,7 +373,7 @@ static int __clkbuf_pmif_dts_base_init(struct platform_device *pdev,
 	}
 	hw->base.addr = devm_ioremap(&pdev->dev,
 		res.start, resource_size(&res));
-	if (IS_ERR(hw->base.addr))
+	if (!hw->base.addr)
 		return -EGET_BASE_FAILED;
 	hw->enable = true;
 

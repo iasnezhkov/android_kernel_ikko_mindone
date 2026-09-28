@@ -304,6 +304,7 @@ void p2pFuncRequestScan(IN struct ADAPTER *prAdapter,
 					prScanReqInfo->ucNumChannelList;
 			}
 			/* fallthrough */
+			fallthrough;
 		case SCAN_CHANNEL_FULL:
 			/* fallthrough */
 		case SCAN_CHANNEL_2G4:
@@ -1726,6 +1727,7 @@ p2pFuncSwitchOPMode(IN struct ADAPTER *prAdapter,
 				DBGLOG(P2P, TRACE,
 					"p2pFuncSwitchOPMode: Switch to Client.\n");
 				/* fall through */
+				fallthrough;
 			case OP_MODE_ACCESS_POINT:
 				/* Change interface address. */
 				if (eOpMode == OP_MODE_ACCESS_POINT) {
@@ -4065,7 +4067,7 @@ void p2pFuncValidateRxActionFrame(IN struct ADAPTER *prAdapter,
 			break;
 
 		WLAN_GET_FIELD_BE24(prActFrame->ucActionDetails, &u4Oui);
-		ucOuiType = prActFrame->ucActionDetails[3];
+		ucOuiType = *(prActFrame->ucActionDetails + 3);
 		DBGLOG(P2P, TRACE, "Action: oui: 0x%x, type: 0x%x\n",
 			u4Oui, ucOuiType);
 
@@ -4094,6 +4096,7 @@ void p2pFuncValidateRxActionFrame(IN struct ADAPTER *prAdapter,
 			}
 		}
 		/* Fall through */
+		fallthrough;
 	default:
 		break;
 	}

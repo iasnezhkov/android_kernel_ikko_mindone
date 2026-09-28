@@ -25,8 +25,8 @@ typedef void (*dlpt_callback)(int val);
 void register_dlpt_notify(dlpt_callback dlpt_cb,
 			  enum DLPT_PRIO_TAG prio_val);
 #else
-static int register_dlpt_notify(dlpt_callback dlpt_cb,
-				enum DLPT_PRIO_TAG prio_val)
+static inline int register_dlpt_notify(dlpt_callback dlpt_cb,
+				       enum DLPT_PRIO_TAG prio_val)
 { return 0; }
 #endif
 

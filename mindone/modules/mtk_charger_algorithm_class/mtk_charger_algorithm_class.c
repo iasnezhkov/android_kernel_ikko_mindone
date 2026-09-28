@@ -5,7 +5,6 @@
  */
 
 #include <linux/module.h>
-#include <mindone/compat.h>
 #include <linux/stat.h>
 #include <linux/init.h>
 #include <linux/ctype.h>
@@ -166,7 +165,7 @@ char *chg_alg_state_to_str(int state)
 }
 EXPORT_SYMBOL(chg_alg_state_to_str);
 
-extern const char *const
+extern const char *
 chg_alg_notify_evt_tostring(enum chg_alg_notifier_events evt)
 {
 	if ((int)evt >= (int)EVT_MAX || (int)evt < 0) {
@@ -301,7 +300,7 @@ static void __exit charger_algorithm_class_exit(void)
 static int __init charger_algorithm_class_init(void)
 {
 	charger_algorithm_class =
-		MINDONE_CLASS_CREATE("Charger Algorithm");
+		class_create("Charger Algorithm");
 	if (IS_ERR(charger_algorithm_class)) {
 		pr_notice("Unable to create charger algorithm class; errno = %ld\n",
 			PTR_ERR(charger_algorithm_class));

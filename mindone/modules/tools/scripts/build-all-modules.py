@@ -21,10 +21,10 @@ module_layout, git HEAD of the kernel and of the module tree, toolchain; modules
 directory) + OUT/build-summary.json.
 
 Reproducibility (criterion 5.6 "two runs = the same sha"): build-env.sh (timestamp/.version)
-+ KCFLAGS -fmacro-prefix-map/-fdebug-prefix-map (build paths do not leak into .rodata, F3421).
++ KCFLAGS -fmacro-prefix-map/-fdebug-prefix-map (build paths do not leak into .rodata).
 
 The module_layout reference is NOT hardcoded: kocheck takes it from KOUT/Module.symvers
-(F3420: after a full rebuild with CFI/BTF the layout differs -- the gate compares against
+(after a full rebuild with CFI/BTF the layout differs -- the gate compares against
 THAT kernel, the one it was built against).
 
 Run (re-execs itself in the VM from macOS):
@@ -288,14 +288,6 @@ def main():
     dirs = sorted({d for c in plan.values() for d, _ in c})
     print(f'== kernel {krel}  module_layout {layout}  modules {len(names)}  candidate directories {len(dirs)} ==')
 
-    # MINDONE: a single .ko often has SEVERAL candidate directories (obj-m with the same
-    # name in parallel variants, or a directory matching by name) -- and the first one
-    # alphabetically is sometimes dead/unbuildable (AUDIT-TREE-0901: 23 "failed to build"
-    # cases with a working sibling present). So candidates are tried IN ORDER
-    # (override -> alias -> obj-m with a matching directory name -> other obj-m ->
-    # directory by name); the first one that builds and produces a .ko wins. If none do,
-    # we look for an in-tree kernel module in KOUT (cfg80211/mac80211 etc. are built by
-    # the kernel, not out of tree).
     t0 = time.time()
     built = {}       # dir -> rc
     rows = []
@@ -329,9 +321,6 @@ def main():
             sh([f'{TOOLCHAIN}/bin/llvm-strip', '--strip-debug', str(src), '-o', str(dst)])
         row.update({'status': 'built', 'size': dst.stat().st_size,
                     'sha256': hashlib.sha256(dst.read_bytes()).hexdigest()})
-        # F3558/F3562: pointer<->int and incompatible-pointer warnings are API mismatches that the module
-        # Makefiles silence with -Wno-error; they cost two days (rq passed to cpu_util_cfs(int), EM callback
-        # in 5.10 argument order). Surface them per module and count them as a gate failure.
         api_warn = []
         if row.get('how') != 'in-tree':
             logf = logdir / f'build-{row["dir"]}.log'
@@ -387,7 +376,7 @@ def main():
     print(f'\n== SUMMARY ==  built {n_built}/{len(rows)}  build failures {len(n_fail)}  no source {len(n_nosrc)}  '
           f'kocheck failures {len(n_kobad)}  api warnings {len(n_api)}')
     if n_api:
-        print('  api-warn (pointer<->int / incompatible pointers -- F3558/F3562, gate): ' + ' '.join(n_api))
+        print('  api-warn (pointer<->int / incompatible pointers -- gate): ' + ' '.join(n_api))
         for r in rows:
             for w in r.get('api_warn', []):
                 print(f'     {r["ko"]}: {w}')

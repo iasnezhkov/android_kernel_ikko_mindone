@@ -159,7 +159,7 @@ int pe_hal_get_ibat(struct chg_alg_device *alg)
 
 	if (bat_psy == NULL || IS_ERR(bat_psy)) {
 		pr_err("%s retry to get pe->bat_psy\n", __func__);
-		bat_psy = devm_power_supply_get_by_phandle(&pe->pdev->dev, "gauge"); /* mindone 29.08: restored mainline phandle lookup - vendor "bms" name lookup never resolves on this HW, see AUDIT-CHARGING-2908 (F2167/F2168) */
+		bat_psy = devm_power_supply_get_by_phandle(&pe->pdev->dev, "gauge");
 		pe->bat_psy = bat_psy;
 	}
 
@@ -254,7 +254,7 @@ int pe_hal_get_uisoc(struct chg_alg_device *alg)
 
 	if (bat_psy == NULL || IS_ERR(bat_psy)) {
 		pr_notice("%s retry to get pe->bat_psy\n", __func__);
-		bat_psy = devm_power_supply_get_by_phandle(&pe->pdev->dev, "gauge"); /* mindone 29.08: restored mainline phandle lookup - vendor "bms" name lookup never resolves on this HW, see AUDIT-CHARGING-2908 (F2167/F2168) */
+		bat_psy = devm_power_supply_get_by_phandle(&pe->pdev->dev, "gauge");
 		pe->bat_psy = bat_psy;
 	}
 

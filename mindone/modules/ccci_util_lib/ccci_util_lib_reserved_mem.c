@@ -85,13 +85,6 @@ int free_reserved_memory(phys_addr_t start_phys,
 		return -1;
 	}
 
-	/* MINDONE (F2929): on the kernel 6 DT, the CCCI tag memory
-	 * (mblock-23-ccci_tag_mem 0xbf7f0000) is marked no-map -- its pages have
-	 * NO linear mapping. free_reserved_page() was releasing them into the
-	 * buddy allocator; the kernel would then hand such a page out and crash
-	 * in clear_page (F2854/F2929, same address ffffff807f7ff000 in both
-	 * dumps, both "Freeing reserved memory: 64K from phys bf7f0000"). The
-	 * region was not no-map on 5.10. */
 	for (pos = start_phys; pos < end_phys; pos += PAGE_SIZE) {
 		if (!pfn_is_map_memory(__phys_to_pfn(pos))) {
 			if (!pages)

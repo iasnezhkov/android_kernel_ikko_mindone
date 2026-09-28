@@ -4,7 +4,7 @@
  */
 
 #include <linux/module.h>       /* needed by all modules */
-#include <tinysys-scmi.h>	/* F438: declares get_scmi_tinysys_info() */
+#include <tinysys-scmi.h>
 #include <linux/init.h>         /* needed by module macros */
 #include <linux/fs.h>           /* needed by file_operations* */
 #include <linux/miscdevice.h>   /* needed by miscdevice* */
@@ -101,23 +101,6 @@ unsigned int is_sspm_ready(void)
 		return 0;
 }
 
-#include <linux/reboot.h>
-#include <linux/moduleparam.h>
-/* STEP-BY-STEP PROBE inside sspm_module_init. Measured (F435): `modpre=sspm_v3` -> 0x2,
- * `modname=sspm_v3` -> 0x800 -- the module starts but never finishes init.
- * `sspm_v3.mindone_sspm_stop=N` -- cleanly reboot BEFORE step N: 1 reserved memory
- * · 2 sysfs · 3 platform service · 4 time sync · 5 EMI-MPU lockdown · 6 after all.
- * Reads as: 0x2 -- reached step N, 0x800 -- did not. `emergency_restart`, NOT
- * `machine_restart`: the latter isn't exported to modules (F431).
- */
-static int mindone_sspm_stop;
-module_param(mindone_sspm_stop, int, 0644);
-void mindone_sspm_mark(int step)
-{
-	if (mindone_sspm_stop > 0 && step >= mindone_sspm_stop)
-		emergency_restart();
-}
-
 static int sspm_module_init(void)
 {
 	if (atomic_inc_return(&sspm_inited) != 1)
@@ -134,7 +117,6 @@ static int sspm_module_init(void)
 		goto error;
 	}
 
-	mindone_sspm_mark(1);
 #if IS_ENABLED(CONFIG_OF_RESERVED_MEM)
 	if (sspm_reserve_memory_init()) {
 		pr_err("[SSPM] Reserved Memory Failed\n");
@@ -142,13 +124,11 @@ static int sspm_module_init(void)
 	}
 #endif
 
-	mindone_sspm_mark(2);
 	if (sspm_sysfs_init()) {
 		pr_err("[SSPM] Sysfs Init Failed\n");
 		goto error;
 	}
 
-	mindone_sspm_mark(3);
 #if SSPM_PLT_SERV_SUPPORT
 	if (sspm_plt_init()) {
 		pr_err("[SSPM] Platform Init Failed\n");
@@ -157,15 +137,12 @@ static int sspm_module_init(void)
 	pr_info("SSPM platform service is ready\n");
 #endif
 
-	mindone_sspm_mark(4);
 	if (sspm_timesync_init()) {
 		pr_err("[SSPM] Timesync Init Failed\n");
 		goto error;
 	}
 
-	mindone_sspm_mark(5);
 	sspm_lock_emi_mpu();
-	mindone_sspm_mark(6);
 
 	pr_debug("[SSPM] sspm_module Done\n");
 
@@ -179,12 +156,6 @@ error:
 	return -1;
 }
 
-/* NOT __init: the driver stays registered after module init, so a DEFERRED probe can
- * call this long after the module's init section has been freed. On 6.12 that jumped
- * into whatever module reused the memory (the fault address resolved inside another
- * module's function), giving a CFI failure at platform_probe and, with permissive CFI,
- * a paging fault on a garbage address. __refdata on the driver struct below existed
- * only to silence the section-mismatch warning about exactly this. */
 static int sspm_device_probe(struct platform_device *pdev)
 {
 	struct resource *res;
@@ -195,11 +166,6 @@ static int sspm_device_probe(struct platform_device *pdev)
 	if (atomic_inc_return(&sspm_dev_inited) != 1)
 		return -1;
 
-	/* F438: without this check, sspm_plt_init() below dereferences an empty tinfo
-	 * and crashes the kernel -- silently, since there's no console. Defer the bind
-	 * the standard way; roll back the counter, otherwise a retry would hit the
-	 * check above and return -1 forever.
-	 */
 	if (!get_scmi_tinysys_info()) {
 		atomic_dec(&sspm_dev_inited);
 		dev_info(&pdev->dev, "[SSPM] SCMI not ready yet -- deferring bind\n");
@@ -324,7 +290,7 @@ static void __exit sspm_pdrv_exit(void)
 	pr_info("[SSPM] sspm platform driver Exit.\n");
 }
 
-MODULE_SOFTDEP("pre: tinysys-scmi.ko");
+MODULE_SOFTDEP("pre: tinysys_scmi");
 MODULE_DESCRIPTION("MEDIATEK Module SSPM platform driver");
 MODULE_LICENSE("GPL v2");
 

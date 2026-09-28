@@ -13,13 +13,16 @@ differ per board even when the chip does not.
 ## 2. Decide what is a module and what is not
 
 MediaTek keeps almost everything out of tree. Start from the device's shipped module list
-(`modules.load` in its `vendor_boot` ramdisk): that is the exact set the vendor considered
-necessary, in the order they considered correct. Reproducing that list is a better goal than
-reproducing any particular source tree. `mindone/modules/modules.load` here is that list for this
-device, if you want to see the shape of one.
+(`modules.load` in its `vendor_boot` ramdisk, and the equivalent list for `vendor_dlkm`): that is
+the exact set the vendor considered necessary, in the order they considered correct. Reproducing
+that list is a better goal than reproducing any particular source tree.
+[`mindone/vendor_boot.modules.load`](../mindone/vendor_boot.modules.load) and
+[`mindone/vendor_dlkm.modules.load`](../mindone/vendor_dlkm.modules.load) here are that list for
+this device, if you want to see the shape of one.
 
-Then check your build against it by name. "Built 328 of 339" says nothing: two of this device's
-modules were missing from a set that reported no failures at all.
+Then check your build against it by name. "No build failures" says nothing on its own: a set can
+build clean and still be missing modules the device actually loads — check the output against
+the load list by name, not just by exit code.
 
 🔴 Watch for modules whose Makefile builds the module name out of a variable:
 
@@ -32,10 +35,13 @@ that scans Makefiles for `obj-m` without expanding variables will not see them, 
 them as failures either, and will hand you a set that looks complete and has no Wi-Fi in it.
 That happened here twice.
 
-Seven more of the 290 are not out-of-tree modules at all: `cfg80211`, `mac80211`, `rfkill`,
-`libarc4`, `zram`, `zsmalloc` and `industrialio_triggered_buffer` come from the kernel build. A
-set assembled only from out-of-tree output is missing the whole 802.11 stack, which on the device
-looks like Wi-Fi never coming up rather than like a missing file.
+Not everything in the load list is out-of-tree. Here, 18 MediaTek platform drivers — `cfg80211`,
+`mac80211`, `clk-mt6789`, `pinctrl-mt6789`, `ufs-mediatek`, the DRM/dma-buf helpers among them —
+are `module_outs` of a Kleaf `kernel_build` that compiles them in-tree against the device's own
+config fragment, and 4 more (`rfkill`, `libarc4`, `zram`, `zsmalloc`) are unmodified GKI in-tree
+modules that need nothing device-specific at all. A set assembled only from out-of-tree driver
+output is missing the whole 802.11 stack among other things, which on the device looks like
+Wi-Fi never coming up rather than like a missing file.
 
 ## 3. Build modules against your own kernel, never against a binary
 
@@ -64,7 +70,7 @@ verdict means nothing in either direction, and it cannot test `vendor_boot` imag
 
 ## 7. Keep the changes explainable
 
-Every change here carries a comment saying what the vendor original did, why it was wrong for
+Every change here has a commit message saying what the vendor original did, why it was wrong for
 this board, and what the evidence was. That is what makes the tree reviewable by someone who
 does not have the hardware — and what makes it possible to re-derive a decision a year later
 instead of re-discovering it.

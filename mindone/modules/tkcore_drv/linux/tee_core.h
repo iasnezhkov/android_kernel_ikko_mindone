@@ -180,40 +180,6 @@ struct tee_shm {
 
 	uint32_t flags;
 
-	/*
-	 * MINDONE-TEE-SHMLIFE: third mirrored copy of the fields added by
-	 * tkcore/linux/tee_core.h and tkcore/tee_core.h - keep struct tee_shm
-	 * byte-for-byte identical across all three headers, not just those two.
-	 *
-	 * This copy is NOT a spectator: tz_alloc() below (tee_tz_drv.c) is the
-	 * tee_ops.alloc backend that every struct tee_shm object goes through
-	 * (tee_context_alloc_shm_tmp() -> tkcore_alloc_shm() -> tee->ops->alloc()),
-	 * for both plain and TEE_SHM_FROM_RPC shm. It does
-	 * devm_kzalloc(sizeof(struct tee_shm)) and then writes shm->resv.kaddr /
-	 * shm->resv.paddr using ITS OWN compiled offsets for the union. When this
-	 * copy lacked rpc_claims/rpc_want_free (first cut of this branch, B19),
-	 * the union sat 8 bytes earlier here than in tkcore.ko's layout, so
-	 * tkcore_drv wrote resv.kaddr/resv.paddr 8 bytes before where tkcore.ko
-	 * later read shm->resv.kaddr (tee_context_alloc_shm_tmp() ->
-	 * tee_context_copy_from_client(), tee_context.c:271) - i.e. tkcore.ko read
-	 * back the raw bytes of resv.paddr (the physical TEE carve-out address,
-	 * e.g. 0xbe000000) and used it as a kernel virtual copy_from_user()
-	 * destination: "Unable to handle kernel paging request at virtual address
-	 * 00000000be000000", pc __arch_copy_from_user, lr
-	 * tee_context_copy_from_client+0x108, on the very first TEE session open -
-	 * unrelated to CONFIG_TRUSTKERNEL_TEE_RPMB_SUPPORT, since the corrupting
-	 * offset skew was present in every allocation, RPMB or not. Confirmed
-	 * against the B19 .ko disassembly: tkcore_drv.ko's tz_alloc() stored kaddr
-	 * at shm+0x40 and paddr at shm+0x48 (undersized devm_kzalloc, size 0x68),
-	 * while tkcore.ko's tee_context_alloc_shm_tmp() read kaddr from shm+0x48.
-	 * Verified byte-identical against the other two copies with a plain diff
-	 * before this comment was added - re-diff after every future edit here.
-	 *
-	 * MINDONE-TEE-SHMLIFE (follow-up B31): rpc_claims (a single shared
-	 * counter) was replaced by two independent fields, rpc_round_owed and
-	 * rpc_dmabuf_refs - see the long explanation in tkcore/linux/tee_core.h.
-	 * Re-diff after every future edit here, not just once.
-	 */
 	bool rpc_round_owed;
 	int rpc_dmabuf_refs;
 	bool rpc_want_free;

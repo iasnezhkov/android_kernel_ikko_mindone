@@ -62,6 +62,7 @@ struct emi_mpu {
 
 	/* debugging log for EMI MPU violation */
 	char *vio_msg;
+	char *md_str;
 	unsigned int in_msg_dump;
 
 	/* hook functions in worker thread */
@@ -69,6 +70,11 @@ struct emi_mpu {
 
 	/* EMIMPU VERSION */
 	unsigned int version;
+
+	unsigned int storm_vio_count;
+	unsigned long storm_window_start;
+	unsigned int storm_active;
+	unsigned int storm_backoff_ms;
 };
 
 extern struct emi_mpu *global_emi_mpu;

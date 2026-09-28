@@ -11,7 +11,6 @@
 
 #if defined(__linux__)
 #include <linux/kernel.h>
-#include <mindone/compat-sound.h>
 #include <linux/string.h>
 #include <sound/memalloc.h>
 #include <sound/pcm.h>
@@ -238,10 +237,10 @@ int set_audiobuffer_attribute(struct audio_hw_buffer *audio_buf,
 			      struct snd_pcm_hw_params *params,
 			      int direction);
 
-void RingBuf_copyFromUserLinear(struct RingBuf *RingBuf1, mindone_snd_buf_t buf,
+void RingBuf_copyFromUserLinear(struct RingBuf *RingBuf1, struct iov_iter *buf,
 				unsigned int count);
 
-void ringbuf_copyto_user_linear(mindone_snd_buf_t buf, struct RingBuf *RingBuf1,
+void ringbuf_copyto_user_linear(struct iov_iter *buf, struct RingBuf *RingBuf1,
 			  unsigned int count);
 #endif
 

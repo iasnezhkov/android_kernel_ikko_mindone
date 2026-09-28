@@ -3,10 +3,6 @@
  * Copyright (C) 2016 MediaTek Inc.
  */
 
-#include <linux/version.h>
-#if LINUX_VERSION_CODE < KERNEL_VERSION(6, 12, 0)	/* header dropped in the vendor-free 6.12 tree; unused here */
-#include <linux/android_debug_symbols.h>
-#endif
 #include <linux/bug.h>
 #include <linux/compiler.h>
 #include <linux/elf.h>
@@ -28,7 +24,6 @@
 
 #include <asm/irq.h>
 #include <asm/kexec.h>
-#include "mrdump_helper.h"	/* aee_get_linux_banner (F3608) */
 #include <asm/page.h>
 #include <asm/pgtable.h>
 #include <asm/setup.h>
@@ -44,16 +39,6 @@
 #include "mrdump_private.h"
 
 static struct mrdump_mini_elf_header *mrdump_mini_ehdr;
-
-#ifdef MODULE
-#if !IS_ENABLED(CONFIG_ARM64)
-/*
- * Build error of 32bit KO:
- * ERROR: modpost: "init_mm" [../mrdump/mrdump.ko] undefined!
- */
-extern struct mm_struct init_mm __weak;
-#endif
-#endif
 
 
 #ifdef CONFIG_MODULES
@@ -106,7 +91,7 @@ static void fill_ko_list(unsigned int idx, struct module *mod)
 	struct elf_note *note;
 	int i, search_nm, build_id_sz = 0;
 
-	if (idx >= MAX_KO_NUM)
+	if (idx >= MAX_KO_NUM || !mod->sect_attrs || !mod->notes_attrs)
 		return;
 
 	search_nm = 2;
@@ -139,18 +124,13 @@ static void fill_ko_list(unsigned int idx, struct module *mod)
 		    MAX_KO_NAME_LEN, "%s", mod->name) > 0) {
 		ko_info_list[idx].text_addr = text_addr;
 		ko_info_list[idx].init_text_addr = init_addr;
-#if LINUX_VERSION_CODE < KERNEL_VERSION(6, 12, 0)
-		ko_info_list[idx].core_size = mod->core_layout.size;
-		ko_info_list[idx].init_size = mod->init_layout.size;
-#else	/* module memory split into mem[] in 6.12; text segment is the closest equivalent */
 		ko_info_list[idx].core_size = mod->mem[MOD_TEXT].size;
 		ko_info_list[idx].init_size = mod->mem[MOD_INIT_TEXT].size;
-#endif
 		if (build_id_sz && build_id_sz <= LEN_BUILD_ID)
 			memcpy(ko_info_list[idx].build_id, build_id,
 					build_id_sz);
 	} else {
-		memset(&ko_info_list[i], 0, sizeof(struct ko_info));
+		memset(&ko_info_list[idx], 0, sizeof(struct ko_info));
 	}
 }
 
@@ -205,29 +185,18 @@ void unload_ko_addr_list(struct module *module)
 
 void init_ko_addr_list_late(void)
 {
+	struct list_head *head = aee_get_modules();
 	struct module *mod;
-	struct list_head *p_modules = aee_get_modules();
-	int start = 0;
 
-	if (!ko_info_list)
+	if (!ko_info_list || !head)
 		return;
 
-	if (!p_modules) {
-		pr_info("%s failed", __func__);
-		return;
+	rcu_read_lock();
+	list_for_each_entry_rcu(mod, head, list) {
+		if (mod->state == MODULE_STATE_LIVE)
+			load_ko_addr_list(mod);
 	}
-
-	list_for_each_entry_rcu(mod, p_modules, list) {
-		if (mod->state == MODULE_STATE_UNFORMED)
-			continue;
-		if (!start) {
-			/* only update the early KOs */
-			if (!strcmp(mod->name, "mrdump"))
-				start = 1;
-			continue;
-		}
-		load_ko_addr_list(mod);
-	}
+	rcu_read_unlock();
 }
 #endif
 
@@ -421,6 +390,9 @@ void mrdump_mini_add_misc_pa(unsigned long va, unsigned long pa,
 	int i;
 	struct elf_note *note;
 
+	if (!mrdump_mini_ehdr)
+		return;
+
 	for (i = 0; i < MRDUMP_MINI_NR_MISC; i++) {
 		note = &mrdump_mini_ehdr->misc[i].note;
 		if (note->n_type == NT_IPANIC_MISC) {
@@ -504,7 +476,8 @@ static void mrdump_mini_build_task_info(struct pt_regs *regs)
 		tsk = tsk->real_parent;
 		if (!mrdump_virt_addr_valid(tsk)) {
 			pr_notice("tsk(0x%lx) invalid (previous: [%s, %d])\n",
-					tsk, previous->comm, previous->pid);
+					(unsigned long)tsk, previous->comm,
+					previous->pid);
 			break;
 		}
 	} while (tsk && (tsk->pid != 0) && (tsk->pid != 1));
@@ -717,9 +690,9 @@ void mrdump_mini_add_klog(void)
 	unsigned int cnt;
 
 	pprb = (struct printk_ringbuffer **)aee_log_buf_addr_get();
-	if (!pprb || !*pprb)
+	if (!pprb || get_kernel_nofault(prb, pprb) || !prb ||
+	    !mrdump_virt_addr_valid(prb))
 		return;
-	prb = *pprb;
 
 	cnt = 1 << prb->desc_ring.count_bits;
 
@@ -745,15 +718,29 @@ void mrdump_mini_add_klog(void)
 
 void mrdump_mini_add_kallsyms(void)
 {
-	unsigned long size, vaddr;
+	struct aee_kallsyms_layout layout;
+	unsigned long vaddr, size;
 
-	vaddr = aee_get_kallsyms_addresses();
-	vaddr = round_down(vaddr, PAGE_SIZE);
-	size = aee_get_kti_addresses() - vaddr + 512;
-	size = round_up(size, PAGE_SIZE);
-	if (vaddr)
-		mrdump_mini_add_misc_pa(vaddr, __pa_nodebug(vaddr),
-				size, 0, MRDUMP_MINI_MISC_LOAD);
+	if (!aee_get_kallsyms_layout(&layout))
+		return;
+	vaddr = round_down(layout.start, PAGE_SIZE);
+	size = round_up(layout.start + layout.size, PAGE_SIZE) - vaddr;
+	mrdump_mini_add_misc_pa(vaddr, __pa_nodebug(vaddr),
+			size, 0, MRDUMP_MINI_MISC_LOAD);
+}
+
+void mrdump_mini_add_version(void)
+{
+	unsigned long vaddr = aee_get_linux_banner();
+	char banner[256];
+
+	if (!vaddr ||
+	    copy_from_kernel_nofault(banner, (void *)vaddr, sizeof(banner) - 1))
+		return;
+	banner[sizeof(banner) - 1] = '\0';
+	if (!banner[0])
+		return;
+	mrdump_mini_add_misc(vaddr, strlen(banner), 0, "_VERSION_BR");
 }
 
 static void mrdump_mini_build_elf_misc(void)
@@ -776,10 +763,6 @@ static void mrdump_mini_build_elf_misc(void)
 	}
 	mrdump_mini_add_misc_pa(task_info_va, task_info_pa,
 			sizeof(struct aee_process_info), 0, "PROC_CUR_TSK");
-	/* could also use the kernel log in pstore for LKM case */
-#ifndef MODULE
-	mrdump_mini_add_klog();
-#endif
 	memset_io(&misc, 0, sizeof(struct mrdump_mini_elf_misc));
 	get_mbootlog_buffer(&misc.vaddr, &misc.size, &misc.start);
 	mrdump_mini_add_misc(misc.vaddr, misc.size, misc.start, "_LAST_KMSG");
@@ -800,25 +783,6 @@ static void mrdump_mini_build_elf_misc(void)
 				0, "_MODULES_INFO_");
 	}
 #endif
-	memset_io(&misc, 0, sizeof(struct mrdump_mini_elf_misc));
-#if LINUX_VERSION_CODE < KERNEL_VERSION(6, 12, 0)
-	misc.vaddr = (unsigned long)android_debug_symbol(ADS_LINUX_BANNER);
-#else	/* android_debug_symbols dropped in the vendor-free 6.12 tree. Take the address through the
-	 * module's own kallsyms helper instead of referencing the global: linux_banner is not an
-	 * exported symbol, so a direct reference would leave the module unloadable. */
-	misc.vaddr = aee_get_linux_banner();
-#endif
-	/* MINDONE (03.09.2026, first 6.12 boot): the 6.12 path resolves linux_banner through
-	 * kallsyms and that lookup can come back empty - on the first 6.12 boot it did, and
-	 * strlen(NULL) here took PID 1 down with a NULL dereference inside this module's init,
-	 * before userspace got anywhere. The banner is only a label inside the dump, so skip the
-	 * entry when the address is unknown instead of dying for it. */
-	if (!misc.vaddr) {
-		pr_notice("mrdump: linux_banner address unknown, skipping _VERSION_BR\n");
-		return;
-	}
-	misc.size = strlen((char *)misc.vaddr);
-	mrdump_mini_add_misc(misc.vaddr, misc.size, 0, "_VERSION_BR");
 }
 
 void mrdump_mini_add_hang_raw(unsigned long vaddr, unsigned long size)
@@ -935,9 +899,6 @@ int __init mrdump_mini_init(const struct mrdump_params *mparams)
 		mrdump_mini_add_misc_pa((unsigned long)mrdump_cblock,
 				mparams->cb_addr, mparams->cb_size,
 				0, MRDUMP_MINI_MISC_LOAD);
-#ifndef MODULE
-		mrdump_mini_add_kallsyms();
-#endif
 	}
 
 	vaddr = round_down((unsigned long)__per_cpu_offset, PAGE_SIZE);

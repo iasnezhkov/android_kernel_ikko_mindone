@@ -1901,7 +1901,7 @@ static ssize_t pmif_access_store(struct device_driver *ddri,
 					__func__, offset);
 			} else {
 				pr_info("%s() set offset[0x%x]=0x%x\n",
-					__func__, arb->base + offset, value);
+					__func__, offset, value);
 				writel(value, arb->base + offset);
 			}
 		}
@@ -1957,8 +1957,7 @@ static ssize_t spmi_access_store(struct device_driver *ddri,
 					__func__, offset);
 			} else {
 				pr_info("%s() set offset[0x%x]=0x%x\n",
-					__func__, arb->spmimst_base + offset,
-					value);
+					__func__, offset, value);
 				writel(value, arb->spmimst_base + offset);
 			}
 		}

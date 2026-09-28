@@ -12,7 +12,6 @@
  ******************************************************************************/
 #include <linux/cdev.h>
 #include <drivers/misc/mediatek/smi/mtk-smi-larb.h>
-#include <mindone/compat.h>
 #include <linux/device.h>
 #include <linux/interrupt.h>
 #include <linux/platform_device.h>
@@ -3116,7 +3115,7 @@ static signed int RSC_probe(struct platform_device *pDev)
 #endif
 
 		/* Create class register */
-		pRSCClass = MINDONE_CLASS_CREATE("RSCdrv");
+		pRSCClass = class_create("RSCdrv");
 		if (IS_ERR(pRSCClass)) {
 			Ret = PTR_ERR(pRSCClass);
 			LOG_ERR("Unable to create class, err = %d", Ret);

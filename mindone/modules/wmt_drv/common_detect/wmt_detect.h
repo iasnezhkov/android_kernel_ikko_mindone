@@ -14,8 +14,6 @@
 
 #ifndef _WMT_DETECT_H_
 #define _WMT_DETECT_H_
-
-#include <linux/version.h>
 #include <linux/init.h>
 #include <linux/module.h>
 #include <linux/types.h>

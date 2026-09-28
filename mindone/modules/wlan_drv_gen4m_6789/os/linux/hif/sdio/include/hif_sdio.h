@@ -253,11 +253,7 @@ extern void mtk_wcn_hif_sdio_get_dev(unsigned long ctx, struct device **dev);
 
 extern void mtk_wcn_hif_sdio_enable_irq(unsigned long ctx, int enable);
 
-#if KERNEL_VERSION(4, 4, 0) <= CFG80211_VERSION_CODE
 extern int32_t mtk_wcn_stp_sdio_wake_up_ctrl(unsigned long ctx);
-#else
-extern int32_t mtk_wcn_hif_sdio_wake_up_ctrl(unsigned long ctx);
-#endif
 
 
 /*******************************************************************************

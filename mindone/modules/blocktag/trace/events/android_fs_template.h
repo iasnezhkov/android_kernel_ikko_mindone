@@ -2,7 +2,6 @@
 #define _TRACE_ANDROID_FS_TEMPLATE_H
 
 #include <linux/tracepoint.h>
-#include <mindone/compat.h>
 
 DECLARE_EVENT_CLASS(android_fs_data_start_template,
 	TP_PROTO(struct inode *inode, loff_t offset, int bytes,
@@ -24,12 +23,12 @@ DECLARE_EVENT_CLASS(android_fs_data_start_template,
 			 * because this screws up the tooling that parses
 			 * the traces.
 			 */
-			MINDONE_ASSIGN_STR(pathbuf, pathname);
+			__assign_str(pathbuf);
 			(void)strreplace(__get_str(pathbuf), ' ', '_');
 			__entry->offset		= offset;
 			__entry->bytes		= bytes;
 			__entry->i_size		= i_size_read(inode);
-			MINDONE_ASSIGN_STR(cmdline, command);
+			__assign_str(cmdline);
 			(void)strreplace(__get_str(cmdline), ' ', '_');
 			__entry->pid		= pid;
 			__entry->ino		= inode->i_ino;

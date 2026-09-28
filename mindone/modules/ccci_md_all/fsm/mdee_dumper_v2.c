@@ -29,8 +29,8 @@ static void ccci_aed_v2(struct ccci_fsm_ee *mdee, unsigned int dump_flag,
 {
 	void *ex_log_addr = NULL;
 	int ex_log_len = 0;
-	void *md_img_addr = NULL;
-	int md_img_len = 0;
+	void *md_img_addr __maybe_unused = NULL;
+	int md_img_len __maybe_unused = 0;
 	int info_str_len = 0;
 	char *buff;		/*[AED_STR_LEN]; */
 #if IS_ENABLED(CONFIG_MTK_AEE_FEATURE)
@@ -490,6 +490,7 @@ static int mdee_pl_core_parse(int md_id, struct debug_info_t *debug_info,
 		ee_type = ee_type - MD_EX_CC_INVALID_EXCEPTION
 					+ MD_EX_PL_FATALE_TOTAL;
 		/* Fall through */
+		fallthrough;
 	case MD_EX_PL_UNDEF:
 		/* Fall through */
 	case MD_EX_PL_SWI:

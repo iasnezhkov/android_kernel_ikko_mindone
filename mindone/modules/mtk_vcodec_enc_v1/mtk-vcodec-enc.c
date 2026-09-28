@@ -6,7 +6,6 @@
 */
 
 #include <media/v4l2-event.h>
-#include <mindone/compat.h>
 #include <media/v4l2-mem2mem.h>
 #include <media/videobuf2-dma-contig.h>
 #include <soc/mediatek/smi.h>
@@ -192,6 +191,8 @@ static void get_vcu_vpud_log(struct mtk_vcodec_ctx *ctx, void *out)
 static void get_supported_format(struct mtk_vcodec_ctx *ctx)
 {
 	unsigned int i;
+	unsigned int h265_idx = MTK_MAX_ENC_CODECS_SUPPORT;
+	unsigned int free_idx = MTK_MAX_ENC_CODECS_SUPPORT;
 
 	if (mtk_venc_formats[0].fourcc == 0) {
 		if (venc_if_get_param(ctx,
@@ -199,6 +200,22 @@ static void get_supported_format(struct mtk_vcodec_ctx *ctx)
 			&mtk_venc_formats) != 0) {
 			mtk_v4l2_err("Error!! Cannot get supported format");
 			return;
+		}
+		for (i = 0; i < MTK_MAX_ENC_CODECS_SUPPORT; i++) {
+			if (mtk_venc_formats[i].fourcc == 0) {
+				free_idx = i;
+				break;
+			}
+			if (mtk_venc_formats[i].fourcc == V4L2_PIX_FMT_H265 &&
+				mtk_venc_formats[i].type == MTK_FMT_ENC)
+				h265_idx = i;
+		}
+		if (h265_idx < MTK_MAX_ENC_CODECS_SUPPORT &&
+			free_idx < MTK_MAX_ENC_CODECS_SUPPORT) {
+			mtk_venc_formats[free_idx].fourcc = V4L2_PIX_FMT_HEVC;
+			mtk_venc_formats[free_idx].type = MTK_FMT_ENC;
+			mtk_venc_formats[free_idx].num_planes =
+				mtk_venc_formats[h265_idx].num_planes;
 		}
 		for (i = 0; i < MTK_MAX_ENC_CODECS_SUPPORT; i++) {
 			if (mtk_venc_formats[i].fourcc != 0 &&
@@ -220,6 +237,8 @@ static void get_supported_format(struct mtk_vcodec_ctx *ctx)
 static void get_supported_framesizes(struct mtk_vcodec_ctx *ctx)
 {
 	unsigned int i;
+	unsigned int h265_idx = MTK_MAX_ENC_CODECS_SUPPORT;
+	unsigned int free_idx = MTK_MAX_ENC_CODECS_SUPPORT;
 
 	if (mtk_venc_framesizes[0].fourcc == 0) {
 		if (venc_if_get_param(ctx, GET_PARAM_VENC_CAP_FRAME_SIZES,
@@ -227,6 +246,20 @@ static void get_supported_framesizes(struct mtk_vcodec_ctx *ctx)
 			mtk_v4l2_err("[%d] Error!! Cannot get frame size",
 				ctx->id);
 			return;
+		}
+
+		for (i = 0; i < MTK_MAX_ENC_CODECS_SUPPORT; i++) {
+			if (mtk_venc_framesizes[i].fourcc == 0) {
+				free_idx = i;
+				break;
+			}
+			if (mtk_venc_framesizes[i].fourcc == V4L2_PIX_FMT_H265)
+				h265_idx = i;
+		}
+		if (h265_idx < MTK_MAX_ENC_CODECS_SUPPORT &&
+		    free_idx < MTK_MAX_ENC_CODECS_SUPPORT) {
+			mtk_venc_framesizes[free_idx] = mtk_venc_framesizes[h265_idx];
+			mtk_venc_framesizes[free_idx].fourcc = V4L2_PIX_FMT_HEVC;
 		}
 
 		for (i = 0; i < MTK_MAX_ENC_CODECS_SUPPORT; i++) {
@@ -1601,9 +1634,9 @@ static int vidioc_venc_qbuf(struct file *file, void *priv,
 
 	// Check if need to proceed cache operations
 	vq = v4l2_m2m_get_vq(ctx->m2m_ctx, buf->type);
-	if (buf->index >= MINDONE_VB2_NUM_BUFFERS(vq)) {
+	if (buf->index >= vb2_get_num_buffers(vq)) {
 		mtk_v4l2_err("[%d] buffer index %d out of range %d",
-			ctx->id, buf->index, MINDONE_VB2_NUM_BUFFERS(vq));
+			ctx->id, buf->index, vb2_get_num_buffers(vq));
 		return -EINVAL;
 	}
 	if (IS_ERR_OR_NULL(buf->m.planes) || buf->length == 0) {
@@ -1674,8 +1707,8 @@ static int vidioc_venc_qbuf(struct file *file, void *priv,
 		mtkbuf->frm_buf.sgt = dma_buf_map_attachment(mtkbuf->frm_buf.buf_att,
 			DMA_TO_DEVICE);
 		if (IS_ERR_OR_NULL(mtkbuf->frm_buf.sgt)) {
-			mtk_v4l2_err("dma_buf_map_attachment fail %d.\n",
-				mtkbuf->frm_buf.sgt);
+			mtk_v4l2_err("dma_buf_map_attachment fail %ld.\n",
+				PTR_ERR(mtkbuf->frm_buf.sgt));
 			dma_buf_detach(mtkbuf->frm_buf.meta_dma, mtkbuf->frm_buf.buf_att);
 			return -EINVAL;
 		}
@@ -1706,8 +1739,8 @@ static int vidioc_venc_qbuf(struct file *file, void *priv,
 		mtkbuf->frm_buf.qpmap_sgt = dma_buf_map_attachment(mtkbuf->frm_buf.qpmap_dma_att,
 			DMA_TO_DEVICE);
 		if (IS_ERR_OR_NULL(mtkbuf->frm_buf.qpmap_sgt)) {
-			mtk_v4l2_err("dma_buf_map_attachment fail %d.\n",
-				mtkbuf->frm_buf.qpmap_sgt);
+			mtk_v4l2_err("dma_buf_map_attachment fail %ld.\n",
+				PTR_ERR(mtkbuf->frm_buf.qpmap_sgt));
 			dma_buf_detach(mtkbuf->frm_buf.qpmap_dma, mtkbuf->frm_buf.qpmap_dma_att);
 			return -EINVAL;
 		}
@@ -1746,7 +1779,7 @@ static int vidioc_venc_qbuf(struct file *file, void *priv,
 			dev);
 		meta_sgt = dma_buf_map_attachment(meta_buf_att, DMA_TO_DEVICE);
 		if (IS_ERR_OR_NULL(meta_sgt)) {
-			mtk_v4l2_err("dma_buf_map_attachment fail %d.\n", meta_sgt);
+			mtk_v4l2_err("dma_buf_map_attachment fail %ld.\n", PTR_ERR(meta_sgt));
 			dma_buf_detach(mtkbuf->frm_buf.metabuffer_dma, meta_buf_att);
 			dma_buf_put(mtkbuf->frm_buf.metabuffer_dma);
 			return -EINVAL;
@@ -1820,8 +1853,8 @@ static int vidioc_venc_qbuf(struct file *file, void *priv,
 					qpmap_meta_sgt = dma_buf_map_attachment(qpmap_buf_att,
 						DMA_TO_DEVICE);
 					if (IS_ERR_OR_NULL(qpmap_meta_sgt)) {
-						mtk_v4l2_err("dma_buf_map_attachment fail %d.\n",
-							qpmap_meta_sgt);
+						mtk_v4l2_err("dma_buf_map_attachment fail %ld.\n",
+							PTR_ERR(qpmap_meta_sgt));
 						dma_buf_detach(mtkbuf->frm_buf.qpmap_dma,
 							qpmap_buf_att);
 						dma_buf_put(mtkbuf->frm_buf.qpmap_dma);
@@ -2072,7 +2105,7 @@ static int vb2ops_venc_buf_prepare(struct vb2_buffer *vb)
 			buf_att->dma_map_attrs |= DMA_ATTR_SKIP_CPU_SYNC;
 			sgt = dma_buf_map_attachment(buf_att, DMA_TO_DEVICE);
 			if (IS_ERR_OR_NULL(sgt)) {
-				mtk_v4l2_err("dma_buf_map_attachment fail %d.\n", sgt);
+				mtk_v4l2_err("dma_buf_map_attachment fail %ld.\n", PTR_ERR(sgt));
 				dma_buf_detach(vb->planes[i].dbuf, buf_att);
 				return -EINVAL;
 			}
@@ -2124,7 +2157,7 @@ static void vb2ops_venc_buf_finish(struct vb2_buffer *vb)
 			buf_att->dma_map_attrs |= DMA_ATTR_SKIP_CPU_SYNC;
 			sgt = dma_buf_map_attachment(buf_att, DMA_FROM_DEVICE);
 			if (IS_ERR_OR_NULL(sgt)) {
-				mtk_v4l2_err("dma_buf_map_attachment fail %d.\n", sgt);
+				mtk_v4l2_err("dma_buf_map_attachment fail %ld.\n", PTR_ERR(sgt));
 				dma_buf_detach(vb->planes[0].dbuf, buf_att);
 				return;
 			}
@@ -2259,6 +2292,7 @@ static int vb2ops_venc_start_streaming(struct vb2_queue *q, unsigned int count)
 
 	if ((ctx->q_data[MTK_Q_DATA_DST].fmt->fourcc == V4L2_PIX_FMT_H264 ||
 	     ctx->q_data[MTK_Q_DATA_DST].fmt->fourcc == V4L2_PIX_FMT_H265 ||
+	     ctx->q_data[MTK_Q_DATA_DST].fmt->fourcc == V4L2_PIX_FMT_HEVC ||
 	     ctx->q_data[MTK_Q_DATA_DST].fmt->fourcc == V4L2_PIX_FMT_HEIF ||
 	     ctx->q_data[MTK_Q_DATA_DST].fmt->fourcc == V4L2_PIX_FMT_MPEG4) &&
 	    (ctx->enc_params.seq_hdr_mode !=
@@ -2289,7 +2323,7 @@ static int vb2ops_venc_start_streaming(struct vb2_queue *q, unsigned int count)
 	return 0;
 
 err_set_param:
-	for (i = 0; i < MINDONE_VB2_NUM_BUFFERS(q); ++i) {
+	for (i = 0; i < vb2_get_num_buffers(q); ++i) {
 		if (q->bufs[i]->state == VB2_BUF_STATE_ACTIVE) {
 			mtk_v4l2_debug(0, "[%d] id=%d, type=%d, %d -> VB2_BUF_STATE_QUEUED",
 					ctx->id, i, q->type,
@@ -2327,7 +2361,7 @@ static void vb2ops_venc_stop_streaming(struct vb2_queue *q)
 			if (ret == -EIO) {
 				dstq = &ctx->m2m_ctx->cap_q_ctx.q;
 				srcq = &ctx->m2m_ctx->out_q_ctx.q;
-				for (i = 0; i < MINDONE_VB2_NUM_BUFFERS(dstq); i++) {
+				for (i = 0; i < vb2_get_num_buffers(dstq); i++) {
 					dst_vb2_v4l2 = container_of(
 						dstq->bufs[i], struct vb2_v4l2_buffer, vb2_buf);
 					dstbuf = container_of(
@@ -2336,7 +2370,7 @@ static void vb2ops_venc_stop_streaming(struct vb2_queue *q)
 						v4l2_m2m_buf_done(&dstbuf->vb, VB2_BUF_STATE_ERROR);
 				}
 
-				for (i = 0; i < MINDONE_VB2_NUM_BUFFERS(srcq); i++) {
+				for (i = 0; i < vb2_get_num_buffers(srcq); i++) {
 					src_vb2_v4l2 = container_of(
 						srcq->bufs[i], struct vb2_v4l2_buffer, vb2_buf);
 					srcbuf = container_of(
@@ -2773,7 +2807,7 @@ void mtk_venc_check_queue_cnt(struct mtk_vcodec_ctx *ctx, struct vb2_queue *vq)
 	mtk_v4l2_debug(0,
 		"[%d] type %d queued_cnt %d done_cnt %d rdy_q_cnt %d tatal %d",
 		ctx->id, vq->type, vq->queued_count,
-		done_list_cnt, rdy_q_cnt, MINDONE_VB2_NUM_BUFFERS(vq));
+		done_list_cnt, rdy_q_cnt, vb2_get_num_buffers(vq));
 }
 
 /*
@@ -3012,6 +3046,7 @@ static void m2mops_venc_device_run(void *priv)
 
 	if ((ctx->q_data[MTK_Q_DATA_DST].fmt->fourcc == V4L2_PIX_FMT_H264 ||
 	     ctx->q_data[MTK_Q_DATA_DST].fmt->fourcc == V4L2_PIX_FMT_H265 ||
+	     ctx->q_data[MTK_Q_DATA_DST].fmt->fourcc == V4L2_PIX_FMT_HEVC ||
 	     ctx->q_data[MTK_Q_DATA_DST].fmt->fourcc == V4L2_PIX_FMT_HEIF ||
 	     ctx->q_data[MTK_Q_DATA_DST].fmt->fourcc == V4L2_PIX_FMT_MPEG4 ||
 	     ctx->q_data[MTK_Q_DATA_DST].fmt->fourcc == V4L2_PIX_FMT_H263) &&
@@ -3167,7 +3202,7 @@ int mtk_vcodec_enc_ctrls_setup(struct mtk_vcodec_ctx *ctx)
 		V4L2_MPEG_VIDEO_H264_PROFILE_HIGH_10,
 		0, V4L2_MPEG_VIDEO_H264_PROFILE_BASELINE);
 	v4l2_ctrl_new_std_menu(handler, ops, V4L2_CID_MPEG_VIDEO_HEVC_PROFILE,
-		V4L2_MPEG_VIDEO_HEVC_PROFILE_MAIN,
+		V4L2_MPEG_VIDEO_HEVC_PROFILE_MAIN_10,
 		0, V4L2_MPEG_VIDEO_HEVC_PROFILE_MAIN);
 	v4l2_ctrl_new_std_menu(handler, ops, V4L2_CID_MPEG_VIDEO_MPEG4_PROFILE,
 		V4L2_MPEG_VIDEO_MPEG4_PROFILE_SIMPLE,
@@ -3580,8 +3615,6 @@ int mtk_vcodec_enc_ctrls_setup(struct mtk_vcodec_ctx *ctx)
 	return 0;
 }
 
-/* MINDONE-ABI-3170 (F3170): on 6.1 vb2_mem_ops.attach_dmabuf = (vb, dev, dbuf, size);
- * the old 5.10 signature (dev, dbuf, size, dir) took dev for dma_buf -> Oops. */
 static void *mtk_venc_dc_attach_dmabuf(struct vb2_buffer *vb, struct device *dev,
 	struct dma_buf *dbuf, unsigned long size)
 {

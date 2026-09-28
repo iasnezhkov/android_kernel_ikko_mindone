@@ -5,7 +5,6 @@
 #include <linux/device.h>
 #include <linux/usb/storage.h>
 #include <scsi/scsi.h>
-#include <mindone/compat.h>
 
 #ifndef DEBUG
 #undef VERBOSE_DEBUG

@@ -522,13 +522,14 @@ void cnmTimerStartTimer(IN struct ADAPTER *prAdapter, IN struct TIMER *prTimer,
 	rExpiredSysTime = rCurSysTime + rTimeoutSystime;
 
 	/* Check if root timer expired but not timeout. */
-	if (TIME_BEFORE(prRootTimer->rNextExpiredSysTime, rCurSysTime) &&
+	if (!LINK_IS_EMPTY(prTimerList) &&
+		TIME_BEFORE(prRootTimer->rNextExpiredSysTime, rCurSysTime) &&
 		!test_bit(GLUE_FLAG_TIMEOUT_BIT,
 				       &prAdapter->prGlueInfo->ulFlag)) {
-		/* MINDONE (P38): benign race (root timer expired, timeout bit not yet
-		 * set); it fired 150+ times per log window. Rate-limited, kept at WARN. */
-		log_limited_dbg(CNM, WARN, "Invalid NextExpiredSysTime: %u, currentSysTime: %u\n",
-			prRootTimer->rNextExpiredSysTime, rCurSysTime);
+		if (TIME_BEFORE(prRootTimer->rNextExpiredSysTime +
+				MSEC_TO_SYSTIME(MSEC_PER_SEC), rCurSysTime))
+			log_limited_dbg(CNM, WARN, "Invalid NextExpiredSysTime: %u, currentSysTime: %u\n",
+				prRootTimer->rNextExpiredSysTime, rCurSysTime);
 		set_bit(GLUE_FLAG_TIMEOUT_BIT,
 				       &prAdapter->prGlueInfo->ulFlag);
 	}

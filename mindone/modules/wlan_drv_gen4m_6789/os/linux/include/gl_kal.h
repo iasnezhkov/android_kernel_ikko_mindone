@@ -92,9 +92,7 @@
 
 #include "linux/kallsyms.h"
 #include "linux/sched.h"
-#if KERNEL_VERSION(4, 11, 0) <= CFG80211_VERSION_CODE
 #include "linux/sched/types.h"
-#endif
 
 #if CFG_SUPPORT_SCAN_CACHE_RESULT
 #include "wireless/core.h"
@@ -315,13 +313,7 @@ enum ENUM_KAL_MEM_ALLOCATION_TYPE_E {
 };
 
 #ifdef CONFIG_ANDROID		/* Defined in Android kernel source */
-#if (KERNEL_VERSION(4, 19, 0) <= CFG80211_VERSION_CODE)
 #define KAL_WAKE_LOCK_T struct wakeup_source
-#elif (KERNEL_VERSION(4, 9, 0) <= CFG80211_VERSION_CODE)
-#define KAL_WAKE_LOCK_T struct wakeup_source
-#else
-#define KAL_WAKE_LOCK_T struct wake_lock
-#endif
 #else
 #define KAL_WAKE_LOCK_T uint32_t
 #endif
@@ -466,15 +458,9 @@ struct PWR_LEVEL_HANDLER_ELEMENT {
 /*----------------------------------------------------------------------------*/
 /* Macros for kernel related defines                      */
 /*----------------------------------------------------------------------------*/
-#if KERNEL_VERSION(3, 14, 0) > CFG80211_VERSION_CODE
-#define IEEE80211_CHAN_PASSIVE_FLAG	IEEE80211_CHAN_PASSIVE_SCAN
-#define IEEE80211_CHAN_PASSIVE_STR		"PASSIVE"
-#else
 #define IEEE80211_CHAN_PASSIVE_FLAG	IEEE80211_CHAN_NO_IR
 #define IEEE80211_CHAN_PASSIVE_STR		"NO_IR"
-#endif
 
-#if KERNEL_VERSION(4, 7, 0) <= CFG80211_VERSION_CODE
 /**
  * enum nl80211_band - Frequency band
  * @NL80211_BAND_2GHZ: 2.4 GHz ISM band
@@ -489,11 +475,6 @@ struct PWR_LEVEL_HANDLER_ELEMENT {
 #define KAL_BAND_6GHZ NL80211_BAND_6GHZ
 #endif
 #define KAL_NUM_BANDS NUM_NL80211_BANDS
-#else
-#define KAL_BAND_2GHZ IEEE80211_BAND_2GHZ
-#define KAL_BAND_5GHZ IEEE80211_BAND_5GHZ
-#define KAL_NUM_BANDS IEEE80211_NUM_BANDS
-#endif
 
 /**
  * enum nl80211_reg_rule_flags - regulatory rule flags
@@ -505,11 +486,7 @@ struct PWR_LEVEL_HANDLER_ELEMENT {
  */
 #define KAL_RRF_NO_OFDM NL80211_RRF_NO_OFDM
 #define KAL_RRF_DFS     NL80211_RRF_DFS
-#if KERNEL_VERSION(3, 15, 0) > CFG80211_VERSION_CODE
-#define KAL_RRF_AUTO_BW 0
-#else
 #define KAL_RRF_AUTO_BW NL80211_RRF_AUTO_BW
-#endif
 
 /**
  * kalCfg80211ScanDone - abstraction of cfg80211_scan_done
@@ -521,7 +498,6 @@ struct PWR_LEVEL_HANDLER_ELEMENT {
  * Since linux-4.8.y the 2nd parameter is changed from bool to
  * struct cfg80211_scan_info, but we don't use all fields yet.
  */
-#if KERNEL_VERSION(4, 8, 0) <= CFG80211_VERSION_CODE
 static inline void kalCfg80211ScanDone(struct cfg80211_scan_request *request,
 				       bool aborted)
 {
@@ -529,13 +505,6 @@ static inline void kalCfg80211ScanDone(struct cfg80211_scan_request *request,
 
 	cfg80211_scan_done(request, &info);
 }
-#else
-static inline void kalCfg80211ScanDone(struct cfg80211_scan_request *request,
-				       bool aborted)
-{
-	cfg80211_scan_done(request, aborted);
-}
-#endif
 
 /* Consider on some Android platform, using request_firmware_direct()
  * may cause system failed to load firmware. So we still use
@@ -549,8 +518,6 @@ static inline void kalCfg80211ScanDone(struct cfg80211_scan_request *request,
 /*----------------------------------------------------------------------------*/
 #if defined(CONFIG_ANDROID) && (CFG_ENABLE_WAKE_LOCK)
 /* CONFIG_ANDROID is defined in Android kernel source */
-#if (KERNEL_VERSION(4, 9, 0) <= LINUX_VERSION_CODE)
-#if (KERNEL_VERSION(4, 14, 149) <= LINUX_VERSION_CODE)
 #define KAL_WAKE_LOCK_INIT(_prAdapter, _prWakeLock, _pcName) \
 	_prWakeLock = wakeup_source_register(NULL, _pcName);
 
@@ -559,28 +526,6 @@ static inline void kalCfg80211ScanDone(struct cfg80211_scan_request *request,
 	wakeup_source_unregister(_prWakeLock); \
 	_prWakeLock = NULL; \
 }
-#else
-#define KAL_WAKE_LOCK_INIT(_prAdapter, _prWakeLock, _pcName) \
-{ \
-	_prWakeLock = kalMemAlloc(sizeof(KAL_WAKE_LOCK_T), \
-		VIR_MEM_TYPE); \
-	if (!_prWakeLock) { \
-		DBGLOG(HAL, ERROR, \
-			"KAL_WAKE_LOCK_INIT init fail!\n"); \
-	} \
-	else { \
-		wakeup_source_init(_prWakeLock, _pcName); \
-	} \
-}
-
-#define KAL_WAKE_LOCK_DESTROY(_prAdapter, _prWakeLock) \
-{ \
-	if (_prWakeLock) { \
-		wakeup_source_trash(_prWakeLock); \
-		_prWakeLock = NULL; \
-	} \
-}
-#endif
 #define KAL_WAKE_LOCK(_prAdapter, _prWakeLock) \
 { \
 	if (_prWakeLock) { \
@@ -605,51 +550,6 @@ static inline void kalCfg80211ScanDone(struct cfg80211_scan_request *request,
 #define KAL_WAKE_LOCK_ACTIVE(_prAdapter, _prWakeLock) \
 	((_prWakeLock) && ((_prWakeLock)->active))
 
-#else
-#define KAL_WAKE_LOCK_INIT(_prAdapter, _prWakeLock, _pcName) \
-{ \
-	_prWakeLock = kalMemAlloc(sizeof(KAL_WAKE_LOCK_T), \
-		VIR_MEM_TYPE); \
-	if (!_prWakeLock) { \
-		DBGLOG(HAL, ERROR, \
-			"KAL_WAKE_LOCK_INIT init fail!\n"); \
-	} \
-	else { \
-		wake_lock_init(_prWakeLock, WAKE_LOCK_SUSPEND, _pcName); \
-	} \
-}
-
-#define KAL_WAKE_LOCK_DESTROY(_prAdapter, _prWakeLock) \
-{ \
-	if (_prWakeLock) { \
-		wake_lock_destroy(_prWakeLock); \
-	} \
-}
-
-#define KAL_WAKE_LOCK(_prAdapter, _prWakeLock) \
-{ \
-	if (_prWakeLock) { \
-		wake_lock(_prWakeLock); \
-	} \
-}
-
-#define KAL_WAKE_LOCK_TIMEOUT(_prAdapter, _prWakeLock, _u4Timeout) \
-{ \
-	if (_prWakeLock) { \
-		wake_lock_timeout(_prWakeLock, _u4Timeout); \
-	} \
-}
-
-#define KAL_WAKE_UNLOCK(_prAdapter, _prWakeLock) \
-{ \
-	if (_prWakeLock) { \
-		wake_unlock(_prWakeLock); \
-	} \
-}
-
-#define KAL_WAKE_LOCK_ACTIVE(_prAdapter, _prWakeLock) \
-		((_prWakeLock) && wake_lock_active(_prWakeLock))
-#endif
 
 #else
 #define KAL_WAKE_LOCK_INIT(_prAdapter, _prWakeLock, _pcName)
@@ -805,9 +705,7 @@ static inline void kalCfg80211ScanDone(struct cfg80211_scan_request *request,
 #define kalMemMove(pvDst, pvSrc, u4Size)  \
 	memmove(pvDst, pvSrc, u4Size)
 
-#if KERNEL_VERSION(4, 0, 0) <= LINUX_VERSION_CODE
 #define strnicmp(s1, s2, n)                         strncasecmp(s1, s2, n)
-#endif
 
 /* string operation */
 #define kalStrCpy(dest, src)               strcpy(dest, src)
@@ -963,12 +861,8 @@ do { \
 #define MSEC_TO_JIFFIES(_msec)      msecs_to_jiffies(_msec)
 #define JIFFIES_TO_MSEC(_jiffie)    jiffies_to_msecs(_jiffie)
 
-#if KERNEL_VERSION(5, 4, 0) <= LINUX_VERSION_CODE
 #define get_ds() KERNEL_DS
 #define kal_access_ok(type, addr, size) access_ok(addr, size)
-#else
-#define kal_access_ok(type, addr, size) access_ok(type, addr, size)
-#endif
 #define KAL_TIME_INTERVAL_DECLARATION()     struct timespec64 __rTs, __rTe
 #define KAL_REC_TIME_START()                ktime_get_ts64(&__rTs)
 #define KAL_REC_TIME_END()                  ktime_get_ts64(&__rTe)
@@ -1471,11 +1365,7 @@ uint8_t kalUpdateBssTimestamp(IN struct GLUE_INFO *prGlueInfo);
 
 uint32_t kalRandomNumber(void);
 
-#if KERNEL_VERSION(4, 15, 0) <= LINUX_VERSION_CODE
 void kalTimeoutHandler(struct timer_list *timer);
-#else
-void kalTimeoutHandler(unsigned long arg);
-#endif
 
 void kalSetEvent(struct GLUE_INFO *pr);
 
@@ -1621,6 +1511,10 @@ void kalSetNetAddressFromInterface(IN struct GLUE_INFO
 				   IN struct net_device *prDev,
 				   IN u_int8_t fgSet);
 
+void kalSetWfcKeepAlive(IN struct GLUE_INFO *prGlueInfo,
+			 IN struct net_device *prDev,
+			 IN u_int8_t fgSuspend);
+
 uint32_t kalResetStats(IN struct net_device *prDev);
 
 void *kalGetStats(IN struct net_device *prDev);
@@ -1731,20 +1625,12 @@ int32_t kalPerMonSetForceEnableFlag(uint8_t uFlag);
 int32_t kalFbNotifierReg(IN struct GLUE_INFO *prGlueInfo);
 void kalFbNotifierUnReg(void);
 
-#if KERNEL_VERSION(3, 0, 0) <= LINUX_VERSION_CODE
 /* since: 0b5c9db1b11d3175bb42b80663a9f072f801edf5 */
 static inline void kal_skb_reset_mac_len(struct sk_buff
 		*skb)
 {
 	skb_reset_mac_len(skb);
 }
-#else
-static inline void kal_skb_reset_mac_len(struct sk_buff
-		*skb)
-{
-	skb->mac_len = skb->network_header - skb->mac_header;
-}
-#endif
 
 void kalInitDevWakeup(struct ADAPTER *prAdapter, struct device *prDev);
 
@@ -1775,11 +1661,7 @@ kalChannelFormatSwitch(IN struct cfg80211_chan_def *channel_def,
 
 #if CFG_SUPPORT_RX_GRO
 void kalSetGROEvent2Rx(struct GLUE_INFO *pr);
-#if KERNEL_VERSION(4, 15, 0) <= CFG80211_VERSION_CODE
 void kalGROTimerFunc(struct timer_list *timer);
-#else
-void kalGROTimerFunc(unsigned long data);
-#endif
 void kalGROTimerInit(struct ADAPTER *prAdapter);
 void kalGROTimerUninit(struct ADAPTER *prAdapter);
 uint32_t kal_is_skb_gro(struct ADAPTER *prAdapter, uint8_t ucBssIdx);

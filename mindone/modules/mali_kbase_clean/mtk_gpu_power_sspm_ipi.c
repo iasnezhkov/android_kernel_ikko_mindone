@@ -215,9 +215,6 @@ int MTKGPUPower_model_init(void) {
 	int ret;
 	_tinfo = get_scmi_tinysys_info();
 	ipi_register_flag = true;
-	/* F3767: on 6.12 the scmi tinysys provider may not be registered yet at this
-	 * point (init order differs from 6.1); get_scmi_tinysys_info() returns NULL and
-	 * dereferencing _tinfo->sdev would Oops (same class as F3703). Degrade instead. */
 	if (!_tinfo || !_tinfo->sdev) {
 		pr_info("MTKGPUPower: scmi tinysys not ready, sspm ipi disabled\n");
 		ipi_register_flag = false;

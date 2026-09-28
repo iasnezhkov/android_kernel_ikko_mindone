@@ -312,12 +312,12 @@ static int mtk_mmc_need_use_rising_edge(struct msdc_host *host)
  **********************************************************/
 
 /* define the function to shrink code's column */
-static void rx_read(struct msdc_host *host, unsigned int value)
+static void rx_read(struct msdc_host *host)
 {
 	int i = 0;
 
 	for (i = 0; i < (MSDC_FIFO_SZ - 64)/4; i++)
-		value = readl(host->base + MSDC_RXDATA);
+		readl(host->base + MSDC_RXDATA);
 }
 
 static int autok_send_tune_cmd(struct msdc_host *host, unsigned int opcode,
@@ -611,7 +611,7 @@ static int autok_send_tune_cmd(struct msdc_host *host, unsigned int opcode,
 
 					if ((fifo_1k_cnt >= MSDC_FIFO_THD_1K)
 					&& (fifo_have > MSDC_FIFO_SZ - 64))
-						rx_read(host, value);
+						rx_read(host);
 				}
 			}
 		} else if ((tune_type_value == TUNE_SDIO_PLUS)
@@ -985,6 +985,7 @@ static int autok_pad_dly_sel(struct AUTOK_REF_INFO *pInfo)
 	case 3:
 		AUTOK_RAWPRINT("[ATUOK]Warn:Many Full bd cnt:%d\r\n",
 			FBound_Cnt_R);
+		fallthrough;
 	case 2:	/* mode_1 : 2 full boudary */
 		for (i = 0; i < BD_MAX_CNT; i++) {
 			if (pBdInfo_R->bd_info[i].is_fullbound) {

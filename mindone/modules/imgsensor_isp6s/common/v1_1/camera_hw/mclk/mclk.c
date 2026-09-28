@@ -4,7 +4,7 @@
  */
 
 #include "mclk.h"
-#include <linux/pinctrl/consumer.h>	/* devm_pinctrl_get: 6.12 no longer pulls it in implicitly */
+#include <linux/pinctrl/consumer.h>
 struct MCLK_PINCTRL_NAMES mclk_pinctrl[MCLK_STATE_MAX_NUM] = {
 	{"off"},
 	{"2mA"},

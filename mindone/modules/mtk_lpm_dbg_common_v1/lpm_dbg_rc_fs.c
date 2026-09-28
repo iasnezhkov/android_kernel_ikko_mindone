@@ -20,8 +20,6 @@
 #include <mtk_lpm_sysfs.h>
 #include <mtk_lp_sysfs.h>
 #include <lpm_timer.h>
-/* MINDONE: on 6.12 <linux/of.h> is no longer pulled in transitively, and the file uses
- * the device-tree helpers directly. */
 #include <linux/of.h>
 
 #define SPM_RC_UPDATE_COND_ID_MASK	0xffff

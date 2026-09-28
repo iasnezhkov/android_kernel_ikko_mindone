@@ -1,17 +1,4 @@
 // SPDX-License-Identifier: GPL-2.0
-/*
- * mindone_ufs_screen - screen-gated UFS clock scaling for the iKKO MindOne (MT6789).
- *
- * The UFS devfreq clock scaling (26 <-> 192 MHz, F4256) saves power at idle but costs UX when
- * it is active while the user interacts: storage drops to 26 MHz between flings and the next
- * page-in stalls, cold starts wait for the ramp (UX rig F4279/F4280: 22 -> 5 freezes, 3 -> 0 slow
- * launches once the floor is pinned at 192 MHz). This module keeps the floor at 192 MHz while the
- * display is on and removes it while the display is off, so scaling only runs when nobody is
- * looking - the best of both. It uses a DEV_PM_QOS_MIN_FREQUENCY request on the UFS host device,
- * which devfreq honours exactly like a write to min_freq in sysfs, and the MediaTek display blank
- * notifier for the screen state. Requires ufs_mediatek.mindone_clkscale=1 (devfreq registered);
- * without it the module has nothing to gate and simply stays idle.
- */
 #include <linux/device.h>
 #include <linux/module.h>
 #include <linux/notifier.h>
@@ -36,13 +23,9 @@ static DEFINE_MUTEX(lock);
 static void set_floor(bool on)
 {
 	mutex_lock(&lock);
-	/* screen_on_khz = 0 only stops new pins; an active one is still released on display off,
-	 * otherwise writing 0 while the screen is on left the floor pinned until reboot (19.09). */
 	if (!ufs_dev || (on && !screen_on_khz))
 		goto out;
 	if (on && !req_active) {
-		/* Returns 1 when the aggregate constraint changed, 0 when it did not, <0 on error:
-		 * the request is registered in both non-negative cases (F4283). */
 		if (dev_pm_qos_add_request(ufs_dev, &min_req, DEV_PM_QOS_MIN_FREQUENCY, screen_on_khz) >= 0) {
 			req_active = true;
 			pr_info("mindone_ufs_screen: display on -> UFS floor %d kHz\n", screen_on_khz);
@@ -73,13 +56,12 @@ static int disp_cb(struct notifier_block *nb, unsigned long event, void *v)
 
 static int __init mindone_ufs_screen_init(void)
 {
-	/* Never fail insmod: Android init treats a failed modules.load entry as fatal (F4258). */
 	ufs_dev = bus_find_device_by_name(&platform_bus_type, NULL, ufs_dev_name);
 	if (!ufs_dev) {
 		pr_warn("mindone_ufs_screen: %s not found, idle\n", ufs_dev_name);
 		return 0;
 	}
-	set_floor(true);	/* the display is on when modules load */
+	set_floor(true);
 	disp_nb.notifier_call = disp_cb;
 	if (mtk_disp_notifier_register("mindone_ufs_screen", &disp_nb))
 		pr_warn("mindone_ufs_screen: display notifier not available, floor stays pinned\n");

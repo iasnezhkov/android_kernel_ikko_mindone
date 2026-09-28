@@ -548,11 +548,6 @@ int set_task_attr(int dsp_id, int task_enum, int param)
 	}
 	return 0;
 }
-/* MINDONE-AFE-TASKATTR (F3322): the vendor does not export set_task_attr() --
- * its only callers (dsp_pcm_taskattr_init DT path, dsp_task_attr_set kcontrol)
- * compile into the SAME .ko there. For us the call comes from mt6789-afe-pcm.c,
- * a DIFFERENT module (snd_soc_mt6789_afe.ko), so cross-module linking requires
- * exporting it, the same way get_task_attr() is exported below. */
 EXPORT_SYMBOL_GPL(set_task_attr);
 
 int get_task_attr(int dsp_id, int task_enum)
@@ -749,7 +744,7 @@ int init_mtk_adsp_dram_segment(void)
 		ret = gen_pool_add_virt(dsp_dram_pool[i],
 					dram->va_addr, dram->phy_addr, dram->size, -1);
 
-		pr_info("%s ret(%d) add chunk va/sz=(%p, %zu), pool total(%zu)\n",
+		pr_info("%s ret(%d) add chunk va/sz=(%p, %llu), pool total(%zu)\n",
 			__func__, ret, dram->vir_addr, dram->size,
 			gen_pool_size(dsp_dram_pool[i]));
 

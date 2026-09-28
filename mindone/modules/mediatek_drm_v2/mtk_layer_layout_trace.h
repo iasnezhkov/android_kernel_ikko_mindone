@@ -10,7 +10,6 @@
 #define _MTK_LAYER_LAYOUT_TRACE_H_
 
 #include <linux/tracepoint.h>
-#include <mindone/compat.h>
 
 TRACE_EVENT(layer_layout,
 	TP_PROTO(char *msg),
@@ -22,7 +21,7 @@ TRACE_EVENT(layer_layout,
 	),
 
 	TP_fast_assign(
-		MINDONE_ASSIGN_STR(msg, msg);
+		__assign_str(msg);
 	),
 
 	TP_printk("%s", __get_str(msg))
@@ -38,7 +37,7 @@ TRACE_EVENT(layer_bw,
 	),
 
 	TP_fast_assign(
-		MINDONE_ASSIGN_STR(msg, msg);
+		__assign_str(msg);
 	),
 
 	TP_printk("%s", __get_str(msg))

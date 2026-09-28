@@ -6,7 +6,7 @@
 #include "gpio.h"
 #include "platform_common.h"
 
-#include <linux/pinctrl/consumer.h>	/* devm_pinctrl_get: 6.12 no longer pulls it in implicitly */
+#include <linux/pinctrl/consumer.h>
 struct GPIO_PINCTRL gpio_pinctrl_list_cam[
 			GPIO_CTRL_STATE_MAX_NUM_CAM] = {
 	/* Main */
@@ -159,11 +159,6 @@ static enum IMGSENSOR_RETURN gpio_set(
 		pr_debug("MINDONE-CAM-PWR: gpio_set OK sensor_idx=%d pin=%d state=%d\n",
 			sensor_idx_uint, pin, pin_state);
 	} else {
-		/* MINDONE 05.09: not a defect. The driver walks all five possible
-		 * sensor slots, but this board has two cameras, and the power-down
-		 * pin is not wired on any of them -- no camN_pnd* state exists even
-		 * in MediaTek's own sources. Missing states here are expected, so the
-		 * trace stays at debug level (was pr_info: 46 lines per boot). */
 		PK_DBG("%s : pinctrl err, PinIdx %d, Val %d\n",
 			__func__, pin, pin_state);
 		pr_debug("MINDONE-CAM-PWR: gpio_set NULL-state sensor_idx=%d pin=%d state=%d (pinctrl_lookup_state failed in gpio_init -- no matching cam%%d_<name> pinctrl state)\n",

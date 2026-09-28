@@ -77,7 +77,7 @@ GED_ERROR ged_dcs_init_platform_info(void)
 
 	dcs_node = of_find_compatible_node(NULL, NULL, "mediatek,gpu_dcs");
 	if (unlikely(!dcs_node)) {
-		GED_LOGE("Failed to find gpu_dcs node");
+		GED_LOGI("Failed to find gpu_dcs node");
 		return ret;
 	}
 
@@ -127,6 +127,8 @@ struct gpufreq_core_mask_info *dcs_get_avail_mask_table(void)
 	/* mapping selected core mask */
 	g_avail_mask_table = kcalloc(g_avail_mask_num,
 		sizeof(struct gpufreq_core_mask_info), GFP_KERNEL);
+	if (!g_avail_mask_table)
+		return g_core_mask_table;
 
 	iter = 1 << (g_max_core_num - 1);
 
@@ -190,7 +192,7 @@ int dcs_set_core_mask(unsigned int core_mask, unsigned int core_num)
 	Policy__DCS__Detail(core_mask);
 	/* TODO: set return error */
 	if (ret) {
-		GED_LOGE("Failed to set core_mask: 0x%llX, core_num: %u", core_mask, core_num);
+		GED_LOGE("Failed to set core_mask: 0x%X, core_num: %u", core_mask, core_num);
 		goto done_unlock;
 	}
 

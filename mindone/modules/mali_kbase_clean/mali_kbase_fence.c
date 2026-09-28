@@ -28,19 +28,10 @@
 /* Spin lock protecting all Mali fences as fence->lock. */
 static DEFINE_SPINLOCK(kbase_fence_lock);
 
-#if (KERNEL_VERSION(4, 10, 0) > LINUX_VERSION_CODE)
-struct fence *
-kbase_fence_out_new(struct kbase_jd_atom *katom)
-#else
 struct dma_fence *
 kbase_fence_out_new(struct kbase_jd_atom *katom)
-#endif
 {
-#if (KERNEL_VERSION(4, 10, 0) > LINUX_VERSION_CODE)
-	struct fence *fence;
-#else
 	struct dma_fence *fence;
-#endif
 
 	WARN_ON(katom->dma_fence.fence);
 
@@ -97,17 +88,10 @@ kbase_fence_free_callbacks(struct kbase_jd_atom *katom)
 	return res;
 }
 
-#if (KERNEL_VERSION(4, 10, 0) > LINUX_VERSION_CODE)
-int
-kbase_fence_add_callback(struct kbase_jd_atom *katom,
-			 struct fence *fence,
-			 fence_func_t callback)
-#else
 int
 kbase_fence_add_callback(struct kbase_jd_atom *katom,
 			 struct dma_fence *fence,
 			 dma_fence_func_t callback)
-#endif
 {
 	int err = 0;
 	struct kbase_fence_cb *kbase_fence_cb;

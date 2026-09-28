@@ -4,7 +4,6 @@
  */
 
 #include <linux/slab.h>
-#include <mindone/compat.h>
 #include <linux/kernel.h>
 #include <linux/init.h>
 #include <linux/module.h>
@@ -12,7 +11,6 @@
 #include <linux/delay.h>
 #include <linux/types.h>
 #include <linux/device.h>
-#include <linux/version.h>
 #include <linux/workqueue.h>
 #include <linux/kdev_t.h>
 #include <linux/timekeeping.h>
@@ -357,7 +355,7 @@ static void __request_audio(int id)
 	queue_work(audio_boost_inst.wq, &(audio_boost_inst.work));
 }
 
-static int update_time_audio(void)
+static int __maybe_unused update_time_audio(void)
 {
 	ktime_get_ts64(&audio_boost_inst.tv_ref_time);
 	return 1;
@@ -408,6 +406,7 @@ static void audio_boost_work(struct work_struct *work_struct)
 	USB_BOOST_NOTICE("audio_boost, end of work\n");
 }
 
+#if IS_ENABLED(CONFIG_USB_MTK_HDRC)
 static void vh_sound_usb_support_cpu_suspend(void *unused,
 	struct usb_device *udev, int direction, bool *is_support)
 {
@@ -416,6 +415,7 @@ static void vh_sound_usb_support_cpu_suspend(void *unused,
 	update_time_audio();
 	audio_boost_inst.request_func(0);
 }
+#endif
 
 static void default_setting(void)
 {
@@ -634,7 +634,7 @@ static int create_sys_fs(void)
 	int n, ret;
 
 	USB_BOOST_NOTICE("\n");
-	usb_boost_class = MINDONE_CLASS_CREATE(USB_BOOST_CLASS_NAME);
+	usb_boost_class = class_create(USB_BOOST_CLASS_NAME);
 	if (IS_ERR(usb_boost_class))
 		return PTR_ERR(usb_boost_class);
 

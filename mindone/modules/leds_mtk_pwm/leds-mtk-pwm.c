@@ -5,7 +5,6 @@
  */
 
 #include <linux/err.h>
-#include <mindone/compat.h>
 #include <linux/kernel.h>
 #include <linux/module.h>
 #include <linux/of_platform.h>
@@ -60,7 +59,7 @@ static int led_pwm_set(struct mt_led_data *mdev,
 
 	led_dat->pwmstate.duty_cycle = duty;
 	led_dat->pwmstate.enabled = duty > 0;
-	return MINDONE_PWM_APPLY_STATE(led_dat->pwm, &led_dat->pwmstate);
+	return pwm_apply_might_sleep(led_dat->pwm, &led_dat->pwmstate);
 }
 
 __attribute__((nonnull))

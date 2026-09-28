@@ -3,7 +3,6 @@
  * Copyright (c) 2020 MediaTek Inc.
  */
 
-#include <mindone/compat.h>
 #include <linux/delay.h>
 #include <linux/mfd/mt6397/core.h>
 #include <linux/module.h>
@@ -278,7 +277,7 @@ static int mt635x_efuse_probe(struct platform_device *pdev)
 	econfig.priv = efuse;
 	econfig.dev = &pdev->dev;
 
-	MINDONE_NVMEM_LEGACY_OF_CELLS(econfig);
+	(econfig.add_legacy_fixed_of_cells = true);
 	nvmem = devm_nvmem_register(&pdev->dev, &econfig);
 	if (IS_ERR(nvmem)) {
 		dev_err(&pdev->dev, "failed to register %s nvmem config\n",

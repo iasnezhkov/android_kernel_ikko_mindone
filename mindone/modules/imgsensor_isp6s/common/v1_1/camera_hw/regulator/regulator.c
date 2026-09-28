@@ -60,37 +60,11 @@ static enum IMGSENSOR_RETURN regulator_init(
 					&pcommon->pplatform_device->dev,
 					str_regulator_name);
 
-			/* MINDONE-CAM-REG-DIAG (F3058): claimed this was always NULL
-			 * from a missing "<name>-supply" DT property. That property
-			 * now exists on the live tree, yet regulator_set() still logs
-			 * NULL-regulator -- so log exactly what device/name was looked
-			 * up and what error regulator_get_optional() actually returned
-			 * (the old code discarded it before nulling the pointer, hiding
-			 * -EPROBE_DEFER vs -ENODEV vs anything else). */
-			if (preg->pregulator[idx][type] == NULL ||
-				IS_ERR(preg->pregulator[idx][type])) {
-				long mindone_reg_err = IS_ERR(preg->pregulator[idx][type])
-					? PTR_ERR(preg->pregulator[idx][type]) : 0;
-
-				PK_DBG("NOTICE: %s, regulator[%d][%d] err: %s\n",
-					__func__,
-					idx, type, str_regulator_name);
-				pr_info("MINDONE-CAM-REG-DIAG: lookup name=\"%s\" dev=%s of_node=%s err=%ld (idx=%d type=%d)\n",
-					str_regulator_name,
-					dev_name(&pcommon->pplatform_device->dev),
-					pcommon->pplatform_device->dev.of_node
-						? pcommon->pplatform_device->dev.of_node->full_name
-						: "NULL",
-					mindone_reg_err, idx, type);
+			if (IS_ERR_OR_NULL(preg->pregulator[idx][type])) {
+				PK_DBG("NOTICE: %s, regulator[%d][%d] err: %s %d\n",
+					__func__, idx, type, str_regulator_name,
+					PTR_ERR_OR_ZERO(preg->pregulator[idx][type]));
 				preg->pregulator[idx][type] = NULL;
-			} else {
-				pr_info("MINDONE-CAM-REG-DIAG: lookup name=\"%s\" dev=%s of_node=%s -- OK, got regulator (idx=%d type=%d)\n",
-					str_regulator_name,
-					dev_name(&pcommon->pplatform_device->dev),
-					pcommon->pplatform_device->dev.of_node
-						? pcommon->pplatform_device->dev.of_node->full_name
-						: "NULL",
-					idx, type);
 			}
 			atomic_set(&preg->enable_cnt[idx][type], 0);
 		}
@@ -202,13 +176,7 @@ static enum IMGSENSOR_RETURN regulator_set(
 				reg_type_offset,
 				pin,
 				IMGSENSOR_HW_PIN_AVDD);
-		/* MINDONE-CAM-PWR 29.08: this is the F3058 gap made visible at
-		 * runtime -- regulator_get_optional(dev, "cam%d_<name>")
-		 * returned NULL, almost certainly because the DT node lacks
-		 * the matching "<name>-supply" property (none exists anywhere
-		 * in stock dtbo_a either, see CAMERA-IMX766-2908 §7.3).
-		 */
-		pr_debug("MINDONE-CAM-PWR: regulator_set NULL-regulator sensor_idx=%d pin=%d reg_type_offset=%d (missing cam%%d_<name>-supply DT property, F3058)\n",
+		pr_debug("MINDONE-CAM-PWR: regulator_set NULL-regulator sensor_idx=%d pin=%d reg_type_offset=%d (missing cam%%d_<name>-supply DT property)\n",
 				sensor_idx, pin, reg_type_offset);
 	}
 

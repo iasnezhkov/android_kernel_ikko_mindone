@@ -3,7 +3,6 @@
 // Copyright (c) 2018 MediaTek Inc.
 
 #include <linux/regmap.h>
-#include <mindone/compat-sound.h>
 #include <sound/pcm_params.h>
 #include <sound/soc.h>
 
@@ -29,7 +28,7 @@ static int mtk_dai_stub_compress_new(struct snd_soc_pcm_runtime *rtd, int num)
 
 
 static const struct snd_soc_dai_ops mtk_dai_stub_ops = {
-	MINDONE_DAI_OPS_COMPRESS_NEW(mtk_dai_stub_compress_new)
+	.compress_new = mtk_dai_stub_compress_new,
 };
 
 static struct snd_soc_dai_driver mtk_dai_dsp_driver[] = {
@@ -65,7 +64,6 @@ static struct snd_soc_dai_driver mtk_dai_dsp_driver[] = {
 			.rates = MTK_I2S_RATES,
 			.formats = MTK_I2S_FORMATS,
 		},
-		MINDONE_DAI_COMPRESS_NEW(mtk_dai_stub_compress_new)
 		.ops = &mtk_dai_stub_ops,
 	},
 	{

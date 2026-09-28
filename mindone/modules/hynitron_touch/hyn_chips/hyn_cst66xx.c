@@ -103,8 +103,8 @@ static int cst66xx_init(struct hyn_ts_data* ts_data)
     hyn_66xxdata->hw_info.ic_fw_checksum = cst66xx_read_checksum();
     hyn_set_i2c_addr(hyn_66xxdata,MAIN_I2C_ADDR);
     cst66xx_rst(); //exit boot
-    mdelay(50);
-    
+    msleep(50);
+
     hyn_66xxdata->need_updata_fw = cst66xx_updata_judge(hyn_66xxdata->fw_updata_addr,cst66xx_BIN_SIZE);
     if(hyn_66xxdata->need_updata_fw){
         HYN_INFO("need updata FW !!!");
@@ -215,7 +215,7 @@ static int cst66xx_prox_handle(u8 cmd)
 static int cst66xx_set_workmode(enum work_mode mode,u8 enable)
 {
     int ret = 0;
-    HYN_INFO("set_workmode:%d",mode);
+    pr_debug("[HYN]set_workmode:%d\n",mode);
     hyn_66xxdata->work_mode = mode;
     if(mode != NOMAL_MODE){
         hyn_esdcheck_switch(hyn_66xxdata,DISABLE);

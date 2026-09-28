@@ -113,7 +113,7 @@ static bool vow_IPICmd_Send(uint8_t data_type,
 			    char *payload);
 static void vow_IPICmd_Received(struct ipi_msg_t *ipi_msg);
 static bool vow_IPICmd_ReceiveAck(struct ipi_msg_t *ipi_msg);
-static void vow_Task_Unloaded_Handling(void);
+static void __maybe_unused vow_Task_Unloaded_Handling(void);
 #endif  /* #if IS_ENABLED(CONFIG_MTK_TINYSYS_SCP_SUPPORT) */
 static bool VowDrv_SetFlag(int type, unsigned int set);
 static int VowDrv_GetHWStatus(void);
@@ -206,7 +206,7 @@ static struct
  * DSP IPI HANDELER
  *****************************************************************************/
 #if IS_ENABLED(CONFIG_MTK_TINYSYS_SCP_SUPPORT)
-static void vow_Task_Unloaded_Handling(void)
+static void __maybe_unused vow_Task_Unloaded_Handling(void)
 {
 	VOWDRV_DEBUG("%s()\n", __func__);
 }
@@ -487,8 +487,6 @@ static void vow_service_Init(void)
 	unsigned int vow_ipi_buf[1];
 
 	VOWDRV_DEBUG("%s():%x\n", __func__, init_flag);
-	/* MINDONE-VOW-NOLOADTASK (F3131): audio_load_task() exists in no tree (vendor or ours),
-	 * stock mtk_vow.ko does not import it either -> dead call from a different revision. */
 	if (init_flag != 1) {
 
 		/*register IPI handler*/
@@ -1485,6 +1483,43 @@ static void vow_service_CloseDumpFile(void)
 	VOWDRV_DEBUG("-%s() %d\n", __func__, b_enable_dump);
 }
 
+#ifndef VOW_DUMP_TO_FILE
+#define VOW_DUMP_TO_FILE 0
+#endif
+
+#if VOW_DUMP_TO_FILE
+static struct file *vow_dump_open(const char *path)
+{
+	return filp_open(path, O_CREAT | O_WRONLY | O_LARGEFILE, 0);
+}
+
+static void vow_dump_close(struct file *fp)
+{
+	filp_close(fp, NULL);
+}
+
+static ssize_t vow_dump_write(struct file *fp, const void *buf,
+			      size_t len, loff_t *pos)
+{
+	return kernel_write(fp, buf, len, pos);
+}
+#else
+static struct file *vow_dump_open(const char *path)
+{
+	return ERR_PTR(-ENODEV);
+}
+
+static void vow_dump_close(struct file *fp)
+{
+}
+
+static ssize_t vow_dump_write(struct file *fp, const void *buf,
+			      size_t len, loff_t *pos)
+{
+	return -ENODEV;
+}
+#endif
+
 static void vow_service_OpenDumpFile_internal(void)
 {
 	struct timespec64 curr_tm;
@@ -1503,7 +1538,7 @@ static void vow_service_OpenDumpFile_internal(void)
 	ktime_get_real_ts64(&curr_tm);
 
 	memset(string_time, '\0', 16);
-	if (sprintf(string_time, "%.2lu_%.2lu_%.2lu_%.3lu",
+	if (sprintf(string_time, "%.2lld_%.2lld_%.2lld_%.3lu",
 		(8 + (curr_tm.tv_sec / 3600)) % (24),
 		(curr_tm.tv_sec / 60) % (60),
 		(curr_tm.tv_sec % 60),
@@ -1546,9 +1581,7 @@ static void vow_service_OpenDumpFile_internal(void)
 	file_bargein_delay_info = NULL;
 	file_bargein_delay_info_open = false;
 
-	file_bargein_pcm_input = filp_open(path_input_pcm,
-					   O_CREAT | O_WRONLY | O_LARGEFILE,
-					   0);
+	file_bargein_pcm_input = vow_dump_open(path_input_pcm);
 	if (IS_ERR(file_bargein_pcm_input)) {
 		VOWDRV_DEBUG("[BargeIn] pcm_input:%d, path_input_pcm=%s\n",
 			     (int)PTR_ERR(file_bargein_pcm_input),
@@ -1557,9 +1590,7 @@ static void vow_service_OpenDumpFile_internal(void)
 	}
 	file_bargein_pcm_input_open = true;
 
-	file_bargein_echo_ref = filp_open(path_echo_ref,
-					  O_CREAT | O_WRONLY | O_LARGEFILE,
-					  0);
+	file_bargein_echo_ref = vow_dump_open(path_echo_ref);
 	if (IS_ERR(file_bargein_echo_ref)) {
 		VOWDRV_DEBUG("[BargeIn] echo_ref:%d, path_echo_ref=%s\n",
 			     (int)PTR_ERR(file_bargein_echo_ref),
@@ -1568,9 +1599,7 @@ static void vow_service_OpenDumpFile_internal(void)
 	}
 	file_bargein_echo_ref_open = true;
 
-	file_bargein_delay_info = filp_open(path_delay_info,
-					    O_CREAT | O_WRONLY | O_LARGEFILE,
-					    0);
+	file_bargein_delay_info = vow_dump_open(path_delay_info);
 	if (IS_ERR(file_bargein_delay_info)) {
 		VOWDRV_DEBUG(
 		"[BargeIn] file_bargein_delay_info:%d, path_delay_info = %s\n",
@@ -1580,9 +1609,7 @@ static void vow_service_OpenDumpFile_internal(void)
 	}
 	file_bargein_delay_info_open = true;
 
-	file_recog_data = filp_open(path_recog,
-				    O_CREAT | O_WRONLY | O_LARGEFILE,
-				    0);
+	file_recog_data = vow_dump_open(path_recog);
 	if (IS_ERR(file_recog_data)) {
 		VOWDRV_DEBUG(
 		"[BargeIn] file_recog_data:%d, path_recog = %s\n",
@@ -1600,28 +1627,28 @@ static void vow_service_CloseDumpFile_internal(void)
 	if (file_bargein_pcm_input_open) {
 		file_bargein_pcm_input_open = false;
 		if (!IS_ERR(file_bargein_pcm_input)) {
-			filp_close(file_bargein_pcm_input, NULL);
+			vow_dump_close(file_bargein_pcm_input);
 			file_bargein_pcm_input = NULL;
 		}
 	}
 	if (file_bargein_echo_ref_open) {
 		file_bargein_echo_ref_open = false;
 		if (!IS_ERR(file_bargein_echo_ref)) {
-			filp_close(file_bargein_echo_ref, NULL);
+			vow_dump_close(file_bargein_echo_ref);
 			file_bargein_echo_ref = NULL;
 		}
 	}
 	if (file_bargein_delay_info_open) {
 		file_bargein_delay_info_open = false;
 		if (!IS_ERR(file_bargein_delay_info)) {
-			filp_close(file_bargein_delay_info, NULL);
+			vow_dump_close(file_bargein_delay_info);
 			file_bargein_delay_info = NULL;
 		}
 	}
 	if (file_recog_data_open) {
 		file_recog_data_open = false;
 		if (!IS_ERR(file_recog_data)) {
-			filp_close(file_recog_data, NULL);
+			vow_dump_close(file_recog_data);
 			file_recog_data = NULL;
 		}
 	}
@@ -1695,7 +1722,7 @@ static int vow_pcm_dump_kthread(void *data)
 			while (size > 0) {
 				if (file_bargein_pcm_input_open &&
 				    !IS_ERR(file_bargein_pcm_input)) {
-					ret = kernel_write(file_bargein_pcm_input, out_buf,
+					ret = vow_dump_write(file_bargein_pcm_input, out_buf,
 					    writedata,
 					    &file_bargein_pcm_input->f_pos);
 					if (!ret) {
@@ -1716,7 +1743,7 @@ static int vow_pcm_dump_kthread(void *data)
 			while (size > 0) {
 				if (file_bargein_pcm_input_open &&
 				    !IS_ERR(file_bargein_pcm_input)) {
-					ret = kernel_write(file_bargein_pcm_input, pcm_dump->decode_pcm,
+					ret = vow_dump_write(file_bargein_pcm_input, pcm_dump->decode_pcm,
 					    writedata,
 					    &file_bargein_pcm_input->f_pos);
 					if (!ret) {
@@ -1738,7 +1765,7 @@ static int vow_pcm_dump_kthread(void *data)
 			while (size > 0) {
 				if (file_bargein_echo_ref_open &&
 				    !IS_ERR(file_bargein_echo_ref)) {
-					ret = kernel_write(file_bargein_echo_ref, pcm_dump->decode_pcm,
+					ret = vow_dump_write(file_bargein_echo_ref, pcm_dump->decode_pcm,
 					    writedata,
 					    &file_bargein_echo_ref->f_pos);
 					if (!ret) {
@@ -1756,13 +1783,13 @@ static int vow_pcm_dump_kthread(void *data)
 				uint32_t *ptr32;
 
 				ptr32 = &vowserv.dump_frm_cnt;
-				ret = kernel_write(file_bargein_delay_info, ptr32,
+				ret = vow_dump_write(file_bargein_delay_info, ptr32,
 					    sizeof(uint32_t),
 					    &file_bargein_delay_info->f_pos);
 				if (!ret)
 					VOWDRV_DEBUG("vfs write failed\n");
 				ptr32 = &vowserv.voice_sample_delay;
-				ret = kernel_write(file_bargein_delay_info, ptr32,
+				ret = vow_dump_write(file_bargein_delay_info, ptr32,
 					    sizeof(uint32_t),
 					    &file_bargein_delay_info->f_pos);
 				if (!ret)
@@ -1790,7 +1817,7 @@ static int vow_pcm_dump_kthread(void *data)
 			while (size > 0) {
 				if (file_recog_data_open &&
 				    !IS_ERR(file_recog_data)) {
-					ret = kernel_write(file_recog_data, out_buf,
+					ret = vow_dump_write(file_recog_data, out_buf,
 					    writedata,
 					    &file_recog_data->f_pos);
 					if (!ret) {
@@ -1811,7 +1838,7 @@ static int vow_pcm_dump_kthread(void *data)
 			while (size > 0) {
 				if (file_recog_data_open &&
 				    !IS_ERR(file_recog_data)) {
-					ret = kernel_write(file_recog_data, pcm_dump->decode_pcm,
+					ret = vow_dump_write(file_recog_data, pcm_dump->decode_pcm,
 					    writedata,
 					    &file_recog_data->f_pos);
 					if (!ret) {
@@ -3061,16 +3088,6 @@ bool vow_service_GetScpRecoverStatus(void)
 }
 #endif  /* #if IS_ENABLED(CONFIG_MTK_TINYSYS_SCP_SUPPORT) */
 
-/* MINDONE-VOW-DEFERRED-INIT: vow_service_Init() sends blocking IPI requests to the
- * SCP (vow_IPICmd_Send -> audio_send_ipi_msg), called directly from module_init.
- * module_init runs synchronously inside insmod, which the first-stage init calls
- * sequentially for the whole of modules.load.ramdisk -- any delay in the SCP response
- * (the VoW task on the coprocessor is not ready yet) blocks the entire module loading
- * queue. We move the SCP handshake into deferred work: insmod registers the platform
- * driver/misc-device/sysfs and returns immediately, while the actual conversation with
- * the SCP happens in workqueue context after ramdisk has moved on to loading the
- * remaining modules.
- */
 static struct work_struct vow_init_work;
 
 static void vow_deferred_init_work(struct work_struct *work)
@@ -3233,8 +3250,6 @@ static int __init VowDrv_mod_init(void)
 	if (unlikely(ret != 0))
 		return ret;
 
-	/* MINDONE-VOW-DEFERRED-INIT: do not call vow_service_Init() right here --
-	 * see the comment on vow_deferred_init_work(). */
 	VOWDRV_DEBUG("schedule vow_service_Init (deferred)");
 	INIT_WORK(&vow_init_work, vow_deferred_init_work);
 	schedule_work(&vow_init_work);

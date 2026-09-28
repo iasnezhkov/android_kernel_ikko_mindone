@@ -473,7 +473,7 @@ int mtk_dma_sync_sg_range(const struct sg_table *sgt,
 	int ret, i;
 
 	if (sgt == NULL || dev == NULL || size == 0) {
-		mtk_v4l2_err("sgt 0x%x dev 0x%x size %d invalid", sgt, dev, size);
+		mtk_v4l2_err("sgt %p dev %p size %d invalid", sgt, dev, size);
 		return -1;
 	}
 
@@ -531,6 +531,7 @@ void v4l_fill_mtk_fmtdesc(struct v4l2_fmtdesc *fmt)
 
 	switch (fmt->pixelformat) {
 	case V4L2_PIX_FMT_H265:
+	case V4L2_PIX_FMT_HEVC:
 	    descr = "H.265"; break;
 	case V4L2_PIX_FMT_HEIF:
 	    descr = "HEIF"; break;
@@ -771,6 +772,10 @@ static void mtk_vcodec_sync_log(struct mtk_vcodec_dev *dev,
 
 	// cannot find, add new
 	pram = vzalloc(sizeof(*pram));
+	if (!pram) {
+		mutex_unlock(plist_mutex);
+		return;
+	}
 	strncpy(pram->param_key, param_key, LOG_PARAM_INFO_SIZE - 1);
 	strncpy(pram->param_val, param_val, LOG_PARAM_INFO_SIZE - 1);
 	pram->param_val[LOG_PARAM_INFO_SIZE-1] = '\0';
@@ -921,7 +926,7 @@ void mtk_vcodec_set_log(struct mtk_vcodec_ctx *ctx, struct mtk_vcodec_dev *dev,
 				memset(vcu_log, 0x00, sizeof(vcu_log));
 				if (snprintf(vcu_log, sizeof(vcu_log) - 1, "%s %s", argv[i],
 					argv[i+1]) < 0)
-					mtk_v4l2_err("%s cannot append vcu_log: vcu_log = %d",
+					mtk_v4l2_err("%s cannot append vcu_log: vcu_log = %s",
 						__func__, vcu_log);
 				if (set_vcu_vpud_log != NULL)
 					set_vcu_vpud_log(ctx, vcu_log);
@@ -945,7 +950,7 @@ void mtk_vcodec_get_log(struct mtk_vcodec_ctx *ctx, struct mtk_vcodec_dev *dev,
 	int len = 0;
 
 	if (!dev || !val) {
-		mtk_v4l2_err("Invalid arguments, dev=0x%x, val=0x%x", dev, val);
+		mtk_v4l2_err("Invalid arguments, dev=%p, val=%p", dev, val);
 		return;
 	}
 

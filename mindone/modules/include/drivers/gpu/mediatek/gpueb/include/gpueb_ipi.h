@@ -19,6 +19,8 @@ extern struct mtk_mbox_pin_recv *gpueb_mbox_pin_recv;
 extern const char *gpueb_mbox_pin_send_name[20];
 extern const char *gpueb_mbox_pin_recv_name[20];
 
+struct platform_device;
+
 int gpueb_ipi_init(struct platform_device *pdev);
 unsigned int gpueb_get_ts_mbox(void);
 int gpueb_get_send_PIN_offset_by_name(char *send_PIN_name);

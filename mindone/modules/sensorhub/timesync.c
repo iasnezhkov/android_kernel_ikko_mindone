@@ -92,7 +92,7 @@ static int timesync_comm_with_nolock(void)
 	now_time = ktime_get_boottime_ns();
 	arch_counter = __arch_counter_get_cntvct();
 	local_irq_restore(flags);
-	pr_info("host boottime %lld\n", now_time);
+	pr_debug("host boottime %lld\n", now_time);
 
 	time->host_timestamp = now_time;
 	time->host_archcounter = arch_counter;
@@ -198,35 +198,16 @@ void timesync_stop(void)
 
 void timesync_resume(void)
 {
-	pr_info("host resume boottime %lld\n", ktime_get_boottime_ns());
+	pr_debug("host resume boottime %lld\n", ktime_get_boottime_ns());
 	WRITE_ONCE(timesync_suspend_flag, false);
 	timesync_comm_with();
-	/*
-	 * F4416: re-arm the periodic resync only now
-	 * that the AP is actually back up. timesync_suspend() below stops
-	 * the timer, so it must be restarted here or the 10 s resync would
-	 * never fire again after the very first suspend/resume cycle.
-	 */
 	timesync_start();
 }
 
 void timesync_suspend(void)
 {
-	pr_info("host suspend boottime %lld\n", ktime_get_boottime_ns());
+	pr_debug("host suspend boottime %lld\n", ktime_get_boottime_ns());
 	WRITE_ONCE(timesync_suspend_flag, true);
-	/*
-	 * F4416: stop re-arming the 10 s resync timer
-	 * while the AP is suspended. Before this fix only timesync_suspend_
-	 * flag was set here, so the plain jiffies timer kept firing every
-	 * 10 s during suspend (proven live: dmesg keeps printing "timesync
-	 * host boottime" on a strict ~10.24 s cadence with the screen off),
-	 * scheduling a work item whose IPI send is a silent no-op because
-	 * timesync_comm_with() returns immediately once the flag is set --
-	 * i.e. a periodic wakeup with zero payload, forever, regardless of
-	 * sensor activity. Stopping the timer here removes that useless
-	 * tick; timesync_resume() restarts it once the AP is genuinely awake
-	 * again, so live resync behaviour while running is unchanged.
-	 */
 	timesync_stop();
 }
 

@@ -273,6 +273,15 @@ static int disp_aal_get_cust_led(void)
 	led_node = of_find_compatible_node(NULL, NULL,
 	"mediatek,lcd-backlight");
 	if (!led_node) {
+		struct device_node *leds_node = of_find_compatible_node(NULL,
+			NULL, "mediatek,disp-leds");
+
+		if (leds_node) {
+			led_node = of_get_child_by_name(leds_node, "backlight");
+			of_node_put(leds_node);
+		}
+	}
+	if (!led_node) {
 		ret = -1;
 		pr_notice("Cannot find LED node from dts\n");
 	} else {
@@ -284,6 +293,7 @@ static int disp_aal_get_cust_led(void)
 
 		ret = of_property_read_u32_array(led_node,
 	    "pwm_config", pwm_config, ARRAY_SIZE(pwm_config));
+		of_node_put(led_node);
 	}
 
 	if (ret)
@@ -2622,7 +2632,7 @@ static void mtk_aal_prepare(struct mtk_ddp_comp *comp)
 		atomic_set(&g_aal1_first_frame, 1);
 	}
 
-	AALFLOW_LOG("[aal_data, g_aal_data] addr[%x, %x] val[%d, %d]\n",
+	AALFLOW_LOG("[aal_data, g_aal_data] addr[%p, %p] val[%d, %d]\n",
 			&aal_data->is_clock_on, &g_aal_data->is_clock_on,
 			atomic_read(&aal_data->is_clock_on),
 			atomic_read(&g_aal_data->is_clock_on));

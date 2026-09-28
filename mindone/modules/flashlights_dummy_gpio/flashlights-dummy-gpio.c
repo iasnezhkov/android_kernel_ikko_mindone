@@ -44,9 +44,6 @@ static struct work_struct dummy_work;
 #define DUMMY_PINCTRL_PIN_XXX 0
 #define DUMMY_PINCTRL_PINSTATE_LOW 0
 #define DUMMY_PINCTRL_PINSTATE_HIGH 1
-/* MINDONE-DUMMYGPIO-STROBE (F3258): the gpio_flashled node has four states --
- * gpio_flashled_on/off (torch) and gpio_strobe_on/off (flash). The template only
- * knew the first pair. */
 #define DUMMY_PINCTRL_PIN_STROBE 1
 
 /* Output is binary: one brightness level. The level's current is UNKNOWN (needs the
@@ -55,13 +52,6 @@ static struct work_struct dummy_work;
 #define DUMMY_LEVEL_NUM   1
 #define DUMMY_LEVEL_TORCH 1
 #define DUMMY_HW_TIMEOUT  0
-/* MINDONE-DUMMYGPIO-NAMES (F3257): our source is the vendor TEMPLATE with
- * placeholder names "xxx_high"/"xxx_low" not present in the DT -- hence
- * "Failed to init (xxx_high)" and an unbound gpio_flashled node. The stock
- * flashlights-dummy-gpio.ko (5.10.233) has the REAL names --
- * gpio_flashled_on/off and gpio_strobe_on/off -- matching our node's
- * pinctrl-names. Confirmed working on factory firmware; the stock module set
- * has only flashlight.ko and this driver, so the flash is GPIO-driven. */
 #define DUMMY_PINCTRL_STATE_XXX_HIGH "gpio_flashled_on"
 #define DUMMY_PINCTRL_STATE_XXX_LOW  "gpio_flashled_off"
 static struct pinctrl *dummy_pinctrl;
@@ -111,8 +101,6 @@ static int dummy_pinctrl_init(struct platform_device *pdev)
 		ret = PTR_ERR(dummy_xxx_low);
 	}
 
-	/* MINDONE-DUMMYGPIO-STROBE (F3258): the flash is optional -- its absence
-	 * must not fail the torch, so ret is NOT touched here. */
 	dummy_strobe_high = pinctrl_lookup_state(
 			dummy_pinctrl, DUMMY_PINCTRL_STATE_STROBE_HIGH);
 	if (IS_ERR(dummy_strobe_high))
@@ -170,14 +158,6 @@ static int dummy_pinctrl_set(int pin, int state)
 /******************************************************************************
  * dummy operations
  *****************************************************************************/
-/* MINDONE-DUMMYGPIO-ENABLE (F3258) -- THE MAIN CAUSE OF THE NON-WORKING TORCH.
- * In the vendor template all five functions below were IDENTICAL:
- *     int pin = 0, state = 0;  return dummy_pinctrl_set(pin, state);
- * i.e. enable/disable/set-level all called PINSTATE_LOW ("turn off"). The
- * framework accepted the torch command (rc=0), the driver honestly toggled the
- * pin -- always to ZERO. Below, enable uses PINSTATE_HIGH; set_level no longer
- * touches the pin.
- */
 
 /* Last requested brightness and the mask of enabled channels. Both "channels"
  * (ct 0/1) on this board sit on the same gpio_flashled pin, so we only turn the
@@ -310,11 +290,6 @@ static int dummy_ioctl(unsigned int cmd, unsigned long arg)
 			hrtimer_cancel(&dummy_timer);
 		}
 		break;
-	/* MINDONE-DUMMYGPIO-CAPS (F3258): the framework queries capabilities;
-	 * command 240 = FLASH_IOC_GET_HW_TIMEOUT was missing from the template
-	 * and fell through to -ENOTTY ("No such command and arg(0): (240, -1)"
-	 * in the log).
-	 */
 	case FLASH_IOC_GET_DUTY_NUMBER:
 		fl_arg->arg = DUMMY_LEVEL_NUM;
 		break;
@@ -420,18 +395,11 @@ static int dummy_parse_dt(struct device *dev,
 
 	np = dev->of_node;
 
-	/* MINDONE-DUMMYGPIO-NODE (F3257). The gpio_flashled anchor node carries only
-	 * pinctrl states (gpio_flashled_on/off, gpio_strobe_on/off) and has NO
-	 * children, so parsing produced "Parse no dt, node.", no framework entries
-	 * were created, and the torch never enabled. The LED descriptions -- flash@0
-	 * and flash@1 children with type/ct/part properties -- are declared on the
-	 * lm3643@63 node ("mediatek,lm3643"). Take them from there instead. Same fix
-	 * needed by the flashlights_lm3643 port (F3253). */
 	if (!of_get_child_count(np)) {
 		np_owned = of_find_compatible_node(NULL, NULL,
 						   "mediatek,lm3643");
 		if (np_owned) {
-			pr_info("MINDONE-DUMMYGPIO: anchor has no children, using mediatek,lm3643 node\n");
+			pr_debug("anchor has no children, using mediatek,lm3643 node\n");
 			np = np_owned;
 		}
 	}

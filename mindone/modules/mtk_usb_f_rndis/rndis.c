@@ -29,10 +29,10 @@
 #include <linux/slab.h>
 #include <linux/seq_file.h>
 #include <linux/netdevice.h>
+#include <linux/unaligned.h>
 
 #include <asm/io.h>
 #include <asm/byteorder.h>
-#include <mindone/compat.h>
 
 #include "u_rndis.h"
 

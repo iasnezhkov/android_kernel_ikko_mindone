@@ -200,14 +200,13 @@ static void mdee_output_debug_info_to_buf(struct ccci_fsm_ee *mdee,
 			debug_info->dump_fatal.err_code2,
 			debug_info->dump_fatal.err_code3,
 			debug_info->dump_fatal.offender);
-		/* MINDONE-EXINFO (F3194): full modem exception info (err_sec/ExStr/fatal_fname/addr/pc) -- without AEE it went nowhere */
-		pr_notice("MINDONE-EXINFO: core=%s ex_type=0x%x err_sec=[%s] addr=0x%08x pc=0x%08x ExStr=[%s] fname=[%s]\n",
+		pr_notice("ccci: md exception core=%s ex_type=0x%x err_sec=[%s] addr=0x%08x pc=0x%08x ExStr=[%s] fname=[%s]\n",
 			debug_info->core_name, debug_info->ex_type,
 			debug_info->dump_fatal.err_sec ? debug_info->dump_fatal.err_sec : "",
 			debug_info->dump_fatal.error_address, debug_info->dump_fatal.error_pc,
 			debug_info->dump_fatal.ExStr ? debug_info->dump_fatal.ExStr : "",
 			debug_info->dump_fatal.fatal_fname);
-		pr_notice("MINDONE-EXINFO-FULL: %s\n", ex_info);
+		pr_notice("ccci: md exception info: %s\n", ex_info);
 		kfree(ex_info_temp);
 		break;
 	case MD_EX_CLASS_CUSTOM:
@@ -290,6 +289,7 @@ static void mdee_info_dump_v3(struct ccci_fsm_ee *mdee)
 		 */
 		db_opt |= (unsigned int)DB_OPT_FTRACE;
 		/* fall through */
+		fallthrough;
 	case MD_EE_CASE_WDT:
 		if (scnprintf(ex_info, EE_BUF_LEN_UMOLY, "%s",
 			mdee_more_inf_str[dumper->more_info]) < 0)

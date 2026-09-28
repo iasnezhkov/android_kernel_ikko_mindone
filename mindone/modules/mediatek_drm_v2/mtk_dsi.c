@@ -16,6 +16,7 @@
 #include <drm/drm_bridge.h>
 #include <drm/drm_encoder.h>
 #include <linux/delay.h>
+#include <linux/iopoll.h>
 #include <linux/clk.h>
 #include <linux/sched.h>
 #include <linux/sched/clock.h>
@@ -42,8 +43,7 @@
 #include "mtk_drm_ddp_comp.h"
 #include "mtk_drm_crtc.h"
 #include "mtk_drm_drv.h"
-#include "mtk_disp_recovery.h"	/* MINDONE-LK-RECYCLE: mtk_drm_esd_recover() */
-#include <linux/version.h>	/* MINDONE-LK-RECYCLE: drm_panel prepared/enabled since 6.5 */
+#include "mtk_disp_recovery.h"
 #include "mtk_drm_helper.h"
 #include <drivers/gpu/drm/mediatek/mediatek_v2/mtk_mipi_tx.h>
 #include <drivers/gpu/drm/mediatek/mediatek_v2/mtk_dump.h>
@@ -52,7 +52,7 @@
 #include "mtk_drm_mmp.h"
 #include "mtk_drm_arr.h"
 #include "mtk_panel_ext.h"
-#include "mtk_debug.h"	/* mtk_ddic_dsi_send_cmd (F3599) */
+#include "mtk_debug.h"
 #include "mtk_disp_notify.h"
 #include <drivers/gpu/drm/mediatek/mediatek_v2/mtk_dsi.h>
 #include "platform/mtk_drm_6789.h"
@@ -2779,11 +2779,6 @@ static void mtk_dsi_exit_ulps(struct mtk_dsi *dsi)
 static int mtk_dsi_stop_vdo_mode(struct mtk_dsi *dsi, void *handle);
 static int mtk_dsi_start_vdo_mode(struct mtk_ddp_comp *comp, void *handle);
 
-/* MINDONE-LK-PANELON (F3599): after takeover the panel streams LK video but never got its
- * display-on, so it stays dark until the first screen cycle (F3581). Stopping the stream
- * for the DCS burst killed the DSI0 EOF event (F3597/F3598); plain writes survive a live
- * stream (F3575). So send only DCS 0x11 + 0x29 via the DDIC path with LPM clear (VM_CMD
- * branch), from a delayed work once the CRTC is up (send_cmd needs mtk_crtc->enabled). */
 static void mindone_lk_panelon_work_fn(struct work_struct *work)
 {
 	static const u8 dcs_exit_sleep = 0x11;
@@ -2811,47 +2806,30 @@ static void mindone_lk_panelon_work_fn(struct work_struct *work)
 	if (ret < 0)
 		return;
 
-	/* MINDONE-BL-RESEND (F3811/K8): the panel init above wiped the AMOLED brightness register;
-	 * whatever the lights HAL wrote before this point is gone and nobody re-writes it until
-	 * DisplayManagerService decides to (on the ROM: never, if the target equals its cached
-	 * value, F3821). Tell subscribers the panel is really lit through the standard display
-	 * notifier (same pattern as sileadfp/focaltech/wlan/charger); leds_mtk re-pushes its cached
-	 * level. No symbol_get(): no reverse dependency on module load order. */
 	msleep(20);
 	ret = mtk_disp_notifier_call_chain(MTK_DISP_EVENT_LK_PANEL_ON, NULL);
 	DDPMSG("MINDONE-LK-PANELON: notified LK_PANEL_ON ret=%d\n", ret);
 }
 static DECLARE_DELAYED_WORK(mindone_lk_panelon_work, mindone_lk_panelon_work_fn);
 
-/* MINDONE-LK-PANELON (F3581): at LK takeover we set dsi->output_en=1 to keep the live
- * controller, but that makes the first mtk_output_dsi_enable() early-return before
- * drm_panel_prepare(), so the panel never gets its display-on (DCS 0x11/0x29) and stays
- * dark until a screen off/on cycle. One-shot below sends the panel display-on after the
- * takeover, with the video stream stopped around the DCS burst (avoids the mid-stream
- * DCS pipeline hang of F3575). Param default on; set 0 to disable without a rebuild. */
-/* On for the F3599 variant: this one never stops the stream (VM_CMD path), which is what
- * killed the frame loop in F3597/F3598. */
 static int mindone_lk_panelon = 1;
 static int mindone_lk_panelon_delay_ms = 2000;
 module_param(mindone_lk_panelon_delay_ms, int, 0644);
 module_param(mindone_lk_panelon, int, 0644);
 static bool mindone_lk_panel_pending;
 
-/* MINDONE-LK-RECYCLE (12.09, F4184): cold init on top of running LK hardware (takeover=0,
- * image B10) produces IOMMU faults on the OVL0 port at addresses from LK's framebuffer,
- * plus RDMA0 underflow on every frame -- the panel stays black forever. With takeover
- * (takeover=1) the screen only came back to life after the first off/on cycle (2-3 button
- * presses): the enable path after a normal disable is fine, only the first startup
- * on top of the LK stream is broken. Here that cycle is done automatically: after the
- * first CRTC enable under takeover, with a delay, the same path runs as ESD recovery
- * (crtc disable -> enable -> panel enable) under the same locks. Parameters:
- * mindone_lk_recycle=0 disables it without a rebuild, delay in ms. */
 static int mindone_lk_recycle = 1;
 static int mindone_lk_recycle_delay_ms = 700;
 module_param(mindone_lk_recycle, int, 0644);
 module_param(mindone_lk_recycle_delay_ms, int, 0644);
 static bool mindone_lk_recycle_pending;
 static struct mtk_dsi *mindone_lk_recycle_dsi;
+static bool mindone_lk_esd_hold_flag;
+
+bool mtk_dsi_lk_esd_hold(void)
+{
+	return READ_ONCE(mindone_lk_esd_hold_flag);
+}
 
 static void mindone_lk_recycle_work_fn(struct work_struct *work)
 {
@@ -2863,6 +2841,7 @@ static void mindone_lk_recycle_work_fn(struct work_struct *work)
 
 	if (!dsi || !dsi->encoder.crtc) {
 		DDPMSG("MINDONE-LK-RECYCLE: no crtc, skip\n");
+		WRITE_ONCE(mindone_lk_esd_hold_flag, false);
 		return;
 	}
 	crtc = dsi->encoder.crtc;
@@ -2873,24 +2852,16 @@ static void mindone_lk_recycle_work_fn(struct work_struct *work)
 	DDP_MUTEX_LOCK(&mtk_crtc->lock, __func__, __LINE__);
 	DDPMSG("MINDONE-LK-RECYCLE: start, crtc enabled=%d output_en=%d clk_refcnt=%d\n",
 	       mtk_crtc->enabled, dsi->output_en, dsi->clk_refcnt);
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 5, 0)
-	/* At probe the panel marks itself as prepared by LK (ctx->prepared/enabled = true),
-	 * while the DRM core thinks it is unprepared and skips unprepare/disable
-	 * ("Skipping unprepare of already unprepared panel", B11) -- then lcm_prepare in the
-	 * cycle is a no-op and the panel stays in the LK state. We sync the DRM core's flags
-	 * with reality: the cycle will run the real lcm_disable/lcm_unprepare (sleep, power
-	 * removal) and a full lcm_panel_init on enable -- exactly what the manual off/on
-	 * cycle via suspend used to do (MINDONE-PANEL-PREPCLR). */
 	if (dsi->panel) {
 		DDPMSG("MINDONE-LK-RECYCLE: drm panel flags prepared=%d enabled=%d -> 1/1 (LK state)\n",
 		       dsi->panel->prepared, dsi->panel->enabled);
 		dsi->panel->prepared = true;
 		dsi->panel->enabled = true;
 	}
-#endif
 	ret = mtk_drm_esd_recover(crtc);
 	DDPMSG("MINDONE-LK-RECYCLE: done ret=%d, crtc enabled=%d output_en=%d clk_refcnt=%d\n",
 	       ret, mtk_crtc->enabled, dsi->output_en, dsi->clk_refcnt);
+	WRITE_ONCE(mindone_lk_esd_hold_flag, false);
 	DDP_MUTEX_UNLOCK(&mtk_crtc->lock, __func__, __LINE__);
 	mutex_unlock(&priv->commit.lock);
 }
@@ -3101,7 +3072,7 @@ void mtk_mipi_dsi_write_6382(struct mtk_dsi *dsi, struct cmdq_pkt *handle,
 			goto_addr, (0xFFu << ((goto_addr & 0x3u) * 8)),
 			handle);
 
-		DDPINFO("set cmdqaddr 0x%08x, val:0x%08x, mask:0x%08x\n", goto_addr,
+		DDPINFO("set cmdqaddr 0x%08lx, val:0x%08x, mask:0x%08x\n", goto_addr,
 			tx_buf[i] << ((goto_addr & 0x3u) * 8),
 			(0xFFu << ((goto_addr & 0x3u) * 8)));
 	}
@@ -3815,14 +3786,6 @@ static void check_panel_connection(struct drm_crtc *crtc, struct mtk_dsi *dsi)
 	}
 }
 
-/* MINDONE-DSI-PENDCLR (01.09.2026, F3385): a suspend between a skip-panel-switch
- * disable and the next enable strands the panel black forever - HWC sets
- * USER_SCEN_SKIP_PANEL_SWITCH around an fps switch, disable skips
- * drm_panel_disable/unprepare and sets pending_switch, but DSI ULPS/poweroff
- * still runs, so after s2idle the panel never gets re-initialized (no ESD check
- * on this board). A legitimate fps switch never has a suspend inside its
- * disable/enable pair, so clearing the flag on suspend entry only forces an
- * idempotent full re-init. Full writeup: MINDONE-MODULES-NOTES-0901. */
 static struct mtk_dsi *mindone_pendclr_dsi;
 
 static int mindone_dsi_pm_event(struct notifier_block *nb,
@@ -3878,9 +3841,11 @@ static void mtk_output_dsi_enable(struct mtk_dsi *dsi,
 		(unsigned long long)mtk_state->prop_val[CRTC_PROP_USER_SCEN]);
 
 	if (dsi->output_en) {
+		if (!mindone_lk_recycle)
+			WRITE_ONCE(mindone_lk_esd_hold_flag, false);
 		if (mindone_lk_recycle && mindone_lk_recycle_pending) {
 			mindone_lk_recycle_pending = false;
-			mindone_lk_panel_pending = false;	/* the cycle initializes the panel itself */
+			mindone_lk_panel_pending = false;
 			mindone_lk_recycle_dsi = dsi;
 			DDPMSG("MINDONE-LK-RECYCLE: scheduling full display cycle in %d ms\n",
 			       mindone_lk_recycle_delay_ms);
@@ -4671,7 +4636,7 @@ static int mtk_dsi_start_vdo_mode(struct mtk_ddp_comp *comp, void *handle)
 		else
 			vid_mode = SYNC_EVENT_MODE;
 	}
-	DDPMSG("%s, vid_mode:%d\n", __func__, vid_mode);
+	DDPDBG("%s, vid_mode:%d\n", __func__, vid_mode);
 
 	setvdo[4] = (unsigned char)vid_mode;
 
@@ -6918,10 +6883,10 @@ int mtk_mipi_dsi_read_gce(struct mtk_dsi *dsi,
 	struct mtk_ddp_comp *comp = &dsi->ddp_comp;
 	struct cmdq_pkt *cmdq_handle, *cmdq_handle2;
 	int ret = 0;
-	struct DSI_RX_DATA_REG read_data0 = {0, 0, 0, 0};
-	struct DSI_RX_DATA_REG read_data1 = {0, 0, 0, 0};
-	struct DSI_RX_DATA_REG read_data2 = {0, 0, 0, 0};
-	struct DSI_RX_DATA_REG read_data3 = {0, 0, 0, 0};
+	struct DSI_RX_DATA_REG read_data0 = {0};
+	struct DSI_RX_DATA_REG read_data1 = {0};
+	struct DSI_RX_DATA_REG read_data2 = {0};
+	struct DSI_RX_DATA_REG read_data3 = {0};
 	unsigned char packet_type;
 	unsigned int recv_data_cnt = 0;
 	unsigned int reg_val;
@@ -7140,7 +7105,7 @@ int mtk_mipi_dsi_read_gce(struct mtk_dsi *dsi,
 			recv_data_cnt = msg.rx_len;
 
 		memcpy((void *)msg.rx_buf,
-			(void *)&read_data0.byte1, recv_data_cnt);
+			(void *)&read_data0.rx_short_data, recv_data_cnt);
 
 	} else if (packet_type == 0x02) {
 		DDPPR_ERR("read return type is 0x02, re-read\n");
@@ -7275,7 +7240,7 @@ static ssize_t mtk_dsi_host_transfer(struct mipi_dsi_host *host,
 	void *src_addr;
 	u8 irq_flag;
 
-	DDPINFO("%s, msg type:%d tx_len:%d rx_len:%d\n",
+	DDPINFO("%s, msg type:%d tx_len:%zu rx_len:%zu\n",
 			__func__, msg->type, msg->tx_len, msg->rx_len);
 
 	if (readl(dsi->regs + DSI_MODE_CTRL) & MODE)
@@ -7753,7 +7718,7 @@ unsigned int mtk_dsi_set_mmclk_by_datarate_V2(struct mtk_dsi *dsi,
 			pixclk = pixclk * bubble_rate / 100;
 		}
 
-		DDPMSG("%s, data_rate=%d, mmclk=%u pixclk_min=%d, dual=%u\n", __func__,
+		DDPDBG("%s, data_rate=%d, mmclk=%u pixclk_min=%d, dual=%u\n", __func__,
 				data_rate, pixclk, pixclk_min, mtk_crtc->is_dual_pipe);
 	} else {
 	/* DSI BUFFER */
@@ -7897,7 +7862,7 @@ unsigned int mtk_dsi_set_mmclk_by_datarate_V2(struct mtk_dsi *dsi,
 			pixclk = pixclk * image_time / line_time;
 		}
 
-		DDPMSG("%s, data_rate=%d, mmclk=%u dual=%u\n", __func__,
+		DDPDBG("%s, data_rate=%d, mmclk=%u dual=%u\n", __func__,
 				data_rate, pixclk,  mtk_crtc->is_dual_pipe);
 	}
 	if (en != SET_MMCLK_TYPE_ONLY_CALCULATE)
@@ -8066,7 +8031,7 @@ static void mtk_dsi_cmd_timing_change(struct mtk_dsi *dsi,
 
 	/* use no mipi clk change solution */
 	if (!mtk_crtc || !mtk_crtc->base.dev) {
-		DDPPR_ERR("%s invalid mtk_crtc %x\n", __func__, mtk_crtc);
+		DDPPR_ERR("%s invalid mtk_crtc %p\n", __func__, mtk_crtc);
 		return;
 	}
 	priv = mtk_crtc->base.dev->dev_private;
@@ -9957,23 +9922,6 @@ static const struct of_device_id mtk_dsi_of_match[] = {
 };
 
 #ifdef CONFIG_MTK_DISP_NO_LK
-/*
- * MINDONE-LK-TAKEOVER: decide once whether the bootloader display stream still runs
- * and, if so, claim it like the legacy probe (domain ref, PHY, clocks, output_en/
- * clk_refcnt) so mtk_drm_first_enable takes the CRTC over instead of a cold start.
- * "Still running" is read from hardware: DSI_START set, clock lane in HS and fresh
- * frame flags in DSI_INTSTA one frame after clearing it (latched with the interrupt
- * masked, as mtk_dsi_wait_idle polls). A cut stream fails and the probe goes NO_LK.
- */
-/* MINDONE-LK-PANELON-EARLY: turn the panel on IMMEDIATELY on takeover (~1.4 s), without
- * waiting for SurfaceFlinger to enable the CRTC (~11.4 s). The normal path F3599 goes
- * through mtk_ddic_dsi_send_cmd, which needs the CRTC enabled -- that is where the 11 s
- * of black screen come from. Here the command is written straight to the DSI registers
- * (mtk_dsi_vm_cmdq with handle=NULL -> writel), and by this point in
- * mindone_lk_probe_check the domain, PHY and both clocks are already enabled and the
- * bootloader stream is running.
- * Disabled by default: enable via cmdline mediatek_drm.mindone_lk_panelon_early=1.
- */
 static int mindone_lk_panelon_early;
 module_param(mindone_lk_panelon_early, int, 0644);
 
@@ -10009,14 +9957,12 @@ static void mindone_lk_probe_check(struct mtk_dsi *dsi, struct device *dev)
 		return;
 	}
 
-	/* DSI_INTSTA was cleared a few lines above in the probe; a running
-	 * video-mode stream sets VM_DONE/FRAME_DONE again within one frame. */
-	msleep(25);
+	ret = readl_poll_timeout(dsi->regs + DSI_INTSTA, intsta,
+				  intsta & (VM_DONE_INT_FLAG | FRAME_DONE_INT_FLAG),
+				  500, 25000);
 	start = readl(dsi->regs + DSI_START);
 	lccon = readl(dsi->regs + DSI_PHY_LCCON);
-	intsta = readl(dsi->regs + DSI_INTSTA);
-	alive = (start & BIT(0)) && (lccon & LC_HS_TX_EN) &&
-		(intsta & (VM_DONE_INT_FLAG | FRAME_DONE_INT_FLAG));
+	alive = !ret && (start & BIT(0)) && (lccon & LC_HS_TX_EN);
 	DDPMSG("MINDONE-LK-TAKEOVER: islcmfound=0x%x DSI_START=0x%x LCCON=0x%x INTSTA=0x%x -> %s\n",
 	       found, start, lccon, intsta, alive ? "take over" : "cold init");
 	if (!alive) {
@@ -10038,16 +9984,14 @@ static void mindone_lk_probe_check(struct mtk_dsi *dsi, struct device *dev)
 	if (dsi->ext && dsi->ext->is_connected == -1)
 		dsi->ext->is_connected = found & BIT(alias);
 	mindone_lk_set_alive(1);
-	mindone_lk_panel_pending = true;	/* F3581: send panel display-on on first enable */
-	mindone_lk_recycle_pending = true;	/* MINDONE-LK-RECYCLE: full cycle after the first enable */
+	mindone_lk_panel_pending = true;
+	mindone_lk_recycle_pending = true;
+	WRITE_ONCE(mindone_lk_esd_hold_flag, !!mindone_lk_recycle);
 
-	/* MINDONE-LK-PANELON-EARLY: try to turn the panel on right here. We leave the late
-	 * path enabled too: it also resends brightness (MINDONE-BL-RESEND), and at this
-	 * point leds_mtk is not yet registered, so the notification has no subscriber. */
 	if (mindone_lk_panelon_early) {
-		mindone_lk_dcs_early(dsi, 0x11);	/* exit_sleep */
+		mindone_lk_dcs_early(dsi, 0x11);
 		msleep(120);				/* datasheet-mandated pause before display_on */
-		mindone_lk_dcs_early(dsi, 0x29);	/* display_on */
+		mindone_lk_dcs_early(dsi, 0x29);
 		DDPMSG("MINDONE-LK-PANELON-EARLY: DCS 0x11+0x29 sent on takeover\n");
 	}
 }
@@ -10206,9 +10150,6 @@ static int mtk_dsi_probe(struct platform_device *pdev)
 
 	pm_runtime_enable(dev);
 
-	/* MINDONE: unconditional marker. Proves which build is actually running and
-	 * whether the LK block below was compiled out. DDPINFO is filtered out entirely
-	 * on this build, DDPMSG is not. */
 #ifdef CONFIG_MTK_DISP_NO_LK
 	DDPMSG("MINDONE-NOLK-PROBE: NO_LK build, LK assumption block skipped\n");
 #else

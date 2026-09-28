@@ -299,18 +299,6 @@ int lpm_issuer_unregister(struct lpm_issuer *issuer)
 EXPORT_SYMBOL(lpm_issuer_unregister);
 
 
-/*
- * MINDONE-LPM-RCU (12.09, B16b): on 6.12, dt_idle_states sets CPUIDLE_FLAG_RCU_IDLE
- * on every state (drivers/cpuidle/dt_idle_states.c:79), and cpuidle_enter_state() does NOT
- * enter RCU-idle before calling enter -- psci_enter_idle_state itself does that ->
- * cpu_suspend -> ct_cpuidle_enter. Our ct_idle_exit()/ct_idle_enter() around prompt/notify
- * (inherited from 6.1, where psci states had no such flag and the generic code entered
- * idle itself) end up unpaired on 6.12: WARNING kernel/context_tracking.c:128
- * ct_kernel_exit (ct_nmi_nesting != NONIDLE) and rcu/tree.c:415 rcu_sched_clock_irq x3 on
- * every boot (scratchpad/b16b-dmesg.txt). Rule: only touch RCU-idle if the generic code
- * has entered it, i.e. the state has NO flag. On 6.1 there is no flag -- behaviour
- * unchanged.
- */
 static inline bool lpm_generic_rcu_idle(struct cpuidle_driver *drv, int index)
 {
 	return drv && index >= 0 && index < drv->state_count &&

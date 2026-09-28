@@ -2554,8 +2554,8 @@ void p2pRoleFsmRunEventConnectionAbort(IN struct ADAPTER *prAdapter,
 					"Disconnecting: " MACSTR "\n",
 					MAC2STR(prCurrStaRec->aucMacAddr));
 
-				if ((prP2pBssInfo->u4RsnSelectedAKMSuite ==
-					RSN_AKM_SUITE_OWE)) {
+				if (prP2pBssInfo->u4RsnSelectedAKMSuite ==
+					RSN_AKM_SUITE_OWE) {
 					DBGLOG(P2P, INFO,
 						"[OWE] Ignore deauth in %d\n",
 						prCurrStaRec->eAuthAssocState);

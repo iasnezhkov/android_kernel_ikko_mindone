@@ -89,7 +89,6 @@ int mtk_common_gpufreq_bringup(void)
 	return bringup;
 }
 
-extern void mindone_mali_mark(int step);
 int mtk_common_gpufreq_commit(int opp_idx)
 {
 	int ret = -1;
@@ -104,9 +103,7 @@ int mtk_common_gpufreq_commit(int opp_idx)
 			-1 : mt_gpufreq_target(opp_idx, KIR_POLICY);
 #endif /* CONFIG_MTK_GPUFREQ_V2 */
 	}
-	mindone_mali_mark(510);
 	mutex_unlock(&mfg_pm_lock);
-	mindone_mali_mark(511);
 
 	return ret;
 }

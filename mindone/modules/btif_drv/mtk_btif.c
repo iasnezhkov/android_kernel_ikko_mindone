@@ -5,7 +5,6 @@
 /*-----------linux system header files----------------*/
 
 #include <linux/module.h>
-#include <linux/version.h>
 #include <linux/kernel.h>
 #include <linux/device.h>
 #include <linux/errno.h>
@@ -142,7 +141,7 @@ static int _btif_send_data(struct _mtk_btif_ *p_btif,
 		    const unsigned char *p_buf, unsigned int buf_len);
 static int _btif_rx_thread_lock(struct _mtk_btif_ *p_btif, bool enable);
 #ifdef BTIF_FLAG_SET_ENABLE_ALL_FUNC
-#if BTIF_DBG_SUPPORT
+#if defined(BTIF_DBG_SUPPORT) && BTIF_DBG_SUPPORT
 static void btif_rx_test_handler(struct work_struct *work);
 static int btif_block_rx_dma_irq_test(void);
 #endif
@@ -201,7 +200,7 @@ static int g_max_pkg_len = G_MAX_PKG_LEN;
 	/*DMA vFIFO is set to 8 * 1024, we set this to 7/8 * vFIFO size*/
 static int g_max_pding_data_size = BTIF_RX_BUFFER_SIZE * 3 / 4;
 #ifdef BTIF_FLAG_SET_ENABLE_ALL_FUNC
-#if BTIF_DBG_SUPPORT
+#if defined(BTIF_DBG_SUPPORT) && BTIF_DBG_SUPPORT
 int g_enable_btif_rxd_test;
 #endif
 #endif
@@ -309,7 +308,7 @@ int _btif_suspend(struct _mtk_btif_ *p_btif)
 					BTIF_INFO_FUNC("failed\n");
 					/*Chaozhong: what if failed*/
 				} else {
-					BTIF_INFO_FUNC("succeed\n");
+					BTIF_DBG_FUNC("succeed\n");
 					i_ret = _btif_state_set(p_btif,
 							B_S_SUSPEND);
 					if (i_ret && _btif_init(p_btif)) {
@@ -520,11 +519,7 @@ static int btif_chrdev_init(void)
 	}
 	BTIF_INFO_FUNC("add btif dev to kernel succeed\n");
 
-#if LINUX_VERSION_CODE < KERNEL_VERSION(6, 4, 0)
-	p_btif_class = class_create(THIS_MODULE, p_btif_dev_name);
-#else	/* class_create dropped the owner arg in 6.4 (F3768) */
 	p_btif_class = class_create(p_btif_dev_name);
-#endif
 	if (IS_ERR(p_btif_class)) {
 		BTIF_ERR_FUNC("error happened when doing class_create\n");
 		unregister_chrdev_region(btif_dev, 1);
@@ -760,7 +755,7 @@ static ssize_t driver_flag_set(struct device_driver *drv,
 	char *p_token = NULL;
 	char *p_delimiter = " \t";
 #ifdef BTIF_FLAG_SET_ENABLE_ALL_FUNC
-#if BTIF_DBG_SUPPORT
+#if defined(BTIF_DBG_SUPPORT) && BTIF_DBG_SUPPORT
 	struct _mtk_btif_ *p_btif = &g_btif[0];
 #endif
 #endif
@@ -869,7 +864,7 @@ static ssize_t driver_flag_set(struct device_driver *drv,
 		BTIF_INFO_FUNC("g_max_pding_data_size is set to %ld\n", y);
 		g_max_pding_data_size = y;
 		break;
-#if BTIF_DBG_SUPPORT
+#if defined(BTIF_DBG_SUPPORT) && BTIF_DBG_SUPPORT
 	case 0x12:
 		BTIF_INFO_FUNC("test btif_rxd thread block\n");
 		p_btif->test_case = BTIF_TEST_RX_THREAD_BLOCK;
@@ -1080,7 +1075,7 @@ irqreturn_t btif_rx_dma_irq_handler(int irq, void *data)
 
 	_btif_irq_ctrl(p_rx_dma_info->p_irq, true);
 #ifdef BTIF_FLAG_SET_ENABLE_ALL_FUNC
-#if BTIF_DBG_SUPPORT
+#if defined(BTIF_DBG_SUPPORT) && BTIF_DBG_SUPPORT
 	if (g_enable_btif_rxd_test)
 		schedule_delayed_work(&p_btif->btif_rx_test_work,
 			msecs_to_jiffies(p_btif->delay_sched_time));
@@ -2531,7 +2526,7 @@ static int _btif_rx_btm_init(struct _mtk_btif_ *p_btif)
 		init_completion(&p_btif->rx_comp);
 		mutex_init(&p_btif->rx_thread_mtx);
 #ifdef BTIF_FLAG_SET_ENABLE_ALL_FUNC
-#if BTIF_DBG_SUPPORT
+#if defined(BTIF_DBG_SUPPORT) && BTIF_DBG_SUPPORT
 		INIT_DELAYED_WORK(&p_btif->btif_rx_test_work,
 				  btif_rx_test_handler);
 #endif
@@ -3623,7 +3618,7 @@ struct task_struct *btif_rx_thread_get(struct _mtk_btif_ *p_btif)
 	return p_btif->p_task;
 }
 #ifdef BTIF_FLAG_SET_ENABLE_ALL_FUNC
-#if BTIF_DBG_SUPPORT
+#if defined(BTIF_DBG_SUPPORT) && BTIF_DBG_SUPPORT
 static void btif_rx_test_handler(struct work_struct *work)
 {
 	struct _mtk_btif_ *p_btif = container_of(to_delayed_work(work),

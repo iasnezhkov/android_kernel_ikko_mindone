@@ -308,7 +308,7 @@ static void kwdt_time_sync(void)
 	rtc_time64_to_tm(tv.tv_sec, &tm);
 	tv_android.tv_sec -= (uint64_t)sys_tz.tz_minuteswest * 60;
 	rtc_time64_to_tm(tv_android.tv_sec, &tm_android);
-	pr_info("[thread:%d] %d-%02d-%02d %02d:%02d:%02d.%u UTC;"
+	pr_debug("[thread:%d] %d-%02d-%02d %02d:%02d:%02d.%u UTC;"
 		"android time %d-%02d-%02d %02d:%02d:%02d.%03d\n",
 		current->pid, tm.tm_year + 1900, tm.tm_mon + 1,
 		tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec,
@@ -511,7 +511,7 @@ static void kwdt_process_kick(int local_bit, int cpu,
 
 	spin_unlock_bh(&lock);
 
-	pr_debug("%s", msg_buf);	/* [wdk-c]/[wdk-k] kick line, ~32/min forever (LOG-REVIEW-1309 §2 #5) */
+	pr_debug("%s", msg_buf);
 
 	if (dump_timeout) {
 #if IS_ENABLED(CONFIG_MTK_TICK_BROADCAST_DEBUG)
@@ -603,7 +603,7 @@ static int kwdt_thread(void *arg)
 			spin_unlock_bh(&lock);
 		}
 
-		usleep_range(curInterval, curInterval + SOFT_KICK_RANGE);
+		usleep_idle_range(curInterval, curInterval + SOFT_KICK_RANGE);
 	}
 	pr_debug("[wdk] wdk thread stop, cpu:%d, pid:%d\n", cpu, current->pid);
 	return 0;

@@ -1949,11 +1949,7 @@ inline uint64_t wlanTpeTimeUs(void);
 void wlanTpeUpdate(struct GLUE_INFO *prGlueInfo, struct QUE *prSrcQue,
 		uint8_t ucPktJump);
 void wlanTpeFlush(struct GLUE_INFO *prGlueInfo);
-#if KERNEL_VERSION(4, 15, 0) <= LINUX_VERSION_CODE
 void wlanTpeTimeoutHandler(struct timer_list *timer);
-#else
-void wlanTpeTimeoutHandler(unsigned long ulData);
-#endif
 void wlanTpeInit(struct GLUE_INFO *prGlueInfo);
 void wlanTpeUninit(struct GLUE_INFO *prGlueInfo);
 int wlanTpeProcess(struct GLUE_INFO *prGlueInfo,

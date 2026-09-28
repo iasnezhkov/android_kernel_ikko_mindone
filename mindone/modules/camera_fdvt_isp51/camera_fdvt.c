@@ -11,7 +11,6 @@
  *****************************************************************************/
 #include <linux/types.h>
 #include <drivers/misc/mediatek/smi/mtk-smi-larb.h>
-#include <mindone/compat.h>
 #include <linux/device.h>
 #include <linux/cdev.h>
 #include <linux/platform_device.h>
@@ -4514,7 +4513,7 @@ static signed int FDVT_probe(struct platform_device *pDev)
 #endif
 
 		/* Create class register */
-		pFDVTClass = MINDONE_CLASS_CREATE("FDVTdrv");
+		pFDVTClass = class_create("FDVTdrv");
 		if (IS_ERR(pFDVTClass)) {
 			ret = PTR_ERR(pFDVTClass);
 			log_err("Unable to create class, err = %d", ret);

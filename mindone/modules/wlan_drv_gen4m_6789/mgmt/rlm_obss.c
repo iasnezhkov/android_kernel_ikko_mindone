@@ -248,8 +248,8 @@ void rlmObssScanDone(struct ADAPTER *prAdapter, struct MSG_HDR *prMsgHdr)
 				for (i = 0;
 				     i < prBssInfo->auc2G_NonHtChnlList[0] &&
 					i < CHNL_LIST_SZ_2G; i++)
-					prTxFrame->rChnlReport.aucChannelList[i]
-					    = prBssInfo->
+					*(prTxFrame->rChnlReport.aucChannelList
+					    + i) = prBssInfo->
 						auc2G_NonHtChnlList[i + 1];
 
 				u2PayloadLen += IE_SIZE(&prTxFrame->

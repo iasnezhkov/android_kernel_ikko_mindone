@@ -40,6 +40,7 @@
 		mboxes = <&gce 0xa 0x00 0x01 &gce 0xb 0xffffffff 0x01 &gce_sec 0xc 0x00 0x01>;
 		token_user0 = [02 89];
 		token_gpr_set4 = [02 c0];
+		status = "disabled";
 	};
 
 	disp_smi_2x1_sub_common_u0: disp_smi_2x1_sub_comm0@1401b000 {

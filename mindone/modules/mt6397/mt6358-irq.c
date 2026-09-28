@@ -147,15 +147,9 @@ static void pmic_irq_sync_unlock(struct irq_data *data)
 		ret = regmap_update_bits(chip->regmap, en_reg, BIT(shift),
 				   irqd->enable_hwirq[i] << shift);
 
-		/* MINDONE-PMIC-RESYNC (F3341): the pwrap/SPMI write's return code used to be
-		 * ignored, updating the cache unconditionally. A single write dropped
-		 * around resume left the enable bit 0 in hardware while the cache
-		 * claimed 1 -- every later enable was skipped as "no change" and the
-		 * power key (hwirq 48/50) stayed dead until reboot. Keep the cache
-		 * dirty on failure so the next sync retries. */
 		if (ret) {
 			dev_err(chip->dev,
-				"MINDONE-PMIC-RESYNC: en_reg 0x%x bit %u write failed (%d), kept dirty\n",
+				"irq resync: en_reg 0x%x bit %u write failed (%d), kept dirty\n",
 				en_reg, shift, ret);
 			continue;
 		}
@@ -165,11 +159,6 @@ static void pmic_irq_sync_unlock(struct irq_data *data)
 	mutex_unlock(&chip->irqlock);
 }
 
-/* MINDONE-PMIC-RESYNC (F3341): after every suspend cycle, rewrite ALL PMIC
- * interrupt enable registers from the SW enable state. s2idle proved
- * (F3339/F3341) the PMIC interrupt chain can die after resume, consistent
- * with an enable-bit write lost around resume plus the cache poisoning fixed
- * above. Idempotent, ~12 pwrap writes, runs after resume completes. */
 static struct mt6397_chip *mindone_resync_chip;
 
 static int mindone_pmic_irq_pm_event(struct notifier_block *nb,
@@ -201,14 +190,10 @@ static int mindone_pmic_irq_pm_event(struct notifier_block *nb,
 				if (irqd->enable_hwirq[hw])
 					val |= BIT(bit);
 			}
-			/* Full-register write is safe (not a clobber): the TOP_INT_CON
-			 * enable registers are dedicated 16-bit IRQ-enable words — the
-			 * init path itself uses regmap_write(en_reg, 0) to mask all, so
-			 * rewriting the whole computed mask cannot disturb other functions. */
 			ret = regmap_write(chip->regmap, en_reg, val);
 			if (ret) {
 				dev_err(chip->dev,
-					"MINDONE-PMIC-RESYNC: en_reg 0x%x rewrite failed (%d)\n",
+					"irq resync: en_reg 0x%x rewrite failed (%d)\n",
 					en_reg, ret);
 				failed++;
 				continue;
@@ -226,10 +211,13 @@ static int mindone_pmic_irq_pm_event(struct notifier_block *nb,
 	}
 	mutex_unlock(&chip->irqlock);
 
-	if (healed || failed)
+	if (failed)
 		dev_err(chip->dev,
-			"MINDONE-PMIC-RESYNC: post-suspend resync healed=%d failed=%d\n",
+			"irq resync after suspend: healed=%d failed=%d\n",
 			healed, failed);
+	else if (healed)
+		dev_info(chip->dev,
+			 "irq resync after suspend: healed=%d\n", healed);
 
 	return NOTIFY_DONE;
 }
@@ -282,7 +270,7 @@ static void mt6358_irq_sp_handler(struct mt6397_chip *chip,
 
 			if (virq)
 				handle_nested_irq(virq);
-			dev_info(chip->dev,
+			dev_dbg(chip->dev,
 				"Reg[0x%x]=0x%x,hwirq=%d,type=%d\n",
 				sta_reg, irq_status, hwirq,
 				irq_get_trigger_type(virq));
@@ -415,9 +403,6 @@ int mt6358_irq_init(struct mt6397_chip *chip)
 
 	enable_irq_wake(chip->irq);
 
-	/* MINDONE-PMIC-RESYNC: arm the post-suspend enable-register resync.
-	 * mt6397 is mfd core, it never unloads on this device — no
-	 * unregister path needed (and none exists in this init-only file). */
 	WRITE_ONCE(mindone_resync_chip, chip);
 	register_pm_notifier(&mindone_resync_nb);
 

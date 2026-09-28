@@ -18,7 +18,6 @@
 #include <linux/delay.h>
 #include <linux/mm.h>
 #include <linux/mutex.h>
-#include <linux/version.h>
 #include <linux/vmalloc.h>
 
 #include "platform.h"		/* MC_XENBUS_MAP_RING_VALLOC_4_1 */

@@ -558,11 +558,6 @@ void kbase_pm_get_dvfs_action(struct kbase_device *kbdev)
 #endif
 }
 
-/* MINDONE-METRICS (F2205): 0 = metrics timer runs (GPU DVFS works, upstream behaviour),
- * 1 = timer is never started (the old F1271/F1274 experiment). Writable at runtime. */
-static int mindone_metrics_off;
-module_param(mindone_metrics_off, int, 0644);
-MODULE_PARM_DESC(mindone_metrics_off, "MINDONE: 1 = do not start the GPU metrics timer");
 
 #if IS_ENABLED(CONFIG_MALI_MTK_DVFS_POLICY)
 bool kbase_pm_metrics_is_active(struct kbase_device *kbdev)
@@ -591,17 +586,8 @@ KBASE_EXPORT_TEST_API(kbase_pm_metrics_is_active);
 
 void kbase_pm_metrics_start(struct kbase_device *kbdev)
 {
-	/* MINDONE-METRICS (F2205): the metrics timer drives dvfs_callback, which is the
-	 * only caller of kbase_platform_dvfs_event -- GPU frequency scaling. It used to be
-	 * disabled outright (F1271/F1274) back when reading GPU state hastened its death.
-	 * Now it is a switch instead: 0 = upstream behaviour, 1 = do not start the timer. */
 	unsigned long flags;
 	bool update = true;
-
-	if (mindone_metrics_off) {
-		pr_info("MINDONE-METRICS: timer not started (mindone_metrics_off=1)\n");
-		return;
-	}
 
 	if (unlikely(!kbdev->pm.backend.metrics.initialized))
 		return;

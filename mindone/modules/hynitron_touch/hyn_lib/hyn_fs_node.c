@@ -97,7 +97,10 @@ static ssize_t hyn_dbg_store(struct device *dev,struct device_attribute *attr,co
 	}
 	else if(0 == strcmp(str,"w")){
 		u8 i = 0;
-		u8 *kbuf = kzalloc(count/2, GFP_KERNEL);
+		u8 *kbuf = kzalloc(max_t(size_t, count / 2, 4), GFP_KERNEL);
+
+		if (!kbuf)
+			goto END;
 		hyn_fs_data->host_cmd_save[0] = 0;
 		hyn_fs_data->host_cmd_save[1] = 0xA5;
 		hyn_fs_data->host_cmd_save[6] = 0;

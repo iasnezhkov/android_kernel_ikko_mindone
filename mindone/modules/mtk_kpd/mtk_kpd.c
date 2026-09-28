@@ -4,7 +4,6 @@
  * Author Terry Chang <terry.chang@mediatek.com>
  */
 #include <linux/clk.h>
-#include <mindone/compat.h>
 #include <linux/delay.h>
 #include <linux/gpio.h>
 #include <linux/init.h>
@@ -56,14 +55,6 @@ struct mtk_keypad {
 	u16 keymap_state[KPD_NUM_MEMS];
 };
 
-/*
- * MINDONE-HALL: camera flip-module position switch, absent from this port
- * (F3297); reconstructed from the factory mtk-kpd.ko binary (disassembly of
- * hall_eint_register/hall_eint_handler) since no source carries it. Factory
- * reports the two edges as EV_KEY KEY_F2/KEY_F3 press+release (scancodes
- * 60/61), which is what userspace already listens for to fire the
- * camera-flip broadcast.
- */
 static int hall_irq;
 static unsigned int hall_irq_dt_type;
 static int hall_gpio = -1;
@@ -161,7 +152,7 @@ static void hall_eint_register(struct input_dev *input)
 		pr_err("%s: unable to request hall gpio[%d]\n", __func__, hall_gpio);
 		return;
 	}
-	MINDONE_GPIO_SET_DEBOUNCE(hall_gpio, debounce);
+	gpiod_set_debounce(gpio_to_desc(hall_gpio), debounce);
 
 	val = gpio_get_value(hall_gpio);
 	if (val == 0) {
@@ -183,17 +174,6 @@ static void hall_eint_unregister(struct input_dev *input)
 		gpio_free(hall_gpio);
 }
 
-/*
- * MINDONE-HALL: current position as the sysfs attribute "hall_position"
- * on the keypad platform device (/sys/devices/platform/soc/10010000.kp/
- * hall_position; the userspace key handler reads it once at boot). KEY_F2/KEY_F3 only mark the edges, so userspace that
- * starts after boot has no way to learn which side the camera module is
- * on until the first flip; this attribute closes that gap. Value is the
- * same state variable the edge handler keeps: 1 = GPIO low (the KEY_F2
- * side), 0 = GPIO high (the KEY_F3 side), -1 = hall switch not registered.
- * Which side is "front" is decided in userspace, in one place, together
- * with the KEY_F2 mapping.
- */
 static ssize_t hall_position_show(struct device *dev,
 			       struct device_attribute *attr, char *buf)
 {
@@ -203,20 +183,6 @@ static ssize_t hall_position_show(struct device *dev,
 }
 static DEVICE_ATTR_RO(hall_position);
 
-/*
- * MINDONE-TOUCHKEY: capacitive side key ("mediatek,touch_key": eint on cfg-pin,
- * power on pwr-pin), absent from this port (F3476); reconstructed from the factory
- * mtk-kpd.ko (touch_key_eint_register/handler, kpd_pdrv_suspend/resume). Factory
- * reports EV_KEY KEY_F4 (scancode 62) held while touched on the same "mtk-kpd"
- * input device, powers the key IC down across suspend, no wake source.
- */
-/*
- * F4430 (14.09): the key IC's output flaps in sub-millisecond pulses whenever a
- * hand rests on the side of the phone (223k EINTs in 18 h, 97 % of them read
- * back the unchanged level), and nothing in this ROM consumes KEY_F4. Keep the
- * IC powered down unless asked for; when enabled, sample after the pulse and
- * report only real level changes.
- */
 static bool touch_key_enable;
 module_param(touch_key_enable, bool, 0444);
 MODULE_PARM_DESC(touch_key_enable, "power the capacitive side key IC and report it as KEY_F4 (default: off)");
@@ -233,7 +199,6 @@ static irqreturn_t touch_key_eint_handler(int irq, void *dev_id)
 	struct input_dev *input = dev_id;
 	int val;
 
-	/* Let the pulse pass, then read the settled level (F4430). */
 	usleep_range(30000, 35000);
 	val = gpio_get_value(touch_key_gpio);
 
@@ -309,7 +274,7 @@ static void touch_key_eint_register(struct input_dev *input)
 		touch_key_gpio = -1;
 		return;
 	}
-	MINDONE_GPIO_SET_DEBOUNCE(touch_key_gpio, debounce);
+	gpiod_set_debounce(gpio_to_desc(touch_key_gpio), debounce);
 
 	val = gpio_get_value(touch_key_gpio);
 	touch_key_state = (val == 0);

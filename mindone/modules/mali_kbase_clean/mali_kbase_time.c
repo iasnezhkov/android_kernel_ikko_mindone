@@ -49,11 +49,7 @@ void kbase_backend_get_gpu_time_norequest(struct kbase_device *kbdev,
 
 	/* Record the CPU's idea of current time */
 	if (ts != NULL)
-#if (KERNEL_VERSION(4, 17, 0) > LINUX_VERSION_CODE)
-		*ts = ktime_to_timespec64(ktime_get_raw());
-#else
 		ktime_get_raw_ts64(ts);
-#endif
 }
 
 #if !MALI_USE_CSF

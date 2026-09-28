@@ -1752,7 +1752,7 @@ static const char **mdp_get_engine_group_name(void)
 		CMDQ_FOREACH_GROUP(GENERATE_STRING)
 	};
 
-	return (const char **const)engineGroupName;
+	return (const char **)engineGroupName;
 }
 
 phys_addr_t *mdp_engine_base_get(void)

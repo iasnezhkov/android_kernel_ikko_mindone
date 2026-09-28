@@ -34,18 +34,6 @@ MODULE_IMPORT_NS(DMA_BUF);
 
 extern bool g_mml_debug;
 
-/*
- * struct drm_driver no longer has driver-wide gem_free_object_unlocked /
- * gem_vm_ops / gem_prime_export / gem_prime_get_sg_table fields (real
- * upstream DRM GEM restructuring: per-object function tables replaced
- * driver-wide GEM callbacks, ~5.x). The real 6.1 replacement is a
- * struct drm_gem_object_funcs attached to obj->funcs at object-init time.
- * .export is intentionally left unset -- drivers/gpu/drm/drm_prime.c
- * (drm_gem_prime_handle_to_fd) already falls back to calling
- * drm_gem_prime_export() directly when funcs->export is NULL, which is
- * exactly what the old gem_prime_export = drm_gem_prime_export driver
- * field did -- confirmed by reading drm_prime.c, not guessed.
- */
 /* forward decls: both are defined later in this file, needed here
  * since the funcs table below is referenced from mtk_drm_gem_init(),
  * which appears before either definition in this file. */
@@ -744,7 +732,7 @@ void print_mml_frame_info(struct mml_frame_info info)
 			info.dest[i].pq_config.en_color, info.dest[i].pq_config.en_hdr,
 			info.dest[i].pq_config.en_ccorr, info.dest[i].pq_config.en_dre);
 		DDPMSG("rotate:%d, flip:%d, pq_config.en:%d\n",
-			info.dest[i].rotate, info.dest[i].flip, info.dest[i].pq_config);
+			info.dest[i].rotate, info.dest[i].flip, info.dest[i].pq_config.en);
 	}
 	DDPMSG("mode:%d, layer_id:%d\n", info.mode, info.layer_id);
 	DDPMSG("====  frame_info e ====\n");

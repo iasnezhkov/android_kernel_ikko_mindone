@@ -1609,7 +1609,7 @@ int bdg_tx_buf_rw_set(enum DISP_BDG_ENUM module,
 	}
 
 	DDPINFO(
-		"%s, mode=0x%x, tmp=%d, width=%d, height=%d, rw_times=%d\n",
+		"%s, mode=0x%lx, tmp=%d, width=%d, height=%d, rw_times=%d\n",
 		__func__, dsi->mode_flags, tmp, width, height, rw_times);
 
 	for (i = DSI_MODULE_BEGIN(module); i <= DSI_MODULE_END(module); i++) {
@@ -1871,7 +1871,7 @@ int bdg_dsi_dump_reg(enum DISP_BDG_ENUM module)
 		DDPMSG("===== mt6382 DSI%d REGS =====\n", i);
 
 		for (k = 0; k < 0x210; k += 16) {
-			DDPMSG("0x%08x: 0x%08x 0x%08x 0x%08x 0x%08x\n",
+			DDPMSG("0x%08lx: 0x%08x 0x%08x 0x%08x 0x%08x\n",
 				(k + dsi_base_addr),
 				mtk_spi_read(dsi_base_addr + k),
 				mtk_spi_read(dsi_base_addr + k + 0x4),
@@ -1881,7 +1881,7 @@ int bdg_dsi_dump_reg(enum DISP_BDG_ENUM module)
 
 		DDPMSG(" ===== mt6382 DSI%d CMD REGS =====\n", i);
 		for (k = 0; k < 32; k += 16) { /* only dump first 32 bytes cmd */
-			DDPMSG("0x%08x: 0x%08x 0x%08x 0x%08x 0x%08x\n",
+			DDPMSG("0x%08lx: 0x%08x 0x%08x 0x%08x 0x%08x\n",
 				(k + 0xd00 + dsi_base_addr),
 				mtk_spi_read((dsi_base_addr + 0xd00 + k)),
 				mtk_spi_read((dsi_base_addr + 0xd00 + k + 0x4)),
@@ -1891,7 +1891,7 @@ int bdg_dsi_dump_reg(enum DISP_BDG_ENUM module)
 
 		DDPMSG("===== mt6382 MIPI%d REGS ======\n", i);
 		for (k = 0; k < 0x200; k += 16) {
-			DDPMSG("0x%08x: 0x%08x 0x%08x 0x%08x 0x%08x\n",
+			DDPMSG("0x%08lx: 0x%08x 0x%08x 0x%08x 0x%08x\n",
 				(k + mipi_base_addr),
 				mtk_spi_read(mipi_base_addr + k),
 				mtk_spi_read(mipi_base_addr + k + 0x4),
@@ -1902,7 +1902,7 @@ int bdg_dsi_dump_reg(enum DISP_BDG_ENUM module)
 		if (dsc_en) {
 			DDPMSG("====== mt6382 DSC%d REGS ======\n", i);
 			for (k = 0; k < sizeof(struct BDG_DISP_DSC_REGS); k += 16) {
-				DDPMSG("0x%08x: 0x%08x 0x%08x 0x%08x 0x%08x\n",
+				DDPMSG("0x%08lx: 0x%08x 0x%08x 0x%08x 0x%08x\n",
 					(k + dsc_base_addr),
 					mtk_spi_read(dsc_base_addr + k),
 					mtk_spi_read(dsc_base_addr + k + 0x4),

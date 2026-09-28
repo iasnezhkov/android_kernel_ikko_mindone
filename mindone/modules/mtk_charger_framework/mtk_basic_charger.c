@@ -62,16 +62,6 @@
 #if IS_ENABLED(CONFIG_PRIZE_CHARGE_CTRL_POLICY)
 extern bool g_charge_is_screen_on;
 #endif /* CONFIG_PRIZE_CHARGE_CTRL_POLICY */
-//prize add by lipengpeng 20210621 start 
-//#if IS_ENABLED(CONFIG_PRIZE_MT5725_SUPPORT_15W)
-extern int get_wireless_charge_current(struct charger_data *pdata);
-extern int get_MT5725_status(void);
-extern struct mtk_charger *mt5725_info;
-extern int get_mt5725_charge_protocol(void);
-//#endif
-//prize add by lipengpeng 20210621 end 
-/* pri added for turn Tx power off when charge complete */
-extern void wireless_power_charge_complete(void);
 
 static int _uA_to_mA(int uA)
 {
@@ -236,7 +226,7 @@ static bool select_charging_current_limit(struct mtk_charger *info,
 	else {
 		is_basic = true;
 		/* AICL */
-		if (!info->disable_aicl)
+		if (!info->disable_aicl && pdata->input_current_limit_by_aicl == -1)
 			charger_dev_run_aicl(info->chg1_dev,
 				&pdata->input_current_limit_by_aicl);
 		if (info->enable_dynamic_mivr) {
@@ -266,16 +256,6 @@ static bool select_charging_current_limit(struct mtk_charger *info,
 					TYPEC_RP_LEVEL));
 		}
 	}
-	
-//prize add by lipengpeng 20210621 start 
-//#if IS_ENABLED(CONFIG_PRIZE_MT5725_SUPPORT_15W)
-        printk("lpp---wireless charge current\n");
-		if(((info->chr_type == POWER_SUPPLY_TYPE_USB)&&(info->usb_type == POWER_SUPPLY_USB_TYPE_DCP)) && (get_MT5725_status() == 0)){
-			get_wireless_charge_current(pdata);
-			printk(" lpp---wireless charge current input_current_limit %d: charging_current_limit %d\n",pdata->input_current_limit,pdata->charging_current_limit);
-		}
-//#endif
-//prize add by lipengpeng 20210621 end 	
 
 	if (info->enable_sw_jeita) {
 		if (IS_ENABLED(CONFIG_USBIF_COMPLIANCE)
@@ -296,7 +276,7 @@ static bool select_charging_current_limit(struct mtk_charger *info,
 				}
 			}
 
-			printk("gezi is 5725:%d,sm:%d,in_curr:%d,cc:%d\n",get_MT5725_status(),info->sw_jeita.sm,pdata->input_current_limit,pdata->charging_current_limit);
+			pr_debug("sm:%d,in_curr:%d,cc:%d\n",info->sw_jeita.sm,pdata->input_current_limit,pdata->charging_current_limit);
 	}
 
 	sc_select_charging_current(info, pdata);
@@ -394,7 +374,7 @@ static bool select_charging_current_limit(struct mtk_charger *info,
 			}
 			info->pre_battery_ntc = battery_ntc;
 		}
-		chr_err("%s:battery ntc: %d,limit input current:%d\n", __func__,battery_ntc,info->setting.input_current_limit1);
+		pr_debug("%s:battery ntc: %d,limit input current:%d\n", __func__,battery_ntc,info->setting.input_current_limit1);
 	}
 
 #if IS_ENABLED(CONFIG_PRIZE_CHARGE_CTRL_POLICY)
@@ -402,12 +382,12 @@ static bool select_charging_current_limit(struct mtk_charger *info,
 				if (pdata->charging_current_limit > 1000000 ||
 					pdata->charging_current_limit == -1) {
 					setting->charging_current_limit1 = 1000000;
-					chr_err("pe is running!input_current_limit:(%d,%d)\n",
+					pr_debug("pe is running!input_current_limit:(%d,%d)\n",
 						pdata->input_current_limit,
 						setting->input_current_limit1);
 				}
 	}
-		printk("PRIZE master  charge current %d:%d\n",pdata->input_current_limit,pdata->charging_current_limit);
+		pr_debug("PRIZE master  charge current %d:%d\n",pdata->input_current_limit,pdata->charging_current_limit);
 #endif	/* CONFIG_PRIZE_CHARGE_CTRL_POLICY */
 // drv mod by liuruiqian for battery_ntc charge limit 20240726 start
 
@@ -431,7 +411,7 @@ done:
 		is_basic = true;
 	}
 	/* For TC_018, pleasae don't modify the format */
-	chr_err("m:%d chg1:%d,%d,%d,%d chg2:%d,%d,%d,%d dvchg1:%d sc:%d %d %d type:%d:%d usb_unlimited:%d usbif:%d usbsm:%d aicl:%d atm:%d bm:%d b:%d\n",
+	chr_debug("m:%d chg1:%d,%d,%d,%d chg2:%d,%d,%d,%d dvchg1:%d sc:%d %d %d type:%d:%d usb_unlimited:%d usbif:%d usbsm:%d aicl:%d atm:%d bm:%d b:%d\n",
 		info->config,
 		_uA_to_mA(pdata->thermal_input_current_limit),
 		_uA_to_mA(pdata->thermal_charging_current_limit),
@@ -473,29 +453,15 @@ static int do_algorithm(struct mtk_charger *info)
 		if (chg_done) {
 			charger_dev_do_event(info->chg1_dev, EVENT_FULL, 0);
 			info->polling_interval = CHARGING_FULL_INTERVAL;
-/* pri added for turn Tx power off when charge complete start */
-#if defined(CONFIG_PRIZE_MT5725_SUPPORT_15W)
-		if ((info->chr_type == NONSTANDARD_CHARGER) && (get_MT5725_status() == 0))
-			wireless_power_charge_complete();
-#endif /*CONFIG_PRIZE_MT5725_SUPPORT_15W*/
-/* pri added for turn Tx power off when charge complete end */
 			chr_err("%s battery full\n", __func__);
 		} else {
 			charger_dev_do_event(info->chg1_dev, EVENT_RECHARGE, 0);
 			info->polling_interval = CHARGING_INTERVAL;
-/* pri added for turn Tx power off when charge complete start */
-#if defined(CONFIG_PRIZE_MT5725_SUPPORT_15W)
-	if (chg_done) {
-		if ((info->chr_type == NONSTANDARD_CHARGER) && (get_MT5725_status() == 0))
-			wireless_power_charge_complete();
-	}
-#endif /*CONFIG_PRIZE_MT5725_SUPPORT_15W*/
-/* pri added for turn Tx power off when charge complete end */
 			chr_err("%s battery recharge\n", __func__);
 		}
 	}
 
-	chr_err("%s is_basic:%d\n", __func__, is_basic);
+	chr_debug("%s is_basic:%d\n", __func__, is_basic);
 	if (is_basic != true) {
 		is_basic = true;
 		for (i = 0; i < MAX_ALG_NO; i++) {
@@ -630,21 +596,6 @@ static int do_algorithm(struct mtk_charger *info)
 
 	return 0;
 }
-//prize add by lipengpeng 20210621 start 
-//#if IS_ENABLED(CONFIG_PRIZE_MT5725_SUPPORT_15W)
- int wireless_charge_chage_current(void)
-{
-	if(mt5725_info==NULL){
-	printk("lpp----mt5725_info is null\n");
-	}else{
-	printk("lpp----set current start \n");	
-	 do_algorithm(mt5725_info);
-	}
-	return 0;
-}
-EXPORT_SYMBOL(wireless_charge_chage_current);
-//#endif
-//prize add by lipengpeng 20210621 end 
 
 static int enable_charging(struct mtk_charger *info,
 						bool en)

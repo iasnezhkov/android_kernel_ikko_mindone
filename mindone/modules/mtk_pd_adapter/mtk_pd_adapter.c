@@ -786,13 +786,6 @@ static int mtk_pd_adapter_probe(struct platform_device *pdev)
 
 	info->tcpc = tcpc_dev_get_by_name("type_c_port0");
 	if (info->tcpc == NULL) {
-		/*
-		 * MINDONE-PDADAPTER-DEFER: the stock driver gave up for good after one
-		 * -EPROBE_DEFER retry. tcpc_class/tcpc_rt1711h load ~65 modules.load
-		 * entries later here, so that single retry is routinely exhausted and
-		 * PD/PPS fast charge gets blocked. Keep deferring via the kernel's
-		 * normal unbounded retry instead. See TCPC-PD-ROOTFIX-2908 §5.
-		 */
 		dev_info_once(&pdev->dev,
 			"%s: tcpc device not ready, deferring probe\n",
 			__func__);

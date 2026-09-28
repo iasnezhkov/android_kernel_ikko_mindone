@@ -2,8 +2,6 @@
 /*
  * Copyright (c) 2019 MediaTek Inc.
  */
-
-#include <linux/version.h>
 #include <linux/io.h>
 #include <linux/mm.h>
 #include <linux/pagemap.h>

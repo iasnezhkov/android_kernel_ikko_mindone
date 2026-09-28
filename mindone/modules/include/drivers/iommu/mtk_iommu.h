@@ -182,7 +182,6 @@ struct mtk_iommu_data {
 	struct list_head		*hw_list;
 	struct list_head		hw_list_head;
 	struct list_head		list;
-	/* MINDONE-IOMMU-SYSNOIRQ: registers were saved by the system suspend path. */
 	bool				mindone_sys_saved;
 	struct mtk_smi_larb_iommu	larb_imu[MTK_LARB_NR_MAX];
 };

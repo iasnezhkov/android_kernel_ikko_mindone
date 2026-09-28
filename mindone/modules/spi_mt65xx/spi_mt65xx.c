@@ -17,7 +17,7 @@
 #include "linux/platform_data/spi-mt65xx.h"
 #include <linux/pm_runtime.h>
 #include <linux/spi/spi.h>
-#include <drivers/tee/tkcore/include/linux/tee_clkmgr.h>	/* MINDONE-SPI-TEECLK (F3285) */
+#include <drivers/tee/tkcore/include/linux/tee_clkmgr.h>
 #include <linux/dma-mapping.h>
 #include <linux/pm_qos.h>
 #include <linux/time.h>
@@ -885,12 +885,6 @@ static int mtk_spi_setup(struct spi_device *spi)
 	if (!spi->controller_data)
 		spi->controller_data = (void *)&mtk_default_chip_info;
 
-	/* Since multi-CS support landed, spi_device::cs_gpiod is an ARRAY, so the old
-	 * `if (spi->cs_gpiod)` was always true (an array never decays to NULL) and the
-	 * array address was passed where a descriptor is expected. On 6.12 that reaches
-	 * gpiod_direction_output() and dereferences garbage: NULL pointer at 0x510 in
-	 * __srcu_read_lock, during spi_register_controller. Use the accessor, which
-	 * returns the real descriptor or NULL when the device has no CS GPIO. */
 	if (mdata->dev_comp->need_pad_sel && spi_get_csgpiod(spi, 0))
 		gpiod_direction_output(spi_get_csgpiod(spi, 0),
 				       !(spi->mode & SPI_CS_HIGH));
@@ -998,6 +992,19 @@ static irqreturn_t mtk_spi_interrupt(int irq, void *dev_id)
 	mtk_spi_enable_transfer(master);
 
 	return IRQ_HANDLED;
+}
+
+static void mtk_spi_tee_clk_enable(const void *clk)
+{
+	int ret = clk_prepare_enable((struct clk *)clk);
+
+	if (ret)
+		pr_err("mtk-spi: TEE clock enable failed: %d\n", ret);
+}
+
+static void mtk_spi_tee_clk_disable(const void *clk)
+{
+	clk_disable_unprepare((struct clk *)clk);
 }
 
 static int mtk_spi_probe(struct platform_device *pdev)
@@ -1202,23 +1209,15 @@ static int mtk_spi_probe(struct platform_device *pdev)
 		goto err_put_master;
 	}
 
-	/* MINDONE-SPI-TEECLK (F3285): TEE-side SPI clocking needs this callback
-	 * pre-registered (CLKMGR 0xffff0006) or the fingerprint sensor cold-resets
-	 * after 8 failed requests; missing here entirely in our driver edition
-	 * (F3284). Not fatal to skip - see MINDONE-MODULES-NOTES-0901. */
 	{
 		int tee_ret = tee_clkmgr_register1("spi", master->bus_num,
-						   clk_prepare_enable,
-						   clk_disable_unprepare,
+						   mtk_spi_tee_clk_enable,
+						   mtk_spi_tee_clk_disable,
 						   mdata->spi_clk);
 		if (tee_ret)
-			dev_info(&pdev->dev,
-				 "MINDONE-SPI-TEECLK: registration failed (%d), bus %d\n",
-				 tee_ret, master->bus_num);
-		else
-			dev_info(&pdev->dev,
-				 "MINDONE-SPI-TEECLK: registered 'spi' id=%d clk=%p\n",
-				 master->bus_num, mdata->spi_clk);
+			dev_err(&pdev->dev,
+				"TEE clock callback registration failed (%d), bus %d\n",
+				tee_ret, master->bus_num);
 	}
 
 	return 0;

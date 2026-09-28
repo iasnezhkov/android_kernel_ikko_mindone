@@ -494,7 +494,6 @@ done:
 	return ret;
 }
 
-/* MINDONE-LK-RECYCLE (12.09): not static -- mtk_dsi.c calls this same cycle after taking over from LK. */
 int mtk_drm_esd_recover(struct drm_crtc *crtc)
 {
 	struct mtk_drm_crtc *mtk_crtc = to_mtk_crtc(crtc);
@@ -647,7 +646,7 @@ static int mtk_drm_esd_check_worker_kthread(void *data)
 
 	while (1) {
 		msleep(ESD_CHECK_PERIOD);
-		if (esd_ctx->chk_en == 0)
+		if (esd_ctx->chk_en == 0 || mtk_dsi_lk_esd_hold())
 			continue;
 
 		if (mtk_crtc_is_frame_trigger_mode(crtc) &&
@@ -673,7 +672,7 @@ static int mtk_drm_esd_check_worker_kthread(void *data)
 				continue;
 			}
 			if (ret == 0 && esd_ctx->chk_active) {
-				DDPPR_ERR("%s: internal TE time out:%d, ret:%llu, esd:%d\n",
+				DDPPR_ERR("%s: internal TE time out:%d, ret:%d, esd:%d\n",
 					__func__, HZ, ret,
 					atomic_read(&esd_ctx->check_wakeup));
 				te_timeout = true;

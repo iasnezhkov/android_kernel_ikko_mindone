@@ -13,7 +13,6 @@
  * GNU General Public License for more details.
  */
 
-#include <mindone/compat.h>
 #include <linux/types.h>
 #include <linux/slab.h>
 #include <linux/device.h>
@@ -28,7 +27,6 @@
 #include <linux/fs.h>
 #include <linux/net.h>
 #include <net/sock.h>		/* sockfd_lookup */
-#include <linux/version.h>
 #include <linux/sched/clock.h>	/* local_clock */
 #include <linux/sched/task.h>	/* put_task_struct */
 
@@ -138,7 +136,7 @@ static struct file *mc_get_task_exe_file(struct task_struct *task)
 	if (mm) {
 		rcu_read_lock();
 		exe_file = rcu_dereference(mm->exe_file);
-		if (exe_file && !MINDONE_GET_FILE_RCU(exe_file))
+		if (exe_file && !atomic_long_inc_not_zero(&exe_file->f_count))
 			exe_file = NULL;
 		rcu_read_unlock();
 		mmput(mm);

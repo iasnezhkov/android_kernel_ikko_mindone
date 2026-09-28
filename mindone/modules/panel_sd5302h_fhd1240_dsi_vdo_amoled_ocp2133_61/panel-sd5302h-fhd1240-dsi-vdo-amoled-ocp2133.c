@@ -137,14 +137,6 @@ static void lcm_dcs_write(struct lcm *ctx, const void *data, size_t len)
  */
 static void lcm_panel_init(struct lcm *ctx)
 {
-	/* MINDONE-PANEL-PWRORDER (01.09.2026, F3388): power the panel's analog rails
-	 * (AVDD/AVEE via OCP2133, plus disp-pwm) BEFORE pulsing reset. The original
-	 * order pulsed reset while avdd-en was still low; it only worked because the
-	 * bootloader left AVDD on at cold boot. After a real panel power-down
-	 * (unprepare on suspend drives avdd-en low), reset hit an unpowered
-	 * controller - the always-on DSI receiver kept ACKing so init "succeeded"
-	 * but the panel never latched and stayed black until reboot. Analog-then-
-	 * reset is the datasheet order, self-sufficient regardless of bootloader state. */
 	gpiod_set_value(ctx->avdd_en_gpio, 1);
 	msleep(15);
 	gpiod_set_value(ctx->disp_pwm_gpio, 1);
@@ -384,7 +376,6 @@ static const struct drm_display_mode default_mode = {
 
 static int lcm_get_modes(struct drm_panel *panel, struct drm_connector *connector)
 {
-	pr_notice("MINDONE-PANEL-NOESD: build with panel self-check disabled\n");
 	struct drm_display_mode *mode;
 
 	mode = drm_mode_duplicate(connector->dev, &default_mode);
@@ -411,62 +402,15 @@ static const struct drm_panel_funcs lcm_drm_funcs = {
 };
 
 #if defined(CONFIG_MTK_PANEL_EXT)
-/*
- * Independently re-verified (2026-08-19): exactly 10 of the 60856 bytes
- * in the stock ext_params are non-zero, and all 10 land exactly on
- * field boundaries (confirmed via compiled offsetof(), not hand-counted):
- *   - pll_clk (offset +4) = 430. Matches 4-lane DSI at this pixel
- *     clock/24bpp (143270 kHz * 24 / 4 / 2 ~= 429.8 -> 430); see
- *     ch13721c's header comment for the same derivation.
- *   - cust_esd_check (offset +0xa40) = 1.
- *   - esd_check_enable (offset +0xa44) = 1.
- *   - lcm_esd_check_table[0] (offset +0xa48) = {cmd=0x0A, count=1,
- *     para_list[0]=0x9C}: MIPI DCS "Get Power Mode", expected 0x9C --
- *     the standard MTK ESD-check idiom (same entry ch13721c has, but
- *     that panel leaves the enable flags at zero; this one turns it on).
- *   - lcm_esd_check_table[1] (offset +0xa5e) = {cmd=0xFB, count=1,
- *     para_list[0]=0x11}: a second, vendor/JD9365D-specific status
- *     register read (0xFB is not a standard MIPI DCS opcode). Exact
- *     semantics of this second check are not otherwise documented;
- *     reproduced here byte-faithful to the binary.
- *   Both table entries have mask_list all-zero in the binary; that is
- *   reproduced as-is (not editorialized -- the masking semantics live
- *   in the mtk_disp ESD-check core, outside this driver).
- * Every other field (round-corner, DSC, dynamic fps, msync, spr/cm...)
- * is zero/default in the binary and left at struct defaults here.
- */
 static struct mtk_panel_params ext_params = {
 	.pll_clk = 430,
-	/* MINDONE: keep the data lanes in HS through HFP and drop to LP once per
-	 * frame (vertical blanking) instead of once per line. With the stock
-	 * default (per-line LP) every line pays two LP<->HS transitions, about
-	 * 2 * data_phy_cycle * 4 lanes ~= 208 byte clocks, which the 172 bytes
-	 * of HFP+HBP cannot absorb at 860 Mbps: the line grows from 8.02 us to
-	 * ~8.5 us and the frame from 10.42 ms (96 Hz) to ~11.04 ms. Measured on
-	 * the device 19.09: kernel lcm_fps_ctx_get 11.03-11.05 ms (fps=9057),
-	 * LK fps=9049, SurfaceFlinger "ideal period 10.42ms: period = 11.07ms".
-	 * mtk_dsi_config_vdo_timing() sets HFP_HS_EN and shortens the blanking
-	 * lines by the LP overhead when this is on. Not in the stock binary. */
 	.vdo_per_frame_lp_enable = 1,
-	/* MINDONE: the panel self-check is turned OFF here.
-	 * Entry [1] of lcm_esd_check_table reads register 0xFB and expects 0x11; 0xFB
-	 * is not standard MIPI DCS and belongs to a DIFFERENT controller (JD9365D)
-	 * per this file's own header - likely inherited during reconstruction. On
-	 * this device the read returns 0x00, the check fails 19x, and the driver
-	 * thrashes the output down/up 20 times before giving up, producing IOMMU
-	 * faults on OVL_RDMA0. Crutch, recorded in HACKS - real fix: find
-	 * the register this panel actually answers on. */
-	.cust_esd_check = 0,
-	.esd_check_enable = 0,
+	.cust_esd_check = 1,
+	.esd_check_enable = 1,
 	.lcm_esd_check_table[0] = {
 		.cmd = 0x0A,
 		.count = 1,
 		.para_list[0] = 0x9C,
-	},
-	.lcm_esd_check_table[1] = {
-		.cmd = 0xFB,
-		.count = 1,
-		.para_list[0] = 0x11,
 	},
 };
 
@@ -507,14 +451,6 @@ static struct mtk_panel_funcs ext_funcs = {
 };
 #endif
 
-/* MINDONE-PANEL-PREPCLR (01.09.2026, F3385): when the skip-panel-switch path
- * leaves prepared/enabled true without a real unprepare, a system suspend
- * still powers the panel context down — and every later lcm_prepare/enable
- * no-ops on the stale flags, leaving the panel black until reboot (no ESD
- * check on this board). On suspend entry the panel is either already
- * unprepared (flags false — no-op) or about to lose state anyway, so
- * clearing the flags is idempotent and only ever forces a full re-init.
- */
 static struct lcm *mindone_prepclr_ctx;
 
 static int mindone_panel_pm_event(struct notifier_block *nb,
@@ -575,12 +511,6 @@ static int lcm_probe(struct mipi_dsi_device *dsi)
 
 	dsi->lanes = 4;
 	dsi->format = MIPI_DSI_FMT_RGB888;
-	/* MIPI_DSI_MODE_EOT_PACKET (kernel <6.x: "do send EOT packets", the
-	 * behavior this driver wants) was removed upstream; EOT packets are
-	 * sent unconditionally now, and the surviving flag
-	 * MIPI_DSI_MODE_NO_EOT_PACKET means the OPPOSITE (suppress them) --
-	 * so the correct 6.1 port is to just drop the bit, not translate it,
-	 * since the wanted behavior (EOT packets sent) is now the default. */
 	dsi->mode_flags = MIPI_DSI_MODE_VIDEO | MIPI_DSI_MODE_VIDEO_SYNC_PULSE
 			 | MIPI_DSI_MODE_LPM;
 
@@ -623,7 +553,6 @@ static int lcm_probe(struct mipi_dsi_device *dsi)
 
 	drm_panel_add(&ctx->panel);
 
-	/* MINDONE-PANEL-PREPCLR: arm the stale-flag clear (single panel). */
 	WRITE_ONCE(mindone_prepclr_ctx, ctx);
 	register_pm_notifier(&mindone_panel_pm_nb);
 

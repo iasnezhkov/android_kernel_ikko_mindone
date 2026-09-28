@@ -39,22 +39,16 @@
 
 #ifdef CONFIG_COMPAT
 #include <linux/compat.h>
-#include <mindone/compat.h>
 #endif
 #include <linux/ctype.h>
 #if WMT_CREATE_NODE_DYNAMIC
 #include <linux/device.h>
 #endif
-#include <linux/version.h>
 #ifdef CONFIG_EARLYSUSPEND
 #include <linux/earlysuspend.h>
 #else
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 10, 0))
 #include <linux/of.h>
 #include "mtk_disp_notify.h"
-#else
-#include <linux/fb.h>
-#endif
 #endif
 #include <linux/proc_fs.h>
 #include <linux/thermal.h>
@@ -221,7 +215,6 @@ struct early_suspend wmt_early_suspend_handler = {
 #else
 
 static struct notifier_block wmt_fb_notifier;
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 10, 0))
 static INT32 wmt_fb_notifier_callback(struct notifier_block *nb, ULONG value, PVOID v)
 {
 	int data = 0;
@@ -258,46 +251,6 @@ static INT32 wmt_fb_notifier_callback(struct notifier_block *nb, ULONG value, PV
 
 	return 0;
 }
-#else
-static INT32 wmt_fb_notifier_callback(struct notifier_block *self, ULONG event, PVOID data)
-{
-	struct fb_event *evdata = data;
-	INT32 blank;
-
-	WMT_DBG_FUNC("wmt_fb_notifier_callback\n");
-
-	/* If we aren't interested in this event, skip it immediately ... */
-	if (event != FB_EVENT_BLANK)
-		return 0;
-
-	blank = *(INT32 *)evdata->data;
-	WMT_DBG_FUNC("fb_notify(blank=%d)\n", blank);
-
-	switch (blank) {
-	case FB_BLANK_UNBLANK:
-		atomic_set(&g_es_lr_flag_for_quick_sleep, 0);
-		atomic_set(&g_es_lr_flag_for_lpbk_onoff, 1);
-		atomic_set(&g_es_lr_flag_for_blank, 1);
-		WMT_WARN_FUNC("@@@@@@@@@@wmt enter UNBLANK @@@@@@@@@@@@@@\n");
-		if (hif_info == 0) {
-			atomic_set(&g_late_pwr_on_for_blank, 1);
-			break;
-		}
-		schedule_work(&gPwrOnOffWork);
-		break;
-	case FB_BLANK_POWERDOWN:
-		atomic_set(&g_es_lr_flag_for_quick_sleep, 1);
-		atomic_set(&g_es_lr_flag_for_lpbk_onoff, 0);
-		atomic_set(&g_es_lr_flag_for_blank, 0);
-		WMT_WARN_FUNC("@@@@@@@@@@wmt enter early POWERDOWN @@@@@@@@@@@@@@\n");
-		schedule_work(&gPwrOnOffWork);
-		break;
-	default:
-		break;
-	}
-	return 0;
-}
-#endif
 #endif /* CONFIG_EARLYSUSPEND */
 /*******************************************************************************
 *                          F U N C T I O N S
@@ -720,7 +673,7 @@ LONG wmt_dev_tm_temp_query(VOID)
 		osal_unlock_unsleepable_lock(&g_temp_query_spinlock);
 
 		if (index == -1) {
-			WMT_INFO_FUNC("[Thermal] current_temp = 0x%x\n", (current_temp & 0xFF));
+			WMT_DBG_FUNC("[Thermal] current_temp = 0x%x\n", (current_temp & 0xFF));
 		} else {
 			WMT_ERR_FUNC("Temperature(0x%x) update failed due to modified idx_temp_table(%d, %d)",
 				(current_temp & 0xFF), idx_temp_table, index);
@@ -1532,11 +1485,7 @@ static INT32 WMT_mmap(struct file *pFile, struct vm_area_struct *pVma)
 	unsigned long bufId = pVma->vm_pgoff;
 	P_CONSYS_EMI_ADDR_INFO emiInfo = mtk_wcn_consys_soc_get_emi_phy_add();
 
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(6, 1, 0))
 	vm_flags_clear(pVma, VM_WRITE | VM_MAYWRITE);
-#else
-	pVma->vm_flags &= ~(VM_WRITE | VM_MAYWRITE);
-#endif
 	WMT_INFO_FUNC("WMT_mmap start:%lu end:%lu size: %lu buffer id=%lu\n",
 		pVma->vm_start, pVma->vm_end,
 		pVma->vm_end - pVma->vm_start, bufId);
@@ -1644,11 +1593,7 @@ static INT32 WMT_init(VOID)
 	WMT_INFO_FUNC("driver(major %d) installed\n", gWmtMajor);
 
 #if WMT_CREATE_NODE_DYNAMIC
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(6, 4, 0))
 	wmt_class = class_create("stpwmt");
-#else
-	wmt_class = MINDONE_CLASS_CREATE("stpwmt");
-#endif
 	if (IS_ERR(wmt_class))
 		goto error;
 	wmt_dev = device_create(wmt_class, NULL, devID, NULL, "stpwmt");
@@ -1712,12 +1657,8 @@ static INT32 WMT_init(VOID)
 	WMT_INFO_FUNC("register_early_suspend finished\n");
 #else
 	wmt_fb_notifier.notifier_call = wmt_fb_notifier_callback;
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 10, 0))
 #if IS_ENABLED(CONFIG_DRM_MEDIATEK)
 	ret = mtk_disp_notifier_register("wmt_driver", &wmt_fb_notifier);
-#endif
-#else
-	ret = fb_register_client(&wmt_fb_notifier);
 #endif
 	if (ret)
 		WMT_ERR_FUNC("wmt register fb_notifier failed! ret(%d)\n", ret);
@@ -1776,12 +1717,8 @@ static VOID WMT_exit(VOID)
 	unregister_early_suspend(&wmt_early_suspend_handler);
 	WMT_INFO_FUNC("unregister_early_suspend finished\n");
 #else
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 10, 0))
 #if IS_ENABLED(CONFIG_DRM_MEDIATEK)
 	mtk_disp_notifier_unregister(&wmt_fb_notifier);
-#endif
-#else
-	fb_unregister_client(&wmt_fb_notifier);
 #endif
 #endif /* CONFIG_EARLYSUSPEND */
 

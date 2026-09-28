@@ -457,15 +457,11 @@ uint32_t wlanDownloadEMISection(IN struct ADAPTER
 	uint8_t __iomem *pucEmiBaseAddr = NULL;
 	uint32_t u4Offset = u4DestAddr & WIFI_EMI_ADDR_MASK;
 
-	/* MINDONE-EMI (F871/F880): gConEmiPhyBaseFinal is copied in initWlan, but
-	 * WMT writes gConEmiPhyBase later (its probe is deferred until the end of
-	 * module loading). Re-read the address at the point of USE -- then load
-	 * order doesn't matter. */
 	if (!gConEmiPhyBaseFinal && gConEmiPhyBase) {
 		gConEmiPhyBaseFinal = gConEmiPhyBase;
 		gConEmiSizeFinal = gConEmiSize;
-		DBGLOG(INIT, ERROR,
-		       "MINDONE-EMI: reread base 0x%llx size 0x%lx\n",
+		DBGLOG(INIT, INFO,
+		       "EMI reread base 0x%llx size 0x%lx\n",
 		       (uint64_t)gConEmiPhyBaseFinal, gConEmiSizeFinal);
 	}
 
@@ -2426,7 +2422,6 @@ uint32_t wlanDownloadPatch(IN struct ADAPTER *prAdapter)
 	}
 
 #if (CFG_ROM_PATCH_NO_SEM_CTRL == 0)
-#pragma message("ROM code supports SEM-CTRL for ROM patch download")
 	if (wlanPatchIsDownloaded(prAdapter)) {
 		kalFirmwareImageUnmapping(prAdapter->prGlueInfo, NULL,
 					  prFwBuffer);

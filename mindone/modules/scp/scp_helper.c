@@ -1562,7 +1562,8 @@ void set_scp_mpu(void)
 	mtk_emimpu_set_apc(&md_region, MPU_DOMAIN_D3,
 		MTK_EMIMPU_NO_PROTECTION);
 	if (mtk_emimpu_set_protection(&md_region))
-		pr_notice("[SCP]mtk_emimpu_set_protection fail\n");
+		pr_notice("[SCP]mtk_emimpu_set_protection fail, region=%u range=0x%llx-0x%llx\n",
+			MPU_REGION_ID_SCP_SMEM, md_region.start, md_region.end);
 	mtk_emimpu_free_region(&md_region);
 #endif
 }
@@ -2318,11 +2319,6 @@ static bool scp_ipi_table_init(struct mtk_mbox_device *scp_mboxdev, struct platf
 	return true;
 }
 
-/* MINDONE: instrumenting the SCP probe. The fault at a null address (ESR 86000005)
- * happens after scp_ipi_table_init -- bisecting call by call.
- */
-#define MINDONE_SCPP(n) pr_notice("MINDONE-SCPP-%d\n", (n))
-
 static int scp_device_probe(struct platform_device *pdev)
 {
 	int ret = 0, i = 0;
@@ -2505,33 +2501,26 @@ static int scp_device_probe(struct platform_device *pdev)
 	}
 
 	/* probe mbox info from dts */
-	MINDONE_SCPP(1);
 	if (!scp_ipi_table_init(&scp_mboxdev, pdev))
 		return -ENODEV;
-	MINDONE_SCPP(2);
-	pr_notice("MINDONE-SCPP: mbox count=%d\n", scp_mboxdev.count);
 	/* create mbox dev */
 	pr_debug("[SCP] mbox probe\n");
 	for (i = 0; i < scp_mboxdev.count; i++) {
 		scp_mbox_info[i].mbdev = &scp_mboxdev;
-	pr_notice("MINDONE-SCPP: mbox %d, before mtk_mbox_probe\n", i);
 		ret = mtk_mbox_probe(pdev, scp_mbox_info[i].mbdev, i);
-		pr_notice("MINDONE-SCPP: mbox %d, mtk_mbox_probe returned %d\n", i, ret);
 		if (ret < 0 || scp_mboxdev.info_table[i].irq_num < 0) {
-			pr_notice("[SCP] mbox%d probe fail\n", i, ret);
+			pr_notice("[SCP] mbox%d probe fail, ret=%d\n", i, ret);
 			continue;
 		}
 
 		ret = enable_irq_wake(scp_mboxdev.info_table[i].irq_num);
 		if (ret < 0) {
-			pr_notice("[SCP]mbox%d enable irq fail\n", i, ret);
+			pr_notice("[SCP]mbox%d enable irq fail, ret=%d\n", i, ret);
 			continue;
 		}
 		mbox_setup_pin_table(i);
-		pr_notice("MINDONE-SCPP: mbox %d, pin_table ready\n", i);
 	}
 
-	MINDONE_SCPP(3);
 	for (i = 0; i < IRQ_NUMBER; i++) {
 		if (scp_ipi_irqs[i].name == NULL)
 			continue;
@@ -2549,10 +2538,8 @@ static int scp_device_probe(struct platform_device *pdev)
 			pr_info("[SCP] get '%s' fail\n", scp_ipi_irqs[i].name);
 	}
 
-	MINDONE_SCPP(4);
 	ret = mtk_ipi_device_register(&scp_ipidev, pdev, &scp_mboxdev,
 				      SCP_IPI_COUNT);
-	MINDONE_SCPP(5);
 	if (ret)
 		pr_notice("[SCP] ipi_dev_register fail, ret %d\n", ret);
 
@@ -2681,21 +2668,6 @@ static struct notifier_block scp_semaphore_init_notifier = {
 /*
  * driver initialization entry point
  */
-/* MINDONE: breakpoints inside scp_init to bisect the section WITHOUT REFLASHING (F1026).
- * 0 -- normal operation; N>0 -- exit scp_init right AFTER point N.
- * Always verify the parameter is actually applied: /sys/module/scp/parameters/mindone_scp_stop (F1017).
- */
-static int mindone_scp_stop;
-module_param(mindone_scp_stop, int, 0444);
-MODULE_PARM_DESC(mindone_scp_stop, "MINDONE: exit scp_init after point N (0=off)");
-#define MINDONE_STOP(n) do { \
-	pr_notice("MINDONE-SCP: point %d passed\n", (n)); \
-	if (mindone_scp_stop == (n)) { \
-		pr_notice("MINDONE-SCP: STOPPED at point %d\n", (n)); \
-		return 0; \
-	} \
-} while (0)
-
 static int __init scp_init(void)
 {
 	int ret = 0;
@@ -2714,12 +2686,10 @@ static int __init scp_init(void)
 		scp_ready[i] = 0;
 	}
 	scp_dvfs_cali_ready = 0;
-	MINDONE_STOP(1);
 
 #if SCP_DVFS_INIT_ENABLE
 	scp_dvfs_init();
 	wait_scp_dvfs_init_done();
-	MINDONE_STOP(2);
 
 	if (scp_dvfs_feature_enable()) {
 		/* pll maybe gate, request pll before access any scp reg/sram */
@@ -2727,9 +2697,6 @@ static int __init scp_init(void)
 		/* keep Univpll */
 		scp_resource_req(SCP_REQ_26M);
 	}
-	pr_notice("MINDONE-SCP: dvfs_feature=%d scpsys=%p sram=%p\n",
-		scp_dvfs_feature_enable(), (void *)scpreg.scpsys, (void *)scpreg.sram);
-	MINDONE_STOP(3);
 #endif /* SCP_DVFS_INIT_ENABLE */
 
 	ret = platform_driver_register(&mtk_scpsys_device);
@@ -2743,7 +2710,6 @@ static int __init scp_init(void)
 		pr_notice("[SCP] skip the scpsys probe\n");
 		goto err_without_unregister;
 	}
-	MINDONE_STOP(4);
 
 	ret = platform_driver_register(&mtk_scp_device);
 	if (ret) {
@@ -2762,13 +2728,10 @@ static int __init scp_init(void)
 		pr_notice("[SCP] scp disabled!!\n");
 		goto err;
 	}
-	MINDONE_STOP(5);
 	/* scp platform initialise */
 	scp_region_info_init();
-	MINDONE_STOP(6);
 	pr_debug("[SCP] platform init\n");
 	scp_awake_init();
-	MINDONE_STOP(7);
 	scp_workqueue = create_singlethread_workqueue("SCP_WQ");
 	ret = scp_excep_init();
 	if (ret) {

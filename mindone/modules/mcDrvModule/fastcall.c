@@ -16,7 +16,6 @@
 #include <linux/device.h>
 #include <linux/debugfs.h>
 #include <linux/sched.h>	/* local_clock */
-#include <linux/version.h>
 #include <linux/sched/clock.h>	/* local_clock */
 
 #include "mci/mcifc.h"

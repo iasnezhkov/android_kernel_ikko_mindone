@@ -7,7 +7,6 @@
  * Author: Laxman Dewangan <ldewangan@nvidia.com>
  */
 #include <linux/iio/consumer.h>
-#include <mindone/compat.h>
 #include <linux/kernel.h>
 #include <linux/module.h>
 #include <linux/platform_device.h>
@@ -55,7 +54,7 @@ static int gadc_thermal_adc_to_temp(struct gadc_thermal_info *gti, int val)
 
 static int gadc_thermal_get_temp(struct thermal_zone_device *tz, int *temp)
 {
-	struct gadc_thermal_info *gti = MINDONE_TZ_DEVDATA(tz);
+	struct gadc_thermal_info *gti = thermal_zone_device_priv(tz);
 	int val;
 	int ret;
 

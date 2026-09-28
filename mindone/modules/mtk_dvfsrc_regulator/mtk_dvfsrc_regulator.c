@@ -127,16 +127,6 @@ static int dvfsrc_get_voltage_sel(struct regulator_dev *rdev)
 		return -EINVAL;
 	}
 
-	/* MINDONE-DVFSRC: diagnostic. The regulator core logs "failed to get the current
-	 * voltage: -ENODEV", but per the source none of the calls can actually return
-	 * -ENODEV. Checking the real values. Boot survives this, log is available. See F585.
-	 *
-	 * 08.09 (F3942): F585 was closed on 23.08 -- the investigation this was written for
-	 * is done. This used to be pr_emerg with %px: the highest level (10 "fatal" lines per
-	 * boot, which show up as F in logcat and reach the console) printing the RAW kernel
-	 * address. We keep the probe itself, but at pr_debug (compiles to nothing outside a
-	 * debug build) and with %p -- a hashed pointer, without leaking the address.
-	 */
 	pr_debug("MINDONE-DVFSRC: id=%d dev=%p ret=%d val=%d\n",
 		 id, dvfsrc_dev, ret, val);
 

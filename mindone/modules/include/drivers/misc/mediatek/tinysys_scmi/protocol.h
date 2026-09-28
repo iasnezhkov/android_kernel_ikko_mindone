@@ -14,6 +14,8 @@
 #include <linux/types.h>
 
 
+struct scmi_protocol_handle;
+
 struct scmi_tinysys_status {
 	u32 r1;
 	u32 r2;

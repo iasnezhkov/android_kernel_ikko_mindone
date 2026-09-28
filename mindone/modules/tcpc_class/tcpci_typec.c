@@ -653,7 +653,7 @@ static inline void typec_unattached_cc_entry(struct tcpc_device *tcpc)
 		if (typec_check_cc_any(TYPEC_CC_VOLT_RD)) {
 			TYPEC_DBG("typec_src_unattach not open\n");
 			tcpci_set_cc(tcpc, TYPEC_CC_OPEN);
-			usleep_rnage(5000, 6000);
+			usleep_range(5000, 6000);
 		}
 #endif	/* CONFIG_TYPEC_CHECK_SRC_UNATTACH_OPEN */
 		TYPEC_NEW_STATE(typec_unattached_src);
@@ -665,7 +665,7 @@ static inline void typec_unattached_cc_entry(struct tcpc_device *tcpc)
 			typec_unattached_src_and_drp_entry(tcpc);
 			break;
 		}
-		/* pass through */
+		fallthrough;
 	default:
 		switch (tcpc->typec_state) {
 		case typec_attachwait_snk:
@@ -2198,7 +2198,7 @@ int tcpc_typec_handle_cc_change(struct tcpc_device *tcpc)
 
 	if (typec_is_cc_attach(tcpc)) {
 		
-		printk("gezi--wire -charge check to wireless\n");
+		pr_debug("wire -charge check to wireless\n");
 		test_gpio_t(1);
 //drv add by lipengpeng 20230315 start C to C connection charging and data disconnection
 		mdelay(30);
@@ -2227,7 +2227,7 @@ int tcpc_typec_handle_cc_change(struct tcpc_device *tcpc)
 #endif /* CONFIG_WATER_DETECTION */
 	} else {
 		
-		printk("gezi--wire -otg remove\n");
+		pr_debug("wire -otg remove\n");
 		set_otg_en_t(0);
 		test_gpio_t(0);
 		if (tcpc->tcpc_flags & TCPC_FLAGS_TYPEC_OTP)

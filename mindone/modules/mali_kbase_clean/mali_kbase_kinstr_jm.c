@@ -44,20 +44,10 @@
 #include <linux/poll.h>
 #include <linux/slab.h>
 #include <linux/spinlock.h>
-#include <linux/version.h>
 #include <linux/wait.h>
 
-#if KERNEL_VERSION(5, 1, 0) <= LINUX_VERSION_CODE
 #include <linux/build_bug.h>
-#else
-// Stringify the expression if no message is given.
-#define static_assert(e, ...)  __static_assert(e, #__VA_ARGS__, #e)
-#define __static_assert(e, msg, ...) _Static_assert(e, msg)
-#endif
 
-#if KERNEL_VERSION(4, 16, 0) >= LINUX_VERSION_CODE
-typedef unsigned int __poll_t;
-#endif
 
 #ifndef ENOTSUP
 #define ENOTSUP EOPNOTSUPP
@@ -580,13 +570,8 @@ static ssize_t reader_read(struct file *const filp,
 	if (buffer_size < sizeof(struct kbase_kinstr_jm_atom_state_change))
 		return -ENOBUFS;
 
-#if KERNEL_VERSION(5, 0, 0) <= LINUX_VERSION_CODE
 	if (!access_ok(buffer, buffer_size))
 		return -EIO;
-#else
-	if (!access_ok(VERIFY_WRITE, buffer, buffer_size))
-		return -EIO;
-#endif
 
 	changes = &reader->changes;
 
@@ -651,9 +636,6 @@ static __poll_t reader_poll(struct file *const file,
 
 /* The file operations virtual function table */
 static const struct file_operations file_operations = {
-	/* MINDONE: .owner deliberately unset - this fops is used with anon_inode_getfd(),
-	 * and alloc_file() takes NO module reference while __fput() always releases one.
-	 * Kernel reference: drivers/dma-buf/sync_file.c sync_file_fops has no .owner. */
 	.llseek = noop_llseek,
 	.read = reader_read,
 	.poll = reader_poll,

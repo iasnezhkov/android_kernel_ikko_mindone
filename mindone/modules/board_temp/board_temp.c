@@ -4,7 +4,6 @@
  */
 #include <linux/bits.h>
 #include <linux/platform_device.h>
-#include <mindone/compat.h>
 #include <linux/device.h>
 #include <linux/io.h>
 #include <linux/kernel.h>
@@ -219,7 +218,7 @@ static void print_tia_reg(struct device *dev)
 
 static int board_ntc_get_temp(struct thermal_zone_device *tz, int *temp)
 {
-	struct board_ntc_info *ntc_info = (struct board_ntc_info *)MINDONE_TZ_DEVDATA(tz);
+	struct board_ntc_info *ntc_info = (struct board_ntc_info *)thermal_zone_device_priv(tz);
 	struct pmic_auxadc_data *adc_data = ntc_info->adc_data;
 	struct tia_data *tia_param = ntc_info->adc_data->tia_param;
 	unsigned int val, r_type, r_ntc, dbg_reg, en_reg;
@@ -260,7 +259,7 @@ static int board_ntc_get_temp(struct thermal_zone_device *tz, int *temp)
 
 	if (!r_ntc) {
 		dev_err(ntc_info->dev,
-			"r_ntc is 0! v_in/pullup_r/pullup_v=%d/%d/%d\n",
+			"r_ntc is 0! v_in/pullup_r/pullup_v=%llu/%d/%d\n",
 			v_in, adc_data->pullup_r[r_type],
 			adc_data->pullup_v[r_type]);
 		*temp = THERMAL_TEMP_INVALID;
@@ -268,7 +267,7 @@ static int board_ntc_get_temp(struct thermal_zone_device *tz, int *temp)
 		*temp = board_ntc_r_to_temp(ntc_info, r_ntc);
 	}
 
-	dev_dbg_ratelimited(ntc_info->dev, "val=0x%x, v_in/r_type/r_ntc/t=%d/%d/%d/%d\n",
+	dev_dbg_ratelimited(ntc_info->dev, "val=0x%x, v_in/r_type/r_ntc/t=%llu/%d/%d/%d\n",
 		val, v_in, r_type, r_ntc, *temp);
 
 	return 0;

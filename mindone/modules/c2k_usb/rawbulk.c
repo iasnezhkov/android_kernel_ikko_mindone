@@ -12,7 +12,6 @@
 #define DRIVER_NAME     "usb_rawbulk"
 
 #include <linux/kernel.h>
-#include <mindone/compat.h>
 #include <linux/init.h>
 #include <linux/module.h>
 #include <linux/moduleparam.h>
@@ -22,7 +21,6 @@
 #include <linux/wait.h>
 #include <linux/types.h>
 #include <linux/device.h>
-#include <linux/version.h>
 
 #include <linux/usb/composite.h>
 #include "viatel_rawbulk.h"
@@ -714,7 +712,7 @@ static int __init rawbulk_init(void)
 	int ret = 0;
 
 	C2K_NOTE("rawbulk functions go!!!\n");
-	rawbulk_class = MINDONE_CLASS_CREATE("usb_rawbulk");
+	rawbulk_class = class_create("usb_rawbulk");
 	if (IS_ERR(rawbulk_class))
 		return PTR_ERR(rawbulk_class);
 

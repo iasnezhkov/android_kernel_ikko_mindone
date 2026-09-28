@@ -292,6 +292,7 @@ struct NL80211_DRIVER_HOTSPOT_CONFIG_PARAMS {
 #if CFG_SUPPORT_WFD
 struct NL80211_DRIVER_WFD_PARAMS {
 	struct NL80211_DRIVER_TEST_PARAMS hdr;
+	struct_group(rWfdCfg,
 	uint32_t WfdCmdType;
 	uint8_t WfdEnable;
 	uint8_t WfdCoupleSinkStatus;
@@ -327,6 +328,7 @@ struct NL80211_DRIVER_WFD_PARAMS {
 	uint8_t aucReserved3[64];
 	/* Group 3 64 bytes */
 	uint8_t aucReserved4[64];
+	);
 };
 #endif
 

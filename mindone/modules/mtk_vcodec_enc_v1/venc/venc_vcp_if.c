@@ -320,6 +320,7 @@ static int check_codec_id(struct venc_vcu_ipi_msg_common *msg, unsigned int fmt)
 		codec_id = VENC_H263;
 		break;
 	case V4L2_PIX_FMT_H265:
+	case V4L2_PIX_FMT_HEVC:
 		codec_id = VENC_H265;
 		break;
 	case V4L2_PIX_FMT_HEIF:
@@ -460,6 +461,7 @@ int vcp_enc_ipi_handler(void *arg)
 				vcu->failure = VENC_IPI_MSG_STATUS_FAIL;
 			else
 				vcu->ctx->state = MTK_STATE_INIT;
+			fallthrough;
 		case VCU_IPIMSG_ENC_SET_PARAM_DONE:
 		case VCU_IPIMSG_ENC_ENCODE_DONE:
 		case VCU_IPIMSG_ENC_DEINIT_DONE:
@@ -1445,6 +1447,7 @@ static int venc_vcp_set_param(unsigned long handle,
 			inst->vsi->config.profile = enc_prm->profile;
 			inst->vsi->config.level = enc_prm->level;
 		} else if (fmt == V4L2_PIX_FMT_H265 ||
+				fmt == V4L2_PIX_FMT_HEVC ||
 				fmt == V4L2_PIX_FMT_HEIF) {
 			inst->vsi->config.profile =
 				venc_h265_get_profile(inst, enc_prm->profile);

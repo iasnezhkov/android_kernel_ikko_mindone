@@ -425,7 +425,7 @@ enum ENUM_PARAM_NETWORK_TYPE {
 
 struct PARAM_NETWORK_TYPE_LIST {
 	uint32_t NumberOfItems;	/*!< At least 1 */
-	enum ENUM_PARAM_NETWORK_TYPE eNetworkType[1];
+	enum ENUM_PARAM_NETWORK_TYPE eNetworkType[];
 };
 
 enum ENUM_PARAM_PRIVACY_FILTER {

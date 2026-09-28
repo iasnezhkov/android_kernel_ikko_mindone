@@ -3195,30 +3195,26 @@ rlmDomainBuildCmdByDefaultTable(struct CMD_SET_COUNTRY_CHANNEL_POWER_LIMIT
 						& BIT(i)) == 0) {
 
 				if (eType == PWR_LIMIT_TYPE_COMP_11AX)
-					kalMemSet(&prPwrLmtHE->cPwrLimitRU26L,
+					kalMemSet(&prPwrLmtHE->rPwrLimit,
 						cLmtBand,
 						PWR_LIMIT_HE_NUM);
 				else if (eType ==
 					PWR_LIMIT_TYPE_COMP_11AX_BW160)
 					kalMemSet(
-					  &prPwrLmtHEBW160->cPwrLimitRU26L,
+					  &prPwrLmtHEBW160->rPwrLimit,
 					  cLmtBand,
 					  PWR_LIMIT_HE_BW160_NUM);
 #if (CFG_SUPPORT_WIFI_6G == 1)
 				else if (eType == PWR_LIMIT_TYPE_COMP_6E_1 ||
 					eType == PWR_LIMIT_TYPE_COMP_6E_2 ||
 					eType == PWR_LIMIT_TYPE_COMP_6E_3)
-					kalMemSet(&prPwrLmt6E->cPwrLimitRU26L,
+					kalMemSet(&prPwrLmt6E->rPwrLimit,
 						cLmtBand,
 						PWR_LIMIT_6E_NUM);
 #endif
 				else if (eType == PWR_LIMIT_TYPE_COMP_11AC ||
 					eType == PWR_LIMIT_TYPE_COMP_11AC_V2)
-#if (CFG_SUPPORT_DYNA_TX_PWR_CTRL_11AC_V2_SETTING == 1)
-					kalMemSet(&prPwrLimit->cPwrLimitCCK_L,
-#else
-					kalMemSet(&prPwrLimit->cPwrLimitCCK,
-#endif
+					kalMemSet(&prPwrLimit->rPwrLimit,
 					cLmtBand,
 					PWR_LIMIT_NUM);
 			} else {
@@ -3454,11 +3450,11 @@ void rlmDomainCopyFromConfigTable(struct CMD_CHANNEL_POWER_LIMIT *prCmdPwrLimit,
 
 
 #if (CFG_SUPPORT_DYNA_TX_PWR_CTRL_11AC_V2_SETTING == 1)
-	kalMemCopy(&prCmdPwrLimit->cPwrLimitCCK_L,
+	kalMemCopy(&prCmdPwrLimit->rPwrLimit,
 		   &prPwrLimitConfig->aucPwrLimit[0],
 		   PWR_LIMIT_NUM);
 #else
-	kalMemCopy(&prCmdPwrLimit->cPwrLimitCCK,
+	kalMemCopy(&prCmdPwrLimit->rPwrLimit,
 		   &prPwrLimitConfig->aucPwrLimit[0],
 		   PWR_LIMIT_NUM);
 #endif /* CFG_SUPPORT_DYNA_TX_PWR_CTRL_11AC_V2_SETTING */
@@ -5229,7 +5225,7 @@ uint32_t txPwrApplyOneSetting(struct CMD_SET_COUNTRY_CHANNEL_POWER_LIMIT *prCmd,
 
 
 		for (j = 0; j < prCurElement->settingCount; j++) {
-			prChlSetting = &prCurElement->rChlSettingList[j];
+			prChlSetting = prCurElement->rChlSettingList + j;
 			channel2 = prChlSetting->channelParam[0];
 			channel3 = prChlSetting->channelParam[1];
 			fgDoArbitrator = FALSE;
@@ -5610,7 +5606,7 @@ skipLabel:
 			goto clearLabel;
 		}
 
-		prTmpSetting = &prCurElement->rChlSettingList[i];
+		prTmpSetting = prCurElement->rChlSettingList + i;
 
 		/* verify there is ] symbol */
 		pcContNext = kalStrChr(pcContCur, ']');
@@ -5903,8 +5899,8 @@ skipLabel:
 
 			/* first tag should be AX160 */
 			pcContTmp = txPwrGetString(&pcContCur, ",");
-			if (!pcContTmp || !kalStrCmp(pcContTmp,
-				     PWR_CTRL_CHNL_TYPE_KEY_5G_AX160) == 0) {
+			if (!pcContTmp || kalStrCmp(pcContTmp,
+				     PWR_CTRL_CHNL_TYPE_KEY_5G_AX160) != 0) {
 				DBGLOG(RLM, ERROR,
 					"parse AX160 error, %s\n", pcContTmp);
 				goto clearLabel;
@@ -7267,7 +7263,7 @@ void rlmExtractChannelInfo(u32 max_ch_count,
 	}
 
 	for (idx = 0; idx < ch_count; idx++) {
-		pCh = &(prBuff->arChannels[idx]);
+		pCh = prBuff->arChannels + idx;
 
 		pCh->u2ChNum = (rlmDomainGetActiveChannels() + idx)->u2ChNum;
 		pCh->eFlags = (rlmDomainGetActiveChannels() + idx)->eFlags;

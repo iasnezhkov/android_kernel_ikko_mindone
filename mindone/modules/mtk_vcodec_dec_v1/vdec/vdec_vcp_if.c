@@ -429,6 +429,7 @@ static int check_codec_id(struct vdec_vcu_ipi_ack *msg, unsigned int fmt, unsign
 		codec_id = VDEC_H264;
 		break;
 	case V4L2_PIX_FMT_H265:
+	case V4L2_PIX_FMT_HEVC:
 		codec_id = VDEC_H265;
 		break;
 	case V4L2_PIX_FMT_HEIF:
@@ -609,6 +610,7 @@ int vcp_dec_ipi_handler(void *arg)
 			case VCU_IPIMSG_DEC_INIT_DONE:
 				handle_init_ack_msg(dev, (void *)obj->share_buf);
 				vcu->ctx->state = MTK_STATE_INIT;
+				fallthrough;
 			case VCU_IPIMSG_DEC_START_DONE:
 			case VCU_IPIMSG_DEC_DEINIT_DONE:
 			case VCU_IPIMSG_DEC_RESET_DONE:
@@ -671,7 +673,7 @@ int vcp_dec_ipi_handler(void *arg)
 				vdec_vcp_ipi_send(inst, msg, sizeof(*msg), 1);
 				break;
 			case VCU_IPIMSG_DEC_GET_FRAME_BUFFER:
-				mtk_vcodec_err(vcu, "GET_FRAME_BUFFER not support", msg->msg_id);
+				mtk_vcodec_err(vcu, "GET_FRAME_BUFFER not support %d", msg->msg_id);
 				break;
 			default:
 				mtk_vcodec_err(vcu, "invalid msg=%X", msg->msg_id);
@@ -1259,7 +1261,7 @@ int vdec_vcp_set_frame_buffer(struct vdec_inst *inst, void *fb)
 			if (pfb->dma_general_buf != 0) {
 				ipi_fb.dma_general_addr = pfb->dma_general_addr;
 				ipi_fb.general_size = pfb->dma_general_buf->size;
-				mtk_vcodec_debug(inst, "FB id=%d dma_addr (%llx,%llx) dma_general_buf %p size %lu dma %lu",
+				mtk_vcodec_debug(inst, "FB id=%d dma_addr (%llx,%llx) dma_general_buf %p size %lu dma %llu",
 					pfb->index, ipi_fb.y_fb_dma, ipi_fb.c_fb_dma,
 					pfb->dma_general_buf, pfb->dma_general_buf->size, pfb->dma_general_addr);
 			} else {

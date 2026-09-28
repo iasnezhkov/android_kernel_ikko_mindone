@@ -1078,14 +1078,9 @@ u_int8_t kalInitBowDevice(IN struct GLUE_INFO *prGlueInfo, IN const char *prDevN
 	prChipInfo = prGlueInfo->prAdapter->chip_info;
 
 	if (prGlueInfo->rBowInfo.fgIsNetRegistered == FALSE) {
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(3, 18, 0)
 		prGlueInfo->rBowInfo.prDevHandler =
 			alloc_netdev_mq(sizeof(struct GLUE_INFO *), prDevName,
 			NET_NAME_PREDICTABLE, ether_setup, CFG_MAX_TXQ_NUM);
-#else
-		prGlueInfo->rBowInfo.prDevHandler =
-		    alloc_netdev_mq(sizeof(struct GLUE_INFO *), prDevName, ether_setup, CFG_MAX_TXQ_NUM);
-#endif
 		if (!prGlueInfo->rBowInfo.prDevHandler)
 			return FALSE;
 
@@ -1098,7 +1093,7 @@ u_int8_t kalInitBowDevice(IN struct GLUE_INFO *prGlueInfo, IN const char *prDevN
 		/* 1.2 fill hardware address */
 		COPY_MAC_ADDR(rMacAddr, prAdapter->rMyMacAddr);
 		rMacAddr[0] |= 0x2;	/* change to local administrated address */
-		dev_addr_set(prGlueInfo->rBowInfo.prDevHandler, rMacAddr); /* MINDONE-DEVADDR 30.08 (F3118) */
+		dev_addr_set(prGlueInfo->rBowInfo.prDevHandler, rMacAddr);
 		kalMemCopy(prGlueInfo->rBowInfo.prDevHandler->perm_addr,
 			   prGlueInfo->rBowInfo.prDevHandler->dev_addr, ETH_ALEN);
 

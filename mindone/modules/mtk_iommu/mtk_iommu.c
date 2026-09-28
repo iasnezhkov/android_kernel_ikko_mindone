@@ -8,7 +8,6 @@
 
 #include <linux/bitfield.h>
 #include <drivers/misc/mediatek/smi/mtk-smi-dbg.h>
-#include <mindone/compat.h>
 #include <linux/bug.h>
 #include <linux/clk.h>
 #include <linux/component.h>
@@ -988,7 +987,7 @@ static void mtk_iommu_tlb_flush_range_sync(unsigned long iova, size_t size,
 		ret = readl_poll_timeout_atomic(data->base + REG_MMU_CPE_DONE,
 						tmp, tmp != 0, 10, 1000);
 		if (ret) {
-			pr_warn("Partial TLB flush timed out, (%d, %d), iova:0x%llx,0x%zx\n",
+			pr_warn("Partial TLB flush timed out, (%d, %d), iova:0x%lx,0x%zx\n",
 				data->plat_data->iommu_type, data->plat_data->iommu_id,
 				iova, size);
 			if (MTK_IOMMU_HAS_FLAG(data->plat_data, TLB_SYNC_EN))
@@ -1029,7 +1028,7 @@ static void mtk_iommu_dump_tf_iova(struct mtk_iommu_data *data,
 			hw_pa[NS_TAB] = mtee_iova_to_phys(tf_iova_tmp,
 						data->plat_data->tab_id,
 						sr_info, hw_pa, pg_type, lvl);
-		pr_err("error, type2_en:%d, index:%d, lvl:%u, pg_type:0x%x, falut_iova:0x%lx, fault_pa:0x%llx ~ 0x%llx\n",
+		pr_err("error, type2_en:%d, index:%d, lvl:%u, pg_type:0x%x, falut_iova:0x%llx, fault_pa:0x%llx ~ 0x%llx\n",
 			   hypmmu_type2_en, i, lvl[NS_TAB], pg_type[NS_TAB], tf_iova_tmp,
 			   (u64)fake_pa, hw_pa[NS_TAB]);
 		if (!fake_pa && i > 0)
@@ -1163,7 +1162,7 @@ static void peri_iommu_read_data(void __iomem *base, enum peri_iommu iommu_id)
 		pr_err("%s err, peri_tf_analyse is not support\n", __func__);
 		return;
 	}
-	pr_info("%s done, peri_iommu:%d, port:%s, iova:0x%lx, pa:0x%lx, layer:%d, write:%d\n",
+	pr_info("%s done, peri_iommu:%d, port:%s, iova:0x%llx, pa:0x%llx, layer:%d, write:%d\n",
 	       __func__, iommu_id, port, fault_iova, fault_pa, layer, write);
 
 	if (int_state1 & F_REG_MMU0_MAU_INT_MASK)
@@ -1238,7 +1237,7 @@ static void mtk_iommu_isr_other(struct mtk_iommu_data *data,
 			fault_iova |= (u64)va_33_32 << 32;
 		}
 
-		dev_warn(dev, "L2 table walk fault: iova=0x%lx, layer=%d\n",
+		dev_warn(dev, "L2 table walk fault: iova=0x%llx, layer=%d\n",
 			 fault_iova, layer);
 	}
 
@@ -1592,12 +1591,6 @@ static struct iommu_domain *mtk_iommu_domain_alloc(unsigned type)
 	if (!dom)
 		return NULL;
 
-	/* MINDONE: the cookie is set up by the KERNEL itself in __iommu_domain_alloc()
-	 * right after this call returns. Setting it up here too gives the kernel
-	 * -EEXIST and makes it FREE the whole translation area -- exactly what caused
-	 * "Failed to set up IOMMU" on every display block.
-	 */
-
 	dom->domain.ops = &mtk_iommu_domain_ops;
 
 	return &dom->domain;
@@ -1605,16 +1598,11 @@ static struct iommu_domain *mtk_iommu_domain_alloc(unsigned type)
 
 static void mtk_iommu_domain_free(struct iommu_domain *domain)
 {
-	/* MINDONE: the cookie is freed by the KERNEL in iommu_domain_free() BEFORE it
-	 * calls ops->free. Freeing it here too would double-free it.
-	 */
 	kfree(to_mtk_domain(domain));
 }
 
 static int mtk_iommu_set_dev_dma(struct device *dev)
 {
-	int ret = 0;
-
 	if (!dev)
 		return -EINVAL;
 
@@ -1626,12 +1614,7 @@ static int mtk_iommu_set_dev_dma(struct device *dev)
 			return -ENOMEM;
 	}
 
-	ret = MINDONE_DMA_SET_MAX_SEG_SIZE(dev,
-				   (unsigned int)DMA_BIT_MASK(34));
-	if (ret) {
-		dev_info(dev, "Failed to set DMA segment size\n");
-		return ret;
-	}
+	dma_set_max_seg_size(dev, (unsigned int)DMA_BIT_MASK(34));
 
 	return 0;
 }
@@ -1709,17 +1692,6 @@ static int mtk_iommu_attach_device(struct iommu_domain *domain,
 
 	mtk_iommu_config(data, dev, true, domid);
 	mtk_iommu_set_dev_dma(dev);
-
-	/* MINDONE: we set up dma_ops for the MM domain OURSELVES, with the correct
-	 * range. Generic of_dma_configure_id() looks for "dma-ranges" on the parent
-	 * node, but our DTB carries it on the leaf itself; the parent has none, so
-	 * it falls back to [0, 0xffffffff], which does NOT cover the domain 1/2
-	 * aperture (>= 4GiB) -> -EFAULT in iommu_dma_init_domain(). The domain is
-	 * already known here (GET_DOM_ID_LEGACY), so set up translation FIRST with
-	 * the correct bounds -- same as amd/intel/virtio-iommu do it.
-	 */
-	MINDONE_IOMMU_SETUP_DMA_OPS(dev, domain->geometry.aperture_start,
-			     domain->geometry.aperture_end);
 
 out_unlock:
 	mutex_unlock(&init_mutexs[tab_id]);
@@ -1838,21 +1810,7 @@ static void mtk_iommu_iotlb_sync(struct iommu_domain *domain,
 				       dom->data);
 }
 
-/* 6.12 made iommu_domain_ops::iotlb_sync_map return int; 6.1 still declares it void.
- * The return type is part of the CFI type hash, so a stale prototype is a hard failure
- * at the indirect call ("CFI failure at iommu_map_sg, target mtk_iommu_sync_map"),
- * not a warning. This source is shared by both kernels, hence the guard. */
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 12, 0)
-#define MINDONE_SYNC_MAP_RET	int
-#define MINDONE_SYNC_MAP_DONE	return 0
-#define MINDONE_SYNC_MAP_FAIL	return -EINVAL
-#else
-#define MINDONE_SYNC_MAP_RET	void
-#define MINDONE_SYNC_MAP_DONE	return
-#define MINDONE_SYNC_MAP_FAIL	return
-#endif
-
-static MINDONE_SYNC_MAP_RET mtk_iommu_sync_map(struct iommu_domain *domain,
+static int mtk_iommu_sync_map(struct iommu_domain *domain,
 					       unsigned long iova, size_t size)
 {
 	int ret;
@@ -1861,7 +1819,7 @@ static MINDONE_SYNC_MAP_RET mtk_iommu_sync_map(struct iommu_domain *domain,
 	if (iova > (iova + size)) {
 		pr_err("%s fail, iova range : 0x%lx ~ 0x%lx\n",
 		       __func__, iova, iova + size);
-		MINDONE_SYNC_MAP_FAIL;
+		return -EINVAL;
 	}
 
 #if IS_ENABLED(CONFIG_MTK_IOMMU_MISC_DBG)
@@ -1881,7 +1839,7 @@ static MINDONE_SYNC_MAP_RET mtk_iommu_sync_map(struct iommu_domain *domain,
 
 	mtk_iommu_tlb_flush_range_sync(iova, size, size, dom->data);
 
-	MINDONE_SYNC_MAP_DONE;
+	return 0;
 }
 
 static phys_addr_t mtk_iommu_iova_to_phys(struct iommu_domain *domain,
@@ -1900,7 +1858,6 @@ static phys_addr_t mtk_iommu_iova_to_phys(struct iommu_domain *domain,
 static const struct iommu_domain_ops mtk_iommu_domain_ops = {
 	.free		= mtk_iommu_domain_free,
 	.attach_dev	= mtk_iommu_attach_device,
-	MINDONE_IOMMU_DETACH_DEV(mtk_iommu_detach_device)
 	.map_pages	= mtk_iommu_map_pages,
 	.unmap_pages	= mtk_iommu_unmap_pages,
 	.flush_iotlb_all = mtk_iommu_flush_iotlb_all,
@@ -1914,7 +1871,7 @@ static struct iommu_device *mtk_iommu_probe_device(struct device *dev)
 	struct iommu_fwspec *fwspec = dev_iommu_fwspec_get(dev);
 	struct mtk_iommu_data *data;
 
-	if (!MINDONE_FWSPEC_IS_OURS(fwspec, &mtk_iommu_ops))
+	if (!fwspec)
 		return ERR_PTR(-ENODEV); /* Not a iommu client device */
 
 	data = dev_iommu_priv_get(dev);
@@ -1926,7 +1883,7 @@ static void mtk_iommu_release_device(struct device *dev)
 {
 	struct iommu_fwspec *fwspec = dev_iommu_fwspec_get(dev);
 
-	if (!MINDONE_FWSPEC_IS_OURS(fwspec, &mtk_iommu_ops))
+	if (!fwspec)
 		return;
 
 	iommu_fwspec_free(dev);
@@ -1972,17 +1929,7 @@ static struct iommu_group *mtk_iommu_device_group(struct device *dev)
 	return group;
 }
 
-/* 6.12 made iommu_ops::of_xlate take a const of_phandle_args. The signature is part
- * of the CFI type hash, so a stale prototype is not a warning but a hard failure at
- * the indirect call: "CFI failure at of_iommu_xlate (target: mtk_iommu_of_xlate)",
- * hit while probing mediatek_drm. 6.1 still passes it non-const, and this source is
- * shared by both kernels, hence the version guard. */
-#include <linux/version.h>
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 12, 0)
 #define MINDONE_OF_ARGS_CONST const
-#else
-#define MINDONE_OF_ARGS_CONST
-#endif
 
 static int mtk_iommu_of_xlate(struct device *dev,
 			      MINDONE_OF_ARGS_CONST struct of_phandle_args *args)
@@ -2065,10 +2012,6 @@ static struct iommu_domain mtk_iommu_identity_domain __maybe_unused = {
 };
 
 static const struct iommu_ops mtk_iommu_ops = {
-	/* MINDONE-IOMMU-OWNER: kernel 6.1 requires an owner for ops supplied by a
-	 * module, otherwise iommu_device_register() returns -EINVAL with a warning
-	 * (drivers/iommu/iommu.c:220). See tools/scripts/patch-iommu-owner.sh.
-	 */
 	.owner		= THIS_MODULE,
 	.domain_alloc	= mtk_iommu_domain_alloc,
 	.probe_device	= mtk_iommu_probe_device,
@@ -2078,7 +2021,7 @@ static const struct iommu_ops mtk_iommu_ops = {
 	.get_resv_regions = mtk_iommu_get_resv_regions,
 	.pgsize_bitmap	= SZ_4K | SZ_64K | SZ_1M | SZ_16M,
 	.default_domain_ops = &mtk_iommu_domain_ops,
-	MINDONE_IOMMU_IDENTITY_DOMAIN(&mtk_iommu_identity_domain)
+	.identity_domain = &mtk_iommu_identity_domain,
 };
 
 static int mtk_iommu_hw_init(const struct mtk_iommu_data *data)
@@ -3168,14 +3111,6 @@ static int __maybe_unused mtk_iommu_suspend(struct device *dev)
 	if (MTK_IOMMU_HAS_FLAG(data->plat_data, HAS_EMI_PM))
 		return mtk_iommu_hw_suspend(dev);
 
-	/*
-	 * MINDONE-IOMMU-SYSNOIRQ (F3483): an MM bank still runtime-active at system sleep
-	 * never had its registers saved/restored (genpd drops/restores the display domain
-	 * from its noirq path without the runtime callbacks), so after resume it sits at
-	 * reset values and the panel scans out dead translations until reboot (F3480).
-	 * genpd forwards noirq callbacks and powers the domain on before resume_noirq -
-	 * the window to write the registers back.
-	 */
 	if (data->plat_data->iommu_type == MM_IOMMU &&
 	    !pm_runtime_status_suspended(dev)) {
 		data->mindone_sys_saved = true;
@@ -3192,7 +3127,6 @@ static int __maybe_unused mtk_iommu_resume(struct device *dev)
 	if (MTK_IOMMU_HAS_FLAG(data->plat_data, HAS_EMI_PM))
 		return mtk_iommu_hw_resume(dev);
 
-	/* MINDONE-IOMMU-SYSNOIRQ, see mtk_iommu_suspend(). */
 	if (data->mindone_sys_saved) {
 		data->mindone_sys_saved = false;
 		return mtk_iommu_hw_resume(dev);

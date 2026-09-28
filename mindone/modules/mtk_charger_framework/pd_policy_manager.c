@@ -118,11 +118,11 @@ static void usbpd_check_cp_psy(struct usbpd_pm *pdpm)
 {
     if (!pdpm->cp_psy) {
         if (pm_config.cp_sec_enable){
-			pr_err("gezi %s------------------------%d\n", __func__,__LINE__);
+			pr_debug("%s------------------------%d\n", __func__,__LINE__);
             pdpm->cp_psy = power_supply_get_by_name("sc8551-master");
 		}
         else{
-			pr_err("gezi %s------------------------%d\n", __func__,__LINE__);
+			pr_debug("%s------------------------%d\n", __func__,__LINE__);
             pdpm->cp_psy = power_supply_get_by_name("sc8551-standalone");
 		}
         if (!pdpm->cp_psy)
@@ -495,12 +495,13 @@ static int pca_pps_tcp_notifier_call(struct notifier_block *nb,
                 pr_err("en unlock\n");
                 pdpm->is_pps_en_unlock = true;
             }else{
-				pr_err("gezi pdpm->hrst_cnt = %d\n",pdpm->hrst_cnt);
+				pr_debug("pdpm->hrst_cnt = %d\n",pdpm->hrst_cnt);
 			}
             break;
         default:
             break;
         }
+    	fallthrough;
     default:
         break;
     }
@@ -737,7 +738,7 @@ static void pd_charger_start_timer(struct usbpd_pm *pdpm)
 	pdpm->endtime = end_time;
 	ktime = ktime_set(pdpm->endtime.tv_sec, pdpm->endtime.tv_nsec);
 
-	pr_err("%s: alarm timer start:%ld %ld\n", __func__, pdpm->endtime.tv_sec, pdpm->endtime.tv_nsec);
+	pr_err("%s: alarm timer start:%lld %ld\n", __func__, pdpm->endtime.tv_sec, pdpm->endtime.tv_nsec);
 	
 	alarm_start(&pdpm->charger_timer, ktime);
 }
@@ -894,7 +895,7 @@ static int usbpd_pm_get_thermal_curr(struct usbpd_pm *pdpm)
 			pdpm->thermal_curr = IBUS_1P5;
 	}
 #endif /* CONFIG_PRIZE_CHARGE_CTRL_POLICY */
-	pr_err("gezi---------%s---------temp :%d pre_temp :%d curr:%d\n",__func__,pdpm->batt_temp,info->pre_battery_ntc,pdpm->thermal_curr);
+	pr_debug("%s---------temp :%d pre_temp :%d curr:%d\n",__func__,pdpm->batt_temp,info->pre_battery_ntc,pdpm->thermal_curr);
 // drv mod by liuruiqian for temp limit current,20240731 end
     return pdpm->thermal_curr;
 }
@@ -1004,12 +1005,12 @@ static int usbpd_pm_fc2_charge_algo(struct usbpd_pm *pdpm)
         }
     }
 	else if(usbpd_pm_get_charge_cmd_stat(pdpm)){
-		 pr_notice("gezi cmd disable config!\n");
+		 pr_debug("cmd disable config!\n");
 		 usbpd_pm_set_connet_state(pdpm,PDPE_WORK_PD_RUN_OK);
 		 return PM_ALGO_RET_TAPER_DONE;
 	}
 	else if(pdpm->batt_temp >= 500){
-		 pr_notice("gezi pdpm batt_temp >= 50\n");
+		 pr_debug("pdpm batt_temp >= 50\n");
 		 usbpd_pm_set_connet_state(pdpm,PDPE_WORK_PD_RUN_OK);
 		 return PM_ALGO_RET_TAPER_DONE;
 	}
@@ -1392,7 +1393,7 @@ static int usbpd_psy_notifier_cb(struct notifier_block *nb,
 	state = usbpd_pm_get_connet_state(pdpm);
 	
 	if((state != PDPE_WORK_PD_CHECK_DONE) && (state != PDPE_WORK_PD_RUN) && val.intval){
-		pr_err("gezi %s------%d state = %d %d\n", __func__,__LINE__,state,val.intval);
+		pr_debug("%s------%d state = %d %d\n", __func__,__LINE__,state,val.intval);
 		return NOTIFY_OK;
 	}
 
@@ -1419,14 +1420,14 @@ int usbpd_pm_schedule(void)
 	int state = 0;
 	
 	if(!pdpm){
-		pr_err("gezi %s------%d\n", __func__,__LINE__);
+		pr_debug("%s------%d\n", __func__,__LINE__);
 		return -1;
 	}
 	
 	state = usbpd_pm_get_connet_state(pdpm);
 	
 	if((state != PDPE_WORK_PE_NOT_SUPPORT) && (state != PDPE_WORK_PD_CHECK)){
-		pr_err("gezi %s------%d state = %d\n", __func__,__LINE__,state);
+		pr_debug("%s------%d state = %d\n", __func__,__LINE__,state);
 		return -1;
 	}
 	
@@ -1451,7 +1452,7 @@ int usbpd_pm_init(void)
 {
     struct usbpd_pm *pdpm;
 	
-	pr_err("gezi %s------------------------%d\n", __func__,__LINE__);
+	pr_debug("%s------------------------%d\n", __func__,__LINE__);
 
     pdpm = kzalloc(sizeof(*pdpm), GFP_KERNEL);
     if (!pdpm)

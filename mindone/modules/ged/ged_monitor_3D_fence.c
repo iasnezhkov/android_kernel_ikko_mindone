@@ -2,8 +2,6 @@
 /*
  * Copyright (c) 2019 MediaTek Inc.
  */
-
-#include <linux/version.h>
 #include <linux/workqueue.h>
 #include <linux/sched.h>
 #include <linux/atomic.h>

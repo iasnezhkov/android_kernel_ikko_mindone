@@ -47,7 +47,7 @@
 #include "hif/ccci_hif_cldma.h"
 #include "hif/ccci_hif_ccif.h"
 #include "modem_sys.h"
-void mindone_connmd_window(int md_id); /* MINDONE-CONNMD, ccci_modem.c */
+void mindone_connmd_window(int md_id);
 
 #define TAG "mcd"
 
@@ -763,10 +763,8 @@ static void config_ap_runtime_data_v2(struct ccci_modem *md,
 	/* ver.0: set_md_mpu_total_size = ap md1 share */
 	ap_feature->feature_set[1].version = 1;
 	ap_feature->tail_pattern = AP_FEATURE_QUERY_PATTERN;
-	/* MINDONE-CONNMD (F3204/F3205): program the CONNSYS "MD direct path" window (INFRACFG_AO+0x39C) on every MD start, once the smem layout is populated -- in probe the MD_CONSYS table is still empty (v15 boot1: addr=0x0) */
 	mindone_connmd_window(md->index);
-	/* MINDONE-MD-LAYOUT 30.08 (F3119): what the AP tells the MD about bank4 smem windows */
-	pr_notice("MINDONE-MD-LAYOUT(%s): nc ap=0x%llx md=0x%llx size=0x%x | c ap=0x%llx md=0x%llx size=0x%x | runtime md=0x%llx\n",
+	pr_debug("ccci: md layout(%s): nc ap=0x%llx md=0x%llx size=0x%x | c ap=0x%llx md=0x%llx size=0x%x | runtime md=0x%llx\n",
 		"config_ap_runtime_data_v2",
 		(unsigned long long)md->mem_layout.md_bank4_noncacheable_total.base_ap_view_phy,
 		(unsigned long long)md->mem_layout.md_bank4_noncacheable_total.base_md_view_phy,
@@ -814,10 +812,8 @@ static void config_ap_runtime_data_v2_1(struct ccci_modem *md,
 	/* ver.0: set_md_mpu_total_size = ap md1 share */
 	ap_feature->feature_set[1].version = 1;
 	ap_feature->tail_pattern = AP_FEATURE_QUERY_PATTERN;
-	/* MINDONE-CONNMD (F3204/F3205): program the CONNSYS "MD direct path" window (INFRACFG_AO+0x39C) on every MD start, once the smem layout is populated -- in probe the MD_CONSYS table is still empty (v15 boot1: addr=0x0) */
 	mindone_connmd_window(md->index);
-	/* MINDONE-MD-LAYOUT 30.08 (F3119): what the AP tells the MD about bank4 smem windows */
-	pr_notice("MINDONE-MD-LAYOUT(%s): nc ap=0x%llx md=0x%llx size=0x%x | c ap=0x%llx md=0x%llx size=0x%x | runtime md=0x%llx\n",
+	pr_debug("ccci: md layout(%s): nc ap=0x%llx md=0x%llx size=0x%x | c ap=0x%llx md=0x%llx size=0x%x | runtime md=0x%llx\n",
 		"config_ap_runtime_data_v2_1",
 		(unsigned long long)md->mem_layout.md_bank4_noncacheable_total.base_ap_view_phy,
 		(unsigned long long)md->mem_layout.md_bank4_noncacheable_total.base_md_view_phy,
@@ -1192,9 +1188,9 @@ static ssize_t md_cd_parameter_show(struct ccci_modem *md, char *buf)
 {
 	int count = 0;
 
-	count += scnprintf(buf + count, 128,
+	count += scnprintf(buf + count, 4096 - count,
 		"PACKET_HISTORY_DEPTH=%d\n", PACKET_HISTORY_DEPTH);
-	count += scnprintf(buf + count, 128, "BD_NUM=%ld\n", MAX_BD_NUM);
+	count += scnprintf(buf + count, 4096 - count, "BD_NUM=%d\n", MAX_BD_NUM);
 
 	return count;
 }

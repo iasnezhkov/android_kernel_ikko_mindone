@@ -99,11 +99,7 @@ int of_dma_configure_id(struct device *dev, struct device_node *np,
 	bool coherent, set_map = false;
 	int ret;
 
-	/* MINDONE-612-1 (F3127, ported from kernel6/common61): MediaTek DTs describe the
-	 * device DMA window with a dma-ranges property on the leaf node; honor it before
-	 * the bus (parent) lookup. Verified 2026-08-30: still absent upstream in this
-	 * android16-6.12-lts snapshot (commit 36bee94a7), NOT a 'not needed' case. */
-	if (np == dev->of_node && !of_get_property(np, "dma-ranges", NULL))
+	if (np == dev->of_node)
 		bus_np = __of_get_dma_parent(np);
 	else
 		bus_np = of_node_get(np);

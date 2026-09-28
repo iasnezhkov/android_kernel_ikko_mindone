@@ -68,7 +68,6 @@
  ******************************************************************************
  */
 #include "net/cfg80211.h"
-#include <mindone/compat-cfg80211.h>
 #include "precomp.h"
 #include "gl_wext.h"
 
@@ -1486,7 +1485,6 @@ kalP2PIndicateRxMgmtFrame(IN struct ADAPTER *prAdapter,
 			break;
 		}
 
-#if (KERNEL_VERSION(3, 18, 0) <= CFG80211_VERSION_CODE)
 		cfg80211_rx_mgmt(
 			/* struct net_device * dev, */
 			prNetdevice->ieee80211_ptr,
@@ -1498,32 +1496,6 @@ kalP2PIndicateRxMgmtFrame(IN struct ADAPTER *prAdapter,
 			prSwRfb->pvHeader,
 			prSwRfb->u2PacketLen,
 			NL80211_RXMGMT_FLAG_ANSWERED);
-#elif (KERNEL_VERSION(3, 12, 0) <= CFG80211_VERSION_CODE)
-		cfg80211_rx_mgmt(
-			/* struct net_device * dev, */
-			prNetdevice->ieee80211_ptr,
-			i4Freq,
-			RCPI_TO_dBm(
-				nicRxGetRcpiValueFromRxv(prGlueInfo->prAdapter,
-				RCPI_MODE_WF0,
-				prSwRfb)),
-			prSwRfb->pvHeader,
-			prSwRfb->u2PacketLen,
-			NL80211_RXMGMT_FLAG_ANSWERED,
-			GFP_ATOMIC);
-#else
-		cfg80211_rx_mgmt(
-			/* struct net_device * dev, */
-			prNetdevice->ieee80211_ptr,
-			i4Freq,
-			RCPI_TO_dBm(
-				nicRxGetRcpiValueFromRxv(prGlueInfo->prAdapter,
-				RCPI_MODE_WF0,
-				prSwRfb)),
-			prSwRfb->pvHeader,
-			prSwRfb->u2PacketLen,
-			GFP_ATOMIC);
-#endif
 
 
 	} while (FALSE);
@@ -1588,9 +1560,7 @@ kalP2PGCIndicateConnectionStatus(IN struct GLUE_INFO *prGlueInfo,
 				/* struct net_device * dev, */
 				u2StatusReason,
 				pucRxIEBuf, u2RxIELen,
-#if CFG_WPS_DISCONNECT || (KERNEL_VERSION(4, 4, 0) <= CFG80211_VERSION_CODE)
 				eStatus == WLAN_STATUS_MEDIA_DISCONNECT_LOCALLY,
-#endif
 				GFP_KERNEL);
 		}
 
@@ -1628,9 +1598,6 @@ kalP2PGOStationUpdate(IN struct GLUE_INFO *prGlueInfo,
 
 			kalMemZero(&rStationInfo, sizeof(rStationInfo));
 
-#if KERNEL_VERSION(4, 0, 0) > CFG80211_VERSION_CODE
-			rStationInfo.filled = STATION_INFO_ASSOC_REQ_IES;
-#endif
 			rStationInfo.generation = ++prP2pGlueInfo->i4Generation;
 
 			rStationInfo.assoc_req_ies = prCliStaRec->pucAssocReqIe;
@@ -1768,16 +1735,10 @@ void kalP2PCacFinishedUpdate(IN struct GLUE_INFO *prGlueInfo,
 
 #ifdef CFG_REPORT_TO_OS
 		DBGLOG(INIT, INFO, "kalP2PCacFinishedUpdate: Update to OS\n");
-#if KERNEL_VERSION(3, 14, 0) <= CFG80211_VERSION_CODE
 		cfg80211_cac_event(
 			prNetdevice,
 			&prGlueP2pInfo->chandefCsa,
 			NL80211_RADAR_CAC_FINISHED, GFP_KERNEL);
-#else
-		cfg80211_cac_event(
-			prNetdevice,
-			NL80211_RADAR_CAC_FINISHED, GFP_KERNEL);
-#endif
 		DBGLOG(INIT, INFO,
 			"kalP2PCacFinishedUpdate: Update to OS Done\n");
 #endif
@@ -2173,7 +2134,6 @@ void kalP2pIndicateQueuedMgmtFrame(IN struct GLUE_INFO *prGlueInfo,
 	else
 		prNetdevice = prGlueP2pInfo->prDevHandler;
 
-#if (KERNEL_VERSION(3, 18, 0) <= CFG80211_VERSION_CODE)
 	cfg80211_rx_mgmt(
 		/* struct net_device * dev, */
 		prNetdevice->ieee80211_ptr,
@@ -2182,26 +2142,6 @@ void kalP2pIndicateQueuedMgmtFrame(IN struct GLUE_INFO *prGlueInfo,
 		prFrame->prHeader,
 		prFrame->u2Length,
 		NL80211_RXMGMT_FLAG_ANSWERED);
-#elif (KERNEL_VERSION(3, 12, 0) <= CFG80211_VERSION_CODE)
-	cfg80211_rx_mgmt(
-		/* struct net_device * dev, */
-		prNetdevice->ieee80211_ptr,
-		prFrame->u4Freq,
-		0,
-		prFrame->prHeader,
-		prFrame->u2Length,
-		NL80211_RXMGMT_FLAG_ANSWERED,
-		GFP_ATOMIC);
-#else
-	cfg80211_rx_mgmt(
-		/* struct net_device * dev, */
-		prNetdevice->ieee80211_ptr,
-		prFrame->u4Freq,
-		0,
-		prFrame->prHeader,
-		prFrame->u2Length,
-		GFP_ATOMIC);
-#endif
 }
 
 void kalP2pPreStartRdd(
@@ -2320,15 +2260,11 @@ void kalP2pIndicateAcsResult(IN struct GLUE_INFO *prGlueInfo,
 		ch_width,
 		eHwMode);
 
-#if KERNEL_VERSION(3, 14, 0) <= LINUX_VERSION_CODE
 	vendor_event = cfg80211_vendor_event_alloc(prGlueP2pInfo->prWdev->wiphy,
-#if KERNEL_VERSION(4, 1, 0) <= LINUX_VERSION_CODE
 			prGlueP2pInfo->prWdev,
-#endif
 			4 * sizeof(u8) + 1 * sizeof(u16) + 4 + NLMSG_HDRLEN,
 			WIFI_EVENT_ACS,
 			GFP_KERNEL);
-#endif
 
 	if (!vendor_event) {
 		DBGLOG(P2P, ERROR, "allocate vendor event fail.\n");
@@ -2376,9 +2312,7 @@ void kalP2pIndicateAcsResult(IN struct GLUE_INFO *prGlueInfo,
 		DBGLOG(P2P, ERROR, "put hw mode fail.\n");
 		goto nla_put_failure;
 	}
-#if KERNEL_VERSION(3, 14, 0) <= LINUX_VERSION_CODE
 	cfg80211_vendor_event(vendor_event, GFP_KERNEL);
-#endif
 	return;
 
 nla_put_failure:
@@ -2465,11 +2399,33 @@ void kalP2pNotifyStopApComplete(IN struct ADAPTER *prAdapter,
 		complete(&prP2PInfo->rStopApComp);
 }
 
+struct KAL_P2P_CSA_NOTIFY_WORK {
+	struct wiphy_work rWork;
+	struct net_device *prDev;
+	struct cfg80211_chan_def rChandef;
+};
+
+static void kalP2pCsaNotifyWorkHandler(struct wiphy *wiphy,
+					struct wiphy_work *prWork)
+{
+	struct KAL_P2P_CSA_NOTIFY_WORK *prCsaWork = container_of(prWork,
+		struct KAL_P2P_CSA_NOTIFY_WORK, rWork);
+
+	if (prCsaWork->prDev->reg_state == NETREG_REGISTERED &&
+	    prCsaWork->prDev->ieee80211_ptr)
+		cfg80211_ch_switch_notify(prCsaWork->prDev,
+			&prCsaWork->rChandef, 0);
+
+	dev_put(prCsaWork->prDev);
+	kfree(prCsaWork);
+}
+
 void kalP2pIndicateChnlSwitch(IN struct ADAPTER *prAdapter,
 		IN struct BSS_INFO *prBssInfo)
 {
 	struct GL_P2P_INFO *prP2PInfo;
 	struct net_device *prNetdevice = (struct net_device *) NULL;
+	struct KAL_P2P_CSA_NOTIFY_WORK *prCsaWork;
 	uint8_t role_idx = 0;
 
 	if (!prAdapter || !prBssInfo)
@@ -2539,12 +2495,10 @@ void kalP2pIndicateChnlSwitch(IN struct ADAPTER *prAdapter,
 
 		prP2PInfo->chandefCsa.chan->dfs_state = chan->dfs_state;
 
-#if KERNEL_VERSION(5, 4, 0) <= CFG80211_VERSION_CODE
 		prP2PInfo->chandefCsa.chan->freq_offset =
 			chan->freq_offset;
 		prP2PInfo->chandefCsa.freq1_offset =
 			prP2PInfo->chandefCsa.chan->freq_offset;
-#endif
 
 		switch (prBssInfo->ucVhtChannelWidth) {
 		case VHT_OP_CHANNEL_WIDTH_80P80:
@@ -2621,5 +2575,29 @@ void kalP2pIndicateChnlSwitch(IN struct ADAPTER *prAdapter,
 	}
 
 	/* Ch notify */
-	MINDONE_CH_SWITCH_NOTIFY(prNetdevice, &prP2PInfo->chandefCsa, 0);
+	if (!prP2PInfo->chandefCsa.chan) {
+		DBGLOG(P2P, WARN, "chandefCsa.chan is NULL\n");
+		return;
+	}
+
+	prCsaWork = kzalloc(sizeof(*prCsaWork), GFP_KERNEL);
+	if (!prCsaWork) {
+		DBGLOG(P2P, ERROR, "csa notify work alloc fail\n");
+		return;
+	}
+
+	prCsaWork->rChandef = prP2PInfo->chandefCsa;
+	prCsaWork->rChandef.chan = ieee80211_get_channel(prP2PInfo->prWdev->wiphy,
+		prP2PInfo->chandefCsa.chan->center_freq);
+	if (!prCsaWork->rChandef.chan) {
+		DBGLOG(P2P, WARN, "no wiphy channel for %u MHz\n",
+			prP2PInfo->chandefCsa.chan->center_freq);
+		kfree(prCsaWork);
+		return;
+	}
+
+	wiphy_work_init(&prCsaWork->rWork, kalP2pCsaNotifyWorkHandler);
+	dev_hold(prNetdevice);
+	prCsaWork->prDev = prNetdevice;
+	wiphy_work_queue(prP2PInfo->prWdev->wiphy, &prCsaWork->rWork);
 }

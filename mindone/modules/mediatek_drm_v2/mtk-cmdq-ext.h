@@ -251,6 +251,7 @@ void *cmdq_mbox_buf_alloc(struct cmdq_client *cl, dma_addr_t *pa_out);
 void cmdq_mbox_buf_free(struct device *dev, void *va, dma_addr_t pa);
 
 s32 cmdq_dev_get_event(struct device *dev, const char *name);
+s32 cmdq_dev_get_event_optional(struct device *dev, const char *name);
 
 struct cmdq_pkt_buffer *cmdq_pkt_alloc_buf(struct cmdq_pkt *pkt);
 
@@ -398,6 +399,7 @@ u32 cmdq_pkt_poll(struct cmdq_pkt *pkt, struct cmdq_base *clt_base,
 
 int cmdq_pkt_timer_en(struct cmdq_pkt *pkt);
 s32 cmdq_dev_get_event(struct device *dev, const char *name);
+s32 cmdq_dev_get_event_optional(struct device *dev, const char *name);
 /* cmdq_pkt_sleep() - append commands to wait a short time in microsecond
  * @pkt:	the CMDQ packet
  * @tick:	sleep time in tick, use CMDQ_MS_TO_TICK to translate into ms

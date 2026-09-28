@@ -32,7 +32,7 @@
 extern void vdec_dump_mem_buf(unsigned long h_vdec);
 #endif
 
-static char *dec_port_name[NUM_MAX_VDEC_M4U_PORT+1] = {
+static char * __maybe_unused dec_port_name[NUM_MAX_VDEC_M4U_PORT+1] = {
 	[VDEC_M4U_PORT_MC]                  = "MC",
 	[VDEC_M4U_PORT_UFO]                 = "UFO",
 	[VDEC_M4U_PORT_PP]                  = "PP",
@@ -768,6 +768,7 @@ static void mtk_vdec_dump_addr_reg(
 			0x20C, 0x20C/4, value);
 		switch (fourcc) {
 		case V4L2_PIX_FMT_H265:
+		case V4L2_PIX_FMT_HEVC:
 			start = 0;
 			end = 32;
 			break;

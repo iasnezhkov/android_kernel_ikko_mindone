@@ -8,8 +8,6 @@
 #define pr_fmt(fmt) "SCMI Notifications TINYSYS - " fmt
 
 #include <linux/module.h>
-#include <linux/version.h>
-#include <mindone/compat.h>
 #include <linux/scmi_protocol.h>
 #include <common.h>
 #include "protocols.h"
@@ -244,23 +242,16 @@ static int scmi_tinysys_protocol_init(const struct scmi_protocol_handle *ph)
 
 	pinfo->version = version;
 
-	return MINDONE_SCMI_SET_PRIV(ph, pinfo, version);
+	return ph->set_priv(ph, pinfo, version);
 }
 
 const struct scmi_protocol scmi_tinysys_protocol = {
 	.id = SCMI_PROTOCOL_TINYSYS,
 	.owner = THIS_MODULE,
-	.instance_init = &scmi_tinysys_protocol_init,	/* MINDONE: field name on 6.1 */
+	.instance_init = &scmi_tinysys_protocol_init,
 	.ops = &tinysys_proto_ops,
 	.events = &tinysys_protocol_events,
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 9, 0)
-	/* MINDONE 12.09 (/F4171): since 6.9 a vendor protocol (0x80...0xFF) must
-	 * carry a vendor_id matching what the firmware's SCMI base reports; SSPM replies
-	 * "SCMI Protocol v1.0 'mtk:mtk'". Without this field the kernel prints "missing
-	 * vendor_id for protocol 0x80", the protocol does not register, and scmi-tinysys
-	 * and sspm fail to bind. */
 	.vendor_id = "mtk",
-#endif
 };
 
 int scmi_tinysys_register(void)

@@ -634,6 +634,10 @@ static void mtk_drm_mmdvfs_get_avail_freq(struct device *dev)
 
 	step_size = dev_pm_opp_get_opp_count(dev);
 	g_freq_steps = kcalloc(step_size, sizeof(u32), GFP_KERNEL);
+	if (!g_freq_steps) {
+		step_size = 0;
+		return;
+	}
 	freq = 0;
 	while (!IS_ERR(opp = dev_pm_opp_find_freq_ceil(dev, &freq))) {
 		g_freq_steps[i] = freq;
@@ -693,7 +697,7 @@ void mtk_drm_set_mmclk(struct drm_crtc *crtc, int level,
 	else
 		freq = g_freq_steps[0];
 
-	DDPINFO("%s[%d] g_freq_level[idx=%d](freq=%d)\n",
+	DDPINFO("%s[%d] g_freq_level[idx=%d]=%d (freq=%lu)\n",
 		__func__, __LINE__, idx, g_freq_level[idx], freq);
 
 	opp = dev_pm_opp_find_freq_ceil(crtc->dev->dev, &freq);

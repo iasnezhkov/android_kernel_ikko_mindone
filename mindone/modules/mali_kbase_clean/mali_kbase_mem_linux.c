@@ -24,19 +24,12 @@
  */
 
 #include <linux/compat.h>
-#include <mindone/compat.h>
 #include <linux/kernel.h>
 #include <linux/bug.h>
 #include <linux/mm.h>
 #include <linux/mman.h>
 #include <linux/fs.h>
-#include <linux/version.h>
 #include <linux/dma-mapping.h>
-#if (KERNEL_VERSION(4, 8, 0) > LINUX_VERSION_CODE)
-#include <linux/dma-attrs.h>
-
-
-#endif /* LINUX_VERSION_CODE < 4.8.0 */
 #include <linux/dma-buf.h>
 #include <linux/shrinker.h>
 #include <linux/cache.h>
@@ -44,23 +37,6 @@
 
 #include <mali_kbase.h>
 
-/* F2041 probe counters: how many buffer imports, and for how many segments
- * the device-space length diverged from the CPU-space length.
- * 🔴 Keep OUTSIDE kernel-version conditional blocks - a previous insertion landed
- * inside `#if (KERNEL_VERSION(4,8,0) > LINUX_VERSION_CODE)` and got compiled out. */
-static unsigned long long mindone_sg_imports;
-module_param_named(mindone_sg_imports, mindone_sg_imports, ullong, 0444);
-static unsigned long long mindone_sg_mismatch;
-module_param_named(mindone_sg_mismatch, mindone_sg_mismatch, ullong, 0444);
-static unsigned long long mindone_sg_short;
-module_param_named(mindone_sg_short, mindone_sg_short, ullong, 0444);
-/* strip WRITE access to imported buffers from the GPU: a fragment-job write then
- * triggers a normal translation fault (the driver handles and logs it) instead of
- * touching protected memory */
-static int mindone_ro_import;
-module_param(mindone_ro_import, int, 0644);
-static unsigned long long mindone_ro_applied;
-module_param_named(mindone_ro_applied, mindone_ro_applied, ullong, 0444);
 #include <mali_kbase_mem_linux.h>
 #include <tl/mali_kbase_tracepoints.h>
 #include <uapi/gpu/arm/midgard/mali_kbase_ioctl.h>
@@ -78,13 +54,7 @@ static DEFINE_MUTEX(ion_config_lock);
 #include <platform/mtk_platform_common.h>
 #endif
 
-#if defined(CONFIG_MTK_TRUSTED_MEMORY_SUBSYSTEM) && defined(CONFIG_MTK_GZ_KREE) && 0
-#include <trusted_mem_api.h>
-#include <mtk/ion_sec_heap.h>
-#endif
 
-#if ((KERNEL_VERSION(5, 3, 0) <= LINUX_VERSION_CODE) || \
-	(KERNEL_VERSION(5, 0, 0) > LINUX_VERSION_CODE))
 /* Enable workaround for ion for kernels prior to v5.0.0 and from v5.3.0
  * onwards.
  *
@@ -116,7 +86,6 @@ static DEFINE_MUTEX(ion_config_lock);
  * Kbase's attachment to dma-buf that was previously mapped.
  */
 #define KBASE_MEM_ION_SYNC_WORKAROUND
-#endif
 
 #define IR_THRESHOLD_STEPS (256u)
 
@@ -689,7 +658,7 @@ unsigned long kbase_mem_evictable_reclaim_count_objects(struct shrinker *s,
 {
 	struct kbase_context *kctx;
 
-	kctx = MINDONE_SHRINKER_PRIV(s, struct kbase_context, reclaim);
+	kctx = ((struct kbase_context *)s->private_data);
 
 	// MTK add to prevent false alarm
 	lockdep_off();
@@ -729,7 +698,7 @@ unsigned long kbase_mem_evictable_reclaim_scan_objects(struct shrinker *s,
 	struct kbase_mem_phy_alloc *tmp;
 	unsigned long freed = 0;
 
-	kctx = MINDONE_SHRINKER_PRIV(s, struct kbase_context, reclaim);
+	kctx = ((struct kbase_context *)s->private_data);
 
 	// MTK add to prevent false alarm
 	lockdep_off();
@@ -789,13 +758,21 @@ int kbase_mem_evictable_init(struct kbase_context *kctx)
 
 	atomic_set(&kctx->evict_nents, 0);
 
-	return MINDONE_SHRINKER_SETUP(kctx->reclaim, kbase_mem_evictable_reclaim_count_objects,
-				      kbase_mem_evictable_reclaim_scan_objects, DEFAULT_SEEKS, "", kctx);
+	kctx->reclaim = shrinker_alloc(0, "%s", "");
+	if (!kctx->reclaim)
+		return -ENOMEM;
+	kctx->reclaim->count_objects = kbase_mem_evictable_reclaim_count_objects;
+	kctx->reclaim->scan_objects = kbase_mem_evictable_reclaim_scan_objects;
+	kctx->reclaim->seeks = DEFAULT_SEEKS;
+	kctx->reclaim->batch = 0;
+	kctx->reclaim->private_data = kctx;
+	shrinker_register(kctx->reclaim);
+	return 0;
 }
 
 void kbase_mem_evictable_deinit(struct kbase_context *kctx)
 {
-	MINDONE_SHRINKER_TEARDOWN(kctx->reclaim);
+	shrinker_free(kctx->reclaim);
 }
 
 /**
@@ -1130,15 +1107,8 @@ int kbase_mem_do_sync_imported(struct kbase_context *kctx,
 	 * used for enabling KBASE_MEM_ION_SYNC_WORKAROUND, we still keep this check here to allow
 	 * ease of modification for non-ION systems or systems where ION has been patched.
 	 */
-#if KERNEL_VERSION(4, 6, 0) > LINUX_VERSION_CODE && !defined(CONFIG_CHROMEOS)
-		dma_buf_end_cpu_access(dma_buf,
-				0, dma_buf->size,
-				dir);
-		ret = 0;
-#else
 		ret = dma_buf_end_cpu_access(dma_buf,
 				dir);
-#endif
 #endif /* KBASE_MEM_ION_SYNC_WORKAROUND */
 		break;
 	case KBASE_SYNC_TO_CPU:
@@ -1156,9 +1126,6 @@ int kbase_mem_do_sync_imported(struct kbase_context *kctx,
 		}
 #else
 		ret = dma_buf_begin_cpu_access(dma_buf,
-#if KERNEL_VERSION(4, 6, 0) > LINUX_VERSION_CODE && !defined(CONFIG_CHROMEOS)
-				0, dma_buf->size,
-#endif
 				dir);
 #endif /* KBASE_MEM_ION_SYNC_WORKAROUND */
 		break;
@@ -1271,53 +1238,10 @@ retry:
 
 	pa = kbase_get_gpu_phy_pages(reg);
 
-	/* 🔴 F2041 PROBE. The address comes from sg_phys() (CPU physical space), while
-	 * the page count comes from sg_dma_len() (device space). On kernel 6.1
-	 * dma_map_sg() is allowed to COALESCE segments, at which point these values
-	 * diverge and the GPU gets wrong addresses for part of the pages.
-	 * Criterion declared BEFORE the measurement: sg_dma_len(s) diverging from
-	 * s->length on even one segment confirms the hypothesis. Logging is rate-limited
-	 * so the log channel doesn't choke (F2023). */
-	mindone_sg_imports++;
 	for_each_sg(sgt->sgl, s, sgt->nents, i) {
 		size_t j, pages = PFN_UP(sg_dma_len(s));
 		uint64_t phy_addr = 0;
 
-		if (sg_dma_len(s) != s->length) {
-			mindone_sg_mismatch++;
-			if (mindone_sg_mismatch <= 12)
-				;
-		} else if (mindone_sg_imports <= 3 && i < 4) {
-		}
-
-#if defined(CONFIG_MTK_TRUSTED_MEMORY_SUBSYSTEM) && defined(CONFIG_MTK_GZ_KREE) && 0
-		if (reg->flags & KBASE_REG_PROTECTED) {
-			enum TRUSTED_MEM_REQ_TYPE sec_mem_type = TRUSTED_MEM_REQ_SVP;
-			struct dma_buf *dma_buf = reg->gpu_alloc->imported.umm.dma_buf;
-			u32 sec_handle = dmabuf_to_secure_handle(dmabuf);
-
-			if (sec_handle) {
-				sec_mem_type = ion_get_trust_mem_type(dma_buf);
-				trusted_mem_api_query_pa(
-					sec_mem_type, 0, 0, NULL, &sec_handle, NULL, 0, 0, &phy_addr);
-			} else {
-				/* page_base heap have no sec_handle.
-				 * use sg_phys to get PA
-				 */
-				phy_addr = sg_phys(s);
-			}
-
-			if (phy_addr == 0) {
-				dev_warn(kctx->kbdev->dev,
-					"can't get PA: sec_mem_type=%d, sec_handle=%llx, phy_addr=%llx\n",
-					sec_mem_type,
-					(unsigned long long)sec_handle,
-					(unsigned long long)phy_addr);
-				err = -EINVAL;
-				goto err_unmap_attachment;
-			}
-		} else
-#endif
 		{
 			phy_addr = sg_phys(s);
 		}
@@ -1344,17 +1268,6 @@ retry:
 			alloc->imported.umm.dma_buf->size)) {
 		err = -EINVAL;
 		goto err_unmap_attachment;
-	}
-
-	/* 🔴 F2041 PROBE (consequence): if the page count comes out SHORT, the missing
-	 * tail of the buffer gets padded with a SINGLE dummy page in kbase_mem_umm_map()
-	 * (`kbase_mmu_insert_single_page`), and the GPU reads garbage instead of content.
-	 * Criterion declared BEFORE the measurement: count < reg->nr_pages with IMPORT_PAD set. */
-	if (count < reg->nr_pages) {
-		mindone_sg_short++;
-		if (mindone_sg_short <= 8)
-			;
-	} else if (mindone_sg_imports <= 3) {
 	}
 
 	/* Update nents as we now have pages to map */
@@ -1402,12 +1315,6 @@ int kbase_mem_umm_map(struct kbase_context *kctx,
 		gwt_mask = ~KBASE_REG_GPU_WR;
 #endif
 
-	if (mindone_ro_import) {
-		gwt_mask = ~KBASE_REG_GPU_WR;
-		mindone_ro_applied++;
-		if (mindone_ro_applied <= 5)
-			;
-	}
 	err = kbase_mmu_insert_pages(kctx->kbdev,
 				     &kctx->mmu,
 				     reg->start_pfn,
@@ -1796,11 +1703,7 @@ static struct kbase_va_region *kbase_mem_from_user_buffer(
 	user_buf->address = address;
 	user_buf->nr_pages = *va_pages;
 	user_buf->mm = current->mm;
-#if KERNEL_VERSION(4, 11, 0) > LINUX_VERSION_CODE
-	atomic_inc(&current->mm->mm_count);
-#else
 	mmgrab(current->mm);
-#endif
 	if (reg->gpu_alloc->properties & KBASE_MEM_PHY_ALLOC_LARGE)
 		user_buf->pages = vmalloc(*va_pages * sizeof(struct page *));
 	else
@@ -1826,42 +1729,18 @@ static struct kbase_va_region *kbase_mem_from_user_buffer(
 
 	write = reg->flags & (KBASE_REG_CPU_WR | KBASE_REG_GPU_WR);
 
-#if KERNEL_VERSION(4, 6, 0) > LINUX_VERSION_CODE
-	faulted_pages = get_user_pages(current, current->mm, address, *va_pages,
-#if KERNEL_VERSION(4, 4, 168) <= LINUX_VERSION_CODE && \
-KERNEL_VERSION(4, 5, 0) > LINUX_VERSION_CODE
-			write ? FOLL_WRITE : 0, pages, NULL);
-#else
-			write, 0, pages, NULL);
-#endif
-#elif KERNEL_VERSION(4, 9, 0) > LINUX_VERSION_CODE
-	faulted_pages = get_user_pages(address, *va_pages,
-			write, 0, pages, NULL);
-#elif KERNEL_VERSION(5, 9, 0) > LINUX_VERSION_CODE
-    faulted_pages = get_user_pages(address, *va_pages,
-            write ? FOLL_WRITE : 0, pages, NULL);
-#else
     /* pin_user_pages function cannot be called with pages param NULL.
      * get_user_pages function will be used instead because it is safe to be
      * used with NULL pages param as long as it doesn't have FOLL_GET flag.
      */
     if (pages != NULL) {
         faulted_pages =
-		#if LINUX_VERSION_CODE < KERNEL_VERSION(6, 2, 0)
-			pin_user_pages(address, *va_pages, write ? FOLL_WRITE : 0, pages, NULL);
-		#else
 			pin_user_pages(address, *va_pages, write ? FOLL_WRITE : 0, pages);
-		#endif
     } else {
         faulted_pages =
-		#if LINUX_VERSION_CODE < KERNEL_VERSION(6, 2, 0)
-            get_user_pages(address, *va_pages, write ? FOLL_WRITE : 0, pages, NULL);
-		#else
             get_user_pages(address, *va_pages, write ? FOLL_WRITE : 0, pages);
-		#endif
 
     }
-#endif
 
 	up_read(kbase_mem_get_process_mmap_lock());
 
@@ -2638,15 +2517,9 @@ static struct kbase_aliased *get_aliased_alloc(struct vm_area_struct *vma,
 	return aliased;
 }
 
-#if (KERNEL_VERSION(4, 11, 0) > LINUX_VERSION_CODE)
-static vm_fault_t kbase_cpu_vm_fault(struct vm_area_struct *vma,
-			struct vm_fault *vmf)
-{
-#else
 static vm_fault_t kbase_cpu_vm_fault(struct vm_fault *vmf)
 {
 	struct vm_area_struct *vma = vmf->vma;
-#endif
 	struct kbase_cpu_mapping *map = vma->vm_private_data;
 	pgoff_t map_start_pgoff;
 	pgoff_t fault_pgoff;
@@ -2750,11 +2623,7 @@ static int kbase_cpu_mmap(struct kbase_context *kctx,
 	 * This will need updating to propagate coherency flags
 	 * See MIDBASE-1057
 	 */
-#if (KERNEL_VERSION(6, 1, 0) <= LINUX_VERSION_CODE)
 	vm_flags_set(vma, VM_DONTCOPY | VM_DONTDUMP | VM_DONTEXPAND | VM_IO);
-#else
-	vma->vm_flags |= VM_DONTCOPY | VM_DONTDUMP | VM_DONTEXPAND | VM_IO;
-#endif
 
 	vma->vm_ops = &kbase_vm_ops;
 	vma->vm_private_data = map;
@@ -2784,20 +2653,12 @@ static int kbase_cpu_mmap(struct kbase_context *kctx,
 	}
 
 	if (!kaddr)
-#if (KERNEL_VERSION(6, 1, 0) <= LINUX_VERSION_CODE)
 		vm_flags_set(vma, VM_PFNMAP);
-#else
-		vma->vm_flags |= VM_PFNMAP;
-#endif
 
 	else {
 		WARN_ON(aligned_offset);
 		/* MIXEDMAP so we can vfree the kaddr early and not track it after map time */
-#if (KERNEL_VERSION(6, 1, 0) <= LINUX_VERSION_CODE)
 		vm_flags_set(vma, VM_MIXEDMAP);
-#else
-		vma->vm_flags |= VM_MIXEDMAP;
-#endif
 
 		/* vmalloc remaping is easy... */
 		err = remap_vmalloc_range(vma, kaddr, 0);
@@ -3006,17 +2867,9 @@ int kbase_context_mmap(struct kbase_context *const kctx,
 	dev_vdbg(dev, "kbase_mmap\n");
 
 	if (!(vma->vm_flags & VM_READ))
-#if (KERNEL_VERSION(6, 1, 0) <= LINUX_VERSION_CODE)
 		vm_flags_clear(vma, VM_MAYREAD);
-#else
-		vma->vm_flags &= ~VM_MAYREAD;
-#endif
 	if (!(vma->vm_flags & VM_WRITE))
-#if (KERNEL_VERSION(6, 1, 0) <= LINUX_VERSION_CODE)
 		vm_flags_clear(vma, VM_MAYWRITE);
-#else
-		vma->vm_flags &= ~VM_MAYWRITE;
-#endif
 
 	if (nr_pages == 0) {
 		err = -EINVAL;
@@ -3383,19 +3236,10 @@ KBASE_EXPORT_TEST_API(kbase_vunmap);
 
 static void kbasep_add_mm_counter(struct mm_struct *mm, int member, long value)
 {
-#if (KERNEL_VERSION(6, 2, 0) <= LINUX_VERSION_CODE)
 	/* To avoid the build breakage due to the type change in rss_stat,
 	 * we inline here the equivalent of 'add_mm_counter()' from linux kernel V6.2.
 	 */
 	percpu_counter_add(&mm->rss_stat[member], value);
-#elif (KERNEL_VERSION(5, 5, 0) <= LINUX_VERSION_CODE)
-	/* To avoid the build breakage due to an unexported kernel symbol 'mm_trace_rss_stat',
-	 * we inline here the equivalent of 'add_mm_counter()' from linux kernel V5.5.
-	 */
-	atomic_long_add(value, &mm->rss_stat.count[member]);
-#else
-	add_mm_counter(mm, member, value);
-#endif
 }
 
 void kbasep_os_process_page_usage_update(struct kbase_context *kctx, int pages)
@@ -3422,13 +3266,8 @@ static int kbase_tracking_page_setup(struct kbase_context *kctx, struct vm_area_
 
 	/* no real access */
 
-#if (KERNEL_VERSION(6, 1, 0) <= LINUX_VERSION_CODE)
 	vm_flags_clear(vma, VM_READ | VM_MAYREAD | VM_WRITE | VM_MAYWRITE | VM_EXEC | VM_MAYEXEC);
 	vm_flags_set(vma, VM_DONTCOPY | VM_DONTEXPAND | VM_DONTDUMP | VM_IO);
-#else
-	vma->vm_flags &= ~(VM_READ | VM_MAYREAD | VM_WRITE | VM_MAYWRITE | VM_EXEC | VM_MAYEXEC);
-	vma->vm_flags |= VM_DONTCOPY | VM_DONTEXPAND | VM_DONTDUMP | VM_IO;
-#endif
 	return 0;
 }
 
@@ -3449,12 +3288,7 @@ static unsigned long get_queue_doorbell_pfn(struct kbase_device *kbdev,
 }
 
 static int
-#if (KERNEL_VERSION(5, 13, 0) <= LINUX_VERSION_CODE || \
-	KERNEL_VERSION(5, 11, 0) > LINUX_VERSION_CODE)
 kbase_csf_user_io_pages_vm_mremap(struct vm_area_struct *vma)
-#else
-kbase_csf_user_io_pages_vm_mremap(struct vm_area_struct *vma, unsigned long flags)
-#endif
 {
 	pr_debug("Unexpected call to mremap method for User IO pages mapping vma\n");
 	return -EINVAL;
@@ -3509,15 +3343,9 @@ static void kbase_csf_user_io_pages_vm_close(struct vm_area_struct *vma)
 	fput(kctx->filp);
 }
 
-#if (KERNEL_VERSION(4, 11, 0) > LINUX_VERSION_CODE)
-static vm_fault_t kbase_csf_user_io_pages_vm_fault(struct vm_area_struct *vma,
-			struct vm_fault *vmf)
-{
-#else
 static vm_fault_t kbase_csf_user_io_pages_vm_fault(struct vm_fault *vmf)
 {
 	struct vm_area_struct *vma = vmf->vma;
-#endif
 	struct kbase_queue *queue = vma->vm_private_data;
 	unsigned long doorbell_cpu_addr, input_cpu_addr, output_cpu_addr;
 	unsigned long doorbell_page_pfn, input_page_pfn, output_page_pfn;
@@ -3543,13 +3371,6 @@ static vm_fault_t kbase_csf_user_io_pages_vm_fault(struct vm_fault *vmf)
 	/* Always map the doorbell page as uncached */
 	doorbell_pgprot = pgprot_device(vma->vm_page_prot);
 
-#if ((KERNEL_VERSION(4, 4, 147) >= LINUX_VERSION_CODE) || \
-		((KERNEL_VERSION(4, 6, 0) > LINUX_VERSION_CODE) && \
-		 (KERNEL_VERSION(4, 5, 0) <= LINUX_VERSION_CODE)))
-	vma->vm_page_prot = doorbell_pgprot;
-	input_page_pgprot = doorbell_pgprot;
-	output_page_pgprot = doorbell_pgprot;
-#else
 	if (kbdev->system_coherency == COHERENCY_NONE) {
 		input_page_pgprot = pgprot_writecombine(vma->vm_page_prot);
 		output_page_pgprot = pgprot_writecombine(vma->vm_page_prot);
@@ -3557,15 +3378,10 @@ static vm_fault_t kbase_csf_user_io_pages_vm_fault(struct vm_fault *vmf)
 		input_page_pgprot = vma->vm_page_prot;
 		output_page_pgprot = vma->vm_page_prot;
 	}
-#endif
 
 	doorbell_cpu_addr = vma->vm_start;
 
-#if KERNEL_VERSION(4, 10, 0) > LINUX_VERSION_CODE
-	if ((unsigned long)vmf->virtual_address == doorbell_cpu_addr) {
-#else
 	if (vmf->address == doorbell_cpu_addr) {
-#endif
 		doorbell_page_pfn = get_queue_doorbell_pfn(kbdev, queue);
 		ret = mgm_dev->ops.mgm_vmf_insert_pfn_prot(mgm_dev,
 			KBASE_MEM_GROUP_CSF_IO, vma, doorbell_cpu_addr,
@@ -3596,11 +3412,7 @@ exit:
 static const struct vm_operations_struct kbase_csf_user_io_pages_vm_ops = {
 	.open = kbase_csf_user_io_pages_vm_open,
 	.close = kbase_csf_user_io_pages_vm_close,
-#if KERNEL_VERSION(5, 11, 0) <= LINUX_VERSION_CODE
 	.may_split = kbase_csf_user_io_pages_vm_split,
-#else
-	.split = kbase_csf_user_io_pages_vm_split,
-#endif
 	.mremap = kbase_csf_user_io_pages_vm_mremap,
 	.fault = kbase_csf_user_io_pages_vm_fault
 };
@@ -3646,22 +3458,14 @@ static int kbase_csf_cpu_mmap_user_io_pages(struct kbase_context *kctx,
 	err = kbase_csf_alloc_command_stream_user_pages(kctx, queue);
 	if (err)
 		goto map_failed;
-#if (KERNEL_VERSION(6, 1, 0) <= LINUX_VERSION_CODE)
 	vm_flags_set(vma, VM_DONTCOPY | VM_DONTDUMP | VM_DONTEXPAND | VM_IO);
-#else
-	vma->vm_flags |= VM_DONTCOPY | VM_DONTDUMP | VM_DONTEXPAND | VM_IO;
-#endif
 
 	/* TODO use VM_MIXEDMAP, since it is more appropriate as both types of
 	 * memory with and without "struct page" backing are being inserted here.
 	 * Hw Doorbell pages comes from the device register area so kernel does
 	 * not use "struct page" for them.
 	 */
-#if (KERNEL_VERSION(6, 1, 0) <= LINUX_VERSION_CODE)
 	vm_flags_set(vma, VM_PFNMAP);
-#else
-	vma->vm_flags |= VM_PFNMAP;
-#endif
 
 
 	vma->vm_ops = &kbase_csf_user_io_pages_vm_ops;
@@ -3699,15 +3503,9 @@ static void kbase_csf_user_reg_vm_close(struct vm_area_struct *vma)
 	kctx->csf.user_reg_vma = NULL;
 }
 
-#if (KERNEL_VERSION(4, 11, 0) > LINUX_VERSION_CODE)
-static vm_fault_t kbase_csf_user_reg_vm_fault(struct vm_area_struct *vma,
-			struct vm_fault *vmf)
-{
-#else
 static vm_fault_t kbase_csf_user_reg_vm_fault(struct vm_fault *vmf)
 {
 	struct vm_area_struct *vma = vmf->vma;
-#endif
 	struct kbase_context *kctx = vma->vm_private_data;
 	struct kbase_device *kbdev = kctx->kbdev;
 	struct memory_group_manager_device *mgm_dev = kbdev->mgm_dev;
@@ -3763,21 +3561,13 @@ static int kbase_csf_cpu_mmap_user_reg_page(struct kbase_context *kctx,
 
 	/* Map uncached */
 	vma->vm_page_prot = pgprot_device(vma->vm_page_prot);
-#if (KERNEL_VERSION(6, 1, 0) <= LINUX_VERSION_CODE)
 	vm_flags_set(vma, VM_DONTCOPY | VM_DONTDUMP | VM_DONTEXPAND | VM_IO);
-#else
-	vma->vm_flags |= VM_DONTCOPY | VM_DONTDUMP | VM_DONTEXPAND | VM_IO;
-#endif
 
 
 	/* User register page comes from the device register area so
 	 * "struct page" isn't available for it.
 	 */
-#if (KERNEL_VERSION(6, 1, 0) <= LINUX_VERSION_CODE)
 	vm_flags_set(vma, VM_PFNMAP);
-#else
-	vma->vm_flags |= VM_PFNMAP;
-#endif
 
 
 	kctx->csf.user_reg_vma = vma;

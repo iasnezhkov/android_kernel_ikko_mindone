@@ -6,7 +6,6 @@
 #include <linux/init.h>
 #include <linux/module.h>
 #include <linux/device.h>
-#include <linux/version.h>
 #include <linux/slab.h>
 
 #include "inc/tcpci.h"

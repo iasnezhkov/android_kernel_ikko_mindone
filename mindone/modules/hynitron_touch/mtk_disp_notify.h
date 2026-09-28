@@ -14,10 +14,6 @@
 /* A hardware display blank change occurred */
 #define MTK_DISP_EARLY_EVENT_BLANK	0x00
 #define MTK_DISP_EVENT_BLANK		0x01
-/* MINDONE (F3811/K8): the panel is REALLY lit after the deferred display-on that follows the LK
- * takeover (MINDONE-LK-PANELON, mtk_dsi.c). Separate from MTK_DISP_EVENT_BLANK, which fires
- * synchronously at CRTC enable ~2 s BEFORE that display-on (early return, F3581). Subscribers
- * (leds_mtk) re-apply state the panel init wiped, e.g. the AMOLED brightness register (0x51). */
 #define MTK_DISP_EVENT_LK_PANEL_ON	0x02
 
 enum {

@@ -4,10 +4,8 @@
  */
 
 #include <linux/init.h>
-#include <mindone/compat.h>
 #include <linux/module.h>
 #include <linux/device.h>
-#include <linux/version.h>
 #include <linux/slab.h>
 #include <linux/list.h>
 #include <linux/power_supply.h>
@@ -191,24 +189,24 @@ static ssize_t tcpc_show_property(struct device *dev,
 			dev_dbg(dev, "%s: ret=%d\n", __func__, ret);
 		break;
 	case TCPC_DESC_INFO:
-		i += snprintf(buf + i,
-			256, "|^|==( %s info )==|^|\n", tcpc->desc.name);
+		i += scnprintf(buf + i,
+			PAGE_SIZE - i, "|^|==( %s info )==|^|\n", tcpc->desc.name);
 		if (i < 0)
 			break;
-		i += snprintf(buf + i,
-			256, "role = %s\n", role_text[tcpc->desc.role_def]);
+		i += scnprintf(buf + i,
+			PAGE_SIZE - i, "role = %s\n", role_text[tcpc->desc.role_def]);
 		if (i < 0)
 			break;
 		if (tcpc->typec_local_rp_level == TYPEC_CC_RP_DFT) {
-			i += snprintf(buf + i, 256, "rplvl = %s\n", "Default");
+			i += scnprintf(buf + i, PAGE_SIZE - i, "rplvl = %s\n", "Default");
 			if (i < 0)
 				break;
 		} else if (tcpc->typec_local_rp_level == TYPEC_CC_RP_1_5) {
-			i += snprintf(buf + i, 256, "rplvl = %s\n", "1.5");
+			i += scnprintf(buf + i, PAGE_SIZE - i, "rplvl = %s\n", "1.5");
 			if (i < 0)
 				break;
 		} else if (tcpc->typec_local_rp_level == TYPEC_CC_RP_3_0) {
-			i += snprintf(buf + i, 256, "rplvl = %s\n", "3.0");
+			i += scnprintf(buf + i, PAGE_SIZE - i, "rplvl = %s\n", "3.0");
 			if (i < 0)
 				break;
 		}
@@ -566,11 +564,6 @@ static void tcpc_event_init_work(struct work_struct *work)
 	tcpc->pd_inited_flag = 1; /* MTK Only */
 	pr_info("%s typec attach new = %d\n",
 			__func__, tcpc->typec_attach_new);
-	/* MINDONE-PD-NOREINJECT: skip if this attach was already delivered via
-	 * the real IRQ path (tcpci_alert.c) -- re-injecting it here after PD
-	 * already negotiated a contract forces a spurious mid-session Hard
-	 * Reset (see TCPC-PD-ROOTFIX-2908).
-	 */
 	if (tcpc->typec_attach_new && !tcpc->pd_attach_notified)
 		pd_put_cc_attached_event(tcpc, tcpc->typec_attach_new);
 	tcpci_unlock_typec(tcpc);
@@ -871,7 +864,7 @@ static int __init tcpc_class_init(void)
 	dpm_check_supported_modes();
 #endif /* CONFIG_USB_POWER_DELIVERY */
 
-	tcpc_class = MINDONE_CLASS_CREATE("tcpc");
+	tcpc_class = class_create("tcpc");
 	if (IS_ERR(tcpc_class)) {
 		pr_info("Unable to create tcpc class; errno = %ld\n",
 		       PTR_ERR(tcpc_class));

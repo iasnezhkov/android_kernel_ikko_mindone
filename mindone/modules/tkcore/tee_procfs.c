@@ -23,7 +23,6 @@
 #include <linux/jiffies.h>
 #include <linux/kthread.h>
 #include <linux/slab.h>
-#include <linux/version.h>
 
 #include <asm/barrier.h>
 

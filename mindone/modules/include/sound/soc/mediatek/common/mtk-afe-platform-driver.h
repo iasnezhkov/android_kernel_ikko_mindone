@@ -9,7 +9,6 @@
 #ifndef _MTK_AFE_PLATFORM_DRIVER_H_
 #define _MTK_AFE_PLATFORM_DRIVER_H_
 
-#include <mindone/compat-sound.h>
 #define AFE_PCM_NAME "mtk-afe-pcm"
 extern const struct snd_soc_component_driver mtk_afe_pcm_platform;
 
@@ -25,7 +24,7 @@ snd_pcm_uframes_t mtk_afe_pcm_pointer(struct snd_soc_component *component,
 int mtk_afe_pcm_copy_user(struct snd_soc_component *component,
 			  struct snd_pcm_substream *substream,
 			  int channel, unsigned long hwoff,
-			  mindone_snd_buf_t buf, unsigned long bytes);
+			  struct iov_iter *buf, unsigned long bytes);
 int mtk_afe_pcm_ack(struct snd_pcm_substream *substream);
 int mtk_afe_pcm_new(struct snd_soc_component *component,
 		    struct snd_soc_pcm_runtime *rtd);

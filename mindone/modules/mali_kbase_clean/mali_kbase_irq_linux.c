@@ -42,27 +42,8 @@ static void *kbase_untag(void *ptr)
 	return (void *)(((uintptr_t) ptr) & ~3);
 }
 
-static atomic_t mindone_mj_n_irqjob = ATOMIC_INIT(0);
-/* F820 follow-up: "first 40 and stop" carries the same risk of losing the tail
- * as the ioctl dispatcher (mali_kbase_core_linux.c), if job-irq suddenly gets
- * frequent (job submit is 0 right now, but that's exactly the next debugging goal).
- * Head of 100 plus every 16th after that - logging never stops entirely.
- */
-#define MINDONE_MJ_HEAD_IRQJOB 100
-#define MINDONE_MJ_K_IRQJOB 16
-static inline bool mindone_mj_log_irqjob(void)
-{
-	long n = atomic_inc_return(&mindone_mj_n_irqjob);
-
-	return (n <= MINDONE_MJ_HEAD_IRQJOB) || (n % MINDONE_MJ_K_IRQJOB == 0);
-}
-
 static irqreturn_t kbase_job_irq_handler(int irq, void *data)
 {
-	bool __mj_log = mindone_mj_log_irqjob();
-
-	if (__mj_log)
-		;
 	unsigned long flags;
 	struct kbase_device *kbdev = kbase_untag(data);
 	u32 val;
@@ -81,16 +62,10 @@ static irqreturn_t kbase_job_irq_handler(int irq, void *data)
 	if (!kbdev->pm.backend.gpu_powered) {
 		/* GPU is turned off - IRQ is not for us */
 		spin_unlock_irqrestore(&kbdev->hwaccess_lock, flags);
-		if (__mj_log)
-			;
 		return IRQ_NONE;
 	}
 
-	if (__mj_log)
-		;
 	val = kbase_reg_read(kbdev, JOB_CONTROL_REG(JOB_IRQ_STATUS));
-	if (__mj_log)
-		;
 
 #ifdef CONFIG_MALI_DEBUG
 	if (!kbdev->pm.backend.driver_ready_for_irqs)
@@ -100,8 +75,6 @@ static irqreturn_t kbase_job_irq_handler(int irq, void *data)
 
 	if (!val) {
 		spin_unlock_irqrestore(&kbdev->hwaccess_lock, flags);
-		if (__mj_log)
-			;
 		return IRQ_NONE;
 	}
 
@@ -154,8 +127,6 @@ static irqreturn_t kbase_job_irq_handler(int irq, void *data)
 	}
 #endif
 
-	if (__mj_log)
-		;
 	return IRQ_HANDLED;
 }
 
@@ -198,23 +169,8 @@ static irqreturn_t kbase_mmu_irq_handler(int irq, void *data)
 	return IRQ_HANDLED;
 }
 
-static atomic_t mindone_mj_n_irqgpu = ATOMIC_INIT(0);
-/* F820 follow-up: see mindone_mj_log_irqjob() above - same technique. */
-#define MINDONE_MJ_HEAD_IRQGPU 100
-#define MINDONE_MJ_K_IRQGPU 16
-static inline bool mindone_mj_log_irqgpu(void)
-{
-	long n = atomic_inc_return(&mindone_mj_n_irqgpu);
-
-	return (n <= MINDONE_MJ_HEAD_IRQGPU) || (n % MINDONE_MJ_K_IRQGPU == 0);
-}
-
 static irqreturn_t kbase_gpu_irq_handler(int irq, void *data)
 {
-	bool __mj_log = mindone_mj_log_irqgpu();
-
-	if (__mj_log)
-		;
 	unsigned long flags;
 	struct kbase_device *kbdev = kbase_untag(data);
 	u32 val;
@@ -224,16 +180,10 @@ static irqreturn_t kbase_gpu_irq_handler(int irq, void *data)
 	if (!kbdev->pm.backend.gpu_powered) {
 		/* GPU is turned off - IRQ is not for us */
 		spin_unlock_irqrestore(&kbdev->hwaccess_lock, flags);
-		if (__mj_log)
-			;
 		return IRQ_NONE;
 	}
 
-	if (__mj_log)
-		;
 	val = kbase_reg_read(kbdev, GPU_CONTROL_REG(GPU_IRQ_STATUS));
-	if (__mj_log)
-		;
 
 #ifdef CONFIG_MALI_DEBUG
 	if (!kbdev->pm.backend.driver_ready_for_irqs)
@@ -243,8 +193,6 @@ static irqreturn_t kbase_gpu_irq_handler(int irq, void *data)
 	spin_unlock_irqrestore(&kbdev->hwaccess_lock, flags);
 
 	if (!val) {
-		if (__mj_log)
-			;
 		return IRQ_NONE;
 	}
 
@@ -252,8 +200,6 @@ static irqreturn_t kbase_gpu_irq_handler(int irq, void *data)
 
 	kbase_gpu_interrupt(kbdev, val);
 
-	if (__mj_log)
-		;
 	return IRQ_HANDLED;
 }
 
@@ -549,9 +495,6 @@ int kbasep_common_test_interrupt_handlers(
 }
 #endif /* CONFIG_MALI_DEBUG */
 
-extern void mindone_mali_mark(int step);
-extern int mindone_mali_noauto;
-extern int mindone_mali_noirq;
 
 int kbase_install_interrupts(struct kbase_device *kbdev)
 {
@@ -559,22 +502,9 @@ int kbase_install_interrupts(struct kbase_device *kbdev)
 	int err;
 	u32 i;
 
-	/* MINDONE: marker on EVERY handler (70 + i), and a "register but do NOT enable"
-	 * switch (`mindone_mali_noauto=1`). Tests whether a handler fires immediately
-	 * on registration - same class of bug as the one found for USB (F619).
-	 */
-	/* MINDONE: skip installing handlers entirely (`mindone_mali_noirq=1`).
-	 * Bisecting probe: if boot survives this way, interrupts are to blame; if not,
-	 * look elsewhere. Disabling auto-enable (noauto) did not change the picture.
-	 */
-	if (mindone_mali_noirq)
-		return 0;
-
 	for (i = 0; i < nr; i++) {
-		mindone_mali_mark(70 + (int)i);
 		err = request_irq(kbdev->irqs[i].irq, kbase_handler_table[i],
-				kbdev->irqs[i].flags | IRQF_SHARED |
-				(mindone_mali_noauto ? IRQF_NO_AUTOEN : 0),
+				kbdev->irqs[i].flags | IRQF_SHARED,
 				dev_name(kbdev->dev),
 				kbase_tag(kbdev, i));
 		if (err) {
@@ -587,7 +517,6 @@ int kbase_install_interrupts(struct kbase_device *kbdev)
 		}
 	}
 
-	mindone_mali_mark(73);
 	return 0;
 
  release:

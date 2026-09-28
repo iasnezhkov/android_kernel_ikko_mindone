@@ -6,7 +6,6 @@
 #include "ged_base.h"
 #include <linux/pid.h>
 #include <asm/page.h>
-#include <linux/version.h>
 #include <linux/vmalloc.h>
 #include <linux/slab.h>
 #include <linux/sched/clock.h>

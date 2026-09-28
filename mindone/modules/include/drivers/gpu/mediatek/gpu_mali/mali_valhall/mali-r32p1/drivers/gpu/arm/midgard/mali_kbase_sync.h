@@ -163,13 +163,7 @@ void kbase_sync_fence_out_remove(struct kbase_jd_atom *katom);
  */
 static inline void kbase_sync_fence_close_fd(int fd)
 {
-#if KERNEL_VERSION(5, 11, 0) <= LINUX_VERSION_CODE
 	close_fd(fd);
-#elif KERNEL_VERSION(4, 17, 0) <= LINUX_VERSION_CODE
-	ksys_close(fd);
-#else
-	sys_close(fd);
-#endif
 }
 
 #if !MALI_USE_CSF
@@ -195,13 +189,8 @@ int kbase_sync_fence_out_info_get(struct kbase_jd_atom *katom,
 #endif /* !MALI_USE_CSF */
 
 #if defined(CONFIG_SYNC_FILE)
-#if (KERNEL_VERSION(4, 10, 0) > LINUX_VERSION_CODE)
-void kbase_sync_fence_info_get(struct fence *fence,
-			       struct kbase_sync_fence_info *info);
-#else
 void kbase_sync_fence_info_get(struct dma_fence *fence,
 			       struct kbase_sync_fence_info *info);
-#endif
 #endif
 
 /**

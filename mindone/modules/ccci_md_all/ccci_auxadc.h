@@ -9,6 +9,6 @@
 int ccci_get_adc_num(void);
 int ccci_get_adc_val(void);
 int ccci_get_adc_mV(void);
-int ccci_auxadc_init(void); /* MINDONE-MD-ADC */
+int ccci_auxadc_init(void);
 
 #endif

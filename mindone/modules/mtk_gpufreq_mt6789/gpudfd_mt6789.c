@@ -32,7 +32,7 @@
  * ===============================================
  */
 static void __iomem *g_mfg_top_base;
-static struct gpufreq_platform_fp *gpufreq_fp;
+static struct gpufreq_platform_fp *gpufreq_fp __maybe_unused;
 static unsigned int g_dfd_force_dump_mode;
 static struct gpudfd_platform_fp platform_fp = {
 	.get_dfd_force_dump_mode = __gpudfd_get_dfd_force_dump_mode,

@@ -598,49 +598,9 @@ int mtk_eint_do_suspend(struct mtk_eint *eint)
 }
 EXPORT_SYMBOL_GPL(mtk_eint_do_suspend);
 
-/*
- * MINDONE-EINT-WAKESRC: while suspended,
- * mtk_eint_do_suspend() left only wake_mask pins unmasked, so any bit still
- * latched in the per-port STAT register at the start of mtk_eint_do_resume()
- * is one of the EINTs that actually asserted during suspend - i.e. a wake
- * candidate. SPM only ever reported "System LPM ... by EINT" without a pin
- * number, so this was invisible on 6.1/6.12 alike. Report the
- * first one found (one line, no spam - a real wake event fires at most a
- * handful of pins together, and the caller already runs this once per
- * resume) before the loop below restores the pre-suspend mask and the
- * normal mtk_eint_irq_handler() path takes back over.
- *
- * ABI: none - purely additional pr_info(), no new fields, no signature
- * change to this already-exported (EXPORT_SYMBOL_GPL) function.
- */
-static void mtk_eint_report_wake_source(struct mtk_eint *eint)
-{
-	unsigned int i, j, port, status, bit, eint_num;
-
-	for (i = 0; i < eint->instance_number; i++) {
-		struct mtk_eint_instance inst = eint->instances[i];
-
-		for (j = 0; j < inst.number; j += 32) {
-			port = j >> 5;
-			status = readl_relaxed(inst.base + port * 4 +
-						eint->comp->regs->stat);
-			status &= inst.wake_mask[port];
-			if (!status)
-				continue;
-
-			bit = __ffs(status);
-			eint_num = inst.pin_list[bit + j];
-			pr_info("mtk-eint: wake by EINT%u\n", eint_num);
-			return;
-		}
-	}
-}
-
 int mtk_eint_do_resume(struct mtk_eint *eint)
 {
 	unsigned int i, j, port;
-
-	mtk_eint_report_wake_source(eint);
 
 	for (i = 0; i < eint->instance_number; i++) {
 		struct mtk_eint_instance inst = eint->instances[i];

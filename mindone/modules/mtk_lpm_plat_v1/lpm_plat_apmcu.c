@@ -38,11 +38,6 @@ static struct task_struct *lpm_plat_task;
 /* qos */
 static struct pm_qos_request lpm_plat_qos_req;
 
-/* MINDONE 19.09 (BACKLOG O54): keep the boot-time cpu-off block (latency QoS 2 us, WFI only) for
- * this long after boot instead of lifting it at module init. Lifted at init, the governor kept
- * picking mcusysoff/system_bus while ATF refused them (PSCI deny, cpuidle `rejected`): ~600k
- * rejections/s over 8 CPUs from 16.5 to 28 s of boot on B7, ~230k/s at 24-28 s on B8 (VOW gone),
- * 1-7/s later. MediaTek does the same on MT6833 (MCUPM ready and 60 s). 0 = lift at init. */
 static unsigned int boot_idle_block_ms = 30000;
 module_param(boot_idle_block_ms, uint, 0444);
 MODULE_PARM_DESC(boot_idle_block_ms, "keep deep idle blocked until this uptime (ms); 0 = lift at init");

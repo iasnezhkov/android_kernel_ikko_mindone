@@ -6,7 +6,6 @@
 
 #define pr_fmt(fmt) KBUILD_MODNAME ": " fmt
 
-#include <mindone/compat.h>
 #include <linux/device.h>
 #include <linux/io.h>
 #include <linux/module.h>
@@ -105,7 +104,7 @@ static int mtk_devinfo_probe(struct platform_device *pdev)
 	econfig.reg_read = mtk_reg_read;
 	econfig.priv = priv;
 	econfig.dev = dev;
-	MINDONE_NVMEM_LEGACY_OF_CELLS(econfig);
+	(econfig.add_legacy_fixed_of_cells = true);
 	nvmem = devm_nvmem_register(dev, &econfig);
 
 	return PTR_ERR_OR_ZERO(nvmem);

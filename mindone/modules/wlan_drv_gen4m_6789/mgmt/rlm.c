@@ -3642,6 +3642,25 @@ static void rlmRecAssocRespIeInfoForClient(struct ADAPTER *prAdapter,
 			fgIsHasVhtCap = TRUE;
 			break;
 #endif
+		case ELEM_ID_BSS_MAX_IDLE_PERIOD:
+			if (IE_LEN(pucIE) ==
+			    sizeof(struct IE_BSS_MAX_IDLE_PERIOD) - 2) {
+				struct IE_BSS_MAX_IDLE_PERIOD *prIeBssMaxIdle =
+					(struct IE_BSS_MAX_IDLE_PERIOD *) pucIE;
+
+				prBssInfo->fgBssMaxIdlePeriodPresent = TRUE;
+				prBssInfo->u2BssMaxIdlePeriod =
+					prIeBssMaxIdle->u2MaxIdlePeriod;
+				prBssInfo->fgBssMaxIdleProtectedKeepAliveRequired =
+					(prIeBssMaxIdle->ucIdleOptions &
+					BSS_MAX_IDLE_PERIOD_OPTION_PROTECTED_KEEP_ALIVE_REQUIRED)
+					? TRUE : FALSE;
+				DBGLOG(RLM, INFO,
+				       "BSS Max Idle Period %u (x1000TU), protected keep-alive %u\n",
+				       prBssInfo->u2BssMaxIdlePeriod,
+				       prBssInfo->fgBssMaxIdleProtectedKeepAliveRequired);
+			}
+			break;
 		case ELEM_ID_RESERVED:
 #if (CFG_SUPPORT_802_11AX == 1)
 
@@ -5052,6 +5071,10 @@ static void rlmBssReset(struct ADAPTER *prAdapter, struct BSS_INFO *prBssInfo)
 	prBssInfo->eHtProtectMode = 0;
 	prBssInfo->eGfOperationMode = 0;
 	prBssInfo->eRifsOperationMode = 0;
+
+	prBssInfo->fgBssMaxIdlePeriodPresent = FALSE;
+	prBssInfo->u2BssMaxIdlePeriod = 0;
+	prBssInfo->fgBssMaxIdleProtectedKeepAliveRequired = FALSE;
 
 	/* OBSS related parameters */
 	prBssInfo->auc2G_20mReqChnlList[0] = 0;

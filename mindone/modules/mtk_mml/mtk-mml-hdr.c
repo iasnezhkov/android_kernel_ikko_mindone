@@ -236,6 +236,8 @@ static s32 hdr_prepare(struct mml_comp *comp, struct mml_task *task,
 	struct hdr_frame_data *hdr_frm;
 
 	hdr_frm = kzalloc(sizeof(*hdr_frm), GFP_KERNEL);
+	if (!hdr_frm)
+		return -ENOMEM;
 	ccfg->data = hdr_frm;
 	hdr_frm->reuse_reg.offs = hdr_frm->offs_reg;
 	hdr_frm->reuse_reg.offs_size = ARRAY_SIZE(hdr_frm->offs_reg);
@@ -896,6 +898,8 @@ static void hdr_task_done_readback(struct mml_comp *comp, struct mml_task *task,
 		u32 *phist = kmalloc(HDR_HIST_NUM*sizeof(u32), GFP_KERNEL);
 		void __iomem *base = comp->base;
 
+		if (!phist)
+			goto hist_done;
 		for (i = 0; i < HDR_HIST_NUM; i++) {
 			if (i == 57) {
 				phist[i] = readl(base + HDR_LBOX_DET_4);
@@ -904,8 +908,10 @@ static void hdr_task_done_readback(struct mml_comp *comp, struct mml_task *task,
 			phist[i] = readl(base + HDR_HIST_DATA);
 		}
 		mml_pq_hdr_readback(task, ccfg->pipe, phist);
+		kfree(phist);
 	}
 
+hist_done:
 	offset = vcp ? task->pq_task->hdr_hist[pipe]->va_offset : 0;
 
 	mml_pq_msg("%s job_id[%d] id[%d] pipe[%d] en_hdr[%d] va[%p] pa[%llx]",

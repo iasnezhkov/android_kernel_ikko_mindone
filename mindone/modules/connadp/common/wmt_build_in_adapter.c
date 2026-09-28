@@ -3,7 +3,6 @@
  * Copyright (c) 2019 MediaTek Inc.
  */
 #include <linux/kernel.h>
-#include <mindone/compat.h>
 
 #include "wmt_build_in_adapter.h"
 #include <linux/string.h>
@@ -122,7 +121,7 @@ static int conn_dbg_dev_init(void)
 		goto err1;
 	}
 
-	pConnDbgClass = MINDONE_CLASS_CREATE(CONN_DBG_DEVICE_NAME);
+	pConnDbgClass = class_create(CONN_DBG_DEVICE_NAME);
 	if (IS_ERR(pConnDbgClass)) {
 		pr_info("class create fail, error code(%ld)\n", PTR_ERR(pConnDbgClass));
 		goto err2;

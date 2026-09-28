@@ -34,13 +34,6 @@ struct IMGSENSOR_SENSOR_LIST
 #endif
 //prize add by chenwenhui end
 
-/* mindone add: MINDONE-CAM-IMX766 29.08 — stock imgsensor_isp6s.ko has
- * imx766_mipi_raw/imx766g_mipi_raw/imx766gm_mipi_raw/imx766gs_mipi_raw.
- * Only base imx766 has source in any vendor tree; ids below were recovered
- * from stock gimgsensor_sensor_list raw bytes (CAMERA-IMX766-2908).
- * Placed OUTSIDE the "#if 0" block below (that block is dead code — the
- * whole default MTK sensor list was disabled by the vendor customization).
- */
 #if defined(IMX766_MIPI_RAW)
 	{IMX766_SENSOR_ID, SENSOR_DRVNAME_IMX766_MIPI_RAW, IMX766_MIPI_RAW_SensorInit},
 #endif

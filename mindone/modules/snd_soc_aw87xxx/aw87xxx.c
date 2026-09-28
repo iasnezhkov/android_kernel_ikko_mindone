@@ -14,7 +14,6 @@
 
 #include <linux/i2c.h>
 #include <linux/vmalloc.h>
-#include <mindone/compat.h>
 #include <sound/pcm.h>
 #include <sound/pcm_params.h>
 #include <linux/gpio.h>
@@ -2100,7 +2099,7 @@ static struct i2c_driver aw87xxx_i2c_driver = {
 		.pm = &aw87xxx_dev_pm_ops,
 #endif
 		},
-	MINDONE_I2C_PROBE(aw87xxx_i2c_probe),
+	.probe = aw87xxx_i2c_probe,
 	.remove = aw87xxx_i2c_remove,
 	.shutdown = aw87xxx_i2c_shutdown,
 	.id_table = aw87xxx_i2c_id,
@@ -2132,7 +2131,5 @@ module_exit(aw87xxx_pa_exit);
 MODULE_AUTHOR("<zhaozhongbo@awinic.com>");
 MODULE_DESCRIPTION("awinic aw87xxx pa driver");
 MODULE_LICENSE("GPL v2");
-#if KERNEL_VERSION(5, 4, 0) <= LINUX_VERSION_CODE
 MODULE_IMPORT_NS(VFS_internal_I_am_really_a_filesystem_and_am_NOT_a_driver);
-#endif
 

@@ -31,7 +31,6 @@
 #include <mt-plat/mtk_meminfo.h>
 #endif
 #include "mtk_layering_rule.h"
-/* MINDONE F2910: last LAYERING_RULE (read from mtk_drm_crtc.c on lost ID) */
 unsigned long mindone_lr_jiffies;
 unsigned long mindone_lr_calls;
 int mindone_lr_layers;
@@ -1032,6 +1031,11 @@ static int add_layer_entry(struct drm_mtk_layer_config *l_info, bool sort_by_y,
 
 	begin_t = kzalloc(sizeof(struct hrt_sort_entry), GFP_KERNEL);
 	end_t = kzalloc(sizeof(struct hrt_sort_entry), GFP_KERNEL);
+	if (!begin_t || !end_t) {
+		kfree(begin_t);
+		kfree(end_t);
+		return -ENOMEM;
+	}
 
 	begin_t->head = NULL;
 	begin_t->tail = NULL;
@@ -2741,7 +2745,7 @@ static enum MTK_LAYERING_CAPS query_MML(struct drm_device *dev, struct drm_crtc 
 		DDPDBG("%s src_width=%d src_height=%d dst_width=%d dst_height=%d\n", __func__,
 		       mml_info->src.width, mml_info->src.height, mml_info->dest[0].data.width,
 		       mml_info->dest[0].data.height);
-		DDPDBG("%s ratio=%d get_freq=%d mmclk=%d cur_mmclk=%d, mode=%d\n", __func__, ratio,
+		DDPDBG("%s ratio=%d get_freq=%lu mmclk=%lu cur_mmclk=%lu, mode=%d\n", __func__, ratio,
 		       mtk_drm_get_freq(&mtk_crtc->base, __func__), mmclk,
 		       mtk_drm_get_mmclk(&mtk_crtc->base, __func__), mml_info->mode);
 
@@ -3071,7 +3075,6 @@ static int layering_rule_start(struct drm_mtk_layering_info *disp_info_user,
 	    layering_info.layer_num[HRT_PRIMARY] > 0)
 		g_hrt_valid = true;
 
-	/* MINDONE F2910: trace of the last layering-rule call - for post-mortem on empty commits */
 	mindone_lr_jiffies = jiffies;
 	mindone_lr_calls++;
 	mindone_lr_layers = layering_info.layer_num[HRT_PRIMARY];

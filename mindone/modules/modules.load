@@ -12,6 +12,13 @@ mtk_wdt.ko
 sec_rng.ko
 device_apc_common.ko
 device_apc_mt6789.ko
+clk-mediatek.ko
+clk-mt6789.ko
+mtk-eint.ko
+pinctrl-mtk-common-v2.ko
+pinctrl-paris.ko
+pinctrl-mt6789.ko
+8250_mtk.ko
 clk_mt6789_audiosys.ko
 clk_mt6789_cam.ko
 clk_mt6789_mmsys.ko
@@ -43,6 +50,8 @@ iommu_debug.ko
 mtk_iommu.ko
 iommu_test.ko
 mtk_mm_heap.ko
+deferred-free-helper.ko
+page_pool.ko
 system_heap.ko
 mtk_cmdq_drv_ext.ko
 cmdq_platform_mt6789.ko
@@ -65,6 +74,8 @@ mt63xx_debug.ko
 mtk_spmi_pmic.ko
 spmi_mtk_pmif.ko
 mt6358_regulator.ko
+reset-ti-syscon.ko
+ufs-mediatek.ko
 cqhci.ko
 mtk_mmc_autok.ko
 mtk_mmc.ko
@@ -100,7 +111,6 @@ tcpci_late_sync.ko
 mtk_pd_adapter.ko
 mtk_pd_charging.ko
 mtk_charger_framework.ko
-usbpsy.ko
 rt_pd_manager.ko
 mt6358_battery.ko
 pwm_mtk_disp.ko
@@ -115,10 +125,11 @@ vcp_status.ko
 meta.ko
 mtk_sync.ko
 emi.ko
-emi_mpu.ko
 tinysys_scmi.ko
 mtk_mbox_mailbox.ko
 irq_dbg.ko
+drm_display_helper.ko
+drm_dma_helper.ko
 mediatek_drm.ko
 leds_mtk_disp.ko
 leds_mtk_pwm.ko
@@ -198,7 +209,6 @@ camera_mem.ko
 mtk_heap_debug.ko
 widevine_driver.ko
 mtk_disp_sec.ko
-cmdq_test.ko
 camera_fdvt_isp51.ko
 mtk_dvfsrc_start.ko
 mtk_afe_external.ko
@@ -280,7 +290,6 @@ mtk_lpm_plat_v1.ko
 mtk_lpm_dbg_mt6789.ko
 clk_disable_unused.ko
 mtk_pm_domain_disable_unused.ko
-ashmem.ko
 mtk_cm_mgr.ko
 mtk_cm_mgr_mt6789.ko
 mtk_dvfsrc_helper.ko

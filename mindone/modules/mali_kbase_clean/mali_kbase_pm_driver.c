@@ -1749,7 +1749,6 @@ static void kbase_pm_trace_power_state(struct kbase_device *kbdev)
 					KBASE_PM_CORE_STACK));
 }
 
-extern void mindone_mali_mark(int step);
 
 void kbase_pm_update_state(struct kbase_device *kbdev)
 {
@@ -1762,21 +1761,16 @@ void kbase_pm_update_state(struct kbase_device *kbdev)
 
 	lockdep_assert_held(&kbdev->hwaccess_lock);
 
-	mindone_mali_mark(700);
 
 	if (!kbdev->pm.backend.gpu_ready)
 		return; /* Do nothing if the GPU is not ready */
 
-	mindone_mali_mark(701);
 	if (kbase_pm_l2_update_state(kbdev))
 		return;
-	mindone_mali_mark(702);
 
 #if !MALI_USE_CSF
-	mindone_mali_mark(703);
 	if (kbase_pm_shaders_update_state(kbdev))
 		return;
-	mindone_mali_mark(704);
 
 	/* If the shaders just turned off, re-invoke the L2 state machine, in
 	 * case it was waiting for the shaders to turn off before powering down
@@ -1800,7 +1794,6 @@ void kbase_pm_update_state(struct kbase_device *kbdev)
 #endif
 
 	if (kbase_pm_is_in_desired_state_nolock(kbdev)) {
-		mindone_mali_mark(705);
 		KBASE_KTRACE_ADD(kbdev, PM_DESIRED_REACHED, NULL,
 				 kbdev->pm.backend.shaders_avail);
 
@@ -1824,7 +1817,6 @@ shader_tick_timer_callback(struct hrtimer *timer)
 
 	spin_lock_irqsave(&kbdev->hwaccess_lock, flags);
 
-	mindone_mali_mark(710);
 	if (stt->remaining_ticks &&
 			backend->shaders_state == KBASE_SHADERS_WAIT_OFF_CORESTACK_ON) {
 		stt->remaining_ticks--;
@@ -1833,7 +1825,6 @@ shader_tick_timer_callback(struct hrtimer *timer)
 		 * PM state machine to power off the shader cores.
 		 */
 		if (!stt->remaining_ticks && !backend->shaders_desired) {
-			mindone_mali_mark(711);
 			kbase_pm_update_state(kbdev);
 		}
 	}
@@ -2028,11 +2019,7 @@ int kbase_pm_wait_for_l2_powered(struct kbase_device *kbdev)
 #endif
 
 	/* Wait for cores */
-#if KERNEL_VERSION(4, 13, 1) <= LINUX_VERSION_CODE
 	remaining = wait_event_killable_timeout(
-#else
-	remaining = wait_event_timeout(
-#endif
 		kbdev->pm.backend.gpu_in_desired_state_wait,
 		kbase_pm_is_in_desired_state_with_l2_powered(kbdev), timeout);
 
@@ -2066,15 +2053,9 @@ int kbase_pm_wait_for_desired_state(struct kbase_device *kbdev)
 	spin_unlock_irqrestore(&kbdev->hwaccess_lock, flags);
 
 	/* Wait for cores */
-#if KERNEL_VERSION(4, 13, 1) <= LINUX_VERSION_CODE
 	remaining = wait_event_killable_timeout(
 		kbdev->pm.backend.gpu_in_desired_state_wait,
 		kbase_pm_is_in_desired_state(kbdev), timeout);
-#else
-	remaining = wait_event_timeout(
-		kbdev->pm.backend.gpu_in_desired_state_wait,
-		kbase_pm_is_in_desired_state(kbdev), timeout);
-#endif
 
 	if (!remaining) {
 		kbase_pm_timed_out(kbdev);
@@ -2111,15 +2092,9 @@ int kbase_pm_wait_for_cores_down_scale(struct kbase_device *kbdev)
 	int err = 0;
 
 	/* Wait for core mask update to complete  */
-#if KERNEL_VERSION(4, 13, 1) <= LINUX_VERSION_CODE
 	remaining = wait_event_killable_timeout(
 		kbdev->pm.backend.gpu_in_desired_state_wait,
 		core_mask_update_done(kbdev), timeout);
-#else
-	remaining = wait_event_timeout(
-		kbdev->pm.backend.gpu_in_desired_state_wait,
-		core_mask_update_done(kbdev), timeout);
-#endif
 
 	if (!remaining) {
 		kbase_pm_timed_out(kbdev);

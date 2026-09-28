@@ -8,6 +8,7 @@
 #include <linux/device.h>
 #include <linux/interrupt.h>
 #include <linux/io.h>
+#include <linux/jiffies.h>
 #include <linux/kernel.h>
 #include <linux/module.h>
 #include <linux/of.h>
@@ -16,6 +17,7 @@
 #include <linux/platform_device.h>
 #include <linux/printk.h>
 #include <linux/slab.h>
+#include <linux/workqueue.h>
 #include "mtk_sip_svc_ext.h"
 #include <linux/soc/mediatek/mtk_sip_svc.h>
 #include <mt-plat/aee.h>
@@ -24,6 +26,25 @@
 /* global pointer for exported functions */
 struct emi_mpu *global_emi_mpu;
 EXPORT_SYMBOL_GPL(global_emi_mpu);
+
+#define EMIMPU_VIO_MPUS_OFFSET 0x1f0
+#define EMIMPU_VIO_MPUT_OFFSET 0x1f8
+#define EMIMPU_VIO_MPUT2_OFFSET 0x1fc
+
+#define EMIMPU_STORM_THRESHOLD 50
+#define EMIMPU_STORM_WINDOW_MS 200
+#define EMIMPU_STORM_BACKOFF_MIN_MS 1000
+#define EMIMPU_STORM_BACKOFF_MAX_MS 60000
+
+struct emimpu_vio_decode {
+	unsigned int master_id;
+	unsigned int domain_id;
+	unsigned int port_id;
+	unsigned int wr_vio;
+	unsigned int wr_oo_vio;
+	unsigned long long addr;
+	unsigned int valid;
+};
 
 static void set_regs(
 	struct reg_info_t *reg_list, unsigned int reg_cnt,
@@ -74,6 +95,50 @@ static void emimpu_vio_dump(struct work_struct *work)
 	mpu->in_msg_dump = 0;
 }
 static DECLARE_WORK(emimpu_work, emimpu_vio_dump);
+
+static void emimpu_decode_vio(struct reg_info_t *dump_reg,
+	unsigned int dump_cnt, struct emimpu_vio_decode *out)
+{
+	unsigned int mpus = 0, mput = 0, mput2 = 0;
+	unsigned int i;
+
+	out->valid = 0;
+
+	for (i = 0; i < dump_cnt; i++) {
+		if (dump_reg[i].offset == EMIMPU_VIO_MPUS_OFFSET)
+			mpus = dump_reg[i].value;
+		else if (dump_reg[i].offset == EMIMPU_VIO_MPUT_OFFSET)
+			mput = dump_reg[i].value;
+		else if (dump_reg[i].offset == EMIMPU_VIO_MPUT2_OFFSET)
+			mput2 = dump_reg[i].value;
+	}
+
+	if (!mput && !mput2)
+		return;
+
+	out->master_id = mpus & 0xFFFF;
+	out->domain_id = (mpus >> 21) & 0xF;
+	out->port_id = out->master_id & 0x7;
+	out->wr_vio = (mpus >> 29) & 0x3;
+	out->wr_oo_vio = (mpus >> 27) & 0x3;
+	out->addr = (((unsigned long long)(mput2 & 0xF)) << 32) + mput;
+	out->valid = 1;
+}
+
+static void emimpu_storm_rearm(struct work_struct *work)
+{
+	struct emi_mpu *mpu = global_emi_mpu;
+
+	if (!mpu)
+		return;
+
+	pr_info("%s: re-enabling irq %u after %ums backoff\n", __func__,
+		mpu->irq, mpu->storm_backoff_ms);
+	mpu->storm_active = 0;
+	mpu->storm_vio_count = 0;
+	enable_irq(mpu->irq);
+}
+static DECLARE_DELAYED_WORK(emimpu_storm_work, emimpu_storm_rearm);
 
 /**
  * Check whether devmpu.
@@ -127,7 +192,7 @@ static irqreturn_t emimpu_violation_irq(int irq, void *dev_id)
 	ssize_t msg_len;
 	int n, nr_vio;
 	bool violation;
-	char md_str[MTK_EMI_MAX_CMD_LEN + 10] = {'\0'};
+	char *md_str = mpu->md_str;
 
 	if (mpu->in_msg_dump)
 		goto ignore_violation;
@@ -202,7 +267,8 @@ static irqreturn_t emimpu_violation_irq(int irq, void *dev_id)
 		 */
 		if (mpu->md_handler) {
 			strncpy(md_str, "emi-mpu.c", 10);
-			strncat(md_str, mpu->vio_msg, sizeof(md_str) - strlen(md_str) - 1);
+			strncat(md_str, mpu->vio_msg,
+				MTK_EMI_MAX_CMD_LEN + 10 - strlen(md_str) - 1);
 			mpu->md_handler(md_str);
 		}
 	}
@@ -211,6 +277,45 @@ static irqreturn_t emimpu_violation_irq(int irq, void *dev_id)
 		pr_info("%s: %s", __func__, mpu->vio_msg);
 		mpu->in_msg_dump = 1;
 		schedule_work(&emimpu_work);
+
+		if (!mpu->storm_active) {
+			unsigned long now = jiffies;
+
+			if (!mpu->storm_vio_count || time_after(now,
+					mpu->storm_window_start +
+					msecs_to_jiffies(EMIMPU_STORM_WINDOW_MS))) {
+				mpu->storm_window_start = now;
+				mpu->storm_vio_count = 0;
+			}
+			mpu->storm_vio_count++;
+
+			if (mpu->storm_vio_count >= EMIMPU_STORM_THRESHOLD) {
+				struct emimpu_vio_decode decoded;
+
+				emimpu_decode_vio(dump_reg, mpu->dump_cnt, &decoded);
+				mpu->storm_active = 1;
+
+				if (decoded.valid)
+					pr_info("%s: storm gate, %u violations in %ums, master(0x%x) port(%u) domain(%u) wr_vio(%u) wr_oo_vio(%u) addr(0x%llx), masking irq %u for %ums\n",
+						__func__, mpu->storm_vio_count,
+						EMIMPU_STORM_WINDOW_MS,
+						decoded.master_id, decoded.port_id,
+						decoded.domain_id, decoded.wr_vio,
+						decoded.wr_oo_vio, decoded.addr,
+						mpu->irq, mpu->storm_backoff_ms);
+				else
+					pr_info("%s: storm gate, %u violations in %ums, masking irq %u for %ums\n",
+						__func__, mpu->storm_vio_count,
+						EMIMPU_STORM_WINDOW_MS, mpu->irq,
+						mpu->storm_backoff_ms);
+
+				disable_irq_nosync(mpu->irq);
+				schedule_delayed_work(&emimpu_storm_work,
+					msecs_to_jiffies(mpu->storm_backoff_ms));
+				mpu->storm_backoff_ms = min(mpu->storm_backoff_ms * 2,
+					(unsigned int)EMIMPU_STORM_BACKOFF_MAX_MS);
+			}
+		}
 	}
 
 ignore_violation:
@@ -832,6 +937,11 @@ static int emimpu_probe(struct platform_device *pdev)
 	if (!(mpu->vio_msg))
 		return -ENOMEM;
 
+	mpu->md_str = devm_kzalloc(&pdev->dev,
+		MTK_EMI_MAX_CMD_LEN + 10, GFP_KERNEL);
+	if (!(mpu->md_str))
+		return -ENOMEM;
+
 	global_emi_mpu = mpu;
 	platform_set_drvdata(pdev, mpu);
 
@@ -876,6 +986,8 @@ static int emimpu_probe(struct platform_device *pdev)
 	if (ret)
 		mpu->bypass = 0;
 	pr_info("bypass == %d\n ", mpu->bypass);
+
+	mpu->storm_backoff_ms = EMIMPU_STORM_BACKOFF_MIN_MS;
 
 	mpu->irq = irq_of_parse_and_map(emimpu_node, 0);
 	if (mpu->irq == 0) {
@@ -930,6 +1042,13 @@ static void emimpu_remove(struct platform_device *pdev)
 	struct emi_mpu *mpu = platform_get_drvdata(pdev);
 
 	dev_info(&pdev->dev, "driver removed\n");
+
+	cancel_delayed_work_sync(&emimpu_storm_work);
+	if (mpu->storm_active) {
+		mpu->storm_active = 0;
+		mpu->storm_vio_count = 0;
+		enable_irq(mpu->irq);
+	}
 
 	free_irq(mpu->irq, mpu);
 

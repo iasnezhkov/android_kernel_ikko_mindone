@@ -250,7 +250,7 @@ void handler_post(struct kprobe *p, struct pt_regs *regs, unsigned long flags)
 	}
 }
 
-static int handler_fault(struct kprobe *p, struct pt_regs *regs, int trapnr);
+static int __maybe_unused handler_fault(struct kprobe *p, struct pt_regs *regs, int trapnr);
 
 static struct kprobe kp_kpd_irq_handler = {
 	.symbol_name = "kpd_irq_handler",
@@ -263,7 +263,7 @@ static struct kprobe kp_kpd_irq_handler = {
  * instruction within the pre- or post-handler, or when Kprobes
  * single-steps the probed instruction.
  */
-static int handler_fault(struct kprobe *p, struct pt_regs *regs, int trapnr)
+static int __maybe_unused handler_fault(struct kprobe *p, struct pt_regs *regs, int trapnr)
 {
 	pr_notice("fault_handler: p->addr = 0x%p, trap #%dn", p->addr, trapnr);
 	unregister_kprobe(&kp_kpd_irq_handler);

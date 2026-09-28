@@ -77,12 +77,9 @@ int fg_get_system_sec(void)
 
 int fg_get_imix(struct mtk_battery *gm)
 {
-	int imix = 1;
+	int imix = READ_ONCE(gm->imix);
 
-	if (gm->imix != 0)
-		return gm->imix;
-
-	return imix;
+	return imix > 0 ? imix : 1;
 }
 
 int gauge_set_nag_en(struct mtk_battery *gm, int nafg_zcv_en)
@@ -279,9 +276,11 @@ void fg_daemon_send_data(struct mtk_battery *gm,
 				gm->fg_version.custom_table_len !=
 					sizeof(struct fuel_gauge_table_custom_data)) {
 
+				mutex_lock(&gm->algo_lock);
 				gm->algo.active = true;
 				battery_algo_init(gm);
-				bm_err("[%s]: %d %d,%d %d,%d %d,%d %d, enable Kernel mode Gauge\n",
+				mutex_unlock(&gm->algo_lock);
+				bm_err("[%s]: %d %d,%d %d,%d %zu,%d %zu, enable Kernel mode Gauge\n",
 					__func__,
 					gm->fg_version.daemon_cmds, FG_DAEMON_CMD_FROM_USER_NUMBER,
 					gm->fg_version.kernel_cmds, FG_KERNEL_CMD_FROM_USER_NUMBER,
@@ -1701,8 +1700,10 @@ void exec_BAT_EC(int cmd, int param)
 		break;
 	case 805:
 		{
+			mutex_lock(&gm->algo_lock);
 			gm->algo.active = true;
 			battery_algo_init(gm);
+			mutex_unlock(&gm->algo_lock);
 			wakeup_fg_algo(gm, FG_INTR_FG_TIME);
 			wakeup_fg_algo(gm, FG_INTR_BAT_INT1_HT);
 			wakeup_fg_algo(gm, FG_INTR_BAT_INT1_LT);
@@ -2412,7 +2413,7 @@ static ssize_t BAT_HEALTH_store(
 
 	gm = get_mtk_battery();
 
-	bm_err("%s, size =%d, str=%s\n", __func__, size, buf);
+	bm_err("%s, size =%zu, str=%s\n", __func__, size, buf);
 
 	if (size < 90 || size > 350) {
 		bm_err("%s error, size mismatch\n", __func__);
@@ -2445,7 +2446,8 @@ static ssize_t BAT_HEALTH_store(
 			else
 				strncpy(copy_str, s+1, chr_size-1);
 
-			kstrtoint(copy_str, 10, &value[count]);
+			if (kstrtoint(copy_str, 10, &value[count]))
+				value[count] = 0;
 			/* bm_err("::%s::count:%d,%d\n", copy_str, count, value[count]); */
 			s = pch;
 			pch = strchr(pch + 1, ',');
@@ -2460,7 +2462,7 @@ static ssize_t BAT_HEALTH_store(
 		for (i = 0; i < 3; i++)
 			gm->bh_data.times[i].tv_sec = value[i+43];
 
-	bm_err("%s count=%d,serial=%d,source=%d,42:%d, value43:[%d, %ld],value45[%d %ld]\n",
+	bm_err("%s count=%d,serial=%d,source=%d,42:%d, value43:[%d, %lld],value45[%d %lld]\n",
 		__func__,
 		count, gm->bh_data.data[0], gm->bh_data.data[1],
 		gm->bh_data.data[42],
@@ -3501,7 +3503,7 @@ static void mtk_battery_daemon_handler(struct mtk_battery *gm, void *nl_data,
 			dtime = ktime_sub(ctime, gm->uisoc_oldtime);
 			diff_time = ktime_to_timespec64(dtime);
 
-			bm_err("[K]FG_DAEMON_CMD_SET_KERNEL_UISOC = %d %d GM3:%d old:%d diff=%ld\n",
+			bm_err("[K]FG_DAEMON_CMD_SET_KERNEL_UISOC = %d %d GM3:%d old:%d diff=%lld\n",
 				daemon_ui_soc, gm->ui_soc,
 				gm->disableGM30, old_uisoc, diff_time.tv_sec);
 			gm->uisoc_oldtime = ctime;
@@ -3767,6 +3769,7 @@ static void mtk_battery_daemon_handler(struct mtk_battery *gm, void *nl_data,
 	{
 		bm_err("[K]FG_DAEMON_CMD_SEND_VERSION_CONTROL\n");
 	}
+	fallthrough;
 	case FG_DAEMON_CMD_SEND_CUSTOM_TABLE:
 	{
 		fg_daemon_send_data(gm, msg->fgd_cmd,
@@ -4406,37 +4409,10 @@ void fg_int_event(struct mtk_battery *gm, enum gauge_event evt)
 /* ============================================================ */
 void sw_check_bat_plugout(struct mtk_battery *gm)
 {
-	int is_bat_exist = 0;
-//prize add by lipengpeng 20220607 start
-#if IS_ENABLED (CONFIG_BATTERY_CW2217)
-    int ret = 0;
-	struct power_supply *gauge;
-	union power_supply_propval guage_val;
-
-
-	gauge = power_supply_get_by_name("cw-bat");
-	
-#endif
-//prize add by lipengpeng 20220607 end
-
-
+	int is_bat_exist;
 
 	if (gm->disable_plug_int && gm->disableGM30 != true) {
-		//prize add by lipengpeng 20220607 start
-#if IS_ENABLED (CONFIG_BATTERY_CW2217)
-  if (gauge) {
-				ret = power_supply_get_property(gauge, POWER_SUPPLY_PROP_PRESENT, &guage_val);
-				printk("lpp--sw_check_bat_plugout--guage_val.intval=%d\n",guage_val.intval);
-				is_bat_exist = guage_val.intval;
-		} else {
-
-			 is_bat_exist = gauge_get_int_property(GAUGE_PROP_BATTERY_EXIST);
-
-		}
-#endif
-		//is_bat_exist = gauge_get_int_property(GAUGE_PROP_BATTERY_EXIST);
-//prize add by lipengpeng 20220607 end
-		/* fg_bat_plugout_int_handler(); */
+		is_bat_exist = gauge_get_int_property(GAUGE_PROP_BATTERY_EXIST);
 		if (is_bat_exist == 0) {
 			bm_err(
 				"[swcheck_bat_plugout]g_disable_plug_int=%d, is_bat_exist %d, is_fg_disable %d\n",
@@ -4623,28 +4599,7 @@ static irqreturn_t nafg_irq(int irq, void *data)
 static irqreturn_t bat_plugout_irq(int irq, void *data)
 {
 	struct mtk_battery *gm = data;
-	int is_bat_exist;
-//prize add by lipengpeng 20220607 start
-#if IS_ENABLED (CONFIG_BATTERY_CW2217)
-    int ret = 0;
-	struct power_supply *gauge;
-	union power_supply_propval guage_val;
-
-
-	gauge = power_supply_get_by_name("cw-bat");
-
-
-  if (gauge) {
-				ret = power_supply_get_property(gauge, POWER_SUPPLY_PROP_PRESENT, &guage_val);
-				printk("lpp----guage_val.intval=%d\n",guage_val.intval);
-				is_bat_exist = guage_val.intval;
-		} else {
-#endif
-			 is_bat_exist = gauge_get_int_property(GAUGE_PROP_BATTERY_EXIST);
-#if IS_ENABLED (CONFIG_BATTERY_CW2217)
-		}
-#endif
-//prize add by lipengpeng 20220607 end	
+	int is_bat_exist = gauge_get_int_property(GAUGE_PROP_BATTERY_EXIST);
 
 	bm_err("[%s]is_bat %d miss:%d\n",
 		__func__,
@@ -4886,7 +4841,7 @@ void fg_update_sw_iavg(struct mtk_battery *gm)
 	dtime = ktime_sub(ctime, gm->sw_iavg_time);
 	diff = ktime_to_timespec64(dtime);
 
-	bm_debug("[%s]diff time:%ld\n", __func__, diff.tv_sec);
+	bm_debug("[%s]diff time:%lld\n", __func__, diff.tv_sec);
 	if (diff.tv_sec >= 60) {
 		fg_coulomb = gauge_get_int_property(GAUGE_PROP_COULOMB);
 #if defined(__LP64__) || defined(_LP64)
@@ -4911,7 +4866,7 @@ void fg_update_sw_iavg(struct mtk_battery *gm)
 			if (version < GAUGE_HW_V2000)
 				wakeup_fg_algo(gm, FG_INTR_IAVG);
 		}
-		bm_debug("[%s]time:%ld car:%d %d iavg:%d ht:%d lt:%d gap:%d\n",
+		bm_debug("[%s]time:%lld car:%d %d iavg:%d ht:%d lt:%d gap:%d\n",
 			__func__,
 			diff.tv_sec, fg_coulomb, gm->sw_iavg_car, gm->sw_iavg,
 			gm->sw_iavg_ht, gm->sw_iavg_lt, gm->sw_iavg_gap);
@@ -4982,7 +4937,7 @@ void fg_drv_update_daemon(struct mtk_battery *gm)
 
 	fg_current_iavg = gauge_get_average_current(gm, &valid);
 
-	bm_err("[%s]ui_ht_gap:%d ui_lt_gap:%d sw_iavg:%d %d %d nafg_m:%d %d %d\n",
+	bm_debug("[%s]ui_ht_gap:%d ui_lt_gap:%d sw_iavg:%d %d %d nafg_m:%d %d %d\n",
 		__func__,
 		gm->uisoc_int_ht_gap, gm->uisoc_int_lt_gap,
 		gm->sw_iavg, fg_current_iavg, valid,
@@ -5024,7 +4979,7 @@ static int mtk_battery_suspend(struct mtk_battery *gm, pm_message_t state)
 {
 	int version;
 
-	bm_err("******** %s!! iavg=%d ***GM3 disable:%d %d %d %d tmp_intr:%d***\n",
+	bm_debug("******** %s!! iavg=%d ***GM3 disable:%d %d %d %d tmp_intr:%d***\n",
 		__func__,
 		gm->gauge->hw_status.iavg_intr_flag,
 		gm->disableGM30,
@@ -5054,7 +5009,7 @@ static int mtk_battery_resume(struct mtk_battery *gm)
 {
 	int version;
 
-	bm_err("******** %s!! iavg=%d ***GM3 disable:%d %d %d %d***\n",
+	bm_debug("******** %s!! iavg=%d ***GM3 disable:%d %d %d %d***\n",
 		__func__,
 		gm->gauge->hw_status.iavg_intr_flag,
 		gm->disableGM30,

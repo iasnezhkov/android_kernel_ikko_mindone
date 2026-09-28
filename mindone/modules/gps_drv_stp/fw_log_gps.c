@@ -8,7 +8,6 @@
 *******************************************************************************/
 #ifdef CONFIG_MTK_CONNSYS_DEDICATED_LOG_PATH
 #include <linux/kernel.h>
-#include <mindone/compat.h>
 #include <linux/module.h>
 #include <linux/init.h>
 #include <linux/types.h>
@@ -21,12 +20,7 @@
 #include <linux/io.h>
 #include <linux/uaccess.h>
 #include <linux/printk.h>
-#include <linux/version.h>
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 4, 0)
 #include <asm/mmu.h>
-#else
-#include <asm/memblock.h>
-#endif
 #include <linux/wait.h>
 #include "gps.h"
 #include "connsys_debug_utility.h"
@@ -185,7 +179,7 @@ static int gps_fw_log_init(void)
 		pr_info("cdev_add fail: %d\n", err);
 		goto err_out;
 	}
-	logdevobj->cls = MINDONE_CLASS_CREATE("gpsfwlog");
+	logdevobj->cls = class_create("gpsfwlog");
 	if (IS_ERR(logdevobj->cls)) {
 		pr_info("Unable to create class, err = %d\n", (int)PTR_ERR(logdevobj->cls));
 	goto err_out;

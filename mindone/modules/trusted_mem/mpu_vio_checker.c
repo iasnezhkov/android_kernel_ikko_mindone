@@ -15,7 +15,6 @@
 #include <linux/string.h>
 #include <linux/uaccess.h>
 #include <linux/unistd.h>
-#include <linux/version.h>
 #include <linux/interrupt.h>
 #include <linux/arm-smccc.h>
 #include "mtk_sip_svc_ext.h"

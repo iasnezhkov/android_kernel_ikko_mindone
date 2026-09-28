@@ -4,7 +4,6 @@
  */
 
 #include <linux/platform_device.h>
-#include <mindone/compat.h>
 #include <linux/delay.h>
 #include <linux/cdev.h>
 #include <linux/uaccess.h>
@@ -61,7 +60,7 @@
 //prize add by lipengpeng 20220711 start
 #if IS_ENABLED(CONFIG_PRIZE_HARDWARE_INFO)
 #include "../../../../prize/hardware_info/hardware_info.h"
-#include <linux/pinctrl/consumer.h>	/* devm_pinctrl_get: 6.12 no longer pulls it in implicitly */
+#include <linux/pinctrl/consumer.h>
 #endif
 //prize add by lipengpeng 20220711 end 
 
@@ -157,31 +156,6 @@ static void imgsensor_mutex_unlock(struct IMGSENSOR_SENSOR_INST *psensor_inst)
 #endif
 }
 
-static int mindone_open_fail;
-module_param(mindone_open_fail, int, 0644);
-MODULE_PARM_DESC(mindone_open_fail, "MINDONE bisect: 1=fail after power-on before SensorOpen, 2=fail after SensorOpen");
-atomic_t mindone_open_done = ATOMIC_INIT(0);
-EXPORT_SYMBOL_GPL(mindone_open_done);
-static atomic_t mindone_after_open_cnt = ATOMIC_INIT(0);
-static int mindone_free_delay;
-module_param(mindone_free_delay, int, 0644);
-MODULE_PARM_DESC(mindone_free_delay, "MINDONE bisect: msleep (ms) after each MINDONE-CAM-FREE crumb once a sensor is open, so kmsg reaches the host before a crash");
-#define MINDONE_FREE_PAUSE() do { if (mindone_free_delay && atomic_read(&mindone_open_done)) msleep(mindone_free_delay); } while (0)
-static int mindone_after_open_allow = -1;
-module_param(mindone_after_open_allow, int, 0644);
-MODULE_PARM_DESC(mindone_after_open_allow, "MINDONE bisect: after a successful SensorOpen refuse imgsensor ioctls beyond the N-th; -1 = off");
-/* MINDONE (P127, 12.09): the MINDONE-CAM-IOCTL/FEAT/FREE breadcrumbs below
- * were added 29.08 (F3105/F3106) to bisect an open-path crash and print
- * unconditionally once a sensor has opened -- with the bisect long since
- * closed they just flood the log (~4000 lines per 12 s of preview) and were
- * never turned back off. Keep them available for the next bisect, but off
- * by default; mindone_open_fail/mindone_ioctl_allow/mindone_after_open_allow
- * (the actual refuse-N-th-call gates) are untouched by this switch.
- */
-static int mindone_cam_debug;
-module_param(mindone_cam_debug, int, 0644);
-MODULE_PARM_DESC(mindone_cam_debug, "MINDONE: print MINDONE-CAM-IOCTL/FEAT/FREE per-call breadcrumbs (very verbose); 0=off (default), 1=on");
-
 MINT32 imgsensor_sensor_open(struct IMGSENSOR_SENSOR *psensor)
 {
 	MINT32 ret = ERROR_NONE;
@@ -218,12 +192,6 @@ MINT32 imgsensor_sensor_open(struct IMGSENSOR_SENSOR *psensor)
 		IMGSENSOR_PROFILE(&psensor_inst->profile_time,
 			"kdCISModulePowerOn");
 
-		/* MINDONE-CAM-OPEN 29.08 (F3105): bisect the open path */
-		if (mindone_open_fail == 1) {
-			pr_info("MINDONE-CAM-OPEN: sensor_idx=%d powered, forced fail BEFORE SensorOpen (mindone_open_fail=1)\n", psensor->inst.sensor_idx);
-			imgsensor_hw_power(&pimgsensor->hw, psensor, IMGSENSOR_HW_POWER_STATUS_OFF);
-			return -EIO;
-		}
 		imgsensor_mutex_lock(psensor_inst);
 
 		psensor_func->psensor_inst = psensor_inst;
@@ -242,11 +210,6 @@ MINT32 imgsensor_sensor_open(struct IMGSENSOR_SENSOR *psensor)
 		}
 #endif
 
-		pr_info("MINDONE-CAM-OPEN: sensor_idx=%d SensorOpen ret=%d\n", psensor->inst.sensor_idx, ret);
-		if (mindone_open_fail == 2 && ret == ERROR_NONE) {
-			pr_info("MINDONE-CAM-OPEN: forced fail AFTER SensorOpen (mindone_open_fail=2)\n");
-			ret = -EIO;
-		}
 		if (ret != ERROR_NONE) {
 			imgsensor_hw_dump(&pimgsensor->hw);
 			imgsensor_hw_power(&pimgsensor->hw,
@@ -255,9 +218,6 @@ MINT32 imgsensor_sensor_open(struct IMGSENSOR_SENSOR *psensor)
 			PK_PR_ERR("SensorOpen fail");
 		} else {
 			psensor_inst->state = IMGSENSOR_STATE_OPEN;
-			atomic_set(&mindone_open_done, 1);
-			pr_info("MINDONE-CAM-OPEN: open DONE sensor_idx=%d (after-open gate allow=%d)\n", psensor->inst.sensor_idx, mindone_after_open_allow);
-			MINDONE_FREE_PAUSE();
 		}
 
 #ifdef IMGSENSOR_OC_ENABLE
@@ -280,12 +240,8 @@ MINT32 imgsensor_sensor_open(struct IMGSENSOR_SENSOR *psensor)
 #endif
 
 		imgsensor_mutex_unlock(psensor_inst);
-		if (mindone_cam_debug && atomic_read(&mindone_open_done)) pr_info("MINDONE-CAM-FREE: open mutex unlocked ret=%d\n", ret);
-		MINDONE_FREE_PAUSE();
 
 		IMGSENSOR_PROFILE(&psensor_inst->profile_time, "SensorOpen");
-		if (mindone_cam_debug && atomic_read(&mindone_open_done)) pr_info("MINDONE-CAM-FREE: open profile done\n");
-		MINDONE_FREE_PAUSE();
 	}
 
 	IMGSENSOR_FUNCTION_EXIT();
@@ -573,10 +529,6 @@ static void imgsensor_init_sensor_list(void)
 /******************************************************************************
  * imgsensor_check_is_alive
  ******************************************************************************/
-static int mindone_id_fail;
-module_param(mindone_id_fail, int, 0644);
-MODULE_PARM_DESC(mindone_id_fail, "MINDONE bisect: 1=read ID then force fail, 2=skip ID read and fail");
-
 static inline int imgsensor_check_is_alive(struct IMGSENSOR_SENSOR *psensor)
 {
 	MINT32 ret = ERROR_NONE;
@@ -602,23 +554,9 @@ static inline int imgsensor_check_is_alive(struct IMGSENSOR_SENSOR *psensor)
 	if (ret != IMGSENSOR_RETURN_SUCCESS)
 		return ERROR_SENSOR_CONNECT_FAIL;
 
-	/* MINDONE-CAM-ID 29.08: bisect what happens AFTER the sensor answers (F3104):
-	 * mindone_id_fail=1 -> read ID, print it, force CONNECT_FAIL (no set_driver/open);
-	 * mindone_id_fail=2 -> skip the I2C ID read entirely, force CONNECT_FAIL. */
-	if (mindone_id_fail == 2) {
-		pr_info("MINDONE-CAM-ID: sensor_idx=%d SKIP id read (mindone_id_fail=2)\n",
-			psensor->inst.sensor_idx);
-	} else {
-		imgsensor_sensor_feature_control(psensor,
-					 SENSOR_FEATURE_CHECK_SENSOR_ID,
-					 (MUINT8 *) &sensorID, &retLen);
-		pr_info("MINDONE-CAM-ID: sensor_idx=%d read ID=0x%x\n",
-			psensor->inst.sensor_idx, sensorID);
-	}
-	if (mindone_id_fail) {
-		pr_info("MINDONE-CAM-ID: forced CONNECT_FAIL (mindone_id_fail=%d)\n", mindone_id_fail);
-		sensorID = 0;
-	}
+	imgsensor_sensor_feature_control(psensor,
+				 SENSOR_FEATURE_CHECK_SENSOR_ID,
+				 (MUINT8 *) &sensorID, &retLen);
 
 	/* not implement this feature ID */
 	if (sensorID == 0 || sensorID == 0xFFFFFFFF) {
@@ -2097,8 +2035,6 @@ static inline int adopt_CAMERA_HW_FeatureControl(void *pBuf)
 		break;
 	}
 
-	if (mindone_cam_debug && atomic_read(&mindone_open_done)) pr_info("MINDONE-CAM-FREE: featctl after switch fid=%d ret=%d len=%u para=%px\n", (int)pFeatureCtrl->FeatureId, ret, FeatureParaLen, pFeaturePara);
-	MINDONE_FREE_PAUSE();
 	if (FeatureParaLen != 0 &&
 	    pFeaturePara != NULL &&
 	    pFeatureCtrl->pFeaturePara != NULL &&
@@ -2111,11 +2047,7 @@ static inline int adopt_CAMERA_HW_FeatureControl(void *pBuf)
 		return -EFAULT;
 	}
 
-	if (mindone_cam_debug && atomic_read(&mindone_open_done)) pr_info("MINDONE-CAM-FREE: featctl kfree(pFeaturePara=%px) len=%u ret=%d fid=%d\n", pFeaturePara, FeatureParaLen, ret, (int)pFeatureCtrl->FeatureId);
-	MINDONE_FREE_PAUSE();
 	kfree(pFeaturePara);
-	if (mindone_cam_debug && atomic_read(&mindone_open_done)) pr_info("MINDONE-CAM-FREE: featctl kfree done\n");
-	MINDONE_FREE_PAUSE();
 
 	if (pFeatureCtrl->pFeatureParaLen != NULL &&
 			copy_to_user(
@@ -2303,27 +2235,12 @@ static long imgsensor_compat_ioctl(struct file *filp,
 /******************************************************************************
  * imgsensor_ioctl
  ******************************************************************************/
-static int mindone_ioctl_allow = -1;
-module_param(mindone_ioctl_allow, int, 0644);
-MODULE_PARM_DESC(mindone_ioctl_allow, "MINDONE bisect: refuse (-EPERM) every imgsensor ioctl after the N-th since insmod; -1 = off");
-static atomic_t mindone_ioctl_seq = ATOMIC_INIT(0);
-
 static long imgsensor_ioctl(
 		struct file *a_pstFile,
 		unsigned int a_u4Command, unsigned long a_u4Param)
 {
 	int i4RetValue = 0;
 	void *pBuff = NULL;
-	int mindone_seq = atomic_inc_return(&mindone_ioctl_seq);
-
-	/* MINDONE-CAM-IOCTL 29.08 (F3106): breadcrumb for every ioctl + bisect gate */
-	if (mindone_cam_debug && atomic_read(&mindone_open_done)) pr_info("MINDONE-CAM-IOCTL: imgsensor #%d cmd=0x%x nr=%d dir=%d size=%d\n",
-		mindone_seq, a_u4Command, _IOC_NR(a_u4Command), _IOC_DIR(a_u4Command), _IOC_SIZE(a_u4Command));
-	if (mindone_ioctl_allow >= 0 && mindone_seq > mindone_ioctl_allow) {
-		pr_info("MINDONE-CAM-IOCTL: refused #%d nr=%d (mindone_ioctl_allow=%d)\n",
-			mindone_seq, _IOC_NR(a_u4Command), mindone_ioctl_allow);
-		return -EPERM;
-	}
 
 	if (_IOC_DIR(a_u4Command) != _IOC_NONE) {
 		pBuff = kmalloc(_IOC_SIZE(a_u4Command), GFP_KERNEL);
@@ -2346,24 +2263,6 @@ static long imgsensor_ioctl(
 	} else {
 		i4RetValue = -EFAULT;
 		goto CAMERA_HW_Ioctl_EXIT;
-	}
-
-	/* MINDONE-CAM-FEAT: breadcrumb with FeatureId; after-open gate (F3106) */
-	{
-		int fid = -1, cam = -1;
-		if (a_u4Command == KDIMGSENSORIOC_X_FEATURECONCTROL && pBuff) {
-			fid = (int)((struct ACDK_SENSOR_FEATURECONTROL_STRUCT *)pBuff)->FeatureId;
-			cam = (int)((struct ACDK_SENSOR_FEATURECONTROL_STRUCT *)pBuff)->InvokeCamera;
-		}
-		if (mindone_cam_debug && atomic_read(&mindone_open_done)) pr_info("MINDONE-CAM-FEAT: #%d nr=%d FeatureId=%d cam=%d\n", mindone_seq, _IOC_NR(a_u4Command), fid, cam);
-		if (atomic_read(&mindone_open_done) && mindone_after_open_allow >= 0) {
-			int n = atomic_inc_return(&mindone_after_open_cnt);
-			if (n > mindone_after_open_allow) {
-				pr_info("MINDONE-CAM-FEAT: refused after-open #%d nr=%d FeatureId=%d (allow=%d)\n", n, _IOC_NR(a_u4Command), fid, mindone_after_open_allow);
-				i4RetValue = -EPERM;
-				goto CAMERA_HW_Ioctl_EXIT;
-			}
-		}
 	}
 
 	switch (a_u4Command) {
@@ -2395,8 +2294,6 @@ static long imgsensor_ioctl(
 	}
 
 CAMERA_HW_Ioctl_EXIT:
-	if (mindone_cam_debug && atomic_read(&mindone_open_done)) pr_info("MINDONE-CAM-FREE: ioctl exit #%d kfree(pBuff=%px) rc=%d\n", mindone_seq, pBuff, i4RetValue);
-	MINDONE_FREE_PAUSE();
 	if (pBuff != NULL) {
 		kfree(pBuff);
 		pBuff = NULL;
@@ -2499,7 +2396,7 @@ static int imgsensor_probe(struct platform_device *pplatform_device)
 		return -EAGAIN;
 	}
 
-	pimgsensor->pclass = MINDONE_CLASS_CREATE("sensordrv");
+	pimgsensor->pclass = class_create("sensordrv");
 	if (IS_ERR(pimgsensor->pclass)) {
 		int ret = PTR_ERR(pimgsensor->pclass);
 

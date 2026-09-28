@@ -31,7 +31,6 @@ static int adc_mV;
 #ifndef CCCI_LOG_LEVEL /* for platform override */
 #define CCCI_LOG_LEVEL CCCI_LOG_CRITICAL_UART
 #endif
-/* MINDONE: variable is defined by ccci_core.c (provider for satellite modules) */
 extern unsigned int ccci_debug_enable;
 #endif
 
@@ -128,7 +127,6 @@ static struct platform_driver ccci_auxadc_driver = {
 	.probe = get_auxadc_probe,
 };
 
-/* MINDONE-MD-ADC 30.08: entry point restored — satellite folded into ccci_md_all lost its module_init, adc_val stayed 0 => MD told "EVB" => EE 0x305 (F3132) */
 int ccci_auxadc_init(void)
 {
 	int ret;
@@ -140,7 +138,6 @@ int ccci_auxadc_init(void)
 	}
 	return 0;
 }
-/* MINDONE: entry point removed -- satellite merged into ccci_md_all */
 MODULE_AUTHOR("ccci");
 MODULE_DESCRIPTION("ccci auxadc driver");
 MODULE_LICENSE("GPL");

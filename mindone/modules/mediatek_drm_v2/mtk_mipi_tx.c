@@ -283,7 +283,7 @@ int mtk_mipi_tx_dump(struct phy *phy)
 	struct mtk_mipi_tx *mipi_tx = phy_get_drvdata(phy);
 	int k;
 
-	DDPDUMP("== MIPI REGS:0x%x ==\n", mipi_tx->regs_pa);
+	DDPDUMP("== MIPI REGS:0x%llx ==\n", mipi_tx->regs_pa);
 	for (k = 0; k < 0x6A0; k += 16) {
 		DDPDUMP("0x%04x: 0x%08x 0x%08x 0x%08x 0x%08x\n", k,
 			readl(mipi_tx->regs + k),
@@ -1277,7 +1277,7 @@ static unsigned int _dsi_get_pcw_mt6983(unsigned long data_rate,
 	else if (data_rate >= 510)
 		div3 = 3;
 	else {
-		DDPPR_ERR("invalid data rate %u\n", data_rate);
+		DDPPR_ERR("invalid data rate %lu\n", data_rate);
 		return -EINVAL;
 	}
 
@@ -1331,11 +1331,6 @@ unsigned int _dsi_get_pcw_khz(unsigned long data_rate_khz,
 	 * PCW bit 8~15 = (pcw*256 - floor(pcw)*256)*256
 	 * PCW bit 0~7 = (pcw*256*256 - floor(pcw)*256*256)*256
 	 */
-	if (data_rate_khz == (data_rate_khz / 1000 * 1000)) {
-		pr_info("[%s]Error: this function only used for khz, used _dsi_get_pcw!!\n", __func__);
-		return _dsi_get_pcw(data_rate_khz / 1000, pcw_ratio);
-	}
-
 	pcw = data_rate_khz * pcw_ratio / clk_26m;
 	pcw_floor = data_rate_khz * pcw_ratio % clk_26m;
 	tmp = ((pcw & 0xFF) << 24) | (((256 * pcw_floor / clk_26m) & 0xFF) << 16) |

@@ -5,14 +5,14 @@
 	nfc_gpio: nfc_gpio {
 		compatible = "mediatek,nfc-gpio-v2";
 		gpio-rst = <0x96>;
-		gpio-rst-std = <0x49 0x96 0x00>;
+		gpio-rst-std = <&pio 0x96 0x00>;
 		gpio-irq = <0x01>;
-		gpio-irq-std = <0x49 0x01 0x00>;
+		gpio-irq-std = <&pio 0x01 0x00>;
 	};
 
 	irq_nfc: irq_nfc {
 		compatible = "mediatek,irq_nfc";
-		gpio-irq = <0x49 0x01 0x00>;
+		gpio-irq = <&pio 0x01 0x00>;
 	};
 
 	irtx_pwm: irtx_pwm {

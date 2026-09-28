@@ -233,6 +233,18 @@ static void ufs_mtk_init_reset_control(struct ufs_hba *hba,
 	}
 }
 
+static void ufs_mtk_init_optional_reset_control(struct ufs_hba *hba,
+						struct reset_control **rc,
+						char *str)
+{
+	*rc = devm_reset_control_get_optional_exclusive(hba->dev, str);
+	if (IS_ERR(*rc)) {
+		dev_info(hba->dev, "Failed to get reset control %s: %ld\n",
+			 str, PTR_ERR(*rc));
+		*rc = NULL;
+	}
+}
+
 static void ufs_mtk_init_reset(struct ufs_hba *hba)
 {
 	struct ufs_mtk_host *host = ufshcd_get_variant(hba);
@@ -243,8 +255,8 @@ static void ufs_mtk_init_reset(struct ufs_hba *hba)
 				   "unipro_rst");
 	ufs_mtk_init_reset_control(hba, &host->crypto_reset,
 				   "crypto_rst");
-	ufs_mtk_init_reset_control(hba, &host->mphy_reset,
-				   "mphy_rst");
+	ufs_mtk_init_optional_reset_control(hba, &host->mphy_reset,
+					    "mphy_rst");
 }
 
 static int ufs_mtk_hce_enable_notify(struct ufs_hba *hba,
@@ -354,7 +366,10 @@ static int ufs_mtk_setup_ref_clk(struct ufs_hba *hba, bool on)
 
 	dev_err(hba->dev, "missing ack of refclk req, reg: 0x%x\n", value);
 
-	ufs_mtk_ref_clk_notify(host->ref_clk_enabled, POST_CHANGE, res);
+	if (on)
+		ufs_mtk_ref_clk_notify(false, POST_CHANGE, res);
+	else
+		host->ref_clk_enabled = false;
 
 	return -ETIMEDOUT;
 
@@ -398,7 +413,7 @@ static void ufs_mtk_dbg_sel(struct ufs_hba *hba)
 	}
 }
 
-static void ufs_mtk_wait_idle_state(struct ufs_hba *hba,
+static int ufs_mtk_wait_idle_state(struct ufs_hba *hba,
 			    unsigned long retry_ms)
 {
 	u64 timeout, time_checked;
@@ -434,8 +449,12 @@ static void ufs_mtk_wait_idle_state(struct ufs_hba *hba,
 			break;
 	} while (time_checked < timeout);
 
-	if (wait_idle && sm != VS_HCE_BASE)
+	if (wait_idle && sm != VS_HCE_BASE) {
 		dev_info(hba->dev, "wait idle tmo: 0x%x\n", val);
+		return -ETIMEDOUT;
+	}
+
+	return 0;
 }
 
 static int ufs_mtk_wait_link_state(struct ufs_hba *hba, u32 state,
@@ -819,30 +838,27 @@ static u32 ufs_mtk_get_ufs_hci_version(struct ufs_hba *hba)
 	return hba->ufs_version;
 }
 
-/*
- * MINDONE-UFS-CLKSCALE (G4): one parameter, two gates that act at different times,
- * both off by default (mindone_clkscale=0):
- *  1) PROBE (ufs_mtk_init_clocks(), below): with 0 the driver does not request or
- *     touch "ufs_sel_max_src"/"ufs_sel_min_src"/"ufs_fde*" from hba->clk_list_head
- *     even if DT names them - ufs_mtk_is_clk_scale_ready() sees empty host->mclk.*
- *     and decides "not ready" EXACTLY as with the old DT ("ufs_ck", no scale names).
- *     This closes the only operation the DT change adds UNCONDITIONALLY on every
- *     boot regardless of freq-table and of the older switch (F4237: the runtime
- *     gate a45617360 only gated clk_scale_notify() below, not the probe):
- *     clk_disable_unprepare()+list_del() on two top-level mux clocks at the first
- *     host probe. (F4250 later showed the real boot-loop cause was the OPP
- *     registration of the first clock, not this loop.)
- *  2) RUNTIME (ufs_mtk_clk_scale_notify(), further below): with 0 the real parent
- *     switch of ufs_sel / PM QoS is not performed even if the probe passed.
- * The probe reads the cmdline BEFORE the built-in ufs_mtk_probe() runs (module_param
- * is parsed at the very start of init/main.c), so only the cmdline value
- * ("ufs_mediatek.mindone_clkscale=1" in the vendor_boot cmdline) controls gate (1);
- * a live `echo 1 > /sys/module/ufs_mediatek/parameters/mindone_clkscale` AFTER boot
- * only reaches gate (2) - by then the probe has already passed (or not).
- */
-static bool mindone_clkscale;
-module_param(mindone_clkscale, bool, 0644);
-MODULE_PARM_DESC(mindone_clkscale, "MindOne: allow UFS clock scaling (probe-time clk wiring + runtime parent switch/QoS)");
+static void ufs_mtk_round_clk_freq(struct ufs_hba *hba, struct ufs_clk_info *clki)
+{
+	long rounded;
+
+	if (!clki->clk || !clki->max_freq || !clki->min_freq)
+		return;
+
+	rounded = clk_round_rate(clki->clk, clki->max_freq);
+	if (rounded > 0 && rounded != clki->max_freq) {
+		dev_info(hba->dev, "%s: max_freq %u rounds to %ld\n",
+			 clki->name, clki->max_freq, rounded);
+		clki->max_freq = rounded;
+	}
+
+	rounded = clk_round_rate(clki->clk, clki->min_freq);
+	if (rounded > 0 && rounded != clki->min_freq) {
+		dev_info(hba->dev, "%s: min_freq %u rounds to %ld\n",
+			 clki->name, clki->min_freq, rounded);
+		clki->min_freq = rounded;
+	}
+}
 
 /**
  * ufs_mtk_init_clocks - Init mtk driver private clocks
@@ -862,33 +878,28 @@ static void ufs_mtk_init_clocks(struct ufs_hba *hba)
 	 * Find private clocks and store them in struct ufs_mtk_clk.
 	 * Remove "ufs_sel_min_src" and "ufs_sel_min_src" from list to avoid
 	 * being switched on/off in clock gating.
-	 *
-	 * MINDONE-UFS-CLKSCALE (G4): gate (1) above - without it the loop does not run
-	 * at all, host->mclk.* stay NULL, and that is recognised below as "not ready".
 	 */
-	if (mindone_clkscale) {
-		list_for_each_entry_safe(clki, clki_tmp, head, list) {
-			if (!strcmp(clki->name, "ufs_sel")) {
-				host->mclk.ufs_sel_clki = clki;
-			} else if (!strcmp(clki->name, "ufs_sel_max_src")) {
-				host->mclk.ufs_sel_max_clki = clki;
-				clk_disable_unprepare(clki->clk);
-				list_del(&clki->list);
-			} else if (!strcmp(clki->name, "ufs_sel_min_src")) {
-				host->mclk.ufs_sel_min_clki = clki;
-				clk_disable_unprepare(clki->clk);
-				list_del(&clki->list);
-			} else if (!strcmp(clki->name, "ufs_fde")) {
-				host->mclk.ufs_fde_clki = clki;
-			} else if (!strcmp(clki->name, "ufs_fde_max_src")) {
-				host->mclk.ufs_fde_max_clki = clki;
-				clk_disable_unprepare(clki->clk);
-				list_del(&clki->list);
-			} else if (!strcmp(clki->name, "ufs_fde_min_src")) {
-				host->mclk.ufs_fde_min_clki = clki;
-				clk_disable_unprepare(clki->clk);
-				list_del(&clki->list);
-			}
+	list_for_each_entry_safe(clki, clki_tmp, head, list) {
+		if (!strcmp(clki->name, "ufs_sel")) {
+			host->mclk.ufs_sel_clki = clki;
+		} else if (!strcmp(clki->name, "ufs_sel_max_src")) {
+			host->mclk.ufs_sel_max_clki = clki;
+			clk_disable_unprepare(clki->clk);
+			list_del(&clki->list);
+		} else if (!strcmp(clki->name, "ufs_sel_min_src")) {
+			host->mclk.ufs_sel_min_clki = clki;
+			clk_disable_unprepare(clki->clk);
+			list_del(&clki->list);
+		} else if (!strcmp(clki->name, "ufs_fde")) {
+			host->mclk.ufs_fde_clki = clki;
+		} else if (!strcmp(clki->name, "ufs_fde_max_src")) {
+			host->mclk.ufs_fde_max_clki = clki;
+			clk_disable_unprepare(clki->clk);
+			list_del(&clki->list);
+		} else if (!strcmp(clki->name, "ufs_fde_min_src")) {
+			host->mclk.ufs_fde_min_clki = clki;
+			clk_disable_unprepare(clki->clk);
+			list_del(&clki->list);
 		}
 	}
 
@@ -920,6 +931,10 @@ static void ufs_mtk_init_clocks(struct ufs_hba *hba)
 			 __func__);
 		return;
 	}
+
+	ufs_mtk_round_clk_freq(hba, host->mclk.ufs_sel_clki);
+	if (host->mclk.ufs_fde_clki)
+		ufs_mtk_round_clk_freq(hba, host->mclk.ufs_fde_clki);
 
 	/*
 	 * Default get vcore if dts have these settings.
@@ -1319,6 +1334,18 @@ static int ufs_mtk_pre_pwr_change(struct ufs_hba *hba,
 		}
 	}
 
+	if (host->hw_ver.major < 3)
+		return ret;
+
+	if (dev_req_params->gear_rx == hba->pwr_info.gear_rx &&
+	    dev_req_params->gear_tx == hba->pwr_info.gear_tx &&
+	    dev_req_params->lane_rx == hba->pwr_info.lane_rx &&
+	    dev_req_params->lane_tx == hba->pwr_info.lane_tx &&
+	    dev_req_params->pwr_rx == hba->pwr_info.pwr_rx &&
+	    dev_req_params->pwr_tx == hba->pwr_info.pwr_tx &&
+	    dev_req_params->hs_rate == hba->pwr_info.hs_rate)
+		return ret;
+
 	if (dev_req_params->pwr_rx == FAST_MODE ||
 	    dev_req_params->pwr_rx == FASTAUTO_MODE) {
 		if (host->hw_ver.major >= 3) {
@@ -1347,9 +1374,13 @@ static int ufs_mtk_auto_hibern8_disable(struct ufs_hba *hba)
 	ufshcd_writel(hba, 0, REG_AUTO_HIBERNATE_IDLE_TIMER);
 
 	/* wait host return to idle state when auto-hibern8 off */
-	ufs_mtk_wait_idle_state(hba, 5);
+	ret = ufs_mtk_wait_idle_state(hba, 5);
+	if (ret)
+		goto out;
 
 	ret = ufs_mtk_wait_link_state(hba, VS_LINK_UP, 100);
+
+out:
 	if (ret) {
 		dev_warn(hba->dev, "exit h8 state fail, ret=%d\n", ret);
 
@@ -1513,7 +1544,11 @@ static int ufs_mtk_link_set_hpm(struct ufs_hba *hba)
 		return err;
 
 	/* Check link state to make sure exit h8 success */
-	ufs_mtk_wait_idle_state(hba, 5);
+	err = ufs_mtk_wait_idle_state(hba, 5);
+	if (err) {
+		dev_warn(hba->dev, "wait idle fail, err=%d\n", err);
+		return err;
+	}
 	err = ufs_mtk_wait_link_state(hba, VS_LINK_UP, 100);
 	if (err) {
 		dev_warn(hba->dev, "exit h8 state fail, err=%d\n", err);
@@ -1960,14 +1995,11 @@ out:
 	trace_ufs_mtk_clk_scale(clki->name, scale_up, clk_get_rate(clki->clk));
 }
 
-/* MINDONE-UFS-CLKSCALE (G4): gate (2) - the parameter is declared above, next to ufs_mtk_init_clocks(). */
 static int ufs_mtk_clk_scale_notify(struct ufs_hba *hba, bool scale_up,
 				    unsigned long target_freq,
 				    enum ufs_notify_change_status status)
 {
 	if (!ufshcd_is_clkscaling_supported(hba))
-		return 0;
-	if (!mindone_clkscale)
 		return 0;
 
 	if (status == PRE_CHANGE) {
@@ -2157,6 +2189,7 @@ static int ufs_mtk_probe(struct platform_device *pdev)
 	struct device_node *reset_node;
 	struct platform_device *reset_pdev;
 	struct device_link *link;
+	struct ufs_hba *hba;
 
 	reset_node = of_find_compatible_node(NULL, NULL,
 					     "ti,syscon-reset");
@@ -2185,6 +2218,11 @@ static int ufs_mtk_probe(struct platform_device *pdev)
 skip_reset:
 	/* perform generic probe */
 	err = ufshcd_pltfrm_init(pdev, &ufs_hba_mtk_vops);
+	if (!err) {
+		hba = platform_get_drvdata(pdev);
+		if (hba)
+			ufs_mtk_dev_vreg_set_lpm(hba, false);
+	}
 
 out:
 	if (err)

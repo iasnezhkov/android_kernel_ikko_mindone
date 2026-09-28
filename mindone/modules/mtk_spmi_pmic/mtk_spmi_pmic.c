@@ -20,7 +20,7 @@
 #include <linux/regmap.h>
 #include <linux/spmi.h>
 
-#include <linux/of_platform.h>	/* devm_of_platform_populate: 6.12 no longer pulls it in implicitly */
+#include <linux/of_platform.h>
 #define MTK_SPMI_PMIC_REG_WIDTH	8
 #define PMIC_SWCID		0xB
 #define RCS_INT_DONE		0x41B

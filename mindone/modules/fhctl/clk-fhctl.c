@@ -104,7 +104,9 @@ static struct pll_dts *parse_dt(struct platform_device *pdev)
 
 	size = sizeof(*array)*num_pll;
 	array = kzalloc(size, GFP_KERNEL);
-	FHDBG("array<%lx>, num_pll<%d>, comp<%s>, sizeof(*array)=%d, size<%d>\n",
+	if (!array)
+		return NULL;
+	FHDBG("array<%lx>, num_pll<%d>, comp<%s>, sizeof(*array)=%zu, size<%d>\n",
 			(unsigned long)array, num_pll,
 			match->compatible, sizeof(*array), size);
 	for_each_child_of_node(root, map) {
@@ -176,6 +178,8 @@ static int fh_plt_drv_probe(struct platform_device *pdev)
 
 	/* convert dt to data */
 	array = parse_dt(pdev);
+	if (!array)
+		return -ENOMEM;
 
 	/* init every subsys */
 	while (*init_call != NULL) {

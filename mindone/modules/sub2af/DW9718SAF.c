@@ -155,7 +155,7 @@ static inline int moveAF(unsigned long a_u4Position)
 	g_u4TargetPosition = a_u4Position;
 	spin_unlock(g_pAF_SpinLock);
 
-	printk("move [curr] %d [target] %d\n", g_u4CurrPosition, g_u4TargetPosition);
+	printk("move [curr] %lu [target] %lu\n", g_u4CurrPosition, g_u4TargetPosition);
 
 
 //prize add by lipengpeng 20220308 start 
@@ -280,7 +280,7 @@ int DW9718SAF_Release_Sub2(struct inode *a_pstInode, struct file *a_pstFile)
 		if (g_u4CurrPosition > AFInf_u4CurrPosition) {
 			if (g_u4CurrPosition > 800) {
 				nextPosition = 800;
-				LOG_INF("0:nextPosition = %d g_u4CurrPosition = %d g_u4AF_MACRO = %d",
+				LOG_INF("0:nextPosition = %lu g_u4CurrPosition = %lu g_u4AF_MACRO = %lu",
 					nextPosition, g_u4CurrPosition,g_u4AF_MACRO);
 				if (s4AF_WriteReg((unsigned short)nextPosition) == 0) {
 					g_u4CurrPosition = nextPosition;
@@ -290,13 +290,13 @@ int DW9718SAF_Release_Sub2(struct inode *a_pstInode, struct file *a_pstFile)
 					ret = -1;
 				}
 			}
-			mdelay(5);
+			usleep_range(5000, 6000);
 			while (g_u4CurrPosition > AFInf_u4CurrPosition + af_step) {
 				if (g_u4CurrPosition > 700) {
 					af_step = 50;
 				}
 				nextPosition = g_u4CurrPosition - af_step;
-				LOG_INF("1:af_step = %d g_u4CurrPosition = %d", af_step,
+				LOG_INF("1:af_step = %lu g_u4CurrPosition = %lu", af_step,
 					g_u4CurrPosition);
 				if (s4AF_WriteReg((unsigned short)nextPosition) == 0) {
 					g_u4CurrPosition = nextPosition; 
@@ -306,14 +306,14 @@ int DW9718SAF_Release_Sub2(struct inode *a_pstInode, struct file *a_pstFile)
 					ret = -1;
 					break;
 				}
-				mdelay(5);
+				usleep_range(5000, 6000);
 			}
 		} else if (g_u4CurrPosition < AFInf_u4CurrPosition) {
 			// <512 multiple times
 			// first step move fast
 			if (g_u4CurrPosition < 300) {
 				nextPosition = 300;
-				LOG_INF("0:nextPosition = %d g_u4CurrPosition = %d g_u4AF_MACRO = %d",
+				LOG_INF("0:nextPosition = %lu g_u4CurrPosition = %lu g_u4AF_MACRO = %lu",
 				nextPosition, g_u4CurrPosition,g_u4AF_MACRO);
 				if (s4AF_WriteReg((unsigned short)nextPosition) == 0) {
 					g_u4CurrPosition = nextPosition;
@@ -323,13 +323,13 @@ int DW9718SAF_Release_Sub2(struct inode *a_pstInode, struct file *a_pstFile)
 					ret = -1;
 				}
 			}
-			mdelay(5);
+			usleep_range(5000, 6000);
 			while (g_u4CurrPosition < AFInf_u4CurrPosition - af_step) {
 				if (g_u4CurrPosition > 400) {
 					af_step = 50;
 				}
 				nextPosition = g_u4CurrPosition + af_step;
-				LOG_INF("1:af_step = %d g_u4CurrPosition = %d", af_step,
+				LOG_INF("1:af_step = %lu g_u4CurrPosition = %lu", af_step,
 				g_u4CurrPosition);
 				if (s4AF_WriteReg((unsigned short)nextPosition) == 0) {
 					g_u4CurrPosition = nextPosition;
@@ -339,7 +339,7 @@ int DW9718SAF_Release_Sub2(struct inode *a_pstInode, struct file *a_pstFile)
 					ret = -1;
 					break;
 				}
-				mdelay(5);
+				usleep_range(5000, 6000);
 			}
 		}
 		s4AF_WriteReg(AFInf_u4CurrPosition);

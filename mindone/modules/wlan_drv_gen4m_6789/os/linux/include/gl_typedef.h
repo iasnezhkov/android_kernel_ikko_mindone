@@ -203,8 +203,7 @@ typedef void(*remove_card) (void);
  */
 #ifndef ENTRY_OF
 #define ENTRY_OF(_addrOfField, _type, _field) \
-	((_type *)((int8_t *)(_addrOfField) - \
-	(int8_t *)OFFSET_OF(_type, _field)))
+	((_type *)((int8_t *)(_addrOfField) - OFFSET_OF(_type, _field)))
 #endif /* ENTRY_OF */
 
 /* This macro align the input value to the DW boundary.

@@ -141,6 +141,7 @@ textresume:
 					x++;
 					continue;
 				}
+				fallthrough;
 			case '\n':
 				/* \ <lf> -> line continuation */
 				x++;
@@ -4766,7 +4767,7 @@ static s_int32 hqa_listmode_tx_seg(
 				);
 				SERV_LOG(SERV_DBG_CAT_TEST,
 				SERV_DBG_LVL_TRACE,
-				("%d %d %d %d %d %d %d %d %d\n",
+				("seg %d:%d %d %d %d %d %d %d %d %d\n",
 				i+10,
 				pSendSegHeader->au4Buffer[i+10],
 				pSendSegHeader->au4Buffer[i+11],
@@ -5727,7 +5728,7 @@ static struct agent_cli_set_w_handler cli_set_w_cmds[] = {
 s_int32 mt_agent_cli_set_w(u_char *name, struct service *serv, u_char *param)
 {
 	s_int32 ret = SERV_STATUS_SUCCESS;
-	u_long str2value = 0;
+	long str2value = 0;
 	struct agent_cli_set_w_handler *entry = cli_set_w_cmds;
 	struct hqa_frame *hqa_cmd = &hqa_cmd_frame;
 	u_int16 value = 0;
@@ -5764,7 +5765,7 @@ static struct agent_cli_set_dw_handler cli_set_dw_cmds[] = {
 s_int32 mt_agent_cli_set_dw(u_char *name, struct service *serv, u_char *param)
 {
 	s_int32 ret = SERV_STATUS_SUCCESS;
-	u_long str2value = 0;
+	long str2value = 0;
 	struct agent_cli_set_dw_handler *entry = cli_set_dw_cmds;
 	struct hqa_frame *hqa_cmd = &hqa_cmd_frame;
 	u_int32 value = 0;
@@ -5791,6 +5792,7 @@ s_int32 mt_agent_set_bw(struct service_test *serv_test, u_char *arg)
 {
 	u_int32 ret = 0;
 	u_int32 param[2] = {0};
+	long parsed;
 	u_int8 i = 0;
 	u_char *value;
 	struct hqa_frame *hqa_cmd = &hqa_cmd_frame;
@@ -5805,7 +5807,9 @@ s_int32 mt_agent_set_bw(struct service_test *serv_test, u_char *arg)
 		value; value = agent_trtok(NULL, ":")) {
 		if (i == 2)
 			break;
-		kstrtol(value, 10, (long *)&param[i++]);
+		if (kstrtol(value, 10, &parsed) == 0)
+			param[i] = parsed;
+		i++;
 	}
 
 	set_param_and_shift_buf(TRUE, sizeof(u_int32),
@@ -5824,7 +5828,7 @@ s_int32 mt_agent_set_ctrl_band(
 	struct service_test *serv_test, u_char *arg)
 {
 	s_int32 ret = SERV_STATUS_SUCCESS;
-	u_long str2value = 0;
+	long str2value = 0;
 	u_int32 value = 0;
 
 	if (kstrtol(arg, 10, &str2value) == 0) {
@@ -5841,11 +5845,11 @@ s_int32 mt_agent_set_pwr(
 {
 	s_int32 ret = SERV_STATUS_SUCCESS;
 	u_int32 value = 0;
-	u_long input = 0;
+	long input = 0;
 	struct hqa_frame *hqa_cmd = &hqa_cmd_frame;
 	u_char *data = hqa_cmd->data;
 
-	if (kstrtol(arg, 10, (long *)&input) == 0) {
+	if (kstrtol(arg, 10, &input) == 0) {
 		/* power */
 		value = input;
 		set_param_and_shift_buf(TRUE, sizeof(u_int32),
@@ -5883,6 +5887,7 @@ s_int32 mt_agent_set_channel(
 	s_int32 ret = SERV_STATUS_SUCCESS;
 	u_int32 value = 0;
 	u_int32 input[4] = {0};
+	long parsed;
 	u_int8 i = 0;
 	struct hqa_frame *hqa_cmd = &hqa_cmd_frame;
 	u_char *data = hqa_cmd->data, *tok = NULL;
@@ -5899,7 +5904,9 @@ s_int32 mt_agent_set_channel(
 		if (i == 4)
 			break;
 
-		kstrtol(tok, 10, (long *)&input[i++]);
+		if (kstrtol(tok, 10, &parsed) == 0)
+			input[i] = parsed;
+		i++;
 	}
 
 	/* For backward compatibility */
@@ -6044,7 +6051,7 @@ s_int32 mt_agent_set_txant(struct service_test *serv_test, u_char *arg)
 	u_int32 value = 0;
 	struct hqa_frame *hqa_cmd = &hqa_cmd_frame;
 	u_char *data = hqa_cmd->data;
-	u_long str2value = 0;
+	long str2value = 0;
 
 	sys_ad_zero_mem(hqa_cmd, sizeof(*hqa_cmd));
 
@@ -6071,7 +6078,7 @@ s_int32 mt_agent_set_rxant(struct service_test *serv_test, u_char *arg)
 {
 	s_int32 ret = SERV_STATUS_SUCCESS;
 	u_int32 value = 0;
-	u_long str2value = 0;
+	long str2value = 0;
 	struct hqa_frame *hqa_cmd = &hqa_cmd_frame;
 	u_char *data = hqa_cmd->data;
 
@@ -6082,7 +6089,7 @@ s_int32 mt_agent_set_rxant(struct service_test *serv_test, u_char *arg)
 
 	hqa_cmd->length = 2*sizeof(u_int32);
 
-	if (kstrtol(arg, 10, (long *)&str2value) == 0) {
+	if (kstrtol(arg, 10, &str2value) == 0) {
 		value = str2value;
 		set_param_and_shift_buf(TRUE, sizeof(u_int32),
 					(u_char *)&value, &data);

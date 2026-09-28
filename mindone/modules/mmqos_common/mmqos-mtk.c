@@ -5,7 +5,6 @@
  */
 #include <dt-bindings/interconnect/mtk,mmqos.h>
 #include <drivers/misc/mediatek/smi/mtk-smi-larb.h>
-#include <mindone/compat.h>
 #include <linux/clk.h>
 //#include <linux/interconnect-provider.h>
 #include <linux/interconnect.h>
@@ -201,7 +200,7 @@ static unsigned long get_volt_by_freq(struct device *dev, unsigned long freq)
 		opp = dev_pm_opp_find_freq_floor(dev, &freq);
 
 	if (IS_ERR(opp)) {
-		dev_notice(dev, "%s failed(%d) freq=%lu\n",
+		dev_notice(dev, "%s failed(%ld) freq=%lu\n",
 			__func__, PTR_ERR(opp), freq);
 		return 0;
 	}
@@ -264,7 +263,7 @@ static void set_comm_icc_bw(struct common_node *comm_node)
 					}
 				}
 				dev_notice(comm_node->comm_dev,
-					"comm(%d) max_bw=%u smi_clk=%u volt=%u\n",
+					"comm(%d) max_bw=%u smi_clk=%lu volt=%u\n",
 					comm_id, max_bw, smi_clk, volt);
 			}
 			if (IS_ERR_OR_NULL(comm_node->comm_reg))
@@ -273,7 +272,7 @@ static void set_comm_icc_bw(struct common_node *comm_node)
 			else if (regulator_set_voltage(comm_node->comm_reg,
 					volt, INT_MAX))
 				dev_notice(comm_node->comm_dev,
-					"regulator_set_voltage failed volt=%lu\n", volt);
+					"regulator_set_voltage failed volt=%u\n", volt);
 			else
 				comm_node->volt = volt;
 		}
@@ -541,7 +540,7 @@ int mtk_mmqos_probe(struct platform_device *pdev)
 		larb_pdev = of_find_device_by_node(np);
 		if (!larb_pdev) {
 			larb_pdev = of_platform_device_create(
-				np, NULL, MINDONE_BUS_DEV_ROOT(&platform_bus_type));
+				np, NULL, bus_get_dev_root(&platform_bus_type));
 			if (!larb_pdev || !larb_pdev->dev.driver) {
 				of_node_put(np);
 				return -EPROBE_DEFER;

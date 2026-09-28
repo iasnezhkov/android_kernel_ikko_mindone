@@ -4,7 +4,6 @@
  */
 
 #include <linux/init.h>
-#include <mindone/compat.h>
 #include <linux/sched.h>
 #include <linux/kernel.h>
 #include <linux/io.h>
@@ -41,7 +40,7 @@ int init_cpuqos_common_sysfs(void)
 	int ret = 0;
 
 	kobj = kobject_create_and_add("cpuqos",
-				&MINDONE_BUS_DEV_ROOT(&cpu_subsys)->kobj);
+				&bus_get_dev_root(&cpu_subsys)->kobj);
 	if (!kobj) {
 		pr_info("cpuqos folder create failed\n");
 		return -ENOMEM;

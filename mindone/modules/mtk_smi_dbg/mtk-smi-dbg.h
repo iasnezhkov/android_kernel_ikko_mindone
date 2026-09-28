@@ -6,7 +6,7 @@
 #ifndef __MTK_SMI_DEBUG_H
 #define __MTK_SMI_DEBUG_H
 
-#include <linux/notifier.h>	/* struct notifier_block must be a complete, file-scope type here (F3563) */
+#include <linux/notifier.h>
 
 #if IS_ENABLED(CONFIG_MTK_SMI)
 

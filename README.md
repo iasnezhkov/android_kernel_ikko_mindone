@@ -5,12 +5,12 @@
 ### An unofficial forward-port to 6.12, done by hand — an independent research project
 
 [![Kernel](https://img.shields.io/badge/Linux-6.12.92-A42E2B?style=flat-square&logo=linux&logoColor=white)](#-build)
-[![ACK](https://img.shields.io/badge/base-android16--6.12--lts-3DDC84?style=flat-square&logo=android&logoColor=white)](https://source.android.com/docs/core/architecture/kernel/android-common)
+[![ACK](https://img.shields.io/badge/base-android16--6.12--2026--09-3DDC84?style=flat-square&logo=android&logoColor=white)](https://source.android.com/docs/core/architecture/kernel/android-common)
 [![SoC](https://img.shields.io/badge/Helio%20G99-MT6789%20%2F%20MT8781-0071C5?style=flat-square)](#-hardware)
-[![Modules](https://img.shields.io/badge/modules-290%20%2F%20290-success?style=flat-square)](docs/MODULES.md)
+[![Modules](https://img.shields.io/badge/modules-296-success?style=flat-square)](docs/MODULES.md)
 [![License](https://img.shields.io/badge/license-GPL--2.0-blue?style=flat-square)](COPYING)
 
-**arm64 · 4 KiB pages · `6.12.92-4k+`**
+**arm64 · 4 KiB pages · `6.12.92-android16-6-<stamp>-4k`**
 
 </div>
 
@@ -24,22 +24,29 @@
 
 ## 🎯 What this tree is for
 
+The device shipped with a vendor kernel that stopped at Linux 5.10 (the `android12-5.10` line, on Android 15).
+This tree carries it forward to a current, actively developed kernel line.
+
 The kernel binary is **Google's**. This repository is the device half: the tree that describes the
-hardware, the configuration fragment that turns on what this board needs, and the ~289 drivers it
+hardware, the configuration fragment that turns on what this board needs, and the 296 drivers it
 loads on top of a Generic Kernel Image.
 
 ```
-kernel           //common:kernel_aarch64 — Google's GKI, built or taken as a prebuilt
-this repository  device tree + mindone.fragment + 282 out-of-tree drivers
+kernel           //common:kernel_aarch64 — Google's GKI, unmodified gki_defconfig
+this repository  device tree + mindone.fragment + 278 out-of-tree drivers + 18 in-tree platform drivers
 contract         gki/aarch64/symbols/mindone — the symbols those drivers need from GKI
-module_layout    0x35c04eb7
+module_layout    0xf6779cbd
 ```
 
-> **Status.** The standalone build below — this tree producing its own `vmlinux` — is what runs on
-> the device today, and the numbers it produces are `module_layout 0x35c04eb7` and 289 modules
-> loaded. The GKI build is the direction, and the parts of it that are measured rather than
-> assumed are in **[docs/BUILD.md](docs/BUILD.md)**: 1809 symbols the drivers take from `vmlinux`,
-> 34 of them outside GKI's KMI, and 5 of those 34 exported by patches this project carries.
+> **Status.** The Kleaf GKI mixed build below is what runs on the device today, not merely the
+> direction: `kernel_aarch64` builds from an unmodified `gki_defconfig` + Google's own fragment,
+> untouched by this tree, and the MediaTek platform drivers are either `module_outs` of a
+> separate `mindone` kernel_build on top of it or `ddk_module` targets in `mindone/modules/` —
+> never inside `kernel_aarch64` itself. Measured on the device (28.09): `module_layout
+> 0xf6779cbd`, 296 modules loaded, and the running `vmlinux` has no KMI difference from Google's
+> own ABI file for this base (0 of 776 documented imports missing). The standalone `make` path
+> this document used to describe no longer builds a module set that matches the device — what
+> that means for local iteration is in **[docs/BUILD.md](docs/BUILD.md)**.
 
 No confidential vendor material went into this, and there was no vendor support or
 collaboration of any kind. The base is Google's Android Common Kernel. The device tree was
@@ -54,12 +61,12 @@ to change.
 
 | | |
 |---|---|
-| **Kernel** | Google ACK `android16-6.12-lts` (`6.12.92`); the goal is to stop building it and consume `//common:kernel_aarch64` instead |
+| **Kernel** | Google ACK `android16-6.12-2026-09` (`6.12.92`), consumed as `//common:kernel_aarch64` — this repository builds only the drivers on top of it |
 | **Device tree** | `mindone.dts` + 18 `mt6789-*.dtsi`, rebuilt from the stock DTB, **zero `dtc` warnings** |
-| **Config** | `mindone/mindone.fragment` on top of `gki_defconfig`, checked on every build by Kleaf's `check_defconfig`. `arch/arm64/configs/mindone_defconfig` is the equivalent for the plain `make` path |
-| **Drivers** | `mindone/modules/` — 282 `ddk_module` targets, 339 buildable directories, 5 638 source files |
+| **Config** | `mindone/mindone.fragment` on top of `gki_defconfig`, checked on every build by Kleaf's `check_defconfig`. `arch/arm64/configs/mindone_defconfig` remains for the legacy kernel-only `make` path, which no longer has a matching module build |
+| **Drivers** | `mindone/modules/` — 278 `ddk_module` targets, 3 257 C sources and headers |
 | **KMI** | `gki/aarch64/symbols/mindone` — what those drivers need from the kernel, in the format Google's own tooling writes |
-| **Load order** | `mindone/modules/modules.load` — the real 289, in the order the device loads them |
+| **Load order** | `mindone/vendor_boot.modules.load` + `mindone/vendor_dlkm.modules.load` — the real 296, in the order the device loads them |
 
 🚫 No blobs, no firmware, no bootloader, no prebuilt binaries — **verified by file content, not
 by extension.** Proprietary userspace is extracted by each user from their own device.
@@ -74,18 +81,18 @@ replaced by this repository:
 tools/bazel build //common/mindone:mindone_modules_install
 ```
 
-The plain `make` path still works and needs nothing but this repository and a clang, which is why
-it is the one **[docs/BUILD.md](docs/BUILD.md)** walks through end to end:
+A plain `make` build of the kernel image alone still works, without a full Kleaf workspace — see
+**[docs/BUILD.md](docs/BUILD.md)** for what it is still useful for and, more importantly, what it
+no longer builds:
 
 ```sh
 TOOLCHAIN=/opt/toolchains/llvm-19.1.4-aarch64 ./build.sh ../k612-out
 ```
 
-> 🔴 **The clang version matters, though less than it first looks.** Measured on this tree: the
-> kernel.org **19.1.4** prebuilt and the AOSP **r536225** clang that Kleaf uses give the same
-> `module_layout` and module sets whose imported symbols match byte for byte. A clang from a
-> different major version does change symbol CRCs, and every module then refuses to load without
-> saying why.
+> 🔴 **The clang version matters.** clang decides symbol CRCs and `module_layout`. Build the
+> kernel with one major version and the modules with another, and every module refuses to load
+> without saying why — which is one reason the Kleaf path above, where both come from the same
+> build, is the one that ships.
 
 > 🔴 **Memory.** Generating BTF (`pahole`) peaks near **14.4 GiB**. Under that ceiling the build
 > dies with a bare `Killed` and `FAILED: load BTF from vmlinux: Invalid argument`, naming nothing.
@@ -99,26 +106,23 @@ MediaTek keeps almost everything outside the kernel proper, and no device-specif
 available to start from. So most of this repository is work, not configuration.
 
 <table>
-<tr><td width="30%"><b>172 of 339</b><br><sub>module directories</sub></td>
-<td>carry our own fixes — <b>317 files</b>, marked <code>MINDONE</code> where changed. Vendor code
-that was wrong for this board, targeted another SoC revision, or did not compile against a modern
-kernel. Every change says what the original did and why it had to go.</td></tr>
-<tr><td><b>10 modules</b><br><sub>written from scratch</sub></td>
+<tr><td width="30%"><b>most</b><br><sub>of 278 driver directories</sub></td>
+<td>carry local fixes: vendor code that was wrong for this board, targeted another SoC revision,
+or did not compile against a modern kernel. What changed and why is in the commit history for
+each driver.</td></tr>
+<tr><td><b>2 modules</b><br><sub>written from scratch</sub></td>
 <td>for problems no vendor code solved — see the table below.</td></tr>
 <tr><td><b>1 driver</b><br><sub>reconstructed</sub></td>
-<td><code>musb_hdrc_recon</code>, a rebuilt MediaTek musb.</td></tr>
+<td><code>musb_hdrc_recon</code>, a rebuilt MediaTek musb (built today as the `musb_hdrc` target).</td></tr>
 </table>
 
 <details open>
-<summary><b>The ten written from scratch</b></summary>
+<summary><b>The two written from scratch</b></summary>
 
 | | |
 |---|---|
 | `mindone_thermal` | thermal zones the stock tables never described |
-| `mindone_pmic_guard` | re-arms PMIC interrupt enables after resume; a lost `pwrap` write used to leave the power key dead until reboot |
-| `mindone_ufs_screen`, `mindone_rfldo` | storage and RF regulator behaviour specific to this board |
-| `mindone_panicdump`, `mindone_ctlfail`, `mindone_ptydbg` | bring-up instrumentation that kept paying off, so it stayed |
-| `mindone_mpuperm`, `mindone_usblock_shim` | memory-protection and USB wakelock workarounds |
+| `mindone_ufs_screen` | storage behaviour specific to this board |
 
 </details>
 
@@ -135,16 +139,23 @@ clock layer here is already current.
 
 | ✅ Works | |
 |---|---|
+| **Boot** | ~21 s to `boot_completed` |
 | **Audio** | speaker, headset, Bluetooth, microphone, in-call |
 | **Cellular** | calls, SMS, mobile data |
 | **Wireless** | Wi-Fi, Bluetooth, NFC |
-| **Camera** | both logical cameras of the flip module |
+| **Camera** | both logical cameras of the flip module; the main IMX766 sensor's full 4096×3072 mode, brought up faster through burst I2C writes and chunked EEPROM calibration reads |
+| **Video** | hardware decode and encode through the stateful V4L2 driver (`mtk_vcodec`), behind an open Codec2 HAL |
+| **Graphics** | MDP |
 | **Security** | fingerprint |
-| **System** | USB (adb/MTP), charging, thermal, suspend/resume, 96 Hz display |
+| **System** | USB (adb/MTP), charging, suspend/resume, 96 Hz display |
+| **Thermal** | a kernel-owned skin-temperature zone at 46 °C, bound to CPU/GPU cooling in `mindone_thermal` |
 
 | 🚧 Unfinished | |
 |---|---|
 | **RPMB** | hardware-backed key storage fails its MAC check; storage falls back safely, boot unaffected |
+| **60 Hz panel mode** | exists on a branch, held back: the panel reports no physical size, so the second mode reaches apps at dpi 0 |
+| **High-speed capture** | 120 fps not reached |
+| **HDR** | not implemented |
 | **vSIM** | parked deliberately, not attempted |
 
 **🔁 Reproducible.** Two builds from the same tree and toolchain now produce a **byte-identical
@@ -198,11 +209,13 @@ Most of the work is SoC-level, not board-level, so it transfers to any **MT6789 
 (Helio G99)** bring-up on a modern kernel:
 
 - **6.12 on a platform that shipped with 5.10** — the full path (`android12-5.10` →
-  `android14-6.1` → `android16-6.12-lts`), including the API drift that actually hurts:
+  `android14-6.1` → `android16-6.12-2026-09`), including the API drift that actually hurts:
   scheduler, cpufreq and devfreq changes the MediaTek performance and DVFS helpers depend on.
-- **~340 out-of-tree MediaTek modules** (290 loaded at boot) building against a current ACK — display, camera, audio
-  DSP, Wi-Fi/BT, sensors, thermal, charging, UFS, USB, the CCCI modem interface, co-processors
-  (`sspm_v3`, `mcupm`, `vcp`, `adsp`), memory and bus protection, and the GPU stack.
+- **278 out-of-tree MediaTek modules** (275 loaded at boot, plus 17 more MediaTek platform
+  drivers Kleaf compiles in-tree and 4 stock GKI modules — 296 in total) building against a
+  current ACK — display, camera, audio DSP, Wi-Fi/BT, sensors, thermal, charging, UFS, USB, the
+  CCCI modem interface, co-processors (`sspm_v3`, `mcupm`, `vcp`, `adsp`), memory and bus
+  protection, and the GPU stack.
 - **A device tree reconstructed from a stock DTB** to zero `dtc` warnings — 18 `mt6789-*.dtsi`
   covering clocks, pinctrl, regulators, display, camera, audio, thermal, reserved memory.
 - **SCMI/SSPM on MediaTek**: upstream `arm_scmi` needs `arm,scmi-shmem` on the shared-memory

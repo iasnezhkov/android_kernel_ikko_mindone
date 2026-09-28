@@ -499,7 +499,7 @@ struct _NAN_ATTR_MASTER_INDICATION_T {
 struct _NAN_AVAILABILITY_ENTRY_T {
 	uint16_t u2Length;
 	uint16_t u2EntryControl;
-	uint8_t aucTimeBitmapAndBandChnlEntry[1];
+	uint8_t aucTimeBitmapAndBandChnlEntry[];
 } __KAL_ATTRIB_PACKED__;
 
 struct _NAN_ATTR_NAN_AVAILABILITY_T {
@@ -562,7 +562,7 @@ struct _NAN_ATTR_ELEMENT_CONTAINER_T {
 	uint8_t ucAttrId; /* NAN_ATTR_ID_ELEMENT_CONTAINER */
 	uint16_t u2Length;
 	uint8_t ucMapID;
-	uint8_t aucElements[1];
+	uint8_t aucElements[];
 } __KAL_ATTRIB_PACKED__;
 
 struct _NAN_CIPHER_SUITE_ATTRIBUTE_T {

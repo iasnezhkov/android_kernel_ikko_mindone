@@ -2080,8 +2080,8 @@ wext_get_scan(IN struct net_device *prNetDev,
 		pcCur += iwEvent.len;
 #endif /* WIRELESS_EXT >= 15 */
 
-		if (wextSrchDesiredWPAIE(&prBss->aucIEs[sizeof(
-		    struct PARAM_FIXED_IEs)],
+		if (wextSrchDesiredWPAIE(prBss->aucIEs +
+		    sizeof(struct PARAM_FIXED_IEs),
 		    prBss->u4IELength - sizeof(struct PARAM_FIXED_IEs), 0xDD,
 		    (uint8_t **) &prDesiredIE)) {
 			iwEvent.cmd = IWEVGENIE;
@@ -2104,8 +2104,8 @@ wext_get_scan(IN struct net_device *prNetDev,
 			pcCur += iwEvent.len;
 		}
 #if CFG_SUPPORT_WPS		/* search WPS IE (0xDD, 221, OUI: 0x0050f204) */
-		if (wextSrchDesiredWPSIE(&prBss->aucIEs[sizeof(
-		    struct PARAM_FIXED_IEs)],
+		if (wextSrchDesiredWPSIE(prBss->aucIEs +
+		    sizeof(struct PARAM_FIXED_IEs),
 		    prBss->u4IELength - sizeof(struct PARAM_FIXED_IEs), 0xDD,
 		    (uint8_t **) &prDesiredIE)) {
 			iwEvent.cmd = IWEVGENIE;
@@ -2131,8 +2131,8 @@ wext_get_scan(IN struct net_device *prNetDev,
 
 		/* Search RSN IE (0x30, 48). pBss->IEs starts from timestamp. */
 		/* pBss->IEs starts from timestamp */
-		if (wextSrchDesiredWPAIE(&prBss->aucIEs[sizeof(
-		    struct PARAM_FIXED_IEs)],
+		if (wextSrchDesiredWPAIE(prBss->aucIEs +
+		    sizeof(struct PARAM_FIXED_IEs),
 		    prBss->u4IELength - sizeof(struct PARAM_FIXED_IEs), 0x30,
 		    (uint8_t **) &prDesiredIE)) {
 
@@ -2156,8 +2156,8 @@ wext_get_scan(IN struct net_device *prNetDev,
 			pcCur += iwEvent.len;
 		}
 #if CFG_SUPPORT_WAPI		/* Android+ */
-		if (wextSrchDesiredWAPIIE(&prBss->aucIEs[
-		    sizeof(struct PARAM_FIXED_IEs)],
+		if (wextSrchDesiredWAPIIE(prBss->aucIEs +
+		    sizeof(struct PARAM_FIXED_IEs),
 		    prBss->u4IELength - sizeof(struct PARAM_FIXED_IEs),
 		    (uint8_t **) &prDesiredIE)) {
 

@@ -4,7 +4,6 @@
  */
 
 #include <linux/gpio/consumer.h>
-#include <mindone/compat.h>
 #include <linux/kernel.h>
 #include <linux/module.h>
 #include <linux/i2c.h>
@@ -219,7 +218,7 @@ void _gate_ic_Power_on(void)
 		gate_client->pinctrl = devm_gpiod_get(gate_client->dev, "gate-power",
 				   GPIOD_OUT_HIGH);
 		if (IS_ERR(gate_client->pinctrl)) {
-			pr_info("ERROR!! Failed to get gpio: %d\n",
+			pr_info("ERROR!! Failed to get gpio: %ld\n",
 				PTR_ERR(gate_client->pinctrl));
 			return;
 		}
@@ -247,7 +246,7 @@ void _gate_ic_Power_off(void)
 		gate_client->pinctrl = devm_gpiod_get(gate_client->dev, "gate-power",
 				   GPIOD_OUT_HIGH);
 		if (IS_ERR(gate_client->pinctrl)) {
-			pr_info("ERROR!! Failed to get gpio: %d\n",
+			pr_info("ERROR!! Failed to get gpio: %ld\n",
 				PTR_ERR(gate_client->pinctrl));
 			return;
 		}
@@ -361,7 +360,7 @@ static const struct i2c_device_id _gate_ic_i2c_id[] = {
 
 static struct i2c_driver _gate_ic_i2c_driver = {
 	.id_table = _gate_ic_i2c_id,
-	MINDONE_I2C_PROBE(_gate_ic_i2c_probe),
+	.probe = _gate_ic_i2c_probe,
 	.remove = _gate_ic_i2c_remove,
 	.driver = {
 		   .owner = THIS_MODULE,

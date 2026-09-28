@@ -765,13 +765,6 @@ void scnFsmHandleScanMsgV2(IN struct ADAPTER *prAdapter,
 	prScanParam->eMsgId = prScanReqMsg->rMsgHdr.eMsgId;
 	prScanParam->fgIsScanV2 = TRUE;
 
-	/* mindone: copy the WHOLE ARRAY, not by the address of its first element.
-	 * The previous write addressed &aucBSSID[0][0] -- the kernel's
-	 * FORTIFY_SOURCE guard correctly saw a single-field-sized (6 bytes)
-	 * destination for a 24-byte write and printed a warning with a stack
-	 * trace: "memcpy: detected field-spanning write (size 24) of single field
-	 * &prScanParam->aucBSSID[0][0]" (scan_fsm.c:770). Take the size from the
-	 * field itself, so it can't drift from the declaration on future edits. */
 	kalMemCopy(prScanParam->aucBSSID,
 		prScanReqMsg->aucExtBssid,
 		sizeof(prScanParam->aucBSSID));

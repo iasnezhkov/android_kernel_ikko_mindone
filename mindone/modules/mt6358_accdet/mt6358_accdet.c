@@ -5,8 +5,7 @@
  */
 
 #include <linux/of_gpio.h>
-#include <linux/pinctrl/consumer.h>	/* devm_pinctrl_get: 6.12 no longer pulls it in implicitly */
-#include <mindone/compat.h>
+#include <linux/pinctrl/consumer.h>
 #include <linux/of.h>
 #include <linux/of_irq.h>
 #include <linux/of_device.h>
@@ -283,7 +282,7 @@ static void ptt_key_handler(struct work_struct *work)
 		EOC_DEBUG("[endoscope dev] cur_eint_state %d,eoc_ptt_gpio=%d\n", cur_eint_state,gpio_get_value(eoc_dev->eoc_ptt_gpio));
 		return;
 	}
-	MINDONE_GPIO_SET_DEBOUNCE(eoc_dev->eoc_ptt_gpio, 256*1000);
+	gpiod_set_debounce(gpio_to_desc(eoc_dev->eoc_ptt_gpio), 256*1000);
 	if(cur_eint_state == gpio_get_value(eoc_dev->eoc_ptt_gpio))
 	{
 		input_report_key(endoscope_input_dev, 381, cur_eint_state);
@@ -500,7 +499,7 @@ static int endoscope_probe(struct platform_device *pdev)
 	}
 		//drv  huangjiwu for  start
 	#if DEBUG_KEY_UP
-	endoscope_class = MINDONE_CLASS_CREATE("endoscope");
+	endoscope_class = class_create("endoscope");
 	if (IS_ERR(endoscope_class)) {
 		EOC_DEBUG("Failed to create class(endoscope_class)!");
 		return PTR_ERR(endoscope_class);
@@ -532,7 +531,7 @@ static int endoscope_probe(struct platform_device *pdev)
 	//drv  huangjiwu for  end
 	#endif
 	eoc_dev->eoc_irq_ptt =	gpio_to_irq(eoc_dev->eoc_ptt_gpio);
-	MINDONE_GPIO_SET_DEBOUNCE(eoc_dev->eoc_ptt_gpio, 256*1000);
+	gpiod_set_debounce(gpio_to_desc(eoc_dev->eoc_ptt_gpio), 256*1000);
 	
 	eoc_dev->ptt_eint_workqueue = create_singlethread_workqueue("ppt_workqueue");
 	INIT_DELAYED_WORK(&eoc_dev->ptt_detcable, ptt_key_handler);
@@ -2166,7 +2165,7 @@ static irqreturn_t ex_eint_handler(int irq, void *data)
 			irq_set_irq_type(accdet->gpioirq, IRQ_TYPE_LEVEL_HIGH);
 		else
 			irq_set_irq_type(accdet->gpioirq, IRQ_TYPE_LEVEL_LOW);
-		MINDONE_GPIO_SET_DEBOUNCE(accdet->gpiopin, accdet->gpio_hp_deb);
+		gpiod_set_debounce(gpio_to_desc(accdet->gpiopin), accdet->gpio_hp_deb);
 
 		accdet->cur_eint_state = EINT_PLUG_OUT;
 	} else {
@@ -2178,8 +2177,7 @@ static irqreturn_t ex_eint_handler(int irq, void *data)
 		else
 			irq_set_irq_type(accdet->gpioirq, IRQ_TYPE_LEVEL_HIGH);
 
-		MINDONE_GPIO_SET_DEBOUNCE(accdet->gpiopin,
-				accdet_dts.plugout_deb * 1000);
+		gpiod_set_debounce(gpio_to_desc(accdet->gpiopin), accdet_dts.plugout_deb * 1000);
 
 		accdet->cur_eint_state = EINT_PLUG_IN;
 
@@ -2228,7 +2226,7 @@ static inline int ext_eint_setup(struct platform_device *platform_device)
 	if (ret < 0)
 		return ret;
 
-	MINDONE_GPIO_SET_DEBOUNCE(accdet->gpiopin, accdet->gpio_hp_deb);
+	gpiod_set_debounce(gpio_to_desc(accdet->gpiopin), accdet->gpio_hp_deb);
 
 	accdet->gpioirq = irq_of_parse_and_map(node, 0);
 	ret = of_property_read_u32_array(node, "interrupts", ints,
@@ -2575,9 +2573,6 @@ static void accdet_init_debounce(void)
 	/* set debounce to 1ms */
 	accdet_set_debounce(eint_state000,
 		accdet_dts.pwm_deb.eint_debounce0);
-	/* set debounce to 128ms */
-	accdet_set_debounce(eint_state011,
-		accdet_dts.pwm_deb.eint_debounce3);
 }
 
 static inline void accdet_init(void)
@@ -2595,8 +2590,6 @@ static inline void accdet_init(void)
 	accdet_set_debounce(accdet_state011, cust_pwm_deb->debounce3);
 	/* auxadc:2ms */
 	accdet_set_debounce(accdet_auxadc, cust_pwm_deb->debounce4);
-	accdet_set_debounce(eint_inverter_state000,
-		accdet_dts.pwm_deb.eint_inverter_debounce);
 	pr_info("%s() done.\n", __func__);
 }
 
@@ -2642,7 +2635,7 @@ int mt6358_accdet_init(struct snd_soc_component *component,
 				    SND_JACK_HEADSET |
 				    SND_JACK_LINEOUT |
 				    SND_JACK_MECHANICAL,
-				    &accdet->jack); /* pins removed, 6.1 API */
+				    &accdet->jack);
 	if (ret) {
 		pr_notice("Property 'mediatek,soc-accdet' missing/invalid\n");
 		return ret;
@@ -2900,7 +2893,7 @@ static int mt6358_accdet_probe(struct platform_device *pdev)
 	/* create class in sysfs, "sys/class/", so udev in userspace can create
 	 * device node, when device_create is called
 	 */
-	accdet->accdet_class = MINDONE_CLASS_CREATE(ACCDET_DEVNAME);
+	accdet->accdet_class = class_create(ACCDET_DEVNAME);
 	if (!accdet->accdet_class) {
 		dev_dbg(&pdev->dev,
 			"Error: Create class failed (%d)\n", ret);

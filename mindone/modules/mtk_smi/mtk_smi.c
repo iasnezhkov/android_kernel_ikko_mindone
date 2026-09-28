@@ -167,9 +167,6 @@ struct mtk_smi {
 	int			commid;
 	atomic_t		ref_count;
 	atomic_t		api_ref_count;
-	/* MINDONE-SMI-SYSNOIRQ: this block was powered down by the system sleep
-	 * while still runtime-active, so it owes a resume. See smi_larb_pm_ops.
-	 */
 	bool			mindone_sys_saved;
 };
 
@@ -520,7 +517,7 @@ mtk_smi_larb_bind(struct device *dev, struct device *master, void *data)
 			larb->bank = larb_mmu[i].bank;
 			if (log_level & 1 << log_config_bit)
 				dev_notice(dev,
-					"[SMI]larb%d bind ptr_mmu:0x%x val_mmu_32:0x%x bit32:%u\n",
+					"[SMI]larb%d bind ptr_mmu:%p val_mmu_32:0x%x bit32:%u\n",
 					i, larb->mmu, *((unsigned int *)(larb->mmu)),
 					larb->bank[i]);
 			return 0;
@@ -555,7 +552,7 @@ static void mtk_smi_larb_config_port_gen2_general(struct device *dev)
 			if (log_level & 1 << log_config_bit)
 				dev_notice(dev,
 					"[SMI]larb:%d port:%d mmu:%u bit32:%u offset:%#x reg:%#x\n",
-					larb->larbid, i, larb->mmu, larb->bank[i],
+					larb->larbid, i, *larb->mmu, larb->bank[i],
 					SMI_LARB_NONSEC_CON(i), reg);
 		}
 	}
@@ -2360,14 +2357,6 @@ static int __maybe_unused mtk_smi_larb_suspend(struct device *dev)
 
 
 #ifdef CONFIG_PM_SLEEP
-/*
- * MINDONE-SMI-SYSNOIRQ (F3484): blocks still runtime-active at system sleep lost
- * their larb/common port config and the MMSYS clock gates: genpd drops/restores the
- * display domain from its noirq path without the runtime callbacks (gates back at
- * reset while the clock framework still counts them enabled: CG 0x14000100
- * 0xfe848040 -> 0xfff69843), so the display cannot reach memory (F3480/F3483).
- * Running the runtime callbacks from the noirq phases rewrites gates and ports.
- */
 static int mtk_smi_larb_sys_suspend_noirq(struct device *dev)
 {
 	struct mtk_smi_larb *larb = dev_get_drvdata(dev);
@@ -3296,7 +3285,6 @@ static int __maybe_unused mtk_smi_common_suspend(struct device *dev)
 
 
 #ifdef CONFIG_PM_SLEEP
-/* MINDONE-SMI-SYSNOIRQ, see smi_larb_pm_ops above. */
 static int mtk_smi_common_sys_suspend_noirq(struct device *dev)
 {
 	struct mtk_smi *common = dev_get_drvdata(dev);

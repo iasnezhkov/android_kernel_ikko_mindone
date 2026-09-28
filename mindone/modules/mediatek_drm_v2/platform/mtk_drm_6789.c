@@ -1332,7 +1332,10 @@ static int mtk_mipi_tx_pll_prepare_mt6789(struct clk_hw *hw)
 	mtk_mipi_tx_update_bits(mipi_tx, MIPITX_PLL_PWR,
 				FLD_AD_DSI_PLL_SDM_ISO_EN, 0);
 
-	tmp = _dsi_get_pcw_khz(rate_khz, txdiv);
+	if (mipi_tx->data_rate_adpt)
+		tmp = _dsi_get_pcw(rate, txdiv);
+	else
+		tmp = _dsi_get_pcw_khz(rate_khz, txdiv);
 	writel(tmp, mipi_tx->regs + MIPITX_PLL_CON0);
 
 	mtk_mipi_tx_update_bits(mipi_tx, MIPITX_PLL_CON1,

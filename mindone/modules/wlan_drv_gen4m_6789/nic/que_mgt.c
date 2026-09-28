@@ -1711,7 +1711,7 @@ qmDequeueTxPacketsFromPerStaQueues(IN struct ADAPTER *prAdapter,
 					 * active by event 0x0C, it can't
 					 * dequeue data.
 					 */
-					DBGLOG_LIMITED(QM, WARN,
+					DBGLOG_LIMITED(QM, TRACE,
 						"sta_rec is not valid\n");
 					break;
 				}
@@ -8856,15 +8856,6 @@ void qmReleaseCHAtFinishedDhcp(struct ADAPTER *prAdapter,
 		prAisFsmInfo = aisGetAisFsmInfo(prAdapter, ucBssIndex);
 
 		if (!timerPendingTimer(&prAisFsmInfo->rJoinTimeoutTimer)) {
-			/* mind_one this fires on every DHCPACK the driver
-			 * snoops, including routine lease renewals long after
-			 * the initial join — by then rJoinTimeoutTimer is no
-			 * longer pending (it already fired or was already
-			 * stopped by an earlier DHCPACK of the same exchange).
-			 * "Nothing to release" is the expected steady-state
-			 * case, not a fault — ERROR here was pure boot-log
-			 * noise (44-609 hits/session depending on DHCP churn).
-			 */
 			DBGLOG(QM, INFO, "No channel occupation\n");
 		} else {
 			DBGLOG(QM, INFO, "Dhcp done, stop join timer.\n");

@@ -9,7 +9,7 @@
 #include <linux/module.h>
 #include <linux/of.h>
 #include <linux/of_platform.h>
-#include <linux/platform_device.h>	/* 6.12: no longer pulled in transitively from of_platform.h */
+#include <linux/platform_device.h>
 #include <linux/pm_runtime.h>
 
 #define DUMP_UNUSED_CLKS		1

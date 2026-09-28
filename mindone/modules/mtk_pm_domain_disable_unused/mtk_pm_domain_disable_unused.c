@@ -4,7 +4,7 @@
 // Author: Owen Chen <owen.chen@mediatek.com>
 
 #include <linux/kernel.h>
-#include <linux/platform_device.h>	/* 6.12: no longer pulled in transitively */
+#include <linux/platform_device.h>
 #include <linux/module.h>
 #include <linux/of.h>
 #include <linux/of_platform.h>

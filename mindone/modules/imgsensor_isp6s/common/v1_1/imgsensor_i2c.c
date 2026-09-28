@@ -4,7 +4,6 @@
  */
 
 #include "imgsensor_common.h"
-#include <mindone/compat.h>
 #include "imgsensor_i2c.h"
 #include "kd_imgsensor_api.h"
 #include <linux/ratelimit.h>
@@ -92,7 +91,7 @@ static const struct of_device_id gof_device_id_7[] = {
 
 static int imgsensor_get_temp(struct thermal_zone_device *tz, int *temperature)
 {
-	void *data = MINDONE_TZ_DEVDATA(tz);
+	void *data = thermal_zone_device_priv(tz);
 	u32 ret;
 	u8 valid;
 	s32 temp;
@@ -119,8 +118,6 @@ static const struct thermal_zone_device_ops imgsensor_tz_ops = {
 static int imgsensor_i2c_probe_0(struct i2c_client *client)
 {
 	gi2c.inst[IMGSENSOR_I2C_DEV_0].pi2c_client = client;
-	pr_info("MINDONE-CAM-I2C-NULL: probe_0 bound, addr=0x%02x name=%s\n",
-		client->addr, client->name);
 	devm_thermal_of_zone_register(&client->dev, 0,
 		(void *)DUAL_CAMERA_MAIN_SENSOR, &imgsensor_tz_ops);
 	return 0;
@@ -129,8 +126,6 @@ static int imgsensor_i2c_probe_0(struct i2c_client *client)
 static int imgsensor_i2c_probe_1(struct i2c_client *client)
 {
 	gi2c.inst[IMGSENSOR_I2C_DEV_1].pi2c_client = client;
-	pr_info("MINDONE-CAM-I2C-NULL: probe_1 bound, addr=0x%02x name=%s\n",
-		client->addr, client->name);
 	devm_thermal_of_zone_register(&client->dev, 0,
 		(void *)DUAL_CAMERA_SUB_SENSOR, &imgsensor_tz_ops);
 	return 0;
@@ -139,8 +134,6 @@ static int imgsensor_i2c_probe_1(struct i2c_client *client)
 static int imgsensor_i2c_probe_2(struct i2c_client *client)
 {
 	gi2c.inst[IMGSENSOR_I2C_DEV_2].pi2c_client = client;
-	pr_info("MINDONE-CAM-I2C-NULL: probe_2 bound, addr=0x%02x name=%s\n",
-		client->addr, client->name);
 	devm_thermal_of_zone_register(&client->dev, 0,
 		(void *)DUAL_CAMERA_MAIN_2_SENSOR, &imgsensor_tz_ops);
 	return 0;
@@ -150,8 +143,6 @@ static int imgsensor_i2c_probe_2(struct i2c_client *client)
 static int imgsensor_i2c_probe_3(struct i2c_client *client)
 {
 	gi2c.inst[IMGSENSOR_I2C_DEV_3].pi2c_client = client;
-	pr_info("MINDONE-CAM-I2C-NULL: probe_3 bound, addr=0x%02x name=%s\n",
-		client->addr, client->name);
 	devm_thermal_of_zone_register(&client->dev, 0,
 		(void *)DUAL_CAMERA_SUB_2_SENSOR, &imgsensor_tz_ops);
 	return 0;
@@ -162,8 +153,6 @@ static int imgsensor_i2c_probe_3(struct i2c_client *client)
 static int imgsensor_i2c_probe_4(struct i2c_client *client)
 {
 	gi2c.inst[IMGSENSOR_I2C_DEV_4].pi2c_client = client;
-	pr_info("MINDONE-CAM-I2C-NULL: probe_4 bound, addr=0x%02x name=%s\n",
-		client->addr, client->name);
 	devm_thermal_of_zone_register(&client->dev, 0,
 		(void *)DUAL_CAMERA_MAIN_3_SENSOR, &imgsensor_tz_ops);
 	return 0;
@@ -174,8 +163,6 @@ static int imgsensor_i2c_probe_4(struct i2c_client *client)
 static int imgsensor_i2c_probe_5(struct i2c_client *client)
 {
 	gi2c.inst[IMGSENSOR_I2C_DEV_5].pi2c_client = client;
-	pr_info("MINDONE-CAM-I2C-NULL: probe_5 bound, addr=0x%02x name=%s\n",
-		client->addr, client->name);
 	devm_thermal_of_zone_register(&client->dev, 0,
 		(void *)DUAL_CAMERA_SUB_3_SENSOR, &imgsensor_tz_ops);
 	return 0;
@@ -186,8 +173,6 @@ static int imgsensor_i2c_probe_5(struct i2c_client *client)
 static int imgsensor_i2c_probe_6(struct i2c_client *client)
 {
 	gi2c.inst[IMGSENSOR_I2C_DEV_6].pi2c_client = client;
-	pr_info("MINDONE-CAM-I2C-NULL: probe_6 bound, addr=0x%02x name=%s\n",
-		client->addr, client->name);
 	devm_thermal_of_zone_register(&client->dev, 0,
 		(void *)DUAL_CAMERA_MAIN_4_SENSOR, &imgsensor_tz_ops);
 	return 0;
@@ -198,24 +183,19 @@ static int imgsensor_i2c_probe_6(struct i2c_client *client)
 static int imgsensor_i2c_probe_7(struct i2c_client *client)
 {
 	gi2c.inst[IMGSENSOR_I2C_DEV_7].pi2c_client = client;
-	pr_info("MINDONE-CAM-I2C-NULL: probe_7 bound, addr=0x%02x name=%s\n",
-		client->addr, client->name);
 	devm_thermal_of_zone_register(&client->dev, 0,
 		(void *)DUAL_CAMERA_SUB_4_SENSOR, &imgsensor_tz_ops);
 	return 0;
 }
 #endif
 
-/* i2c_driver.remove returns void since 6.1 (commit ed5c2f5fd10d) -- the int form only
- * warned here because ccflags relax -Wincompatible-pointer-types; 7 other modules in this
- * tree were already converted. */
 static void imgsensor_i2c_remove(struct i2c_client *client)
 {
 }
 
 static struct i2c_driver gi2c_driver[IMGSENSOR_I2C_DEV_MAX_NUM] = {
 	{
-		MINDONE_I2C_PROBE(imgsensor_i2c_probe_0),
+		.probe = imgsensor_i2c_probe_0,
 		.remove = imgsensor_i2c_remove,
 		.driver = {
 		.name = IMGSENSOR_I2C_DRV_NAME_0,
@@ -227,7 +207,7 @@ static struct i2c_driver gi2c_driver[IMGSENSOR_I2C_DEV_MAX_NUM] = {
 		.id_table = gi2c_dev_id,
 	},
 	{
-		MINDONE_I2C_PROBE(imgsensor_i2c_probe_1),
+		.probe = imgsensor_i2c_probe_1,
 		.remove = imgsensor_i2c_remove,
 		.driver = {
 		.name = IMGSENSOR_I2C_DRV_NAME_1,
@@ -239,7 +219,7 @@ static struct i2c_driver gi2c_driver[IMGSENSOR_I2C_DEV_MAX_NUM] = {
 		.id_table = gi2c_dev_id,
 	},
 	{
-		MINDONE_I2C_PROBE(imgsensor_i2c_probe_2),
+		.probe = imgsensor_i2c_probe_2,
 		.remove = imgsensor_i2c_remove,
 		.driver = {
 		.name = IMGSENSOR_I2C_DRV_NAME_2,
@@ -252,7 +232,7 @@ static struct i2c_driver gi2c_driver[IMGSENSOR_I2C_DEV_MAX_NUM] = {
 	},
 #ifdef IMGSENSOR_I2C_DRV_NAME_3
 	{
-		MINDONE_I2C_PROBE(imgsensor_i2c_probe_3),
+		.probe = imgsensor_i2c_probe_3,
 		.remove = imgsensor_i2c_remove,
 		.driver = {
 		.name = IMGSENSOR_I2C_DRV_NAME_3,
@@ -266,7 +246,7 @@ static struct i2c_driver gi2c_driver[IMGSENSOR_I2C_DEV_MAX_NUM] = {
 #endif
 #ifdef IMGSENSOR_I2C_DRV_NAME_4
 	{
-		MINDONE_I2C_PROBE(imgsensor_i2c_probe_4),
+		.probe = imgsensor_i2c_probe_4,
 		.remove = imgsensor_i2c_remove,
 		.driver = {
 		.name = IMGSENSOR_I2C_DRV_NAME_4,
@@ -280,7 +260,7 @@ static struct i2c_driver gi2c_driver[IMGSENSOR_I2C_DEV_MAX_NUM] = {
 #endif
 #ifdef IMGSENSOR_I2C_DRV_NAME_5
 	{
-		MINDONE_I2C_PROBE(imgsensor_i2c_probe_5),
+		.probe = imgsensor_i2c_probe_5,
 		.remove = imgsensor_i2c_remove,
 		.driver = {
 		.name = IMGSENSOR_I2C_DRV_NAME_5,
@@ -294,7 +274,7 @@ static struct i2c_driver gi2c_driver[IMGSENSOR_I2C_DEV_MAX_NUM] = {
 #endif
 #ifdef IMGSENSOR_I2C_DRV_NAME_6
 	{
-		MINDONE_I2C_PROBE(imgsensor_i2c_probe_6),
+		.probe = imgsensor_i2c_probe_6,
 		.remove = imgsensor_i2c_remove,
 		.driver = {
 		.name = IMGSENSOR_I2C_DRV_NAME_6,
@@ -308,7 +288,7 @@ static struct i2c_driver gi2c_driver[IMGSENSOR_I2C_DEV_MAX_NUM] = {
 #endif
 #ifdef IMGSENSOR_I2C_DRV_NAME_7
 	{
-		MINDONE_I2C_PROBE(imgsensor_i2c_probe_7),
+		.probe = imgsensor_i2c_probe_7,
 		.remove = imgsensor_i2c_remove,
 		.driver = {
 		.name = IMGSENSOR_I2C_DRV_NAME_7,
@@ -402,19 +382,8 @@ enum IMGSENSOR_RETURN imgsensor_i2c_read(
 	enum   IMGSENSOR_RETURN    ret   = IMGSENSOR_RETURN_SUCCESS;
 	int i2c_ret = 0;
 
-	if (pinst->pi2c_client == NULL) {
-		/* MINDONE-CAM-I2C-NULL 29.08: already a clean, safe early
-		 * return (no dereference past this point) -- the missing
-		 * piece was WHICH i2c_dev slot/driver this is, so a live
-		 * test can tell a never-probed slot (no DT client at all)
-		 * from a slot that lost its client mid-session.
-		 */
-		pr_info("MINDONE-CAM-I2C-NULL: read id=0x%x pi2c_client is NULL (driver=%s)\n",
-			id,
-			(pi2c_cfg->pi2c_driver && pi2c_cfg->pi2c_driver->driver.name)
-				? pi2c_cfg->pi2c_driver->driver.name : "?");
+	if (pinst->pi2c_client == NULL)
 		return IMGSENSOR_RETURN_ERROR;
-	}
 
 	mutex_lock(&pi2c_cfg->i2c_mutex);
 
@@ -466,16 +435,8 @@ enum IMGSENSOR_RETURN imgsensor_i2c_write(
 	int i   = 0;
 	int i2c_ret = 0;
 
-	if (pinst->pi2c_client == NULL) {
-		/* MINDONE-CAM-I2C-NULL 29.08: see the same comment in
-		 * imgsensor_i2c_read() above -- already a clean return.
-		 */
-		pr_info("MINDONE-CAM-I2C-NULL: write slave_id=%d pi2c_client is NULL (driver=%s)\n",
-			id,
-			(pi2c_cfg->pi2c_driver && pi2c_cfg->pi2c_driver->driver.name)
-				? pi2c_cfg->pi2c_driver->driver.name : "?");
+	if (pinst->pi2c_client == NULL)
 		return IMGSENSOR_RETURN_ERROR;
-	}
 
 	mutex_lock(&pi2c_cfg->i2c_mutex);
 

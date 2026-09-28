@@ -50,12 +50,6 @@ uint32_t adsp_cid_to_ipi_dsp_id(const uint32_t core_id) /* enum adsp_core_id */
 	return dsp_id;
 #else
 	if (core_id >= get_adsp_core_total()) {
-		/* MINDONE: MT6789 has no ADSP/HiFi3 hardware at all -- no "adsp"
-		 * compatible node in our DT nor in the stock dump, so register_adspsys()
-		 * is never called and get_adsp_core_total() is permanently 0. That makes
-		 * this branch fire on every generic capability probe (56x at boot), not
-		 * just on a genuine out-of-range cid on chips that DO have ADSP. Log only
-		 * the real bug case (hardware present, id still out of range). */
 		if (get_adsp_core_total() != 0)
 			pr_notice("invalid cid %u, total %u", core_id, get_adsp_core_total());
 		return AUDIO_OPENDSP_ID_INVALID;
@@ -86,9 +80,6 @@ uint32_t ipi_dsp_id_to_adsp_cid(const uint32_t dsp_id)
 
 	core_id = dsp_id - AUDIO_OPENDSP_USE_HIFI3_A;
 	if (core_id >= get_adsp_core_total()) {
-		/* MINDONE: see adsp_cid_to_ipi_dsp_id() above -- MT6789 has 0 ADSP
-		 * cores by hardware design, this is the expected/permanent path, not a
-		 * bug; only log when a real ADSP exists and the id is genuinely wrong. */
 		if (get_adsp_core_total() != 0)
 			pr_notice("invalid cid %u, total %u", core_id, get_adsp_core_total());
 		return 0xFFFFFFFF;

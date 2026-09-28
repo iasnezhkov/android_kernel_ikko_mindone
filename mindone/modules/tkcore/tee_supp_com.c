@@ -236,9 +236,6 @@ ssize_t tee_supp_write(struct file *filp, const char __user *buffer,
 			struct tee_shm *shm;
 			struct vm_area_struct *vma;
 
-			/* find_vma() must run under mmap_lock; on 6.12 the lockless
-			 * lookup oopses (maple tree / per-VMA locks), see F3725. Read
-			 * the private data under the lock and drop it right away. */
 			mmap_read_lock(current->mm);
 			vma = find_vma(current->mm, (unsigned long) buffer);
 			shm = vma ? vma->vm_private_data : NULL;

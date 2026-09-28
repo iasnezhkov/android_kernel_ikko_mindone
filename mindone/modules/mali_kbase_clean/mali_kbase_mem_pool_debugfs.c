@@ -169,12 +169,8 @@ void kbase_mem_pool_debugfs_init(struct dentry *parent,
 		struct kbase_context *kctx)
 {
 	/* prevent unprivileged use of debug file in old kernel version */
-#if (KERNEL_VERSION(4, 7, 0) <= LINUX_VERSION_CODE)
 	/* only for newer kernel version debug file system is safe */
 	const mode_t mode = 0644;
-#else
-	const mode_t mode = 0600;
-#endif
 
 	debugfs_create_file("mem_pool_size", mode, parent,
 		&kctx->mem_pools.small, &kbase_mem_pool_debugfs_fops);

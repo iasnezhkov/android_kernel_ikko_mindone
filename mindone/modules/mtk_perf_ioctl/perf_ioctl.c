@@ -676,7 +676,9 @@ static long device_ioctl(struct file *filp,
 		unsigned int cmd, unsigned long arg)
 {
 	ssize_t ret = 0;
+#if defined(CONFIG_MTK_FPSGO_V3)
 	int pwr_cmd = -1, value1 = -1, value2 = -1, pwr_pid = -1, pwr_fps = -1;
+#endif
 	struct _FPSGO_PACKAGE *msgKM = NULL,
 			*msgUM = (struct _FPSGO_PACKAGE *)arg;
 	struct _FPSGO_PACKAGE smsgKM;
@@ -778,29 +780,29 @@ static long device_ioctl(struct file *filp,
 
 #else
 	case FPSGO_TOUCH:
-		 [[fallthrough]];
+		 fallthrough;
 	case FPSGO_QUEUE:
-		 [[fallthrough]];
+		 fallthrough;
 	case FPSGO_DEQUEUE:
-		 [[fallthrough]];
+		 fallthrough;
 	case FPSGO_QUEUE_CONNECT:
-		 [[fallthrough]];
+		 fallthrough;
 	case FPSGO_VSYNC:
-		 [[fallthrough]];
+		 fallthrough;
 	case FPSGO_BQID:
-		 [[fallthrough]];
+		 fallthrough;
 	case FPSGO_SWAP_BUFFER:
-		 [[fallthrough]];
+		 fallthrough;
 	case FPSGO_GET_FPS:
-		 [[fallthrough]];
+		 fallthrough;
 	case FPSGO_GET_CMD:
-		 [[fallthrough]];
+		 fallthrough;
 	case FPSGO_GBE_GET_CMD:
-		 [[fallthrough]];
+		 fallthrough;
 	case FPSGO_GET_FSTB_ACTIVE:
-		[[fallthrough]];
+		fallthrough;
 	case FPSGO_WAIT_FSTB_ACTIVE:
-		[[fallthrough]];
+		fallthrough;
 	case FPSGO_SBE_RESCUE:
 		break;
 #endif

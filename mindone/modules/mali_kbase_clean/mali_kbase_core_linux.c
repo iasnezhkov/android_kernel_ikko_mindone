@@ -20,7 +20,6 @@
  */
 
 #include <mali_kbase.h>
-#include <mindone/compat.h>
 #include <mali_kbase_config_defaults.h>
 #include <gpu/mali_kbase_gpu_regmap.h>
 #include <mali_kbase_gator.h>
@@ -91,7 +90,6 @@
 #include <linux/mm.h>
 #include <linux/compat.h>	/* is_compat_task/in_compat_syscall */
 #include <linux/mman.h>
-#include <linux/version.h>
 #include <mali_kbase_hw.h>
 #if defined(CONFIG_SYNC) || defined(CONFIG_SYNC_FILE)
 #include <mali_kbase_sync.h>
@@ -194,7 +192,6 @@ static void get_rec_addr(void)
 	   rec_virt_addr = sspm_reserve_mem_get_virt(GPU_MEM_ID);
 	   rec_size = sspm_reserve_mem_get_size(GPU_MEM_ID);
 
-	   /* MINDONE-GPUBM-GUARD: before ioremap in sspm_v3, virt=0 at size=4K -- cleanup on NULL crashed the boot */
 	   if (!rec_virt_addr || !rec_size) {
 			pr_info("mali gpu_bm: sspm reserved mem for GPU not ready (virt %#llx size %#llx)\n",
 				(u64)rec_virt_addr, (u64)rec_size);
@@ -215,7 +212,7 @@ static int mtk_bandwith_resource_init(struct kbase_device *kbdev)
 		int err = 0;
 
 		if (kbdev->v1)
-			return 0;	/* MINDONE-GPUBM: already configured */
+			return 0;
 		get_rec_addr();
 #if IS_ENABLED(CONFIG_MTK_TINYSYS_SSPM_SUPPORT)
 		if(gpu_info_ref == NULL) {
@@ -232,36 +229,6 @@ static int mtk_bandwith_resource_init(struct kbase_device *kbdev)
 		return err;
 }
 
-/* MINDONE-GPUBM: init at probe only via the parameter; otherwise -- manually through debugfs */
-static bool mindone_gpu_bm;
-module_param(mindone_gpu_bm, bool, 0444);
-MODULE_PARM_DESC(mindone_gpu_bm, "init GPU bandwidth monitor (SSPM QoS) at probe");
-
-static ssize_t mindone_gpu_bm_init_write(struct file *file, const char __user *ubuf, size_t count, loff_t *ppos)
-{
-	struct kbase_device *kbdev = file->private_data;
-	int err = mtk_bandwith_resource_init(kbdev);
-
-	pr_info("mali gpu_bm: manual init -> %d (v1=%d)\n", err, kbdev->v1 != NULL);
-	return err ? -EIO : count;
-}
-static ssize_t mindone_gpu_bm_init_read(struct file *file, char __user *ubuf, size_t count, loff_t *ppos)
-{
-	struct kbase_device *kbdev = file->private_data;
-	char buf[96];
-	int n = scnprintf(buf, sizeof(buf), "inited=%d ctx=%u frame=%u job=%u freq=%u\n", kbdev->v1 != NULL,
-			  kbdev->v1 ? kbdev->v1->ctx : 0, kbdev->v1 ? kbdev->v1->frame : 0,
-			  kbdev->v1 ? kbdev->v1->job : 0, kbdev->v1 ? kbdev->v1->freq : 0);
-
-	return simple_read_from_buffer(ubuf, count, ppos, buf, n);
-}
-static const struct file_operations mindone_gpu_bm_init_fops = {
-	.owner = THIS_MODULE,
-	.open = simple_open,
-	.read = mindone_gpu_bm_init_read,
-	.write = mindone_gpu_bm_init_write,
-	.llseek = default_llseek,
-};
 #endif
 
 
@@ -530,7 +497,6 @@ int assign_irqs(struct kbase_device *kbdev)
 
 	pdev = to_platform_device(kbdev->dev);
 
-#if (KERNEL_VERSION(6, 0, 0) <= LINUX_VERSION_CODE)
 	/* 3 IRQ resources */
 	for (i = 0; i < 3; i++) {
 		int irqtag;
@@ -544,37 +510,6 @@ int assign_irqs(struct kbase_device *kbdev)
 		kbdev->irqs[irqtag].irq = irq;
 		kbdev->irqs[irqtag].flags = irqd_get_trigger_type(irq_get_irq_data(irq));
 	}
-#else
-	/* 3 IRQ resources */
-	for (i = 0; i < 3; i++) {
-		struct resource *irq_res;
-		int irqtag;
-
-		irq_res = platform_get_resource(pdev, IORESOURCE_IRQ, i);
-		if (!irq_res) {
-			dev_err(kbdev->dev, "No IRQ resource at index %d\n", i);
-			return -ENOENT;
-		}
-
-#if IS_ENABLED(CONFIG_OF)
-		if (!strncasecmp(irq_res->name, "JOB", 4)) {
-			irqtag = JOB_IRQ_TAG;
-		} else if (!strncasecmp(irq_res->name, "MMU", 4)) {
-			irqtag = MMU_IRQ_TAG;
-		} else if (!strncasecmp(irq_res->name, "GPU", 4)) {
-			irqtag = GPU_IRQ_TAG;
-		} else {
-			dev_err(&pdev->dev, "Invalid irq res name: '%s'\n",
-				irq_res->name);
-			return -EINVAL;
-		}
-#else
-		irqtag = i;
-#endif /* CONFIG_OF */
-		kbdev->irqs[irqtag].irq = irq_res->start;
-		kbdev->irqs[irqtag].flags = irq_res->flags & IRQF_TRIGGER_MASK;
-	}
-#endif /* KERNEL_VERSION(6, 0, 0) */
 
 	return 0;
 }
@@ -609,26 +544,6 @@ void kbase_release_device(struct kbase_device *kbdev)
 EXPORT_SYMBOL(kbase_release_device);
 
 #if IS_ENABLED(CONFIG_DEBUG_FS)
-#if KERNEL_VERSION(4, 6, 0) > LINUX_VERSION_CODE &&                            \
-	!(KERNEL_VERSION(4, 4, 28) <= LINUX_VERSION_CODE &&                    \
-	  KERNEL_VERSION(4, 5, 0) > LINUX_VERSION_CODE)
-/*
- * Older versions, before v4.6, of the kernel doesn't have
- * kstrtobool_from_user(), except longterm 4.4.y which had it added in 4.4.28
- */
-static int kstrtobool_from_user(const char __user *s, size_t count, bool *res)
-{
-	char buf[4];
-
-	count = min(count, sizeof(buf) - 1);
-
-	if (copy_from_user(buf, s, count))
-		return -EFAULT;
-	buf[count] = '\0';
-
-	return strtobool(buf, res);
-}
-#endif
 
 static ssize_t write_ctx_infinite_cache(struct file *f, const char __user *ubuf, size_t size, loff_t *off)
 {
@@ -741,13 +656,8 @@ static int kbase_file_create_kctx(struct kbase_file *const kfile,
 
 	kbdev = kfile->kbdev;
 
-#if (KERNEL_VERSION(4, 6, 0) <= LINUX_VERSION_CODE)
 	kctx = kbase_create_context(kbdev, in_compat_syscall(),
 		flags, kfile->api_version, kfile->filp);
-#else
-	kctx = kbase_create_context(kbdev, is_compat_task(),
-		flags, kfile->api_version, kfile->filp);
-#endif /* (KERNEL_VERSION(4, 6, 0) <= LINUX_VERSION_CODE) */
 
 	/* if bad flags, will stay stuck in setup mode */
 	if (!kctx)
@@ -768,16 +678,8 @@ static int kbase_file_create_kctx(struct kbase_file *const kfile,
 		/* we don't treat this as a fail - just warn about it */
 		dev_warn(kbdev->dev, "couldn't create debugfs dir for kctx\n");
 	} else {
-#if (KERNEL_VERSION(4, 7, 0) > LINUX_VERSION_CODE)
-		/* prevent unprivileged use of debug file system
-		 * in old kernel version
-		 */
-		debugfs_create_file("infinite_cache", 0600, kctx->kctx_dentry,
-			kctx, &kbase_infinite_cache_fops);
-#else
 		debugfs_create_file("infinite_cache", 0644, kctx->kctx_dentry,
 			kctx, &kbase_infinite_cache_fops);
-#endif
 		debugfs_create_file("force_same_va", 0600, kctx->kctx_dentry,
 			kctx, &kbase_force_same_va_fops);
 
@@ -791,86 +693,6 @@ static int kbase_file_create_kctx(struct kbase_file *const kfile,
 	atomic_set(&kfile->setup_state, KBASE_FILE_COMPLETE);
 
 	return 0;
-}
-
-#define MINDONE_MJ_HEAD 200
-#define MINDONE_MJ_SAMPLE_K 32
-static atomic_t mindone_mj_n_ioctl = ATOMIC_INIT(0);
-static atomic_t mindone_mj_last_nr = ATOMIC_INIT(-1);
-
-/* nr -> kbase ioctl command name. Table built from the HEADERS actually wired
- * into the mali_kbase_mt6789.ko build (MALI_USE_CSF=0 -> jm branch):
- *   include/uapi/gpu/arm/midgard/mali_kbase_ioctl.h
- *   include/uapi/gpu/arm/midgard/jm/mali_kbase_jm_ioctl.h
- * from the .../mali-r32p1/... tree (MALI_RELEASE_NAME=r32p1-01eac0, matching
- * the version pinned in our Makefile's ccflags-y).
- * An unknown nr prints as "nr=N(?)" - the table does not claim completeness
- * beyond what this release actually uses.
- */
-static const char *mindone_mj_ioctl_name(unsigned int nr)
-{
-	switch (nr) {
-	case 0:  return "VERSION_CHECK";
-	case 1:  return "SET_FLAGS";
-	case 2:  return "JOB_SUBMIT";
-	case 3:  return "GET_GPUPROPS";
-	case 4:  return "POST_TERM";
-	case 5:  return "MEM_ALLOC";
-	case 6:  return "MEM_QUERY";
-	case 7:  return "MEM_FREE";
-	case 8:  return "HWCNT_READER_SETUP";
-	case 9:  return "HWCNT_ENABLE";
-	case 10: return "HWCNT_DUMP";
-	case 11: return "HWCNT_CLEAR";
-	case 12: return "DISJOINT_QUERY";
-	case 13: return "GET_DDK_VERSION";
-	case 14: return "MEM_JIT_INIT";
-	case 15: return "MEM_SYNC";
-	case 16: return "MEM_FIND_CPU_OFFSET";
-	case 17: return "GET_CONTEXT_ID";
-	case 18: return "TLSTREAM_ACQUIRE";
-	case 19: return "TLSTREAM_FLUSH";
-	case 20: return "MEM_COMMIT";
-	case 21: return "MEM_ALIAS";
-	case 22: return "MEM_IMPORT";
-	case 23: return "MEM_FLAGS_CHANGE";
-	case 24: return "STREAM_CREATE";
-	case 25: return "FENCE_VALIDATE";
-	case 27: return "MEM_PROFILE_ADD";
-	case 28: return "SOFT_EVENT_UPDATE";
-	case 29: return "STICKY_RESOURCE_MAP";
-	case 30: return "STICKY_RESOURCE_UNMAP";
-	case 31: return "MEM_FIND_GPU_START_AND_OFFSET";
-	case 32: return "HWCNT_SET";
-	case 33: return "CINSTR_GWT_START";
-	case 34: return "CINSTR_GWT_STOP";
-	case 35: return "CINSTR_GWT_DUMP";
-	case 38: return "MEM_EXEC_INIT";
-	case 50: return "GET_CPU_GPU_TIMEINFO";
-	case 51: return "KINSTR_JM_FD";
-	case 52: return "VERSION_CHECK_RESERVED";
-	case 54: return "CONTEXT_PRIORITY_CHECK";
-	case 55: return "SET_LIMITED_CORE_COUNT";
-	case 56: return "LOCAL_FENCE_WAIT";
-	default: return "?";
-	}
-}
-
-/* Decides whether to print begin for THIS call, and reports through *is_new_nr
- * whether nr differed from the previous call (needed both for begin and to
- * keep end printed consistently with begin).
- */
-static bool mindone_mj_ioctl_should_log(unsigned int nr, bool *is_new_nr)
-{
-	long n = atomic_inc_return(&mindone_mj_n_ioctl);
-	int prev = atomic_xchg(&mindone_mj_last_nr, (int)nr);
-
-	*is_new_nr = (prev != (int)nr);
-	if (n <= MINDONE_MJ_HEAD)
-		return true;
-	if (*is_new_nr)
-		return true;
-	return (n % MINDONE_MJ_SAMPLE_K) == 0;
 }
 
 static int kbase_open(struct inode *inode, struct file *filp)
@@ -899,7 +721,6 @@ static int kbase_open(struct inode *inode, struct file *filp)
 	}
 
 	filp->private_data = kfile;
-	MINDONE_SET_FMODE_UNSIGNED_OFFSET(filp);
 
 	return 0;
 
@@ -1880,26 +1701,7 @@ static int kbasep_ioctl_local_fence_wait(struct kbase_context *kctx,
 	return 0;
 }
 
-static long kbase_ioctl_impl(struct file *filp, unsigned int cmd, unsigned long arg);
-
 static long kbase_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
-{
-	unsigned int __mj_nr = (unsigned int)_IOC_NR(cmd);
-	bool __mj_new_nr = false;
-	bool __mj_log = mindone_mj_ioctl_should_log(__mj_nr, &__mj_new_nr);
-	long __mj_ret;
-
-	if (__mj_log)
-		;
-	__mj_ret = kbase_ioctl_impl(filp, cmd, arg);
-	if (__mj_log)
-		;
-	else if (__mj_ret != 0)
-		;
-	return __mj_ret;
-}
-
-static long kbase_ioctl_impl(struct file *filp, unsigned int cmd, unsigned long arg)
 {
 	struct kbase_file *const kfile = filp->private_data;
 	struct kbase_context *kctx = NULL;
@@ -2471,7 +2273,7 @@ static unsigned long kbase_get_unmapped_area(struct file *const filp,
 
 static const struct file_operations kbase_fops = {
 	.owner = THIS_MODULE,
-	MINDONE_FOP_UNSIGNED_OFFSET
+	.fop_flags = FOP_UNSIGNED_OFFSET,
 	.open = kbase_open,
 	.release = kbase_release,
 	.read = kbase_read,
@@ -4858,7 +4660,6 @@ int power_control_init(struct kbase_device *kbdev)
 	 * from completing its initialization.
 	 */
 #if defined(CONFIG_PM_OPP)
-#if (KERNEL_VERSION(6, 0, 0) <= LINUX_VERSION_CODE)
 	if (kbdev->nr_regulators > 0) {
 		err = dev_pm_opp_set_regulators(kbdev->dev,
 			regulator_names);
@@ -4867,25 +4668,12 @@ int power_control_init(struct kbase_device *kbdev)
 			goto regulators_probe_defer;
 		}
 	}
-#elif ((KERNEL_VERSION(4, 10, 0) <= LINUX_VERSION_CODE) && \
-	defined(CONFIG_REGULATOR))
-	if (kbdev->nr_regulators > 0) {
-		kbdev->opp_table = dev_pm_opp_set_regulators(kbdev->dev,
-			regulator_names, BASE_MAX_NR_CLOCKS_REGULATORS);
-
-		if (IS_ERR_OR_NULL(kbdev->opp_table)) {
-			err = PTR_ERR(kbdev->opp_table);
-			goto regulators_probe_defer;
-		}
-	}
-#endif /* (KERNEL_VERSION(4, 10, 0) <= LINUX_VERSION_CODE */
 	err = dev_pm_opp_of_add_table(kbdev->dev);
 	CSTD_UNUSED(err);
 #endif /* CONFIG_PM_OPP */
 	return 0;
 
-#if defined(CONFIG_PM_OPP) &&                                                                      \
-	((KERNEL_VERSION(4, 10, 0) <= LINUX_VERSION_CODE) && defined(CONFIG_REGULATOR))
+#if defined(CONFIG_PM_OPP) && defined(CONFIG_REGULATOR)
 regulators_probe_defer:
 	for (i = 0; i < BASE_MAX_NR_CLOCKS_REGULATORS; i++) {
 		if (kbdev->clocks[i]) {
@@ -4913,14 +4701,8 @@ void power_control_term(struct kbase_device *kbdev)
 
 #if defined(CONFIG_PM_OPP)
 	dev_pm_opp_of_remove_table(kbdev->dev);
-#if (KERNEL_VERSION(6, 0, 0) <= LINUX_VERSION_CODE)
 	if (kbdev->nr_regulators > 0)
 		dev_pm_opp_put_regulators(kbdev->nr_regulators);
-#elif ((KERNEL_VERSION(4, 10, 0) <= LINUX_VERSION_CODE) && \
-	defined(CONFIG_REGULATOR))
-	if (!IS_ERR_OR_NULL(kbdev->opp_table))
-		dev_pm_opp_put_regulators(kbdev->opp_table);
-#endif /* (KERNEL_VERSION(4, 10, 0) <= LINUX_VERSION_CODE */
 #endif /* CONFIG_PM_OPP */
 
 	for (i = 0; i < BASE_MAX_NR_CLOCKS_REGULATORS; i++) {
@@ -5088,12 +4870,8 @@ int kbase_device_debugfs_init(struct kbase_device *kbdev)
 	/* prevent unprivileged use of debug file system
 	 * in old kernel version
 	 */
-#if (KERNEL_VERSION(4, 7, 0) <= LINUX_VERSION_CODE)
 	/* only for newer kernel version debug file system is safe */
 	const mode_t mode = 0644;
-#else
-	const mode_t mode = 0600;
-#endif
 
 	kbdev->mali_debugfs_directory = debugfs_create_dir(kbdev->devname,
 			NULL);
@@ -5143,10 +4921,6 @@ int kbase_device_debugfs_init(struct kbase_device *kbdev)
 	/* fops_* variables created by invocations of macro
 	 * MAKE_QUIRK_ACCESSORS() above.
 	 */
-#if defined(CONFIG_MALI_MTK_GPU_BM_JM)
-	debugfs_create_file("mindone_gpu_bm_init", 0600, kbdev->mali_debugfs_directory, kbdev,
-			&mindone_gpu_bm_init_fops);
-#endif
 	debugfs_create_file("quirks_sc", 0644,
 			kbdev->mali_debugfs_directory, kbdev,
 			&fops_sc_quirks);
@@ -5601,62 +5375,8 @@ int kbase_backend_devfreq_init(struct kbase_device *kbdev)
 #endif
 
 
-/* MINDONE: step-by-step markers in the accelerator bind path (same technique that
- * worked for gpufreq, F651). `mali_kbase_mt6789.mindone_mali_stop=N` - clean reboot
- * BEFORE marker N: 40 bind entry · 41 before kbase_device_init · 42 after kbase_device_init
- * 🔴 emergency_restart, not machine_restart: the latter isn't exported to modules (F431).
- * 🔴 Markers only in PROBE. Returning an error from module_init is fatal on its own (F595, F640).
- */
-int mindone_mali_stop;
-int mindone_mali_noauto;
-int mindone_mali_noirq;
-int mindone_mali_nopwroff;
-int mindone_mali_delay_ms;
-int mindone_mali_log;
-module_param(mindone_mali_log, int, 0644);
-module_param(mindone_mali_delay_ms, int, 0644);
-module_param(mindone_mali_nopwroff, int, 0644);
-module_param(mindone_mali_noirq, int, 0644);
-module_param(mindone_mali_noauto, int, 0644);
-module_param(mindone_mali_stop, int, 0644);
-
-/* MINDONE: skip the first N matching hits (F667) */
-static int mindone_mali_skip;
-module_param(mindone_mali_skip, int, 0644);
-#define MINDONE_MARK_MAX 1024
-static unsigned char mindone_mali_seen[MINDONE_MARK_MAX];
-void mindone_mali_mark(int step)
-{
-	/* 🔴 LOG mode (`mindone_mali_log=1`): the marker logs instead of rebooting.
-	 * The "reboot on marker" probe exhausted itself - it always reports "reached",
-	 * because the instant reboot outruns anything after it. Logging captures the
-	 * whole sequence in ONE boot.
-	 */
-	if (mindone_mali_log) {
-		return;
-	}
-	if (mindone_mali_stop > 0 && step >= mindone_mali_stop) {
-		if (step >= 0 && step < MINDONE_MARK_MAX &&
-		    mindone_mali_seen[step]++ < mindone_mali_skip)
-			return;
-		/* 🔴 Delay BEFORE reboot (`mindone_mali_delay_ms`). Bisecting probe: if the
-		 * death is caused by an ASYNC event, it gets time to happen during the wait,
-		 * turning a clean reboot into a hang instead. Without the delay, the instant
-		 * reboot simply outruns that event.
-		 */
-		if (mindone_mali_delay_ms > 0)
-			mdelay(mindone_mali_delay_ms);
-		/* 🔴 Capture the log RIGHT HERE, not on a timer: a timer-based snapshot misses
-		 * the short window before the failure (F660). This way the snapshot captures
-		 * both the printed markers and the driver's own messages.
-		 */
-		emergency_restart();
-	}
-}
-
 static int kbase_platform_device_probe(struct platform_device *pdev)
 {
-	mindone_mali_mark(40);
 	struct kbase_device *kbdev;
 	int err = 0;
 
@@ -5675,9 +5395,7 @@ static int kbase_platform_device_probe(struct platform_device *pdev)
 	kbdev->dev = &pdev->dev;
 	dev_set_drvdata(kbdev->dev, kbdev);
 
-	mindone_mali_mark(41);
 	err = kbase_device_init(kbdev);
-	mindone_mali_mark(42);
 
 	if (err) {
 		if (err == -EPROBE_DEFER)
@@ -5695,12 +5413,10 @@ static int kbase_platform_device_probe(struct platform_device *pdev)
 #endif
 
 #if defined(CONFIG_MALI_MTK_GPU_BM_JM)
-		if (mindone_gpu_bm) {
-			err = mtk_bandwith_resource_init(kbdev);
-			if (err)
-				pr_info("@%s: GPU BM init failed (JM)\n", __func__);
-			err = 0;	/* MINDONE-GPUBM: do not fail probe because of the bandwidth monitor */
-		}
+		err = mtk_bandwith_resource_init(kbdev);
+		if (err)
+			pr_info("@%s: GPU BM init failed (JM)\n", __func__);
+		err = 0;
 #endif
 #if defined(CONFIG_MALI_MTK_GPU_BM_CSF)
 		err = mtk_bandwidth_resource_init();

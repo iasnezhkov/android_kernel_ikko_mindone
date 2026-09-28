@@ -34,16 +34,6 @@
 #include "mtk_heap_priv.h"
 #include "mtk_heap.h"
 
-/*
- * Kernel 6.1 mainline dt-bindings/memory/mtk-memory-port.h (kernel6/common61)
- * only carries the upstream larb/port helpers (32 larbs max, id = larb<<5|port)
- * and has no notion of an IOMMU domain field. MediaTek vendor kernels split the
- * id into tab/dom/larb/port and add MTK_M4U_TO_DOM()/MTK_M4U_DOM_NR_MAX, which
- * this driver needs. Ported verbatim (kernel6 header itself left untouched)
- * from the vendor platform tree's header (same path, values kept 1:1):
- *     #define MTK_M4U_DOM_NR_MAX          16
- *     #define MTK_M4U_TO_DOM(id)          (((id) >> 16) & 0xf)
- */
 #ifndef MTK_M4U_TO_DOM
 #define MTK_M4U_DOM_NR_MAX              16
 #define MTK_M4U_TO_DOM(id)              (((id) >> 16) & 0xf)

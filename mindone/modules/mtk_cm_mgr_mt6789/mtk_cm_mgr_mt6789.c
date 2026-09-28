@@ -357,6 +357,8 @@ static int platform_cm_mgr_probe(struct platform_device *pdev)
 		cm_mgr_perfs = devm_kzalloc(&pdev->dev,
 				ret * sizeof(u32),
 				GFP_KERNEL);
+		if (!cm_mgr_perfs)
+			return -ENOMEM;
 
 #if IS_ENABLED(CONFIG_MTK_DVFSRC)
 		for (i = 0; i < ret; i++) {

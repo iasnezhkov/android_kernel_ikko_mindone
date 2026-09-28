@@ -1166,14 +1166,8 @@ bool halHifSwInfoInit(IN struct ADAPTER *prAdapter)
 	prHifInfo->rErrRecoveryCtl.eErrRecovState = ERR_RECOV_STOP_IDLE;
 	prHifInfo->rErrRecoveryCtl.u4Status = 0;
 
-#if (KERNEL_VERSION(4, 15, 0) <= CFG80211_VERSION_CODE)
 	timer_setup(&prHifInfo->rSerTimer, halHwRecoveryTimeout, 0);
 	prHifInfo->rSerTimerData = (unsigned long)prAdapter->prGlueInfo;
-#else
-	init_timer(&prHifInfo->rSerTimer);
-	prHifInfo->rSerTimer.function = halHwRecoveryTimeout;
-	prHifInfo->rSerTimer.data = (unsigned long)prAdapter->prGlueInfo;
-#endif
 	prHifInfo->rSerTimer.expires =
 		jiffies + HIF_SER_TIMEOUT * HZ / MSEC_PER_SEC;
 
@@ -3121,18 +3115,10 @@ void halProcessSoftwareInterrupt(IN struct ADAPTER *prAdapter)
 	else
 		halDefaultProcessSoftwareInterrupt(prAdapter);
 }
-#if KERNEL_VERSION(4, 15, 0) <= LINUX_VERSION_CODE
 void halHwRecoveryTimeout(struct timer_list *timer)
-#else
-void halHwRecoveryTimeout(unsigned long arg)
-#endif
 {
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(4, 15, 0))
 	struct GL_HIF_INFO *prHif = from_timer(prHif, timer, rSerTimer);
 	struct GLUE_INFO *prGlueInfo = (struct GLUE_INFO *)prHif->rSerTimerData;
-#else
-	struct GLUE_INFO *prGlueInfo = (struct GLUE_INFO *)arg;
-#endif
 	struct ADAPTER *prAdapter = NULL;
 	struct GL_HIF_INFO *prHifInfo;
 	struct ERR_RECOVERY_CTRL_T *prErrRecoveryCtrl;

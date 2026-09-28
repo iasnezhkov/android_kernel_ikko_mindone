@@ -80,17 +80,7 @@ int copy_for_updata(struct hyn_ts_data *ts_data,u8 *buf,u32 offset,u16 len)
 		return -1;
 	}
 	pos = offset;
-#if LINUX_VERSION_CODE <= KERNEL_VERSION(4, 14, 0)
-	{
-	mm_segment_t old_fs;
-	old_fs = get_fs();
-	set_fs(KERNEL_DS);
-	ret=vfs_read(fp, pdata, len, &pos);
-	set_fs(old_fs);
-	}
-#else
 	ret = hyn_fs_read(fp,pdata, len,&pos);
-#endif
 	filp_close(fp, NULL);
 	// HYN_INFO("rlen = %d nlen = %d",ret,len);
 	if(ret <= len){
@@ -214,15 +204,7 @@ static int hyn_get_threshold(char *filename,char *match_string,s16 *pstore, u16 
 		return -1;
 	}
 	pos = 0;
-#if LINUX_VERSION_CODE <= KERNEL_VERSION(4, 14, 0)
-	{mm_segment_t old_fs;
-	old_fs = get_fs();
-	set_fs(KERNEL_DS);
-	ret=vfs_read(fp,buf, fsize, &pos);
-	set_fs(old_fs);}
-#else
 	ret = hyn_fs_read(fp,buf,fsize,&pos);
-#endif
 	HYN_INFO("read %s %s.ret:%d.\n",filename,ret==fsize ? "success":"failed",ret);
 	filp_close(fp, NULL);
 
@@ -396,13 +378,6 @@ int fac_test_log_save(char *log_name,struct hyn_ts_data *ts_data,s16 *test_data,
 		return -EIO;
 	}
 
-#if LINUX_VERSION_CODE <= KERNEL_VERSION(4, 14, 0)
-	{mm_segment_t old_fs;
-	old_fs = get_fs(); 
-	set_fs(KERNEL_DS);
-	#undef hyn_fs_write
-	#define hyn_fs_write  vfs_write
-#endif
 	ret = snprintf(w_buf,sizeof(w_buf), test_ret ==0 ? "factory test pass\n":"factory test ng\n");
 	hyn_fs_write(fp, w_buf, ret, &fp->f_pos); 
 	if(test_ret == FAC_GET_DATA_FAIL){
@@ -457,9 +432,6 @@ int fac_test_log_save(char *log_name,struct hyn_ts_data *ts_data,s16 *test_data,
 			test_data += ts_data->hw_info.fw_sensor_txnum;
 		}
 	}
-#if LINUX_VERSION_CODE <= KERNEL_VERSION(4, 14, 0)
-	set_fs(old_fs);}
-#endif
 	filp_close(fp, NULL);
 	}
 #endif

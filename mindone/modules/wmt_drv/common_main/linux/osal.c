@@ -460,13 +460,8 @@ static INT32 osal_thread_sched_retrieve(P_OSAL_THREAD pThread, P_OSAL_THREAD_SCH
 
 	sched->time = sec*1000 + usec/1000;
 	sched->exec = se.sum_exec_runtime;
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 17, 0))
 	sched->runnable = pThread->pThread->stats.wait_sum;
 	sched->iowait = pThread->pThread->stats.iowait_sum;
-#else
-	sched->runnable = se.statistics.wait_sum;
-	sched->iowait = se.statistics.iowait_sum;
-#endif
 
 	return 0;
 #else
@@ -833,13 +828,7 @@ INT32 osal_timer_create(P_OSAL_TIMER pTimer)
 {
 	struct timer_list *timer = &pTimer->timer;
 
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(4, 15, 0))
 	timer_setup(timer, pTimer->timeoutHandler, 0);
-#else
-	init_timer(timer);
-	timer->function = pTimer->timeoutHandler;
-	timer->data = (ULONG)pTimer->timeroutHandlerData;
-#endif
 	return 0;
 }
 
@@ -891,15 +880,21 @@ INT32 _osal_fifo_init(OSAL_FIFO *pFifo, PUINT8 buf, UINT32 size)
 		return -1;
 	}
 	fifo = kzalloc(sizeof(struct kfifo), GFP_ATOMIC);
+	if (!fifo)
+		return -1;
 	if (!buf) {
 		/*fifo's buffer is not ready, we allocate automatically */
 		ret = kfifo_alloc(fifo, size, /*GFP_KERNEL */ GFP_ATOMIC);
+		if (ret < 0) {
+			kfree(fifo);
+			fifo = NULL;
+		}
 	} else {
 		if (is_power_of_2(size)) {
 			kfifo_init(fifo, buf, size);
 			ret = 0;
 		} else {
-			kfifo_free(fifo);
+			kfree(fifo);
 			fifo = NULL;
 			ret = -1;
 		}
@@ -1240,11 +1235,7 @@ INT32 osal_wake_lock_init(P_OSAL_WAKE_LOCK pLock)
 		return -1;
 
 	if (pLock->init_flag == 0) {
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(4, 14, 149))
 		pLock->wake_lock = wakeup_source_register(NULL, pLock->name);
-#else
-		pLock->wake_lock = wakeup_source_register(pLock->name);
-#endif
 		pLock->init_flag = 1;
 	}
 

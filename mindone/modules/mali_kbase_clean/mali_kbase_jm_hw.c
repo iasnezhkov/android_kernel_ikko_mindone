@@ -196,41 +196,11 @@ static u64 select_job_chain(struct kbase_jd_atom *katom)
 	return jc;
 }
 
-static atomic_t mindone_mj_n_hwsubmit = ATOMIC_INIT(0);
-/* F820 follow-up: head+sampling instead of "first 40 and stop" - see
- * mali_kbase_core_linux.c (ioctl dispatcher) for the full rationale.
- */
-#define MINDONE_MJ_HEAD_HWSUBMIT 100
-#define MINDONE_MJ_K_HWSUBMIT 16
-static inline bool mindone_mj_log_hwsubmit(void)
-{
-	long n = atomic_inc_return(&mindone_mj_n_hwsubmit);
-
-	return (n <= MINDONE_MJ_HEAD_HWSUBMIT) || (n % MINDONE_MJ_K_HWSUBMIT == 0);
-}
-
-/* F2062 partitioning switch: skip only the job-start command. */
-static int mindone_skip_go;
-module_param(mindone_skip_go, int, 0644);
-MODULE_PARM_DESC(mindone_skip_go, "1 - do not send the job-start command to the GPU");
-static unsigned long long mindone_go_skipped;
-module_param_named(mindone_go_skipped, mindone_go_skipped, ullong, 0444);
-static int mindone_go_slot_mask;
-module_param(mindone_go_slot_mask, int, 0644);
-MODULE_PARM_DESC(mindone_go_slot_mask, "bits = slots for which start is ALLOWED (0 - disallow all)");
-static unsigned long long mindone_go_allowed;
-module_param_named(mindone_go_allowed, mindone_go_allowed, ullong, 0444);
-static int mindone_go_limit;
-module_param(mindone_go_limit, int, 0644);
 
 void kbase_job_hw_submit(struct kbase_device *kbdev,
 				struct kbase_jd_atom *katom,
 				int js)
 {
-	bool __mj_log = mindone_mj_log_hwsubmit();
-
-	if (__mj_log)
-		;
 	struct kbase_context *kctx;
 	u32 cfg;
 	u64 const jc_head = select_job_chain(katom);
@@ -249,8 +219,6 @@ void kbase_job_hw_submit(struct kbase_device *kbdev,
 	dev_vdbg(kctx->kbdev->dev, "Write JS_HEAD_NEXT 0x%llx for atom %pK\n",
 		jc_head, (void *)katom);
 
-	if (__mj_log)
-		;
 	kbase_reg_write(kbdev, JOB_SLOT_REG(js, JS_HEAD_NEXT_LO),
 						jc_head & 0xFFFFFFFF);
 	kbase_reg_write(kbdev, JOB_SLOT_REG(js, JS_HEAD_NEXT_HI),
@@ -368,31 +336,8 @@ void kbase_job_hw_submit(struct kbase_device *kbdev,
 	trace_sysgraph_gpu(SGR_SUBMIT, kctx->id,
 			kbase_jd_atom_id(kctx, katom), js);
 
-	if (__mj_log)
-		;
-	/* 🔴 SPLIT WITHIN THE HARDWARE WRITE (F2062).
-	 * The chain address and config are ALREADY written above; only the start
-	 * command is skipped here. Criterion declared BEFORE the measurement: device
-	 * survives => job EXECUTION is fatal, not the address/config writes; device
-	 * dies => one of those writes is fatal instead. */
-	/* 🔴 SPLIT BY JOB CLASS. The mask bit matching the slot number ALLOWS start
-	 * for that slot. Slot 0 = fragment, slot 1 = vertex/tiler, slot 2 = compute.
-	 * Criterion declared BEFORE the measurement. */
-	if (mindone_skip_go &&
-	    (!((mindone_go_slot_mask >> js) & 1) ||
-	     (mindone_go_limit && mindone_go_allowed >= mindone_go_limit))) {
-		mindone_go_skipped++;
-		if (mindone_go_skipped <= 3)
-			;
-		return;
-	}
-	mindone_go_allowed++;
-	if (mindone_go_allowed <= 8)
-		;
 	kbase_reg_write(kbdev, JOB_SLOT_REG(js, JS_COMMAND_NEXT),
 						JS_COMMAND_START);
-	if (__mj_log)
-		;
 }
 
 /**

@@ -340,7 +340,7 @@ static void cm_mgr_set_disp_wakeup_status(int display_index, int is_wakeup)
 
 	spin_unlock_irqrestore(&cm_mgr_disp_lock, spinlock_save_flag);
 
-	pr_info("%s, cm_mgr_disp_wakeup_status %d, cm_mgr_blank_status %d\n",
+	pr_debug("%s, cm_mgr_disp_wakeup_status %d, cm_mgr_blank_status %d\n",
 			__func__, cm_mgr_disp_wakeup_status, cm_mgr_blank_status);
 	cm_mgr_notify_sspm_blank_status();
 }
@@ -351,15 +351,15 @@ static int cm_mgr_fb_notifier_callback(struct notifier_block *nb,
 	int *data = (int *)v;
 
 	if (value == MTK_DISP_EVENT_BLANK) {
-		pr_info("%s+\n", __func__);
+		pr_debug("%s+\n", __func__);
 		if (*data == MTK_DISP_BLANK_UNBLANK) {
-			pr_info("#@# %s(%d) SCREEN ON\n", __func__, __LINE__);
+			pr_debug("#@# %s(%d) SCREEN ON\n", __func__, __LINE__);
 			cm_mgr_set_disp_wakeup_status(CM_MGR_MAIN_SCREEN, 1);
 		} else if (*data == MTK_DISP_BLANK_POWERDOWN) {
-			pr_info("#@# %s(%d) SCREEN OFF\n", __func__, __LINE__);
+			pr_debug("#@# %s(%d) SCREEN OFF\n", __func__, __LINE__);
 			cm_mgr_set_disp_wakeup_status(CM_MGR_MAIN_SCREEN, 0);
 		}
-		pr_info("%s-\n", __func__);
+		pr_debug("%s-\n", __func__);
 	}
 
 	return 0;
@@ -371,15 +371,15 @@ static int cm_mgr_fb_sub_notifier_callback(struct notifier_block *nb,
 	int *data = (int *)v;
 
 	if (value == MTK_DISP_EVENT_BLANK) {
-		pr_info("%s+\n", __func__);
+		pr_debug("%s+\n", __func__);
 		if (*data == MTK_DISP_BLANK_UNBLANK) {
-			pr_info("#@# %s(%d) SCREEN ON\n", __func__, __LINE__);
+			pr_debug("#@# %s(%d) SCREEN ON\n", __func__, __LINE__);
 			cm_mgr_set_disp_wakeup_status(CM_MGR_SUB_SCREEN, 1);
 		} else if (*data == MTK_DISP_BLANK_POWERDOWN) {
-			pr_info("#@# %s(%d) SCREEN OFF\n", __func__, __LINE__);
+			pr_debug("#@# %s(%d) SCREEN OFF\n", __func__, __LINE__);
 			cm_mgr_set_disp_wakeup_status(CM_MGR_SUB_SCREEN, 0);
 		}
-		pr_info("%s-\n", __func__);
+		pr_debug("%s-\n", __func__);
 	}
 
 	return 0;

@@ -23,7 +23,7 @@
 #define DVFSRC_PROPERTY_ENABLE
 #define CREATE_TRACE_POINTS
 #include <trace/events/mtk_qos_trace.h>
-#include <linux/of_platform.h>	/* devm_of_platform_populate: 6.12 no longer pulls it in implicitly */
+#include <linux/of_platform.h>
 EXPORT_TRACEPOINT_SYMBOL_GPL(mtk_pm_qos_update_request);
 /* End */
 

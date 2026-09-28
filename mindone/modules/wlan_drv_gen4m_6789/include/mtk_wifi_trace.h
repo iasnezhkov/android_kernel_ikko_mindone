@@ -11,7 +11,6 @@
 #define _TRACE_MTK_WIFI_TRACE_H
 
 #include <linux/tracepoint.h>
-#include <mindone/compat.h>
 
 #define WIFI_LOG_MSG_MAX (512)
 
@@ -25,7 +24,7 @@ TRACE_EVENT(wifi_standalone_log,
 	),
 
 	TP_fast_assign(
-		MINDONE_ASSIGN_STR(msg, str);
+		__assign_str(msg);
 	),
 
 	TP_printk("[wlan]%s", __get_str(msg))

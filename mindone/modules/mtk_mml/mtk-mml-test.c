@@ -269,6 +269,8 @@ static void case_general_submit(struct mml_test *test,
 	}
 
 	fences = kcalloc(run_cnt, sizeof(*fences), GFP_KERNEL);
+	if (!fences)
+		return;
 	for (i = 0; i < run_cnt; i++) {
 		ktime_get_real_ts64((struct timespec64 *)&task.end);
 		timespec64_add_ns((struct timespec64 *)&task.end,

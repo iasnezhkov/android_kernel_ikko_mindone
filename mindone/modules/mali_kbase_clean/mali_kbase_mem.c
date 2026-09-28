@@ -26,7 +26,6 @@
 #include <linux/kernel.h>
 #include <linux/bug.h>
 #include <linux/compat.h>
-#include <linux/version.h>
 #include <linux/log2.h>
 #if IS_ENABLED(CONFIG_OF)
 #include <linux/of_platform.h>
@@ -3486,12 +3485,8 @@ void kbase_jit_debugfs_init(struct kbase_context *kctx)
 	/* prevent unprivileged use of debug file system
          * in old kernel version
          */
-#if (KERNEL_VERSION(4, 7, 0) <= LINUX_VERSION_CODE)
 	/* only for newer kernel version debug file system is safe */
 	const mode_t mode = 0444;
-#else
-	const mode_t mode = 0400;
-#endif
 
 	/* Caller already ensures this, but we keep the pattern for
 	 * maintenance safety.
@@ -4614,11 +4609,7 @@ void kbase_jit_report_update_pressure(struct kbase_context *kctx,
 
 void kbase_unpin_user_buf_page(struct page *page)
 {
-#if KERNEL_VERSION(5, 9, 0) > LINUX_VERSION_CODE
-	put_page(page);
-#else
 	unpin_user_page(page);
-#endif
 }
 
 #if MALI_USE_CSF
@@ -4682,30 +4673,8 @@ int kbase_jd_user_buf_pin_pages(struct kbase_context *kctx,
 
 	write = reg->flags & (KBASE_REG_CPU_WR | KBASE_REG_GPU_WR);
 
-#if KERNEL_VERSION(4, 6, 0) > LINUX_VERSION_CODE
-	pinned_pages = get_user_pages(NULL, mm, address, alloc->imported.user_buf.nr_pages,
-#if KERNEL_VERSION(4, 4, 168) <= LINUX_VERSION_CODE && \
-KERNEL_VERSION(4, 5, 0) > LINUX_VERSION_CODE
-				      write ? FOLL_WRITE : 0, pages, NULL);
-#else
-				      write, 0, pages, NULL);
-#endif
-#elif KERNEL_VERSION(4, 9, 0) > LINUX_VERSION_CODE
-	pinned_pages = get_user_pages_remote(NULL, mm, address, alloc->imported.user_buf.nr_pages,
-					     write, 0, pages, NULL);
-#elif KERNEL_VERSION(4, 10, 0) > LINUX_VERSION_CODE
-	pinned_pages = get_user_pages_remote(NULL, mm, address, alloc->imported.user_buf.nr_pages,
-					     write ? FOLL_WRITE : 0, pages, NULL);
-#elif KERNEL_VERSION(5, 9, 0) > LINUX_VERSION_CODE
-	pinned_pages = get_user_pages_remote(NULL, mm, address, alloc->imported.user_buf.nr_pages,
-					     write ? FOLL_WRITE : 0, pages, NULL, NULL);
-#elif KERNEL_VERSION(6, 4, 0) > LINUX_VERSION_CODE
-	pinned_pages = pin_user_pages_remote(mm, address, alloc->imported.user_buf.nr_pages,
-					     write ? FOLL_WRITE : 0, pages, NULL, NULL);
-#else
 	pinned_pages = pin_user_pages_remote(mm, address, alloc->imported.user_buf.nr_pages,
 					     write ? FOLL_WRITE : 0, pages, NULL);
-#endif
 
 	if (pinned_pages <= 0)
 		return pinned_pages;

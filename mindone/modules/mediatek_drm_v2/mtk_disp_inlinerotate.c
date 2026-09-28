@@ -46,7 +46,7 @@ static void mtk_inlinerotate_addon_config(struct mtk_ddp_comp *comp,
 	if (addon_config)
 		return;
 
-	DDPINFO("%s+ handle:0x%x, comp->regs_pa:0x%x\n",
+	DDPINFO("%s+ handle:%p, comp->regs_pa:0x%llx\n",
 		__func__, handle, comp->regs_pa);
 
 	cmdq_pkt_write(handle, comp->cmdq_base,

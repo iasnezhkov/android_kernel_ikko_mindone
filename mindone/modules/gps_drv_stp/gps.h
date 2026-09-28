@@ -28,7 +28,6 @@
 #define GPS_HW_SUSPEND_SUPPORT
 #endif /* GPS_FWCTL_SUPPORT */
 
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 0, 0)
 struct timeval {
 	long tv_sec;
 	long tv_usec;
@@ -38,7 +37,6 @@ struct timeval {
 	(_tv)->tv_sec = _ns>>32;\
 	(_tv)->tv_usec = (long)(_ns&0xFFFFFFFFUL);\
 }
-#endif
 enum gps_ctrl_status_enum {
 	GPS_CLOSED,
 	GPS_OPENED,

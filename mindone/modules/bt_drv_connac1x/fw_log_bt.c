@@ -5,7 +5,6 @@
 
 #ifdef CONFIG_MTK_CONNSYS_DEDICATED_LOG_PATH
 #include "bt.h"
-#include <linux/version.h>
 #include "connsys_debug_utility.h"
 
 MODULE_LICENSE("Dual BSD/GPL");
@@ -284,15 +283,7 @@ int fw_log_bt_init(void)
 		goto error;
 
 #if CREATE_NODE_DYNAMIC /* mknod replace */
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(6, 4, 0))
 	log_class = class_create(BT_LOG_NODE_NAME);
-#else
-#if LINUX_VERSION_CODE < KERNEL_VERSION(6, 4, 0)
-	log_class = class_create(THIS_MODULE, BT_LOG_NODE_NAME);
-#else	/* class_create dropped the owner arg in 6.4 (F3768) */
-	log_class = class_create(BT_LOG_NODE_NAME);
-#endif
-#endif
 	if (IS_ERR(log_class))
 		goto error;
 

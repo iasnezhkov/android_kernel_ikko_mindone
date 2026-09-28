@@ -622,9 +622,6 @@ static inline int tcpci_report_usb_port_attached(struct tcpc_device *tcpc)
 	/* MTK Only */
 	if (tcpc->pd_inited_flag) {
 		pd_put_cc_attached_event(tcpc, tcpc->typec_attach_new);
-		/* MINDONE-PD-NOREINJECT: real attach delivered via IRQ this cycle --
-		 * tcpc_event_init_work()'s 10s delayed timer must not inject it again.
-		 */
 		tcpc->pd_attach_notified = 1;
 	}
 #endif /* CONFIG_USB_POWER_DLEIVERY */
@@ -636,9 +633,6 @@ static inline int tcpci_report_usb_port_detached(struct tcpc_device *tcpc)
 {
 	TCPC_INFO("usb_port_detached\r\n");
 
-	/* MINDONE-PD-NOREINJECT: new connection cycle -- clear so the next
-	 * real attach is tracked fresh.
-	 */
 	tcpc->pd_attach_notified = 0;
 #if IS_ENABLED(CONFIG_USB_POWER_DELIVERY)
 	/* MTK Only */

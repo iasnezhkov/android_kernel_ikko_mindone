@@ -617,22 +617,13 @@ freeBuf:
 		kalMemFree(pucProcBuf, VIR_MEM_TYPE, PROC_MAX_BUF_SIZE);
 	return i4Ret;
 }
-#if KERNEL_VERSION(5, 6, 0) <= CFG80211_VERSION_CODE
 static const struct proc_ops dbglevel_ops = {
 	.proc_read = procDbgLevelRead,
 	.proc_write = procDbgLevelWrite,
 };
-#else
-static const struct file_operations dbglevel_ops = {
-	.owner = THIS_MODULE,
-	.read = procDbgLevelRead,
-	.write = procDbgLevelWrite,
-};
-#endif
 
 #if WLAN_INCLUDE_PROC
 #if	CFG_SUPPORT_EASY_DEBUG
-#if KERNEL_VERSION(5, 6, 0) <= CFG80211_VERSION_CODE
 static const struct proc_ops efusedump_ops = {
 	.proc_open = procEfuseDumpOpen,
 	.proc_read = seq_read,
@@ -648,27 +639,6 @@ static const struct proc_ops cfg_ops = {
 	.proc_read = procCfgRead,
 	.proc_write = procCfgWrite,
 };
-#else
-static const struct file_operations efusedump_ops = {
-	.owner = THIS_MODULE,
-	.open = procEfuseDumpOpen,
-	.read = seq_read,
-	.llseek = seq_lseek,
-	.release = seq_release,
-};
-
-static const struct file_operations drivercmd_ops = {
-	.owner = THIS_MODULE,
-	.read = procDriverCmdRead,
-	.write = procDriverCmdWrite,
-};
-
-static const struct file_operations cfg_ops = {
-	.owner = THIS_MODULE,
-	.read = procCfgRead,
-	.write = procCfgWrite,
-};
-#endif
 #endif
 #endif
 
@@ -807,18 +777,10 @@ static ssize_t procMCRWrite(struct file *file, const char __user *buffer,
 
 	return u4CopySize;
 }				/* end of procMCRWrite() */
-#if KERNEL_VERSION(5, 6, 0) <= CFG80211_VERSION_CODE
 static const struct proc_ops mcr_ops = {
 	.proc_read = procMCRRead,
 	.proc_write = procMCRWrite,
 };
-#else
-static const struct file_operations mcr_ops = {
-	.owner = THIS_MODULE,
-	.read = procMCRRead,
-	.write = procMCRWrite,
-};
-#endif
 
 #if CFG_SUPPORT_SET_CAM_BY_PROC
 static ssize_t procSetCamCfgWrite(struct file *file, const char __user *buffer,
@@ -903,16 +865,9 @@ freeBuf:
 		kalMemFree(pucProcBuf, VIR_MEM_TYPE, PROC_MAX_BUF_SIZE);
 	return i4Ret;
 }
-#if KERNEL_VERSION(5, 6, 0) <= CFG80211_VERSION_CODE
 static const struct proc_ops proc_set_cam_ops = {
 	.proc_write = procSetCamCfgWrite,
 };
-#else
-static const struct file_operations proc_set_cam_ops = {
-	.owner = THIS_MODULE,
-	.write = procSetCamCfgWrite,
-};
-#endif
 #endif /*CFG_SUPPORT_SET_CAM_BY_PROC */
 
 static ssize_t procPktDelayDbgCfgRead(struct file *filp, char __user *buf,
@@ -1065,18 +1020,10 @@ freeBuf:
 		kalMemFree(pucProcBuf, VIR_MEM_TYPE, PROC_MAX_BUF_SIZE);
 	return i4Ret;
 }
-#if KERNEL_VERSION(5, 6, 0) <= CFG80211_VERSION_CODE
 static const struct proc_ops proc_pkt_delay_dbg_ops = {
 	.proc_read = procPktDelayDbgCfgRead,
 	.proc_write = procPktDelayDbgCfgWrite,
 };
-#else
-static const struct file_operations proc_pkt_delay_dbg_ops = {
-	.owner = THIS_MODULE,
-	.read = procPktDelayDbgCfgRead,
-	.write = procPktDelayDbgCfgWrite,
-};
-#endif
 
 #if CFG_SUPPORT_DEBUG_FS
 static ssize_t procRoamRead(struct file *filp, char __user *buf,
@@ -1166,18 +1113,10 @@ freeBuf:
 		kalMemFree(pucProcBuf, VIR_MEM_TYPE, PROC_MAX_BUF_SIZE);
 	return i4Ret;
 }
-#if KERNEL_VERSION(5, 6, 0) <= CFG80211_VERSION_CODE
 static const struct proc_ops roam_ops = {
 	.proc_read = procRoamRead,
 	.proc_write = procRoamWrite,
 };
-#else
-static const struct file_operations roam_ops = {
-	.owner = THIS_MODULE,
-	.read = procRoamRead,
-	.write = procRoamWrite,
-};
-#endif
 #endif
 
 static ssize_t procCountryRead(struct file *filp, char __user *buf,
@@ -1257,18 +1196,10 @@ freeBuf:
 		kalMemFree(pucProcBuf, VIR_MEM_TYPE, PROC_MAX_BUF_SIZE);
 	return i4Ret;
 }
-#if KERNEL_VERSION(5, 6, 0) <= CFG80211_VERSION_CODE
 static const struct proc_ops country_ops = {
 	.proc_read = procCountryRead,
 	.proc_write = procCountryWrite,
 };
-#else
-static const struct file_operations country_ops = {
-	.owner = THIS_MODULE,
-	.read = procCountryRead,
-	.write = procCountryWrite,
-};
-#endif
 
 static ssize_t procAutoPerfCfgRead(struct file *filp, char __user *buf,
 	size_t count, loff_t *f_pos)
@@ -1374,18 +1305,10 @@ freeBuf:
 		kalMemFree(pucProcBuf, VIR_MEM_TYPE, PROC_MAX_BUF_SIZE);
 	return i4Ret;
 }
-#if KERNEL_VERSION(5, 6, 0) <= CFG80211_VERSION_CODE
 static const struct proc_ops auto_perf_ops = {
 	.proc_read = procAutoPerfCfgRead,
 	.proc_write = procAutoPerfCfgWrite,
 };
-#else
-static const struct file_operations auto_perf_ops = {
-	.owner = THIS_MODULE,
-	.read = procAutoPerfCfgRead,
-	.write = procAutoPerfCfgWrite,
-};
-#endif
 
 #if (CFG_TWT_SMART_STA == 1)
 static ssize_t procTwtSmartRead(struct file *filp, char __user *buf,
@@ -1564,18 +1487,10 @@ static ssize_t procCalResultWrite(struct file *file, const char __user *buffer,
 #endif
 	return 0;
 }
-#if KERNEL_VERSION(5, 6, 0) <= CFG80211_VERSION_CODE
 static const struct proc_ops cal_result_ops = {
 	.proc_read = procCalResultRead,
 	.proc_write = procCalResultWrite,
 };
-#else
-static const struct file_operations cal_result_ops = {
-	.owner = THIS_MODULE,
-	.read = procCalResultRead,
-	.write = procCalResultWrite,
-};
-#endif
 #endif /*(CFG_SUPPORT_PRE_ON_PHY_ACTION == 1)*/
 
 int32_t procInitFs(void)
@@ -1662,7 +1577,6 @@ int32_t procInitFs(void)
 
 int32_t procUninitProcFs(void)
 {
-#if KERNEL_VERSION(3, 9, 0) <= LINUX_VERSION_CODE
 
 #if (CFG_TWT_SMART_STA == 1)
 	remove_proc_subtree(PROC_TWT_SMART, gprProcRoot);
@@ -1690,21 +1604,6 @@ int32_t procUninitProcFs(void)
 	 * incorrect sequence would cause use-after-free error
 	 */
 	remove_proc_subtree(PROC_ROOT_NAME, init_net.proc_net);
-#else
-
-#if (CFG_SUPPORT_PRE_ON_PHY_ACTION == 1)
-	remove_proc_entry(PROC_CAL_RESULT, gprProcRoot);
-#endif /*(CFG_SUPPORT_PRE_ON_PHY_ACTION == 1)*/
-
-	remove_proc_entry(PROC_AUTO_PERF_CFG, gprProcRoot);
-	remove_proc_entry(PROC_DBG_LEVEL_NAME, gprProcRoot);
-
-	/*
-	 * move PROC_ROOT_NAME to last since it's root directory of the others
-	 * incorrect sequence would cause use-after-free error
-	 */
-	remove_proc_entry(PROC_ROOT_NAME, init_net.proc_net);
-#endif
 
 	return 0;
 }
@@ -2158,18 +2057,10 @@ static ssize_t cfgWrite(struct file *filp, const char __user *buf,
 
 	return count;
 }
-#if KERNEL_VERSION(5, 6, 0) <= CFG80211_VERSION_CODE
 static const struct proc_ops fwcfg_ops = {
 	.proc_read = cfgRead,
 	.proc_write = cfgWrite,
 };
-#else
-static const struct file_operations fwcfg_ops = {
-	.owner = THIS_MODULE,
-	.read = cfgRead,
-	.write = cfgWrite,
-};
-#endif
 int32_t cfgRemoveProcEntry(void)
 {
 	remove_proc_entry(PROC_CFG_NAME, gprProcRoot);

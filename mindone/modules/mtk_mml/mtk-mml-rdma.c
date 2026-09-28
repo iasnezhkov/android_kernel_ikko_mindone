@@ -1824,7 +1824,7 @@ static int probe(struct platform_device *pdev)
 	priv->smi_larb_con = priv->comp.larb_base +
 		SMI_LARB_NON_SEC_CON + priv->comp.larb_port * 4;
 	mutex_init(&priv->sram_mutex);
-	mml_log("comp(rdma) %u smi larb con %#lx", priv->comp.id, priv->smi_larb_con);
+	mml_log("comp(rdma) %u smi larb con %#llx", priv->comp.id, priv->smi_larb_con);
 
 	if (of_property_read_u16(dev->of_node, "event_frame_done",
 				 &priv->event_eof))

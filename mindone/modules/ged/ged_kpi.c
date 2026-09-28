@@ -9,7 +9,6 @@
 #include <linux/workqueue.h>
 #include <linux/atomic.h>
 #include <linux/module.h>
-#include <linux/version.h>
 #include <ged_kpi.h>
 #include <ged_base.h>
 #include <ged_hashtable.h>
@@ -246,7 +245,7 @@ int g_target_time_default = GED_KPI_SEC_DIVIDER / GED_KPI_MAX_FPS;
 #define SCREEN_IDLE_PERIOD 500000000
 
 /* static int display_fps = GED_KPI_MAX_FPS; */
-static int target_fps_4_main_head = 60;
+static int __maybe_unused target_fps_4_main_head = 60;
 static long long vsync_period = GED_KPI_SEC_DIVIDER / GED_KPI_MAX_FPS;
 static GED_LOG_BUF_HANDLE ghLogBuf_KPI;
 static struct workqueue_struct *g_psWorkQueue;
@@ -1732,7 +1731,7 @@ static GED_ERROR ged_kpi_timeS(int pid, u64 ullWdnd, int i32FrameID)
 }
 /* ------------------------------------------------------------------- */
 static
-void ged_kpi_pre_fence_sync_cb(struct dma_fence *sFence,
+void __maybe_unused ged_kpi_pre_fence_sync_cb(struct dma_fence *sFence,
 	struct dma_fence_cb *waiter)
 {
 	struct GED_KPI_GPU_TS *psMonitor;

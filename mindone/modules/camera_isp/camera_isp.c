@@ -12,7 +12,6 @@
  ******************************************************************************/
 #include <linux/atomic.h>
 #include <drivers/misc/mediatek/smi/mtk-smi-dbg.h>
-#include <mindone/compat.h>
 #include <linux/cdev.h>
 #include <linux/delay.h>
 #include <linux/device.h>
@@ -6787,7 +6786,7 @@ static int ISP_probe(struct platform_device *pDev)
 		}
 
 		/* Create class register */
-		pIspClass = MINDONE_CLASS_CREATE("ispdrv");
+		pIspClass = class_create("ispdrv");
 		if (IS_ERR(pIspClass)) {
 			Ret = PTR_ERR(pIspClass);
 			LOG_NOTICE("Unable to create class, err = %d\n", Ret);

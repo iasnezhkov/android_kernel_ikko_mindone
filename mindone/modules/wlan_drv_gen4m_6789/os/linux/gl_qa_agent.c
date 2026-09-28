@@ -70,9 +70,7 @@
 #include "gl_ate_agent.h"
 #include "gl_qa_agent.h"
 #include "gl_hook_api.h"
-#if KERNEL_VERSION(3, 8, 0) <= CFG80211_VERSION_CODE
 #include <uapi/linux/nl80211.h>
-#endif
 #if (CONFIG_WLAN_SERVICE == 1)
 #include "agent.h"
 #endif
@@ -2741,7 +2739,10 @@ static int32_t HQA_WriteBulkEEPROM(struct net_device
 
 		Buffer = kmalloc(sizeof(uint8_t) * (EFUSE_BLOCK_SIZE),
 				 GFP_KERNEL);
-		ASSERT(Buffer);
+		if (!Buffer) {
+			i4Ret = -ENOMEM;
+			goto end;
+		}
 		kalMemSet(Buffer, 0, sizeof(uint8_t) * (EFUSE_BLOCK_SIZE));
 
 		kalMemCopy((uint8_t *)Buffer,
@@ -4630,7 +4631,11 @@ static int32_t HQA_MPSSetSeqData(struct net_device
 
 	mps_setting = kmalloc(sizeof(uint32_t) * (u4Len),
 			      GFP_KERNEL);
-	ASSERT(mps_setting);
+	if (!mps_setting) {
+		i4Ret = -ENOMEM;
+		ResponseToQA(HqaCmdFrame, prIwReqData, 2, i4Ret);
+		return i4Ret;
+	}
 
 	memcpy(&u4Band_idx, HqaCmdFrame->Data + 4 * 0, 4);
 	u4Band_idx = ntohl(u4Band_idx);
@@ -4739,7 +4744,11 @@ static int32_t HQA_MPSSetPayloadLength(struct net_device
 
 	mps_setting = kmalloc(sizeof(uint32_t) * (u4Len),
 			      GFP_KERNEL);
-	ASSERT(mps_setting);
+	if (!mps_setting) {
+		i4Ret = -ENOMEM;
+		ResponseToQA(HqaCmdFrame, prIwReqData, 2, i4Ret);
+		return i4Ret;
+	}
 
 	memcpy(&u4Band_idx, HqaCmdFrame->Data + 4 * 0, 4);
 	u4Band_idx = ntohl(u4Band_idx);
@@ -4803,7 +4812,11 @@ static int32_t HQA_MPSSetPacketCount(struct net_device
 
 	mps_setting = kmalloc(sizeof(uint32_t) * (u4Len),
 			      GFP_KERNEL);
-	ASSERT(mps_setting);
+	if (!mps_setting) {
+		i4Ret = -ENOMEM;
+		ResponseToQA(HqaCmdFrame, prIwReqData, 2, i4Ret);
+		return i4Ret;
+	}
 
 	memcpy(&u4Band_idx, HqaCmdFrame->Data + 4 * 0, 4);
 	u4Band_idx = ntohl(u4Band_idx);
@@ -4867,7 +4880,11 @@ static int32_t HQA_MPSSetPowerGain(struct net_device
 
 	mps_setting = kmalloc(sizeof(uint32_t) * (u4Len),
 			      GFP_KERNEL);
-	ASSERT(mps_setting);
+	if (!mps_setting) {
+		i4Ret = -ENOMEM;
+		ResponseToQA(HqaCmdFrame, prIwReqData, 2, i4Ret);
+		return i4Ret;
+	}
 
 	memcpy(&u4Band_idx, HqaCmdFrame->Data + 4 * 0, 4);
 	u4Band_idx = ntohl(u4Band_idx);
@@ -5458,7 +5475,11 @@ static int32_t HQA_MPSSetNss(struct net_device *prNetDev,
 
 	mps_setting = kmalloc(sizeof(uint32_t) * (u4Len),
 			      GFP_KERNEL);
-	ASSERT(mps_setting);
+	if (!mps_setting) {
+		i4Ret = -ENOMEM;
+		ResponseToQA(HqaCmdFrame, prIwReqData, 2, i4Ret);
+		return i4Ret;
+	}
 
 	memcpy(&u4Band_idx, HqaCmdFrame->Data + 4 * 0, 4);
 	u4Band_idx = ntohl(u4Band_idx);
@@ -5521,7 +5542,11 @@ static int32_t HQA_MPSSetPerpacketBW(
 
 	mps_setting = kmalloc(sizeof(uint32_t) * (u4Len),
 			      GFP_KERNEL);
-	ASSERT(mps_setting);
+	if (!mps_setting) {
+		i4Ret = -ENOMEM;
+		ResponseToQA(HqaCmdFrame, prIwReqData, 2, i4Ret);
+		return i4Ret;
+	}
 
 	memcpy(&u4Band_idx, HqaCmdFrame->Data + 4 * 0, 4);
 	u4Band_idx = ntohl(u4Band_idx);
@@ -7604,18 +7629,34 @@ static int32_t HQA_MUSetMUTable(struct net_device *prNetDev,
 	uint16_t u2Len = 0;
 	uint32_t u4SuMu = 0;
 
-	prTable = kmalloc_array(u2Len, sizeof(uint8_t), GFP_KERNEL);
+	const uint32_t u4TableSize = NUM_MUT_NR_NUM * NUM_MUT_FEC *
+				     NUM_MUT_MCS * NUM_MUT_INDEX;
 
 	DBGLOG(RFTEST, INFO, "QA_AGENT HQA_MUSetMUTable\n");
 
-	u2Len = ntohl(HqaCmdFrame->Length) - sizeof(u4SuMu);
+	u2Len = ntohs(HqaCmdFrame->Length);
+	if (u2Len < sizeof(u4SuMu) ||
+	    u2Len - sizeof(u4SuMu) > sizeof(HqaCmdFrame->Data) - 4) {
+		i4Ret = -EINVAL;
+		ResponseToQA(HqaCmdFrame, prIwReqData, 2, i4Ret);
+		return i4Ret;
+	}
+	u2Len -= sizeof(u4SuMu);
+
+	prTable = kzalloc(u4TableSize, GFP_KERNEL);
+	if (!prTable) {
+		i4Ret = -ENOMEM;
+		ResponseToQA(HqaCmdFrame, prIwReqData, 2, i4Ret);
+		return i4Ret;
+	}
 
 	memcpy(&u4SuMu, HqaCmdFrame->Data + 4 * 0, 4);
 	u4SuMu = ntohl(u4SuMu);
 
-	memcpy(prTable, HqaCmdFrame->Data + 4, u2Len);
+	memcpy(prTable, HqaCmdFrame->Data + 4, min_t(uint32_t, u2Len, u4TableSize));
 
 	i4Ret = Set_MUSetMUTable(prNetDev, prTable);
+	kfree(prTable);
 
 	ResponseToQA(HqaCmdFrame, prIwReqData, 2, i4Ret);
 

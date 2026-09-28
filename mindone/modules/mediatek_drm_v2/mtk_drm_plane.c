@@ -5,13 +5,6 @@
 
 #include <drm/drm_framebuffer.h>
 
-/* MINDONE (F2409): the plane was registered with format_modifiers = NULL, so DRM core
- * substituted { LINEAR, INVALID } and rejected every commit carrying a MediaTek modifier
- * (observed: 0xa00000000000001 with XB24) with -EINVAL, killing all output right after the
- * boot animation ended. This driver treats fb->modifier as a private bitmask
- * (enum MTK_FMT_MODIFIER: NONE=0, PREMULTIPLIED=1, SECURE=2) - see mtk_disp_ovl.c.
- * Implement format_mod_supported so DRM core asks us instead of matching a list.
- */
 #include <linux/moduleparam.h>
 int mindone_accept_modifiers = 1;
 module_param(mindone_accept_modifiers, int, 0644);
@@ -22,10 +15,6 @@ unsigned long mindone_mod_rejected;
 module_param(mindone_mod_rejected, ulong, 0444);
 
 
-/* MINDONE (F2381): the RGB332 gate below skips EVERY plane update on this device
- * (mtk_plane_atomic_update ran 1550 times per boot, disp_ovl0 fired once).
- * Knob to disable the skip for an experiment; default 0 keeps stock behaviour.
- */
 #include <linux/moduleparam.h>
 int mindone_no_rgb332_skip;
 module_param(mindone_no_rgb332_skip, int, 0644);
@@ -320,9 +309,6 @@ static int mtk_plane_atomic_get_property(struct drm_plane *plane,
 	return -EINVAL;
 }
 
-/* MINDONE (F2409): accept LINEAR plus any modifier whose only significant bits are the
- * driver's own MTK_FMT_* flags. Rejecting everything else keeps the check honest.
- */
 static bool mtk_plane_format_mod_supported(struct drm_plane *plane,
 					   uint32_t format, uint64_t modifier)
 {
@@ -342,7 +328,7 @@ static bool mtk_plane_format_mod_supported(struct drm_plane *plane,
 	if ((modifier & ~known & 0x00ffffffffffffffULL) == 0) {
 		mindone_mod_accepted++;
 		if ((mindone_mod_accepted & 0xff) == 1)
-			pr_notice("MINDONE-MOD: accepted fmt=0x%08x modifier=0x%llx (n=%lu)\n",
+			pr_debug("MINDONE-MOD: accepted fmt=0x%08x modifier=0x%llx (n=%lu)\n",
 				  format, (unsigned long long)modifier,
 				  mindone_mod_accepted);
 		return true;
@@ -370,13 +356,6 @@ static const struct drm_plane_funcs mtk_plane_funcs = {
 static int mtk_plane_atomic_check(struct drm_plane *plane,
 				  struct drm_atomic_state *state)
 {
-	/*
-	 * drm_plane_helper_funcs.atomic_check signature changed upstream:
-	 * 2nd param is now the whole atomic state, not just this planes new
-	 * state (real, documented DRM atomic API change, ~5.19-6.x). Recover
-	 * the new plane state via drm_atomic_get_new_plane_state() -- same
-	 * real object the old \"state\" param pointed at.
-	 */
 	struct drm_plane_state *new_state = drm_atomic_get_new_plane_state(state, plane);
 	struct drm_framebuffer *fb = new_state->fb;
 	struct drm_crtc_state *crtc_state;
@@ -597,7 +576,7 @@ static void mtk_plane_atomic_update(struct drm_plane *plane,
 	DDPINFO("%s:%d en%d,pitch%d,fmt:%p4cc\n",
 		__func__, __LINE__, (unsigned int)state->pending.enable,
 		state->pending.pitch, &state->pending.format);
-	DDPINFO("addr:0x%lx,x%d,y%d,width%d,height%d\n",
+	DDPINFO("addr:0x%llx,x%d,y%d,width%d,height%d\n",
 		state->pending.addr, state->pending.dst_x,
 		state->pending.dst_y, state->pending.width,
 		state->pending.height);
@@ -676,14 +655,6 @@ static void mtk_plane_atomic_disable(struct drm_plane *plane,
 	MINDONE_PR("MINDONE-AC: plane-atomic-disable end\n");
 }
 
-/* MINDONE F2920 - ROOT CAUSE OF UI HANGS. On kernel 6.1, drm_atomic_helper_prepare_planes()
- * calls drm_gem_plane_helper_prepare_fb() itself when the driver has no prepare_fb, and that
- * returns -EINVAL if the fb has no GEM object (drm_gem_fb_get_obj() == NULL). MTK's C8 "dim"
- * layer is normally created without GEM, so every dimmed scene (panel "share", dialogs) gets
- * its commit rejected -> HWC drops the fb -> DRM tears down planes from kworker with
- * LYE_IDX=0 -> fences hang -> Fence::waitForever. 5.10 only called prepare_fb if set, no
- * fallback; we restore that semantics: MTK syncs via explicit fences (mtk_sync), not
- * implicit dma_resv fences. Repro details: MINDONE-MODULES-NOTES-0901. */
 static int mtk_plane_prepare_fb(struct drm_plane *plane,
 				struct drm_plane_state *new_state)
 {

@@ -225,7 +225,7 @@ static int mtk_wdt_ping(struct watchdog_device *wdt_dev)
 	void __iomem *wdt_base = mtk_wdt->wdt_base;
 
 	iowrite32(WDT_RST_RELOAD, wdt_base + WDT_RST);
-	pr_debug("[wdtk] kick watchdog\n");	/* 4/min forever: not for the pstore ring (LOG-REVIEW-1309) */
+	pr_debug("[wdtk] kick watchdog\n");
 
 	return 0;
 }

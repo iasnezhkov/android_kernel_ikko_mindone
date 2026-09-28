@@ -13,7 +13,6 @@
 
 #include <linux/cdev.h>
 #include <drivers/misc/mediatek/smi/mtk-smi-larb.h>
-#include <mindone/compat.h>
 #include <linux/device.h>
 #include <linux/of_platform.h>
 #include <linux/platform_device.h>
@@ -27,6 +26,7 @@
 #include <linux/proc_fs.h>
 #include <linux/seq_file.h>
 #include <linux/suspend.h>
+#include <linux/of.h>
 
 #include "camera_mem.h"
 #include "mtk_heap.h"
@@ -384,7 +384,7 @@ static void dumpIonBufferList(struct ION_BUFFER_LIST *ion_buf_list,
 		second = entry->timestamp;
 		nano_second = do_div(second, 1000000000);
 
-		LOG_NOTICE("%3d/%3d:memID(%3d);P:0x%lx;S:0x%zx;RC(%d);user(%s);T(%llu.%llu)\n",
+		LOG_NOTICE("%3d/%3d:memID(%3d);P:0x%llx;S:0x%zx;RC(%d);user(%s);T(%llu.%llu)\n",
 			i, list_length, entry->memID, entry->dmaAddr, entry->dmaBuf->size,
 			entry->refCnt, entry->username, second, nano_second);
 		i++;
@@ -423,7 +423,7 @@ static void dumpAllBufferList(void)
 
 			total_size += entry->dmaBuf->size;
 
-			LOG_NOTICE("#%03d   %3d   0x%09lx  0x%07zx     %2d   %-32s %llu.%llu\n",
+			LOG_NOTICE("#%03d   %3d   0x%09llx  0x%07zx     %2d   %-32s %llu.%llu\n",
 				i,
 				entry->memID,
 				entry->dmaAddr, entry->dmaBuf->size,
@@ -613,7 +613,7 @@ static long cam_mem_ioctl(struct file *pFile, unsigned int Cmd, unsigned long Pa
 
 				if (unlikely((found_dmaPa != dmaPa) && (found_dmaPa != 0))) {
 					LOG_NOTICE(
-					"memID(%d)P(0x%lx)S(0x%x): 1 fd with multi iova:\n",
+					"memID(%d)P(0x%llx)S(0x%zx): 1 fd with multi iova:\n",
 						IonNode.memID, dmaPa, mmu.dmaBuf->size);
 					mutex_lock(&cam_mem_ion_mutex[bucketID]);
 					dumpIonBufferList(&g_ion_buf_list[bucketID], 100, true);
@@ -724,7 +724,7 @@ static long cam_mem_ioctl(struct file *pFile, unsigned int Cmd, unsigned long Pa
 			mutex_unlock(&cam_mem_ion_mutex[bucketID]);
 
 			if (unlikely(!foundFD)) {
-				LOG_NOTICE("Warning: unmap: memID(%d); PA(0x%lx);"
+				LOG_NOTICE("Warning: unmap: memID(%d); PA(0x%llx);"
 					" (%s) not found.\n",
 					IonNode.memID, IonNode.dma_pa,
 					IonNode.username);
@@ -805,7 +805,7 @@ static long cam_mem_ioctl(struct file *pFile, unsigned int Cmd, unsigned long Pa
 				LOG_NOTICE("GET_PA: never mapped for memID(%d),name(%s)\n",
 					IonNode.memID, IonNode.username);
 			} else
-				LOG_NOTICE("GET_PA: memID(%d) get pa(0x%lx), name(%s)\n",
+				LOG_NOTICE("GET_PA: memID(%d) get pa(0x%llx), name(%s)\n",
 					IonNode.memID, IonNode.dma_pa, IonNode.username);
 
 			mutex_unlock(&cam_mem_ion_mutex[bucketID]);
@@ -1037,7 +1037,7 @@ static int cam_mem_buf_list_read(struct seq_file *m, void *v)
 
 			total_size += entry->dmaBuf->size;
 
-			seq_printf(m, "#%03d   %3d   0x%09lx  0x%07zx     %2d   %-32s %llu.%llu\n",
+			seq_printf(m, "#%03d   %3d   0x%09llx  0x%07zx     %2d   %-32s %llu.%llu\n",
 				i,
 				entry->memID,
 				entry->dmaAddr, entry->dmaBuf->size,
@@ -1106,7 +1106,7 @@ static int cam_mem_probe(struct platform_device *pDev)
 			pDev->dev.of_node->name, bit_mask_val);
 
 	/* Create class register */
-	pCamMemClass = MINDONE_CLASS_CREATE("CamMemDrv");
+	pCamMemClass = class_create("CamMemDrv");
 	if (IS_ERR(pCamMemClass)) {
 		Ret = PTR_ERR(pCamMemClass);
 		LOG_NOTICE("Unable to create class, err = %d\n", Ret);
@@ -1221,7 +1221,7 @@ static int cam_mem_pm_event_suspend(void)
 		spin_unlock(&(CamMemInfo.SpinLock_Larb));
 
 		if (CamMemInfo.UserCount != 0) {
-			LOG_INF("X. UserCount=%d,Cnt:%d,devct:%d\n",
+			LOG_DBG("X. UserCount=%d,Cnt:%d,devct:%d\n",
 				CamMemInfo.UserCount,
 				G_u4EnableLarbCount,
 				atomic_read(&G_u4DevNodeCt));
@@ -1264,7 +1264,7 @@ static void cam_mem_pm_event_resume(void)
 
 	CamMem_EnableLarb(true);
 
-	LOG_INF("EnableLarbCount:%d,devct:%d\n",
+	LOG_DBG("EnableLarbCount:%d,devct:%d\n",
 		G_u4EnableLarbCount,
 		atomic_read(&G_u4DevNodeCt));
 }

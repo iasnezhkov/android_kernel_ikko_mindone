@@ -65,20 +65,10 @@ static void kbase_jd_debugfs_fence_info(struct kbase_jd_atom *atom,
 		struct kbase_fence_cb *cb;
 
 		if (atom->dma_fence.fence) {
-#if (KERNEL_VERSION(4, 10, 0) > LINUX_VERSION_CODE)
-			struct fence *fence = atom->dma_fence.fence;
-#else
 			struct dma_fence *fence = atom->dma_fence.fence;
-#endif
 
 			seq_printf(sfile,
-#if (KERNEL_VERSION(4, 8, 0) > LINUX_VERSION_CODE)
-				   "Sd(%u#%u: %s) ",
-#elif (KERNEL_VERSION(5, 1, 0) > LINUX_VERSION_CODE)
-				   "Sd(%llu#%u: %s) ",
-#else
 				   "Sd(%llu#%llu: %s) ",
-#endif
 				   fence->context, fence->seqno,
 				   dma_fence_is_signaled(fence) ? "signaled" :
 								  "active");
@@ -86,20 +76,10 @@ static void kbase_jd_debugfs_fence_info(struct kbase_jd_atom *atom,
 
 		list_for_each_entry(cb, &atom->dma_fence.callbacks,
 				    node) {
-#if (KERNEL_VERSION(4, 10, 0) > LINUX_VERSION_CODE)
-			struct fence *fence = cb->fence;
-#else
 			struct dma_fence *fence = cb->fence;
-#endif
 
 			seq_printf(sfile,
-#if (KERNEL_VERSION(4, 8, 0) > LINUX_VERSION_CODE)
-				   "Wd(%u#%u: %s) ",
-#elif (KERNEL_VERSION(5, 1, 0) > LINUX_VERSION_CODE)
-				   "Wd(%llu#%u: %s) ",
-#else
 				   "Wd(%llu#%llu: %s) ",
-#endif
 				   fence->context, fence->seqno,
 				   dma_fence_is_signaled(fence) ? "signaled" :
 								  "active");
@@ -230,11 +210,7 @@ static const struct file_operations kbasep_jd_debugfs_atoms_fops = {
 
 void kbasep_jd_debugfs_ctx_init(struct kbase_context *kctx)
 {
-#if (KERNEL_VERSION(4, 7, 0) <= LINUX_VERSION_CODE)
 	const mode_t mode = S_IRUGO;
-#else
-	const mode_t mode = S_IRUSR;
-#endif
 
 	/* Caller already ensures this, but we keep the pattern for
 	 * maintenance safety.

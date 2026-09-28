@@ -3,7 +3,6 @@
  * Copyright (c) 2021 MediaTek Inc.
  */
 #include <linux/io.h>
-#include <mindone/compat.h>
 #include <linux/mm.h>
 #include <linux/slab.h>
 #include <linux/cpumask.h>
@@ -123,7 +122,7 @@ static int init_capacity_table(void)
 			for (k = cap; k > next_cap; k--) {
 				pd_info->util_opp[k] = j;
 				pd_info->util_freq[k] =
-					MINDONE_EM_TABLE(pd)[pd->nr_perf_states - j - 1].frequency;
+					em_perf_state_from_pd(pd)[pd->nr_perf_states - j - 1].frequency;
 			}
 
 			count += 1;
@@ -141,11 +140,11 @@ static int init_capacity_table(void)
 
 		for_each_cpu(j, &pd_info->cpus) {
 			if (per_cpu(cpu_scale, j) != pd_info->caps[0]) {
-				pr_info("capacity err: cpu=%d, cpu_scale=%d, pd_info_cap=%d\n",
+				pr_info("capacity err: cpu=%d, cpu_scale=%lu, pd_info_cap=%lu\n",
 					j, per_cpu(cpu_scale, j), pd_info->caps[0]);
 				per_cpu(cpu_scale, j) = pd_info->caps[0];
 			} else {
-				pr_info("capacity match: cpu=%d, cpu_scale=%d, pd_info_cap=%d\n",
+				pr_info("capacity match: cpu=%d, cpu_scale=%lu, pd_info_cap=%lu\n",
 					j, per_cpu(cpu_scale, j), pd_info->caps[0]);
 			}
 		}
@@ -244,7 +243,7 @@ static int pd_capacity_tbl_show(struct seq_file *m, void *v)
 		seq_printf(m, "cpus: %*pbl\n", cpumask_pr_args(&pd_info->cpus));
 		seq_printf(m, "nr_caps: %d\n", pd_info->nr_caps);
 		for (j = 0; j < pd_info->nr_caps; j++)
-			seq_printf(m, "%d: %lu, %lu\n", j, pd_info->caps[j],
+			seq_printf(m, "%d: %lu, %u\n", j, pd_info->caps[j],
 					pd_info->util_freq[pd_info->caps[j]]);
 	}
 

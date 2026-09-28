@@ -5,7 +5,6 @@
  */
 
 #include <linux/module.h>
-#include <mindone/compat.h>
 #include <linux/stat.h>
 #include <linux/init.h>
 #include <linux/ctype.h>
@@ -911,7 +910,7 @@ static void __exit charger_class_exit(void)
 
 static int __init charger_class_init(void)
 {
-	charger_class = MINDONE_CLASS_CREATE("switching_charger");
+	charger_class = class_create("switching_charger");
 	if (IS_ERR(charger_class)) {
 		pr_notice("Unable to create charger class; errno = %ld\n",
 			PTR_ERR(charger_class));

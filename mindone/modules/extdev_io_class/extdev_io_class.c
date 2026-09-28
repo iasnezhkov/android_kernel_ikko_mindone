@@ -4,7 +4,6 @@
  */
 
 #include <linux/device.h>
-#include <mindone/compat.h>
 #include <linux/init.h>
 #include <linux/kernel.h>
 #include <linux/module.h>
@@ -70,15 +69,15 @@ static int extdev_io_read(struct extdev_io_device *extdev, char *buf)
 	if (ret < 0)
 		return ret;
 	data = extdev->data_buffer;
-	cnt = snprintf(buf + cnt, 256, "0x");
+	cnt = scnprintf(buf + cnt, PAGE_SIZE - cnt, "0x");
 	if (cnt >= 256)
 		goto err;
 	for (i = 0; i < extdev->size; i++) {
-		cnt += snprintf(buf + cnt, 256, "%02x,", *(data + i));
+		cnt += scnprintf(buf + cnt, PAGE_SIZE - cnt, "%02x,", *(data + i));
 		if (cnt >= 256)
 			goto err;
 	}
-	cnt += snprintf(buf + cnt, 256, "\n");
+	cnt += scnprintf(buf + cnt, PAGE_SIZE - cnt, "\n");
 	if (cnt >= 256)
 		goto err;
 	return ret;
@@ -336,9 +335,9 @@ static const struct attribute_group *extdev_io_attr_groups[] = {
 static int __init extdev_io_class_init(void)
 {
 	pr_info("%s\n", __func__);
-	extdev_io_class = MINDONE_CLASS_CREATE("extdev_io");
+	extdev_io_class = class_create("extdev_io");
 	if (IS_ERR(extdev_io_class)) {
-		pr_err("Unable to create extdev_io class(%d)\n", PTR_ERR(extdev_io_class));
+		pr_err("Unable to create extdev_io class(%ld)\n", PTR_ERR(extdev_io_class));
 		return PTR_ERR(extdev_io_class);
 	}
 

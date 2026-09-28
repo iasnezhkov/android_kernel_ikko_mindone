@@ -87,6 +87,7 @@ static int check_codec_id(struct venc_vcu_ipi_msg_common *msg, unsigned int fmt)
 		codec_id = VENC_H263;
 		break;
 	case V4L2_PIX_FMT_H265:
+	case V4L2_PIX_FMT_HEVC:
 		codec_id = VENC_H265;
 		break;
 	case V4L2_PIX_FMT_HEIF:

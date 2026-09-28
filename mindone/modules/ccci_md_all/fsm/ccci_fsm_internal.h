@@ -254,14 +254,6 @@ struct ccci_fsm_event {
 	struct list_head entry;
 	enum CCCI_FSM_EVENT event_id;
 	unsigned int length;
-	/* MINDONE: kmalloc(sizeof(*event)+length) + memcpy(event->data, data, length)
-	 * are both function-local (fsm_append_event()), but without __counted_by() the
-	 * compiler's dynamic object-size tracking for this flexible array member falls
-	 * back to its declared size (0), and CONFIG_FORTIFY_SOURCE's runtime check then
-	 * flags every legitimate copy as "field-spanning write" -- seen once per boot at
-	 * the MD_INIT_CHK_ID handshake (length 240). __counted_by(length) gives the
-	 * checker the real bound (length is set right before any access), no behavior
-	 * change, no layout change. */
 	unsigned char data[] __counted_by(length);
 };
 

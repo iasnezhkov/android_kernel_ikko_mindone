@@ -26,7 +26,6 @@
 #include <linux/uaccess.h>
 #include <asm-generic/ioctl.h>
 #include <linux/sched.h>
-#include <linux/version.h>
 
 #ifdef CONFIG_COMPAT
 #include <linux/compat.h>
@@ -89,7 +88,7 @@ EXPORT_SYMBOL(tee_unmap_cached_shm);
 static char *_tee_supp_app_name = "teed";
 
 /* Store the class misc reference */
-static struct class *misc_class;
+static const struct class *misc_class;
 
 static int device_match(struct device *device, const void *devname)
 {

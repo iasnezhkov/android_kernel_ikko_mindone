@@ -25,7 +25,6 @@
  */
 /* #define DEBUG */
 #include <linux/device.h>
-#include <mindone/compat-virtio.h>
 #include <linux/err.h>
 #include <linux/kernel.h>
 #include <linux/module.h>
@@ -55,22 +54,6 @@
 /* 1 is kick only */
 /* 2 is kick + chk */
 #define TRUSTY_TASK_DEFAULT_BIND_CPU 1
-
-/* Binds Trusty worker threads to cores and changes their priority. The default value
- * matches the previous behaviour (1 = bind kick threads), so nothing changes on 6.1.
- *
- * MINDONE: why this parameter exists (07.09). On 6.12 the boot hangs INSIDE this
- * routine: markers show that `set_cpus_allowed_ptr` and `sched_setscheduler` return,
- * but `set_user_nice` does not for the very first kick thread (F3873). By this point
- * the thread is already bound to the big cores 6-7, and `set_user_nice` takes that
- * core's run-queue lock. If the thread has meanwhile gone into SMC in the secure world
- * and not returned, the lock is never released -- which matches the earlier finding
- * that the root cause is in SMC itself (F3745). The parameter lets this be checked
- * with ONE flash, without touching 6.1 behaviour.
- */
-static int mindone_task_bind = TRUSTY_TASK_DEFAULT_BIND_CPU;
-module_param(mindone_task_bind, int, 0644);
-MODULE_PARM_DESC(mindone_task_bind, "0=do not bind Trusty worker threads to cores and do not change priority");
 
 /* 100 is nice -20 */
 /* 120 is nice 0 as default*/
@@ -185,16 +168,8 @@ static void trusty_task_adjust_pri_cpu(struct trusty_ctx *tctx,
 			if (!task_info->fd[task_cnt])
 				continue;
 
-			/* MINDONE-GZV markers: on 07.09 the 6.12 boot hangs INSIDE this function --
-			 * the last log ring line is "task[0][0]cmask=6-7", then silence and the
-			 * watchdog fires after 45 s. The three calls below run back to back and all
-			 * three can fail to return, so each is bracketed with its own marker: without
-			 * this the next run would again say only "it hung somewhere here" (F3869).
-			 */
 			if (need_bindcpu) {
-				dev_info(tctx->dev, "MINDONE-GZV: >setaff t[%d][%d]\n", task_id, task_cnt);
 				set_cpus_allowed_ptr(task_info->fd[task_cnt], &task_cmask);
-				dev_info(tctx->dev, "MINDONE-GZV: <setaff t[%d][%d]\n", task_id, task_cnt);
 				dev_info(tctx->dev, "%s task[%d][%d]cmask=%*pbl\n", __func__,
 					task_id, task_cnt, cpumask_pr_args(&task_cmask));
 			}
@@ -202,14 +177,10 @@ static void trusty_task_adjust_pri_cpu(struct trusty_ctx *tctx,
 			if ((DEFAULT_PRIO + MAX_NICE) >= pri[task_id] &&
 				(DEFAULT_PRIO + MIN_NICE) <= pri[task_id]) {
 				param.sched_priority = 0;
-				dev_info(tctx->dev, "MINDONE-GZV: >setsched t[%d][%d]\n", task_id, task_cnt);
 				sched_setscheduler(task_info->fd[task_cnt],
 						SCHED_NORMAL, &param);
-				dev_info(tctx->dev, "MINDONE-GZV: <setsched t[%d][%d]\n", task_id, task_cnt);
-				dev_info(tctx->dev, "MINDONE-GZV: >nice t[%d][%d]\n", task_id, task_cnt);
 				set_user_nice(task_info->fd[task_cnt],
 						PRIO_TO_NICE(pri[task_id]));
-				dev_info(tctx->dev, "MINDONE-GZV: <nice t[%d][%d]\n", task_id, task_cnt);
 			} else if (pri[task_id] < (MAX_RT_PRIO - 1)) {
 #if TRUSTY_TASK_SUPPORT_RT
 				param.sched_priority = MAX_RT_PRIO - 1 - pri[task_id];
@@ -545,13 +516,16 @@ err_new_virtqueue:
 }
 
 
-static int trusty_virtio_find_vqs(MINDONE_FIND_VQS_PARAMS)
+static int trusty_virtio_find_vqs(struct virtio_device *vdev, unsigned int nvqs,
+				  struct virtqueue *vqs[],
+				  struct virtqueue_info vqs_info[],
+				  struct irq_affinity *desc)
 {
 	uint i;
 	int ret;
 
 	for (i = 0; i < nvqs; i++) {
-		vqs[i] = _find_vq(vdev, i, MINDONE_VQ_CALLBACK(i), MINDONE_VQ_NAME(i));
+		vqs[i] = _find_vq(vdev, i, (vqs_info[i].callback), (vqs_info[i].name));
 		if (IS_ERR(vqs[i])) {
 			ret = PTR_ERR(vqs[i]);
 			_del_vqs(vdev);
@@ -1122,9 +1096,8 @@ static int trusty_virtio_probe(struct platform_device *pdev)
  * 2 is kick + chk
  * default is 1
  */
-	trusty_task_default_bind(tctx, mindone_task_bind);
+	trusty_task_default_bind(tctx, TRUSTY_TASK_DEFAULT_BIND_CPU);
 
-	dev_info(&pdev->dev, "MINDONE-GZV: bind done\n");
 	dev_info(&pdev->dev, "initializing done\n");
 	return 0;
 

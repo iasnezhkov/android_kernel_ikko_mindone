@@ -1,15 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0
-/*
- * sileadfp.c — Gigadevice/Silead Fingerprint driver for GSL6xxx/GSL7xxx/GSL8xxx.
- * Reconstructed from disassembly of the prebuilt sileadfp.ko (vermagic
- * 5.10.233-android12-5.10-android12-9-gb84438489451; shipped-binary author
- * Bill Yu <billyu@silead.com>) via llvm-readelf/-nm/-objdump/-objcopy with
- * relocations resolved. Full RE method, fidelity notes, and the MINDONE
- * insert rationale: MINDONE-MODULES-NOTES-0901, re510-modules.
- */
 
 #include <linux/cdev.h>
-#include <linux/version.h>
 #include <linux/delay.h>
 #include <linux/device.h>
 #include <linux/fs.h>
@@ -49,60 +40,29 @@
 #define SILFP_WQ_NAME		"silfp_wq"
 #define SILFP_DRV_VERSION	"v0.3.8"
 
-#define SILFP_CHIP_ID_MASK	0x6193U		/* (id >> 16), confirmed literal */
+#define SILFP_CHIP_ID_MASK	0x6193U
 
-/* ioctl magic confirmed exact ('s' == 0x73) from `and w9,w1,#0xff00;
- * cmp w9,#0x7300` in silfp_ioctl(). Individual command numbers below are
- * the confirmed *operations* (see file header); exact nr assignment is
- * best-effort, not traced bit-for-bit for every slot.
- */
 #define SILFP_IOC_MAGIC		's'
 #define SILFP_IOC_INIT		_IO(SILFP_IOC_MAGIC, 0)
 
-/* MINDONE-FP-IOC1621 (F3276): HAL expects two ioctls we lacked at init,
- * causing "Could not init silead device (-1008)". Added GET_VERSION
- * (nr=21, returns "v0.3.8") and GET_CONFIG (nr=16, returns the 48-byte
- * SPI config blob) per the vendor .ko's real handlers (offsets/bytes in
- * MINDONE-MODULES-NOTES-0901). nr=17 intentionally left unhandled:
- * the vendor's own jump table has no case for it either. */
 #define SILFP_IOC_GET_VERSION	_IOR(SILFP_IOC_MAGIC, 21, char[10])
 #define SILFP_IOC_GET_CONFIG	_IOR(SILFP_IOC_MAGIC, 16, char[48])
 
-/* MINDONE-FP-IOC1026 (F3292): two more vendor ioctls from jump-table
- * reverse engineering — nr=10 (HW_RESET, 1-byte arg, default 2) calls
- * silfp_hw_reset(); nr=26 (SET_MODE, 1-byte arg) rejects values > 3, as
- * the vendor handler does. HW_RESET is gated by mindone_fp_hwreset (see
- * F3296 below): GPIO 157's true role on this board is unconfirmed
- * (F3284). Full offsets/disasm: MINDONE-MODULES-NOTES-0901. */
 #define SILFP_IOC_HW_RESET	_IOW(SILFP_IOC_MAGIC, 10, char)
 #define SILFP_IOC_SET_MODE	_IOWR(SILFP_IOC_MAGIC, 26, char)
 
-/* F3296: enabled by default. Without a hardware reset the sensor never
- * responds (chipid=0,0,0); with it, chipid=6193a012. The earlier worry
- * about GPIO 157 itself was wrong — the real crash was an unchecked
- * pinctrl pointer (MINDONE-FP-PINCHECK). Param kept to allow disabling
- * without a rebuild. */
-static bool mindone_fp_hwreset = true;
-module_param(mindone_fp_hwreset, bool, 0644);
-MODULE_PARM_DESC(mindone_fp_hwreset,
-	"1 = ioctl cmd 10 actually pulses the sensor reset (GPIO 157); default 0");
+static unsigned char silfp_mode;
 
-static unsigned char mindone_fp_mode;
+static const char silfp_version[7] = "v0.3.8";
 
-/* The vendor driver copies EXACTLY 7 bytes, though the buffer is declared as 10 — matched here. */
-static const char mindone_fp_version[7] = "v0.3.8";
-
-/* Byte-for-byte copy of the vendor module's .data+0x188. Not invented: the
- * path and speed are read directly from the dump; the rest is carried over
- * as-is rather than guessed. */
-static const unsigned char mindone_fp_config[48] = {
-	0x00, 0x08, 0x64, 0x00,  /* field 0: 6555648 */
-	0x80, 0x84, 0x1e, 0x00,  /* field 1: 2000000 — SPI speed, Hz */
+static const unsigned char silfp_config[48] = {
+	0x00, 0x08, 0x64, 0x00,
+	0x80, 0x84, 0x1e, 0x00,
 	'/', 'd', 'e', 'v', '/', 's', 'p', 'i', 'd', 'e', 'v', '1', '.', '0', 0x00, 0x00,
-	0x00, 0x00, 0x01, 0x00,  /* field at offset 24: 65536 */
+	0x00, 0x00, 0x01, 0x00,
 	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
 	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+	0x00, 0x00, 0x00, 0x00,
 };
 #define SILFP_IOC_EXIT		_IO(SILFP_IOC_MAGIC, 1)
 #define SILFP_IOC_RESET		_IO(SILFP_IOC_MAGIC, 2)
@@ -112,22 +72,12 @@ static const unsigned char mindone_fp_config[48] = {
 #define SILFP_IOC_WAIT_IRQ	_IO(SILFP_IOC_MAGIC, 6)
 #define SILFP_IOC_KEYEVENT	_IOW(SILFP_IOC_MAGIC, 7, int)
 
-/* MINDONE-SILFP-IOCMAP (F3243, 31.08): the ioctl numbers above (0..7) were
- * reverse-engineered from a different interface version — this device's
- * real HAL never sends them. Reversing the actual vendor sileadfp.ko
- * (5.10.233, vendor_boot-5b-DEFAULT.img) jump tables via relocations gave
- * the real map (F3242): the five below cover 76 of 81 ioctl calls seen
- * during one boot. */
-#define SILFP_IOC_ENABLE_IRQ_HAL	_IO(SILFP_IOC_MAGIC, 11)  /* vendor: spin_lock + enable_irq */
-#define SILFP_IOC_DISABLE_IRQ_HAL	_IO(SILFP_IOC_MAGIC, 12) /* vendor: spin_lock + disable_irq_nosync */
-#define SILFP_IOC_POLL_A		_IO(SILFP_IOC_MAGIC, 23)   /* vendor: returns -ENOENT (no events) */
-#define SILFP_IOC_POLL_B		_IO(SILFP_IOC_MAGIC, 24)   /* vendor: returns -ENOENT (no events) */
-#define SILFP_IOC_WAKE_HOLD	_IOW(SILFP_IOC_MAGIC, 27, char) /* vendor: pm_wakeup_ws_event(ws, 25000ms) */
+#define SILFP_IOC_ENABLE_IRQ_HAL	_IO(SILFP_IOC_MAGIC, 11)
+#define SILFP_IOC_DISABLE_IRQ_HAL	_IO(SILFP_IOC_MAGIC, 12)
+#define SILFP_IOC_POLL_A		_IO(SILFP_IOC_MAGIC, 23)
+#define SILFP_IOC_POLL_B		_IO(SILFP_IOC_MAGIC, 24)
+#define SILFP_IOC_WAKE_HOLD	_IOW(SILFP_IOC_MAGIC, 27, char)
 
-/* silfp_hw_reset() pulse selector values, confirmed from disasm
- * (mov w9,#5 default-substitution, and the `tst w19,#0xff; mov w8,#3`
- * pattern for the second stage) — 5 == reset pulse len default in ms.
- */
 #define SILFP_RESET_LOW_MS_DEFAULT	5
 #define SILFP_RESET_HIGH_MS_DEFAULT	3
 
@@ -146,7 +96,6 @@ struct silead_fp_dev {
 	struct mutex ops_lock;
 	int users;
 
-	/* SPI-over-TEE */
 	struct pinctrl *pinctrl;
 	struct pinctrl_state *pins_default;
 	struct pinctrl_state *pins_rst_high;
@@ -179,7 +128,6 @@ struct silead_fp_dev {
 	u8 lasttouchmode;
 };
 
-/* Globals, matching the shipped .ko's own top-level symbols. */
 static struct silead_fp_dev *g_fp_dev;
 static struct class *silfp_class;
 static struct workqueue_struct *silfp_wq;
@@ -187,21 +135,12 @@ static LIST_HEAD(device_list);
 static DEFINE_MUTEX(device_list_lock);
 static struct proc_dir_entry *silfp_proc_entry;
 
-/* Runtime debug-print gate: prints are skipped once sil_debug_level >= 2
- * (confirmed: every debug printk site does `cmp level,#2; b.hs skip`).
- * Default 3 (from .data), i.e. debug prints suppressed unless lowered
- * via module param.
- */
 static int sil_debug_level = 3;
 module_param(sil_debug_level, int, 0644);
 
 static int rst_gpio = -1;
 module_param(rst_gpio, int, 0644);
 
-/* vendor_name — zero-initialized 32-byte .bss buffer in the shipped
- * .ko, never seen written from any traced call site in this pass; kept
- * for symbol-table fidelity only.
- */
 static char __maybe_unused vendor_name[32];
 
 #define SIL_LOG(fmt, ...) \
@@ -210,10 +149,6 @@ static char __maybe_unused vendor_name[32];
 			pr_notice("4[+silead_fp-] " fmt, ##__VA_ARGS__); \
 	} while (0)
 
-/* smt_conf — opaque SPI/TEE session-config blob passed to the trustlet.
- * Bytes copied verbatim from the shipped .ko's .data+0x4 (80 bytes);
- * field meanings not decoded, only reproduced.
- */
 static const u8 smt_conf[80] = {
 	0x0f, 0x00, 0x00, 0x00, 0x0f, 0x00, 0x00, 0x00,
 	0x1e, 0x00, 0x00, 0x00, 0x1e, 0x00, 0x00, 0x00,
@@ -227,83 +162,21 @@ static const u8 smt_conf[80] = {
 	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
 };
 
-/* TANAME — unidentified 16-byte constant blob, copied verbatim from the
- * shipped .ko's .rodata+0x1498. NOT a TEE session UUID: the real
- * tee_spi_transfer() (drivers/tee/tkcore/core/peridev.c, this tree)
- * hardcodes its own SENSOR_DETECTOR_TA_UUID internally and takes
- * no UUID argument from the caller, so this constant's role in
- * sileadfp itself was not identified; reproduced for fidelity only.
- */
 static const u8 TANAME[16] = {
 	0x51, 0x1e, 0xad, 0x0d, 0x00, 0x00, 0x00, 0x00,
 	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
 };
 
-/* Default fp-keys keymap, overridden from the DT "fp-keys" property in
- * silfp_resource_init(). Raw default content copied from .rodata+0x1400
- * (7 pairs, {index, 0}); the DT override supplies the real Linux
- * keycodes.
- */
 static u32 keymap[7][2] = {
 	{ 1, 0 }, { 2, 0 }, { 3, 0 }, { 4, 0 }, { 5, 0 }, { 6, 0 }, { 7, 0 },
 };
 
-/*
- * tee_spi_transfer() — declared in tee_fp.h (copied verbatim from
- * drivers/tee/tkcore/include/linux/tee_fp.h, this tree; real
- * EXPORT_SYMBOL implementation lives in tkcore's
- * drivers/tee/tkcore/core/peridev.c, invokes the TEE session and does
- * `memcpy(outbuf, inbuf, size)` followed by a TEEC_MEMREF_TEMP_INOUT
- * command, i.e. a synchronous "write inbuf, read result into outbuf"
- * transaction of `size` bytes against a `conf`/`conf_size` session
- * blob). This confirms w1=80 seen at every call site in the
- * disassembly is simply `sizeof(smt_conf)` (conf_size), not a magic ID
- * as first guessed — smt_conf[] is exactly 80 bytes. Module dependency
- * on tkcore matches modinfo depends="mtk_disp_notify,tkcore"; resolved
- * at module-load time via depmod, same as the shipped .ko (this symbol
- * is intentionally left unresolved at link/modpost time here too, per
- * KBUILD_MODPOST_WARN=1 — the trustlet/TA implementation itself is out
- * of scope for a kernel module reconstruction).
- */
-
-/*
- * st_tee_spi_transfer() — thin wrapper, reproduced exactly from
- * disassembly: tee_spi_transfer(&smt_conf, sizeof(smt_conf), a, b, c).
- */
 int st_tee_spi_transfer(void *inbuf, void *outbuf, u32 size)
 {
 	return tee_spi_transfer((void *)smt_conf, sizeof(smt_conf),
 				 inbuf, outbuf, size);
 }
 
-/*
- * silfp_spi_read_id() — reads the sensor chip ID via the TEE. Builds a
- * short (6-byte) transaction and hands it to tee_spi_transfer() directly
- * (not through the st_ wrapper, confirmed: same &smt_conf/80 args passed
- * inline). Local transaction descriptor layout reproduced to the same
- * size class (6-byte inbuf/outbuf, plus a separate larger
- * list_head-carrying local descriptor that IS list-validated
- * (__list_add_valid) but whose address is never actually passed to
- * tee_spi_transfer() — vestigial spi_message/spi_transfer-shaped
- * boilerplate that also encodes an unused-by-us `speed_hz`-looking field
- * (32-bit value 2000000, i.e. 2 MHz) — not reproduced here as it has no
- * effect on the actual TEE call.
- *
- * Two values below were re-verified byte-for-byte against
- * disasm.txt/reloc_all.txt in a later independent re-check (2026-08-19,
- * second pass) and CORRECTED from the first reconstruction pass:
- *  - inbuf[0]: disasm is `mov w9, #252 ; stur w9, [x29, #-24]` right
- *    before the call — inbuf[0] is 0xfc (252), not 0x80 as first
- *    guessed. inbuf[1..5] are confirmed zero (`sturh wzr, [x29, #-20]`
- *    completes the 6-byte zero-fill of the tail).
- *  - id assembly: the disasm does *one* unaligned 4-byte load,
- *    `ldur w19, [x29, #-14]`, where outbuf==x29-16, i.e. it reads
- *    outbuf+2 as a native (little-endian) u32 — rx[0]/rx[1] are
- *    discarded, and id is built from rx[2..5] in LE order, not a
- *    manual big-endian composition of rx[0..3] as first guessed. For
- *    silfp_check_chip()'s `(id>>16)==0x6193` to hold, a genuine sensor
- *    must return rx[4]==0x93, rx[5]==0x61.
- */
 u32 silfp_spi_read_id(void)
 {
 	struct {
@@ -327,10 +200,6 @@ u32 silfp_spi_read_id(void)
 	return id;
 }
 
-/*
- * silfp_check_chip() — id>>16 must equal 0x6193 (GSL6193 family).
- * Comparison confirmed exact from disasm literal immediate 24979.
- */
 int silfp_check_chip(void)
 {
 	u32 id = silfp_spi_read_id();
@@ -344,27 +213,11 @@ int silfp_check_chip(void)
 	return 0;
 }
 
-/*
- * silfp_hw_reset() — pulses the reset line through the pinctrl "rst-*"
- * states, with an optional extra "irq_rst-*" pulse when the device also
- * needs the IRQ line toggled as part of reset (gated on a field read at
- * struct-offset +224 in the original, reproduced here as
- * fp_dev->irq_wake_enabled reuse — see file header on struct-offset
- * fidelity). ms: reset pulse width, 0 selects the 5/3 ms defaults
- * (confirmed: `mov w9,#5` substituted when the low-byte of the requested
- * width is zero).
- */
-/* MINDONE-FP-PINCHECK (F3296): silfp_hw_reset() called pinctrl_select_state()
- * four times with no pointer check, which NULL-derefed the kernel on 31.08
- * (module load already logs "there is not valid maps for state default" —
- * lookup failed, pointers invalid). GPIO 157 itself never toggled — the
- * bug was ours, not the pin. Full panic trace: MINDONE-MODULES-NOTES-0901.
- * This wrapper silently skips the switch when a state is unavailable. */
 static void silfp_pin_select(struct silead_fp_dev *fp_dev,
 			     struct pinctrl_state *st, const char *name)
 {
 	if (IS_ERR_OR_NULL(fp_dev->pinctrl) || IS_ERR_OR_NULL(st)) {
-		pr_debug("[+silead_fp-] MINDONE-FP-PINCHECK: state %s unavailable, skipping\n",
+		pr_debug("[+silead_fp-] pinctrl state %s unavailable, skipping\n",
 			name);
 		return;
 	}
@@ -382,8 +235,6 @@ void silfp_hw_reset(struct silead_fp_dev *fp_dev, u32 ms)
 	}
 
 do_reset:
-	/* MINDONE-FP-RESETLOG (F3280): marker before GPIO 157 goes low. */
-	pr_debug("[+silead_fp-] MINDONE-FP-HWRESET: pulling rst-low (GPIO 157), ms=%u\n", ms);
 	silfp_pin_select(fp_dev, fp_dev->pins_rst_low, "rst-low");
 
 	if (fp_dev->irq_wake_enabled)
@@ -402,15 +253,6 @@ do_reset:
 	mdelay(high_ms);
 }
 
-/*
- * silfp_netlink_send() — despite the name (kept for symbol-table
- * fidelity, per file header), this is NOT a netlink kernel socket: it
- * kmalloc()s a small event node, links it under fp_dev->event_lock onto
- * fp_dev->event_list, and wake_up()s fp_dev->read_queue. Confirmed 1:1
- * from disassembly (kmem_cache_alloc_trace + __list_add_valid +
- * spin_lock_irqsave/unlock + __wake_up, no netlink_* imports anywhere in
- * the object).
- */
 void silfp_netlink_send(struct silead_fp_dev *fp_dev, u8 event)
 {
 	struct silfp_event *node;
@@ -432,17 +274,6 @@ void silfp_netlink_send(struct silead_fp_dev *fp_dev, u8 event)
 	wake_up_interruptible(&fp_dev->read_queue);
 }
 
-/*
- * silfp_touch_event_handler() — EXPORT_SYMBOL'd (confirmed via
- * __ksymtab_silfp_touch_event_handler in the shipped .ko: this is a
- * public entry point other drivers/modules can call directly, e.g. a
- * companion touch/gesture path). Debounces against fp_dev->lasttouchmode
- * so repeat calls with the same low bit are dropped, maps the direction
- * bit to event 6 (touch down) or 7 (touch up), forwards through
- * silfp_netlink_send(), and grabs a short wakeup_source hold via
- * pm_wakeup_ws_event() (2500 jiffies-to-ms, confirmed literal) so the
- * event survives suspend races.
- */
 int silfp_touch_event_handler(u8 *touchdata)
 {
 	struct silead_fp_dev *fp_dev;
@@ -466,7 +297,7 @@ int silfp_touch_event_handler(u8 *touchdata)
 
 	fp_dev->lasttouchmode = mode;
 	if (fp_dev->ws_hal)
-		pm_wakeup_ws_event(fp_dev->ws_hal, 2500, false);	/* MINDONE-FP-HOLD: 2.5 s, not 2500 jiffies (F3813) */
+		pm_wakeup_ws_event(fp_dev->ws_hal, 2500, false);
 
 	return 0;
 }
@@ -477,7 +308,7 @@ static irqreturn_t silfp_irq_handler(int irq, void *data)
 	struct silead_fp_dev *fp_dev = data;
 
 	if (fp_dev->ws_irq)
-		pm_wakeup_ws_event(fp_dev->ws_irq, 2500, false);	/* MINDONE-FP-HOLD (F3813) */
+		pm_wakeup_ws_event(fp_dev->ws_irq, 2500, false);
 
 	queue_work_on(WORK_CPU_UNBOUND, silfp_wq, &fp_dev->work);
 	complete(&fp_dev->irq_completion);
@@ -494,16 +325,6 @@ static void silfp_work_func(struct work_struct *work)
 	silfp_netlink_send(fp_dev, 1);
 }
 
-/*
- * silfp_fb_callback() — mtk_disp_notify blank/unblank callback. On each
- * transition sends a netlink-style event so the userspace fingerprint
- * HAL can adjust sensor state (screen-on/off gates fingerprint scanning
- * on many devices). Exact event numbering for each disp_notify state was
- * not fully resolved in this pass (see file header); reproduced with the
- * confirmed call shape (silfp_netlink_send() called from here, guarded
- * by g_fp_dev/data-null checks that print "silfp_data/disp_status is
- * null" — confirmed rodata string — when either is unavailable).
- */
 static int silfp_fb_callback(struct notifier_block *nb, unsigned long event,
 			      void *data)
 {
@@ -625,11 +446,6 @@ static int silfp_release(struct inode *inode, struct file *filp)
 	return 0;
 }
 
-/*
- * silfp_ioctl() — see file header: operations are confirmed, exact
- * per-command numeric encoding is best-effort. Magic 's' confirmed
- * exact.
- */
 static long silfp_ioctl(struct file *filp, unsigned int cmd,
 			 unsigned long arg)
 {
@@ -651,15 +467,7 @@ static long silfp_ioctl(struct file *filp, unsigned int cmd,
 		break;
 
 	case SILFP_IOC_RESET:
-		/* MINDONE-FP-RESETLOG (F3280): this branch used to be silent, so a
-		 * hardware-reset call left no trace. Reset pulls GPIO 157 low
-		 * (pinmux 0x9d00, state_reset_low/high); the DT declares that same
-		 * pin both as flash HWEN (false declaration, F3257) and as
-		 * fingerprint reset. Logged unconditionally so the call shows up
-		 * in the host-side capture. */
-		pr_info("[+silead_fp-] MINDONE-FP-RESET: SILFP_IOC_RESET called\n");
 		silfp_hw_reset(fp_dev, 0);
-		pr_info("[+silead_fp-] MINDONE-FP-RESET: returned\n");
 		break;
 
 	case SILFP_IOC_ENABLE_IRQ:
@@ -709,21 +517,12 @@ static long silfp_ioctl(struct file *filp, unsigned int cmd,
 		}
 		break;
 
-	/* MINDONE-SILFP-IOCMAP (F3243): the commands the HAL actually sends. */
 	case SILFP_IOC_POLL_A:
 	case SILFP_IOC_POLL_B:
-		/* Vendor behavior: check debug level, return -ENOENT ("no events").
-		 * Must not return -EINVAL here — different semantics; the HAL
-		 * polls these ~14 times per boot and expects exactly -ENOENT. */
 		ret = -ENOENT;
 		break;
 
 	case SILFP_IOC_WAKE_HOLD: {
-		/* Vendor (0x1b18): copy_from_user 1 byte; if nonzero,
-		 * pm_wakeup_ws_event(ws, jiffies_to_msecs(2500), false); returns 0.
-		 * The HAL's most frequent ioctl: 38 calls per boot. This is what
-		 * actually holds the wakeup source our port only ever registered
-		 * but never held (F3239). */
 		char hold = 0;
 
 		if (!(void __user *)arg)
@@ -731,24 +530,18 @@ static long silfp_ioctl(struct file *filp, unsigned int cmd,
 		if (copy_from_user(&hold, (void __user *)arg, 1))
 			return -EFAULT;
 		if (hold && fp_dev->ws_irq)
-			pm_wakeup_ws_event(fp_dev->ws_irq, 2500, false);	/* MINDONE-FP-HOLD (F3813) */
+			pm_wakeup_ws_event(fp_dev->ws_irq, 2500, false);
 		ret = 0;
 		break;
 	}
 
 	case SILFP_IOC_HW_RESET: {
-		unsigned char ms = 2;	/* vendor default when arg is NULL */
+		unsigned char ms = 2;
 
 		if ((void __user *)arg &&
 		    copy_from_user(&ms, (void __user *)arg, 1))
 			return -EFAULT;
-		if (mindone_fp_hwreset) {
-			pr_debug("[+silead_fp-] MINDONE-FP-HWRESET: reset, ms=%u\n", ms);
-			silfp_hw_reset(fp_dev, ms);
-		} else {
-			pr_debug("[+silead_fp-] MINDONE-FP-HWRESET: skipped (ms=%u), "
-				"enable via mindone_fp_hwreset=1\n", ms);
-		}
+		silfp_hw_reset(fp_dev, ms);
 		ret = 0;
 		break;
 	}
@@ -760,9 +553,9 @@ static long silfp_ioctl(struct file *filp, unsigned int cmd,
 			return -EINVAL;
 		if (copy_from_user(&mode, (void __user *)arg, 1))
 			return -EFAULT;
-		if (mode > 3)		/* vendor handler rejects > 3 */
+		if (mode > 3)
 			return -EINVAL;
-		mindone_fp_mode = mode;
+		silfp_mode = mode;
 		SIL_LOG("[%s] SET_MODE %u\n", __func__, mode);
 		ret = 0;
 		break;
@@ -771,8 +564,8 @@ static long silfp_ioctl(struct file *filp, unsigned int cmd,
 	case SILFP_IOC_GET_VERSION:
 		if (!(void __user *)arg)
 			return -EINVAL;
-		if (copy_to_user((void __user *)arg, mindone_fp_version,
-				 sizeof(mindone_fp_version)))
+		if (copy_to_user((void __user *)arg, silfp_version,
+				 sizeof(silfp_version)))
 			return -EFAULT;
 		SIL_LOG("[%s] GET_VERSION\n", __func__);
 		ret = 0;
@@ -781,23 +574,15 @@ static long silfp_ioctl(struct file *filp, unsigned int cmd,
 	case SILFP_IOC_GET_CONFIG:
 		if (!(void __user *)arg)
 			return -EINVAL;
-		if (copy_to_user((void __user *)arg, mindone_fp_config,
-				 sizeof(mindone_fp_config)))
+		if (copy_to_user((void __user *)arg, silfp_config,
+				 sizeof(silfp_config)))
 			return -EFAULT;
 		SIL_LOG("[%s] GET_CONFIG\n", __func__);
 		ret = 0;
 		break;
 
 	default:
-		/* MINDONE-FP-UNKNOWN (F3275): this branch used to stay silent and
-		 * return -EINVAL, so there was no way to see which command was
-		 * missing — HAL opens /dev/silead_fp, then fails with "init dev
-		 * fail" / "Could not init silead device (-1008)" and the trail
-		 * went cold. Logging nr/dir/size here is what let the missing
-		 * commands above be identified. Uses pr_info, not SIL_LOG: SIL_LOG's
-		 * threshold is inverted (prints only when sil_debug_level < 2) and
-		 * is easy to silence by raising the debug level. */
-		pr_info("[+silead_fp-] MINDONE-FP-UNKNOWN: cmd=0x%x nr=%u dir=%u size=%u\n",
+		pr_debug("[+silead_fp-] unknown ioctl cmd=0x%x nr=%u dir=%u size=%u\n",
 			cmd, _IOC_NR(cmd), _IOC_DIR(cmd), _IOC_SIZE(cmd));
 		return -EINVAL;
 	}
@@ -840,26 +625,9 @@ static const struct file_operations silfp_dev_fops = {
 #ifdef CONFIG_COMPAT
 	.compat_ioctl = silfp_compat_ioctl,
 #endif
-#if LINUX_VERSION_CODE < KERNEL_VERSION(6, 12, 0)
-	.llseek = no_llseek,
-#else	/* no_llseek removed in 6.12 */
 	.llseek = noop_llseek,
-#endif
 };
 
-/*
- * silfp_resource_init() — DT lookup (via the "sil,silead_fp-pins"
- * compatible node), pinctrl states, reset GPIO, IRQ, and the fp-keys
- * input device. Call sequence confirmed from disassembly:
- * of_find_compatible_node -> irq_of_parse_and_map,
- * of_find_compatible_node -> of_find_device_by_node -> devm_pinctrl_get,
- * pinctrl_lookup_state x5 ("irq-init"/"rst-high"/"rst-low"/
- * "irq_rst-high"/"irq_rst-low"), pinctrl_select_state, gpio_request +
- * gpio_to_desc + gpiod_direction_output_raw (SILFP_RST_PIN),
- * request_threaded_irq + irq_set_irq_wake, spin_lock_irqsave +
- * disable_irq_nosync (IRQ starts disabled until userspace enables it),
- * input_allocate_device/input_register_device ("fp-keys").
- */
 static int silfp_resource_init(struct silead_fp_dev *fp_dev,
 				struct platform_device *pdev)
 {
@@ -899,16 +667,6 @@ static int silfp_resource_init(struct silead_fp_dev *fp_dev,
 	if (!IS_ERR_OR_NULL(fp_dev->pins_default))
 		pinctrl_select_state(fp_dev->pinctrl, fp_dev->pins_default);
 
-	/* The shipped .ko imports only raw gpio_request()/gpio_to_desc(),
-	 * never any of_get_named_gpio() or of_property_read_u32() helper —
-	 * so the reset GPIO number is not resolved via a generic OF
-	 * accessor on the kernel side in the original (that call graph
-	 * was not traced further
-	 * further in this pass; "fp_id" is confirmed only as a debug-log
-	 * label string in .rodata, not confirmed as a gpio DT property
-	 * name). Exposed as a module parameter here so it stays board-
-	 * configurable without inventing an unverified OF lookup.
-	 */
 	fp_dev->rst_gpio = rst_gpio;
 	if (gpio_is_valid(fp_dev->rst_gpio)) {
 		ret = gpio_request(fp_dev->rst_gpio, "SILFP_RST_PIN");
@@ -929,9 +687,6 @@ static int silfp_resource_init(struct silead_fp_dev *fp_dev,
 	irq_set_irq_wake(fp_dev->irq, 1);
 	fp_dev->irq_wake_enabled = true;
 
-	/* IRQ starts disabled; userspace enables it via SILFP_IOC_ENABLE_IRQ
-	 * once it is ready to receive touch events (confirmed pattern).
-	 */
 	spin_lock_irqsave(&fp_dev->irq_lock, flags);
 	disable_irq_nosync(fp_dev->irq);
 	fp_dev->irq_enabled = false;
@@ -955,12 +710,6 @@ static int silfp_resource_init(struct silead_fp_dev *fp_dev,
 	return 0;
 }
 
-/*
- * silfp_resource_deinit() — mirror of resource_init: disable+free irq,
- * release the reset gpio back to input, unregister the input device,
- * remove the proc entry, and send a final EXIT event. Confirmed call
- * sequence from disassembly.
- */
 static void silfp_resource_deinit(struct silead_fp_dev *fp_dev)
 {
 	unsigned long flags;
@@ -1077,13 +826,6 @@ static void silfp_remove(struct platform_device *pdev)
 	if (!fp_dev)
 		return;
 
-	/* MINDONE-FP-NOTIFIER (F3288): registers into the display notifier chain
-	 * (mtk_disp_notifier_register, see silfp_probe()) but never unregistered.
-	 * After rmmod the chain held a pointer into freed memory; the next
-	 * screen event panicked the kernel through it (dead black screen; full
-	 * trace and vendor-comparison in MINDONE-MODULES-NOTES-0901).
-	 * We reload modules live, so unregister first, before freeing anything
-	 * else. */
 	mtk_disp_notifier_unregister(&fp_dev->disp_notif);
 
 	silfp_resource_deinit(fp_dev);
@@ -1125,25 +867,9 @@ static struct platform_driver silfp_driver = {
 	},
 };
 
-/* MINDONE-FP-NOSUSPWAKE (01.09.2026, F3396): the fingerprint IRQ is armed
- * as a system wakeup source (irq_set_irq_wake, 1). During s2idle it fires
- * spontaneously (bench: ~7/20 forced-suspend cycles woke on IRQ silead_fp),
- * ending the sleep and, over hundreds of cycles, degrading the PMIC/panel.
- * No fingerprint-to-wake path exists in this OS (the HAL that would gate
- * scanning is absent), and the power key wakes the device anyway. So drop
- * the fp IRQ's wakeup capability on suspend entry and restore it on resume
- * — other wakeup sources are unaffected, and fp works normally while awake. */
-/* MINDONE-FP-NOSUSPWAKE v2 (F3396/F3397): disable_irq_wake alone did NOT stop
- * the fp waking s2idle (bench: still 13/20) — the IRQ stays ENABLED, so on
- * every spontaneous edge the handler runs and takes silfp_wakelock, which
- * ends the sleep. Masking the IRQ itself (disable_irq) on suspend entry stops
- * the handler from running at all; re-enable on resume. Balanced with our own
- * flag so the HAL's enable/disable refcount is not disturbed. The sensor works
- * normally while awake; deep-idle fp-wake is not a working feature here (no
- * HAL wake path) and the power key wakes the device. */
-static bool mindone_fp_irq_masked;
+static bool silfp_irq_masked;
 
-static int mindone_fp_pm_event(struct notifier_block *nb,
+static int silfp_pm_event(struct notifier_block *nb,
 			       unsigned long event, void *unused)
 {
 	struct silead_fp_dev *fp_dev = g_fp_dev;
@@ -1151,24 +877,22 @@ static int mindone_fp_pm_event(struct notifier_block *nb,
 
 	if (!fp_dev || fp_dev->irq <= 0)
 		return NOTIFY_DONE;
-	if (event == PM_SUSPEND_PREPARE && !mindone_fp_irq_masked) {
+	if (event == PM_SUSPEND_PREPARE && !silfp_irq_masked) {
 		spin_lock_irqsave(&fp_dev->irq_lock, flags);
 		disable_irq_nosync(fp_dev->irq);
-		mindone_fp_irq_masked = true;
+		silfp_irq_masked = true;
 		spin_unlock_irqrestore(&fp_dev->irq_lock, flags);
-		pr_debug("MINDONE-FP-NOSUSPWAKE: suspend -> fp irq MASKED\n");
-	} else if (event == PM_POST_SUSPEND && mindone_fp_irq_masked) {
+	} else if (event == PM_POST_SUSPEND && silfp_irq_masked) {
 		spin_lock_irqsave(&fp_dev->irq_lock, flags);
 		enable_irq(fp_dev->irq);
-		mindone_fp_irq_masked = false;
+		silfp_irq_masked = false;
 		spin_unlock_irqrestore(&fp_dev->irq_lock, flags);
-		pr_debug("MINDONE-FP-NOSUSPWAKE: resume -> fp irq UNMASKED\n");
 	}
 	return NOTIFY_DONE;
 }
 
-static struct notifier_block mindone_fp_pm_nb = {
-	.notifier_call = mindone_fp_pm_event,
+static struct notifier_block silfp_pm_nb = {
+	.notifier_call = silfp_pm_event,
 };
 
 static int silfp_dev_init(void)
@@ -1177,17 +901,13 @@ static int silfp_dev_init(void)
 	dev_t devt;
 
 	pr_notice("silead_fp: %s\n", SILFP_DRV_VERSION);
-	register_pm_notifier(&mindone_fp_pm_nb);
+	register_pm_notifier(&silfp_pm_nb);
 
 	ret = __register_chrdev(0, 0, 256, SILFP_DEV_NAME, &silfp_dev_fops);
 	if (ret < 0)
 		return ret;
 
-#if LINUX_VERSION_CODE < KERNEL_VERSION(6, 4, 0)
-	silfp_class = class_create(THIS_MODULE, SILFP_CLASS_NAME);
-#else	/* class_create dropped the owner arg in 6.4 */
 	silfp_class = class_create(SILFP_CLASS_NAME);
-#endif
 	if (IS_ERR(silfp_class)) {
 		devt = MKDEV(ret, 0);
 		__unregister_chrdev(MAJOR(devt), 0, 256, SILFP_DEV_NAME);
@@ -1209,7 +929,7 @@ static int silfp_dev_init(void)
 
 static void silfp_dev_exit(void)
 {
-	unregister_pm_notifier(&mindone_fp_pm_nb);
+	unregister_pm_notifier(&silfp_pm_nb);
 	platform_driver_unregister(&silfp_driver);
 	class_destroy(silfp_class);
 	__unregister_chrdev(0, 0, 256, SILFP_DEV_NAME);

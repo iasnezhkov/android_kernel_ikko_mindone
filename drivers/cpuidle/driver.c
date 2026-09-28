@@ -390,8 +390,3 @@ unlock:
 
 	mutex_unlock(&cpuidle_lock);
 }
-
-/* MINDONE: this symbol was exported on 6.1; on 6.12 the export was dropped (no in-tree
- * module consumers left). Our out-of-tree sleep-state debug module needs it -- restoring
- * the export, function behavior is unchanged. */
-EXPORT_SYMBOL_GPL(cpuidle_driver_state_disabled);

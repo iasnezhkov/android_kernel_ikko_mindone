@@ -354,6 +354,26 @@ static int mtk_drm_disp_mtee_cb_event(int value, int fd, struct mtk_drm_gem_obj 
 	}
 }
 
+static bool mtk_sec_mbox_same(struct device_node *np, int a, int b)
+{
+	struct of_phandle_args x, y;
+	bool same;
+
+	if (a < 0 || b < 0)
+		return false;
+	if (of_parse_phandle_with_args(np, "mboxes", "#mbox-cells", a, &x))
+		return false;
+	if (of_parse_phandle_with_args(np, "mboxes", "#mbox-cells", b, &y)) {
+		of_node_put(x.np);
+		return false;
+	}
+	same = x.np == y.np && x.args_count == y.args_count &&
+		!memcmp(x.args, y.args, x.args_count * sizeof(x.args[0]));
+	of_node_put(x.np);
+	of_node_put(y.np);
+	return same;
+}
+
 static void mtk_crtc_init_gce_sec_obj(struct drm_device *drm_dev, struct device *dev,
 			struct mtk_drm_crtc *mtk_crtc)
 {
@@ -376,6 +396,11 @@ static void mtk_crtc_init_gce_sec_obj(struct drm_device *drm_dev, struct device 
 	if (index < 0) {
 		mtk_crtc->gce_obj.client[i] = NULL;
 		DDPPR_ERR("get index failed\n");
+	} else if (crtc_id == 2 && tmp_client &&
+		   mtk_sec_mbox_same(dev->of_node, index,
+				     of_property_match_string(dev->of_node,
+					"gce-client-names", "CLIENT_SEC_CFG1"))) {
+		mtk_crtc->gce_obj.client[i] = tmp_client;
 	} else {
 		mtk_crtc->gce_obj.client[i] =
 			cmdq_mbox_create(dev, index);

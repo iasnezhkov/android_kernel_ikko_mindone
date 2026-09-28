@@ -14,7 +14,6 @@
  */
 
 #include <asm/pgtable.h>
-#include <mindone/compat.h>
 #include <linux/semaphore.h>
 #include <linux/completion.h>
 #include <linux/mutex.h>
@@ -23,7 +22,6 @@
 #include <linux/kthread.h>
 #include <linux/pagemap.h>
 #include <linux/device.h>
-#include <linux/version.h>
 #include <linux/dma-buf.h>
 MODULE_IMPORT_NS(DMA_BUF);
 /*
@@ -82,7 +80,7 @@ static inline long gup_local(struct mm_struct *mm, uintptr_t start,
 	if (write)
 		gup_flags |= FOLL_WRITE;
 
-	return MINDONE_PIN_USER_PAGES(start, nr_pages, gup_flags, pages);
+	return pin_user_pages(start, nr_pages, gup_flags, pages);
 }
 
 static inline long gup_local_repeat(struct mm_struct *mm, uintptr_t start,
@@ -179,11 +177,7 @@ static void tee_mmu_delete(struct tee_mmu *mmu)
 			int i;
 
 			for (i = 0; i < nr_pages; i++, page++)
-#if KERNEL_VERSION(5, 10, 0) > LINUX_VERSION_CODE
-				put_page(*page);
-#else
 				unpin_user_page(*page);
-#endif
 
 			mmu->pages_locked -= nr_pages;
 		} else if (mmu->user) {
@@ -209,11 +203,7 @@ static void tee_mmu_delete(struct tee_mmu *mmu)
 #endif
 
 				/* pte_page() cannot return NULL */
-#if KERNEL_VERSION(5, 10, 0) > LINUX_VERSION_CODE
-				put_page(pte_page(pte));
-#else
 				unpin_user_page(pte_page(pte));
-#endif
 			}
 
 			mmu->pages_locked -= nr_pages;
@@ -447,11 +437,7 @@ struct tee_mmu *tee_mmu_create(struct mm_struct *mm,
 			long gup_ret;
 
 			/* Buffer was allocated in user space */
-#if KERNEL_VERSION(5, 7, 19) < LINUX_VERSION_CODE
 			down_read(&mm->mmap_lock);
-#else
-			down_read(&mm->mmap_sem);
-#endif
 			/*
 			 * Always try to map read/write from a Linux PoV, so
 			 * Linux creates (page faults) the underlying pages if
@@ -469,11 +455,7 @@ struct tee_mmu *tee_mmu_create(struct mm_struct *mm,
 							   (uintptr_t)reader,
 							   nr_pages, 0, pages);
 			}
-#if KERNEL_VERSION(5, 7, 19) < LINUX_VERSION_CODE
 			up_read(&mm->mmap_lock);
-#else
-			up_read(&mm->mmap_sem);
-#endif
 			if (gup_ret < 0) {
 				ret = gup_ret;
 				mc_dev_err(ret, "failed to get user pages @%p",

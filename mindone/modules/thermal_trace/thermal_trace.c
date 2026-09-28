@@ -176,7 +176,7 @@ static void thermal_info_work(struct work_struct *work)
 			stat->cur_tput =
 				(diff / (cur_time.tv_sec - pre_time)) >> 7;
 
-			pr_debug("[%s] %d:time/tx/tput=%lu/%lu/%luKb/s\n",
+			pr_debug("[%s] %d:time/tx/tput=%lld/%lu/%luKb/s\n",
 				__func__, i, cur_time.tv_sec,
 				stat->cur_tx_bytes, stat->cur_tput);
 			stat->pre_tx_bytes = stat->cur_tx_bytes;
@@ -184,7 +184,7 @@ static void thermal_info_work(struct work_struct *work)
 	}
 
 	trace_data->last_update_time = cur_time.tv_sec;
-	pr_debug("[%s] pre_time=%lu, tv_sec=%lu\n", __func__,
+	pr_debug("[%s] pre_time=%ld, tv_sec=%lld\n", __func__,
 				pre_time, cur_time.tv_sec);
 
 	trace_network_tput(trace_data->stats[0].cur_tput,
@@ -194,7 +194,7 @@ static void thermal_info_work(struct work_struct *work)
 	thermal_info_timer_add(thermal_trace_data.enable);
 }
 
-static void get_cpu_info()
+static void get_cpu_info(void)
 {
 	cpu_info.ttj = sign_extend32(
 			readl(thermal_csram_base + CPU_TTJ_OFFSET), 31);
@@ -225,7 +225,7 @@ static void get_cpu_info()
 	cpu_info.B_max_temp = sign_extend32(
 			readl(thermal_csram_base + CPU_B_MAX_TEMP_OFFSET), 31);
 }
-static void get_gpu_info()
+static void get_gpu_info(void)
 {
 	gpu_info.ttj = sign_extend32(
 			readl(thermal_csram_base + GPU_TTJ_OFFSET), 31);
@@ -236,7 +236,7 @@ static void get_gpu_info()
 	gpu_info.limit_freq = readl(thermal_csram_base + GPU_LIMIT_FREQ_OFFSET);
 	gpu_info.cur_freq = readl(thermal_csram_base + GPU_CUR_FREQ_OFFSET);
 }
-static void get_apu_info()
+static void get_apu_info(void)
 {
 	if (thermal_apu_mbox_base) {
 		apu_info.ttj = sign_extend32(

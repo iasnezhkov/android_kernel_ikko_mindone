@@ -138,6 +138,8 @@ static void cmdq_save_op_variable_position(
 			sizeof(u32);
 
 		p_new_buffer = kzalloc(array_num, GFP_KERNEL);
+		if (!p_new_buffer)
+			return;
 
 		/* copy and release old buffer */
 		if (handle->replace_instr.position) {
@@ -561,6 +563,10 @@ s32 cmdq_task_duplicate(struct cmdqRecStruct *handle,
 
 		/* alloc and copy buffer */
 		p_new_buffer = kzalloc(array_size, GFP_KERNEL);
+		if (!p_new_buffer) {
+			handle_new->replace_instr.number = 0;
+			return -ENOMEM;
+		}
 		memcpy(p_new_buffer,
 			CMDQ_U32_PTR(handle->replace_instr.position),
 			handle->replace_instr.number * sizeof(u32));

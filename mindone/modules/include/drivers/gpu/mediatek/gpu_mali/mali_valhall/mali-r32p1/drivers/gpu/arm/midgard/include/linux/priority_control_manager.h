@@ -24,7 +24,6 @@
 
 #include <linux/mm.h>
 #include <linux/of.h>
-#include <linux/version.h>
 
 struct priority_control_manager_device;
 

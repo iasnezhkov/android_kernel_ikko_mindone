@@ -14,7 +14,6 @@
  */
 
 #include <linux/platform_device.h>
-#include <mindone/compat.h>
 #include <linux/module.h>
 #include <linux/cdev.h>
 #include <linux/debugfs.h>
@@ -511,7 +510,7 @@ static inline int device_common_init(void)
 		return ret;
 	}
 
-	main_ctx.class = MINDONE_CLASS_CREATE("trustonic_tee");
+	main_ctx.class = class_create("trustonic_tee");
 	if (IS_ERR(main_ctx.class)) {
 		ret = PTR_ERR(main_ctx.class);
 		mc_dev_err(ret, "class_create failed");

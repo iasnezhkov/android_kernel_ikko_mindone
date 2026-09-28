@@ -46,9 +46,6 @@
 #include <linux/arm-smccc.h>
 #include <uapi/linux/sched/types.h>
 #include <linux/string.h>
-/* MINDONE candidate-fix (F3734/F3735, 612-TEE-ROOTCAUSE-0905
- * candidate #2): version gate for the early-RT-priority experiment below. */
-#include <linux/version.h>
 
 #define enable_code 0 /*replace #if 0*/
 
@@ -70,117 +67,15 @@
 #define trusty_err(fmt...) dev_info(fmt)
 #endif
 
-#if IS_ENABLED(CONFIG_ARM64)
-#define SMC_ARG0		"x0"
-#define SMC_ARG1		"x1"
-#define SMC_ARG2		"x2"
-#define SMC_ARG3		"x3"
-#define SMC_ARCH_EXTENSION	""
-#define SMC_REGISTERS_TRASHED	"x4", "x5", "x6", "x7", "x8", "x9", "x10", \
-				"x11", "x12", "x13", "x14", "x15", "x16", "x17"
-#else
-#define SMC_ARG0		"r0"
-#define SMC_ARG1		"r1"
-#define SMC_ARG2		"r2"
-#define SMC_ARG3		"r3"
-#define SMC_ARCH_EXTENSION	".arch_extension sec\n"
-#define SMC_REGISTERS_TRASHED	"ip"
-#endif
-
 #define DYNAMIC_SET_PRIORITY
 #define TRUSTY_RT_POLICY         (0x1)
 #define TRUSTY_NORMAL_POLICY     (0X2)
 
-/*
- * MINDONE secure-monitor black box (F3733/F3735): the 6.12 port wedges on every core with
- * no console output and printing each SMC is itself fatal, so record the last secure call
- * per core in plain .bss with a magic header and read it from the expdb watchdog dump
- * (F3713). seq is bumped before and after the call: odd = core still inside the monitor.
- */
-#define MINDONE_SMC_BB_MAGIC	0x4d494e444f4e45aULL	/* "MINDONE" + rev */
-#define MINDONE_SMC_BB_CPUS	8
-
-struct mindone_smc_bb_slot {
-	u64 seq;
-	u64 smcnr;
-	u64 a0;
-	u64 a1;
-	u64 a2;
-	u64 ret;
-	u64 ts_ns;
-};
-
-struct mindone_smc_bb {
-	u64 magic;
-	u32 nr_cpus;
-	u32 slot_size;
-	struct mindone_smc_bb_slot cpu[MINDONE_SMC_BB_CPUS];
-};
-
-static struct mindone_smc_bb mindone_smc_bb __used = {
-	.magic = MINDONE_SMC_BB_MAGIC,
-	.nr_cpus = MINDONE_SMC_BB_CPUS,
-	.slot_size = sizeof(struct mindone_smc_bb_slot),
-};
-
-static inline struct mindone_smc_bb_slot *mindone_smc_bb_slot(int cpu)
-{
-	if (cpu < 0 || cpu >= MINDONE_SMC_BB_CPUS)
-		return NULL;
-	return &mindone_smc_bb.cpu[cpu];
-}
-
-/* Print the table once, on demand. Never called from the call path. */
-static int mindone_smc_bb_dump_set(const char *val,
-				   const struct kernel_param *kp)
-{
-	int cpu;
-
-	for (cpu = 0; cpu < MINDONE_SMC_BB_CPUS; cpu++) {
-		struct mindone_smc_bb_slot *sl = &mindone_smc_bb.cpu[cpu];
-
-		if (!sl->seq)
-			continue;
-		pr_emerg("MINDONE-SMC-BB: cpu%d seq=%llu %s smcnr=0x%llx a0=0x%llx a1=0x%llx ret=0x%llx t=%llu ms\n",
-			 cpu, sl->seq, (sl->seq & 1) ? "IN-SMC" : "returned",
-			 sl->smcnr, sl->a0, sl->a1, sl->ret,
-			 div_u64(sl->ts_ns, 1000000));
-	}
-	return 0;
-}
-
-static const struct kernel_param_ops mindone_smc_bb_dump_ops = {
-	.set = mindone_smc_bb_dump_set,
-};
-module_param_cb(mindone_smc_bb_dump, &mindone_smc_bb_dump_ops, NULL, 0200);
-MODULE_PARM_DESC(mindone_smc_bb_dump, "MINDONE: write anything to print the last secure call of every core");
-
 static inline ulong smc_asm(ulong r0, ulong r1, ulong r2, ulong r3)
 {
-	register ulong _r0 asm(SMC_ARG0) = r0;
-	register ulong _r1 asm(SMC_ARG1) = r1;
-	register ulong _r2 asm(SMC_ARG2) = r2;
-	register ulong _r3 asm(SMC_ARG3) = r3;
 	struct arm_smccc_res res;
-	struct mindone_smc_bb_slot *bb = mindone_smc_bb_slot(raw_smp_processor_id());
 
-	if (bb) {
-		bb->seq++;
-		bb->smcnr = r0;
-		bb->a0 = r1;
-		bb->a1 = r2;
-		bb->a2 = r3;
-		bb->ts_ns = local_clock();
-		barrier();
-	}
-
-	arm_smccc_smc(_r0, _r1, _r2, _r3, _r0, _r1, _r2, _r3, &res);
-
-	if (bb) {
-		bb->ret = res.a0;
-		barrier();
-		bb->seq++;
-	}
+	arm_smccc_smc(r0, r1, r2, r3, r0, r1, r2, r3, &res);
 
 	return res.a0;
 }
@@ -215,10 +110,6 @@ s64 trusty_fast_call64(struct device *dev, u64 smcnr, u64 a0, u64 a1, u64 a2)
 }
 #endif
 
-static int mindone_tee_trace;
-module_param(mindone_tee_trace, int, 0644);
-MODULE_PARM_DESC(mindone_tee_trace, "MINDONE: 1 = log every secure-monitor SMC (F3732)");
-
 static inline bool is_busy(int ret)
 {
 	return (ret == SM_ERR_BUSY || ret == SM_ERR_GZ_BUSY
@@ -244,37 +135,10 @@ static ulong trusty_std_call_inner(struct device *dev, ulong smcnr,
 		   __func__, get_tee_name(s->tee_id), smcnr, a0, a1, a2);
 
 	while (true) {
-		/* MINDONE diag (F3730/F3732): name the SMC we are about to make so the
-		 * console ring shows the last secure call before an all-core wedge. */
-		if (mindone_tee_trace)
-			pr_notice("MINDONE-TEE-SMC: cpu%d smcnr=0x%lx a0=%lx\n",
-				  raw_smp_processor_id(), (ulong)smcnr, (ulong)a0);
 		ret = smc_asm(smcnr, a0, a1, a2);
-		/* MINDONE: marker AFTER the return (07.09, F3876). Without it, the picture of
-		 * "one line for this core and then silence" does not distinguish "never returned
-		 * from the call" from "returned normally, and this core just never needed SMC
-		 * again" -- two completely different diagnoses. An entry/exit pair makes the
-		 * difference visible right in the log ring.
-		 */
-		if (mindone_tee_trace)
-			pr_notice("MINDONE-TEE-RET: cpu%d smcnr=0x%lx ret=%ld\n",
-				  raw_smp_processor_id(), (ulong)smcnr, (long)ret);
-
-		{
-			int mindone_fiq = 0;
-			while ((s32) ret == SM_ERR_FIQ_INTERRUPTED) {
-				ret = smc_asm(MTEE_SMCNR(SMCF_SC_RESTART_FIQ, dev),
-					      0, 0, 0);
-				/* MINDONE: never spin here forever (F3732): a
-				 * secure world stuck in FIQ restart would wedge
-				 * this CPU silently; bound it and report. */
-				if (++mindone_fiq > 100000) {
-					pr_emerg("MINDONE-TEE-SMC: FIQ restart loop exhausted, smcnr=0x%lx\n",
-						 smcnr);
-					break;
-				}
-			}
-		}
+		while ((s32) ret == SM_ERR_FIQ_INTERRUPTED)
+			ret = smc_asm(MTEE_SMCNR(SMCF_SC_RESTART_FIQ, dev),
+				      0, 0, 0);
 
 		if (!is_busy(ret) || !retry)
 			break;
@@ -889,6 +753,7 @@ static int trusty_nop_thread_free(struct trusty_state *s)
 
 static int trusty_nop_thread_create(struct trusty_state *s)
 {
+	struct sched_param nop_param = { .sched_priority = 50 };
 	unsigned int cpu;
 	int ret;
 
@@ -922,21 +787,7 @@ static int trusty_nop_thread_create(struct trusty_state *s)
 			goto err_thread_create;
 		}
 		set_user_nice(task_fd, PRIO_TO_NICE(MAX_USER_RT_PRIO) + 1);
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 12, 0)
-		/*
-		 * MINDONE candidate-fix #2 (F3734/F3735, 612-TEE-ROOTCAUSE-0905), NOT verified
-		 * on device: promote the per-CPU NOP kthreads to SCHED_FIFO 50 at creation. Upstream
-		 * they stay SCHED_OTHER until the TRUSTY_RT_POLICY ioctl (gz_main.c:1089); if that
-		 * lands late on 6.12, cores spinning in trusty_interrupted_loop() wait on starved NOP
-		 * replies. Idempotent with the later ioctl; gated to 6.12 so 6.1 is untouched.
-		 */
-		{
-			struct sched_param mindone_param = { .sched_priority = 50 };
-
-			sched_setscheduler_nocheck(task_fd, SCHED_FIFO,
-						    &mindone_param);
-		}
-#endif
+		sched_setscheduler_nocheck(task_fd, SCHED_FIFO, &nop_param);
 		kthread_bind(task_fd, cpu);
 		wake_up_process(task_fd);
 		nop_ti->task_fd = task_fd;
@@ -1070,8 +921,8 @@ static int trusty_poll_create(struct trusty_state *s)
 	s->poll_task = kthread_create(kthread_worker_fn, (void *)&s->poll_worker,
 				      "trusty_poll_task");
 	if (IS_ERR(s->poll_task)) {
-		trusty_info(s->dev, "%s: unable create trusty_poll_worker\n",
-			    __func__, s->tee_id);
+		trusty_info(s->dev, "%s: unable create trusty_poll_worker, tee %d\n",
+			    __func__, (int)s->tee_id);
 		return PTR_ERR(s->poll_task);
 	}
 

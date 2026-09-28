@@ -180,21 +180,6 @@ struct tee_shm {
 
 	uint32_t flags;
 
-	/*
-	 * MINDONE-TEE-SHMLIFE (follow-up B31): two INDEPENDENT counters of
-	 * outstanding work on a TEE_SHM_FROM_RPC shm - see the long explanation
-	 * on this field in linux/tee_core.h (same directory, kept
-	 * byte-identical). rpc_round_owed: a secure-world round is using this
-	 * buffer (armed by tee_shm_from_paddr(), cleared by that round's own
-	 * tee_shm_realloc_from_rpc()/tee_shm_free_from_rpc()). rpc_dmabuf_refs:
-	 * how many dma-bufs/fds teed currently holds for it (tee_shm_fd_for_rpc()
-	 * increments, tee_shm_free_io() decrements) - tracked fully
-	 * independently, since teed getting an fd IS the normal way it services
-	 * a round already in flight and must never be refused or folded into
-	 * the round's own claim (B29 tried refusing it and broke every RPMB
-	 * round outright, B31). tee_shm_rpc_maybe_finalize() recycles or frees
-	 * once both are clear.
-	 */
 	bool rpc_round_owed;
 	int rpc_dmabuf_refs;
 	bool rpc_want_free;

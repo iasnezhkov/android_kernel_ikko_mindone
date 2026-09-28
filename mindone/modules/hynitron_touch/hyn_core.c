@@ -1,5 +1,4 @@
 #include "hyn_core.h"
-#include <mindone/compat.h>
 #include "mtk_disp_notify.h"
 #define HYN_DRIVER_NAME  "hyn_ts"
 
@@ -72,7 +71,6 @@ static int hyn_parse_dt(struct hyn_ts_data *ts_data)
         of_property_read_u32_index(np, "reset-gpio", 2, &dt->reset_gpio_flags);
         dt->irq_gpio = of_get_named_gpio(np, "irq-gpio", 0);
         of_property_read_u32_index(np, "irq-gpio", 2, &dt->irq_gpio_flags);
-        /* MINDONE: optional on other boards, REQUIRED here - see hyn_core.h */
         dt->vdd_gpio = of_get_named_gpio(np, "vdd-gpio", 0);
         of_property_read_u32_index(np, "vdd-gpio", 2, &dt->vdd_gpio_flags);
         if(dt->reset_gpio < 0 || dt->irq_gpio < 0){
@@ -193,9 +191,6 @@ static int hyn_poweron(struct hyn_ts_data *ts_data)
         goto GPIO_SET_FAILE;
     }
 
-    /* MINDONE: power the controller before releasing reset. Without this the chip is
-     * unpowered and every transfer to its bootloader address 0x5a returns an ACK error.
-     * Kept optional so boards without vdd-gpio behave exactly as before. */
     if(dt->vdd_gpio >= 0){
         if(gpio_request(dt->vdd_gpio, "hyn_vdd_gpio")){
             HYN_ERROR("vdd gpio_request failed, gpio=%d", dt->vdd_gpio);
@@ -544,6 +539,11 @@ static void hyn_resum_work(struct work_struct *work)
 
 static irqreturn_t hyn_irq_handler(int irq, void *data)
 {
+	if (READ_ONCE(hyn_data->suspended) &&
+	    !wait_event_timeout(hyn_data->wait_resume,
+				!READ_ONCE(hyn_data->suspended),
+				msecs_to_jiffies(1000)))
+		return IRQ_HANDLED;
 	atomic_set(&hyn_data->hyn_irq_flg,1);
     if(hyn_data->work_mode < DIFF_MODE){
         // queue_work(hyn_data->hyn_workqueue,&hyn_data->work_report);
@@ -620,17 +620,6 @@ static void hyn_ts_late_resume(struct early_suspend *handler)
     hyn_resum(hyn_data->dev);
 }
 #else
-/*
- * mind_one (14.09): this kernel has neither fbdev (CONFIG_FB unset) nor the
- * in-tree mediatek_v2 DRM notifier, so none of the branches above compiled
- * and the controller was never told about screen-off: it kept scanning and
- * reporting (a cheek during a call, anything in a pocket) with the panel
- * dark, which aborted suspend through the evdev wakeup source and burned
- * the controller's active-scan current all night. Use the MediaTek display
- * notifier module (mtk_disp_notify) like the other mind_one modules do:
- * power the controller down before the panel goes dark and bring it back
- * (through the resume work, off the display path) after the panel is up.
- */
 static int mindone_disp_notifier_callback(struct notifier_block *self,
                                           unsigned long val, void *v)
 {
@@ -753,6 +742,7 @@ static int hyn_ts_probe(struct spi_device *client)
     mutex_init(&ts_data->mutex_bus);
     mutex_init(&ts_data->mutex_fs);
     init_waitqueue_head(&ts_data->wait_irq);
+    init_waitqueue_head(&ts_data->wait_resume);
 
     ret = hyn_check_ic(ts_data);
     if(ret){
@@ -929,13 +919,39 @@ static const struct i2c_device_id hyn_id_table[] = {
     {},
 };
 
+static int hyn_i2c_suspend_noirq(struct device *dev)
+{
+    struct hyn_ts_data *ts_data = dev_get_drvdata(dev);
+
+    if (ts_data)
+        WRITE_ONCE(ts_data->suspended, true);
+    return 0;
+}
+
+static int hyn_i2c_resume_noirq(struct device *dev)
+{
+    struct hyn_ts_data *ts_data = dev_get_drvdata(dev);
+
+    if (ts_data) {
+        WRITE_ONCE(ts_data->suspended, false);
+        wake_up(&ts_data->wait_resume);
+    }
+    return 0;
+}
+
+static const struct dev_pm_ops hyn_ts_pm_ops = {
+    NOIRQ_SYSTEM_SLEEP_PM_OPS(hyn_i2c_suspend_noirq, hyn_i2c_resume_noirq)
+};
+
 static struct i2c_driver hyn_ts_driver = {
-    MINDONE_I2C_PROBE(hyn_ts_probe),
+    .probe = hyn_ts_probe,
     .remove = hyn_ts_remove,
     .driver = {
         .name = HYN_DRIVER_NAME,
         .owner = THIS_MODULE,
         .of_match_table = hyn_of_match_table,
+        .pm = pm_sleep_ptr(&hyn_ts_pm_ops),
+        .probe_type = PROBE_PREFER_ASYNCHRONOUS,
     },
     .id_table = hyn_id_table,
 };

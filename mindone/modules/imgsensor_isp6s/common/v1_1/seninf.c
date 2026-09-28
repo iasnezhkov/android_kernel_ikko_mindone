@@ -4,7 +4,6 @@
  */
 
 #include <linux/init.h>
-#include <mindone/compat.h>
 #include <linux/types.h>
 #include <linux/device.h>
 #include <linux/cdev.h>
@@ -300,18 +299,9 @@ static MINT32 seninf_mmap(struct file *pFile, struct vm_area_struct *pVma)
 	return 0;
 }
 
-extern atomic_t mindone_open_done;
-static bool mindone_seninf_gate;
-module_param(mindone_seninf_gate, bool, 0644);
-
 static long seninf_ioctl(struct file *pfile,
 			unsigned int cmd, unsigned long arg)
 {
-	if (atomic_read(&mindone_open_done)) pr_info("MINDONE-CAM-IOCTL: seninf cmd=0x%x nr=%d\n", cmd, _IOC_NR(cmd));
-	if (mindone_seninf_gate && atomic_read(&mindone_open_done)) {
-		pr_info("MINDONE-CAM-IOCTL: seninf REFUSED nr=%d after open\n", _IOC_NR(cmd));
-		return -EPERM;
-	}
 	int ret = 0;
 	void *pbuff = NULL;
 #if SENINF_CLK_CONTROL
@@ -412,6 +402,9 @@ static long seninf_ioctl(struct file *pfile,
 			(*(unsigned int *)pbuff) >> 16, (*(unsigned int *)pbuff) & 0xFFFF);
 #endif
 		break;
+	case KDSENINFIOC_X_SET_SWITCH_TG_FOR_STAGGER:
+		ret = Switch_Tg_For_Stagger(*(unsigned int *)pbuff);
+		break;
 	default:
 		PK_DBG("No such command %d\n", cmd);
 		ret = -EPERM;
@@ -503,7 +496,7 @@ static inline MINT32 seninf_reg_char_dev(struct SENINF *pseninf)
 	}
 
 	/* Create class register */
-	pseninf->pclass = MINDONE_CLASS_CREATE(SENINF_DEV_NAME);
+	pseninf->pclass = class_create(SENINF_DEV_NAME);
 	if (IS_ERR(pseninf->pclass)) {
 		ret = PTR_ERR(pseninf->pclass);
 		PK_PR_ERR("Unable to create class, err = %d\n", ret);
@@ -657,12 +650,6 @@ static void seninf_remove(struct platform_device *pDev)
 	PK_DBG("- E.");
 
 #if SENINF_USE_RPM && SENINF_CLK_CONTROL
-	/* MINDONE-CAM-SENINF-PM: seninf_probe() calls plain pm_runtime_enable()
-	 * in the non-MT6855 else branch (this board is MT8781) -- this remove()
-	 * path was missing the matching else, so rmmod never balanced that
-	 * enable, and the next insmod's probe() tripped the kernel's own
-	 * "Unbalanced pm_runtime_enable!" WARN. Mirror probe()'s if/else so
-	 * every enable has a matching disable. */
 	if (IS_MT6855(pseninf->clk.g_platform_id))
 		seninf_pm_runtime_disable(pseninf);
 	else

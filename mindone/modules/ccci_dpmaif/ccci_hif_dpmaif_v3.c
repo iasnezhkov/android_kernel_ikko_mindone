@@ -4,7 +4,6 @@
  */
 
 #include <linux/list.h>
-#include <mindone/compat.h>
 #include "mtk_sip_svc_ext.h"
 #include <linux/device.h>
 #include <linux/module.h>
@@ -241,7 +240,7 @@ static inline int my_skb_gro_receive(struct sk_buff *p, struct sk_buff *skb)
 
 		pinfo->nr_frags = nr_frags + 1 + skbinfo->nr_frags;
 
-		MINDONE_SKB_FRAG_SET_PAGE(frag, page);
+		skb_frag_fill_page_desc(frag, page, 0, 0);
 		skb_frag_off_set(frag, first_offset);
 		skb_frag_size_set(frag, first_size);
 
@@ -4240,16 +4239,6 @@ static int ccci_dpmaif_hif_init(struct device *dev)
 	g_isr_log = kzalloc(sizeof(struct dpmaif_isr_log) * ISR_LOG_DATA_LEN, GFP_KERNEL);
 	if (!g_isr_log)
 		CCCI_ERROR_LOG(-1, TAG, "[%s] error: alloc g_isr_log fail\n", __func__);
-#if IS_ENABLED(CONFIG_MTK_AEE_IPANIC)
-	else
-#if IS_ENABLED(CONFIG_ARM64)
-		MINDONE_MRDUMP_MINI_ADD_EXTRA_FILE((unsigned long)g_isr_log, __pa_nodebug(g_isr_log),
-				(sizeof(struct dpmaif_isr_log) * ISR_LOG_DATA_LEN), "DPMAIF_ISR");
-#else
-		MINDONE_MRDUMP_MINI_ADD_EXTRA_FILE((unsigned long)g_isr_log, __pa(g_isr_log),
-			(sizeof(struct dpmaif_isr_log) * ISR_LOG_DATA_LEN), "DPMAIF_ISR");
-#endif
-#endif
 #endif
 	return 0;
 
@@ -4273,7 +4262,7 @@ int ccci_dpmaif_suspend_noirq_v3(struct device *dev)
 	if ((!dpmaif_ctrl) || (atomic_read(&dpmaif_ctrl->suspend_flag) < 0))
 		return 0;
 
-	CCCI_NORMAL_LOG(-1, TAG, "[%s]\n", __func__);
+	CCCI_REPEAT_LOG(-1, TAG, "[%s]\n", __func__);
 
 	atomic_set(&dpmaif_ctrl->suspend_flag, 1);
 
@@ -4293,7 +4282,7 @@ int ccci_dpmaif_resume_noirq_v3(struct device *dev)
 			MD_CLOCK_REQUEST, MD_WAKEUP_AP_SRC,
 			WAKE_SRC_HIF_DPMAIF, 0, 0, 0, 0, &res);
 
-	CCCI_NORMAL_LOG(-1, TAG,
+	CCCI_REPEAT_LOG(-1, TAG,
 		"[%s] flag_1=0x%lx, flag_2=0x%lx, flag_3=0x%lx, flag_4=0x%lx\n",
 		__func__, res.a0, res.a1, res.a2, res.a3);
 

@@ -8,7 +8,6 @@
 
 #define pr_fmt(fmt) "dma_heap: mtk_debug "fmt
 
-#include <mindone/compat.h>
 #include <asm/memory.h>
 #include <linux/device/driver.h>
 #include <linux/dma-buf.h>
@@ -387,7 +386,7 @@ struct dma_buf *get_dmabuf_from_file(struct file *file)
 	 */
 	if (!get_kernel_nofault(tmp_file, file) &&
 	    is_dma_buf_file(file) &&
-	    MINDONE_GET_FILE_RCU(file))
+	    atomic_long_inc_not_zero(&file->f_count))
 		return (struct dma_buf *)file->private_data;
 
 	return ERR_PTR(-EINVAL);
@@ -909,8 +908,8 @@ static void dma_heap_attach_dump(const struct dma_buf *dmabuf,
 
 		device_name = dev_name(attach_obj->dev);
 		dmabuf_dump(s,
-			    "\tattach[%d]: iova:0x%-14lx attr:%-4lx dir:%-2d dev:%s\n",
-			    attach_cnt, iova,
+			    "\tattach[%d]: iova:0x%-14llx attr:%-4lx dir:%-2d dev:%s\n",
+			    attach_cnt, (unsigned long long)iova,
 			    attach_obj->dma_map_attrs,
 			    attach_obj->dir,
 			    device_name);
@@ -990,7 +989,7 @@ static long get_dma_heap_buffer_total(struct dma_heap *heap)
 	dump_info.heap = heap;
 	dump_info.ret = 0; /* used to record total size */
 
-	MINDONE_DMA_BUF_FOR_EACH(dma_heap_total_cb, (void *)&dump_info);
+	get_dmabuf_debugfs_data(dma_heap_total_cb, (void *)&dump_info);
 
 	return dump_info.ret;
 }
@@ -1163,7 +1162,7 @@ struct dump_fd_data *dmabuf_rbtree_add_all(struct dma_heap *heap,
 	fddata->dmabuf_root = RB_ROOT;
 	spin_lock_init(&fddata->splock);
 
-	MINDONE_DMA_BUF_FOR_EACH(dmabuf_rbtree_dbg_add_cb, fddata);
+	get_dmabuf_debugfs_data(dmabuf_rbtree_dbg_add_cb, fddata);
 	if (pid > 0) {
 		dmabuf_rbtree_add_all_pid(fddata, heap, s, pid);
 		return fddata;
@@ -1454,8 +1453,7 @@ static void mtk_dmabuf_dump_heap(struct dma_heap *heap,
 			    (atomic64_read(&dma_heap_normal_total) * 4) / PAGE_SIZE);
 
 		//dump all heaps
-		dmabuf_dump(s, "[heap info]\n",
-			    get_current_time_ms());
+		dmabuf_dump(s, "[heap info]\n");
 		for (; i < _DEBUG_HEAP_CNT_; i++) {
 			heap = dma_heap_find(debug_heap_list[i].heap_name);
 			if (heap) {
@@ -1602,7 +1600,7 @@ static ssize_t dma_heap_proc_write(struct file *file, const char *buf,
 	mtk_dmabuf_dump_heap(heap, NULL, 0);
 
 	if (cmd < DMABUF_T_END)
-		pr_info("%s: test case: end======\n",
+		pr_info("%s: test case: %s end======\n",
 			__func__, DMA_HEAP_T_CMD_STR[cmd]);
 
 	return count;
@@ -1818,7 +1816,7 @@ static int dma_buf_init_procfs(void)
 	dma_heaps_dir = proc_mkdir("heaps", dma_heap_proc_root);
 	if (!dma_heaps_dir) {
 		pr_info("%s failed to create procfs heaps dir.\n",
-			__func__, PTR_ERR(dma_heaps_dir));
+			__func__);
 		return -1;
 	}
 

@@ -9,8 +9,7 @@
 #define DEBUG 1
 
 #include <linux/blk_types.h>
-#include <linux/sched/clock.h>	/* sched_clock: 6.12 no longer pulls it in implicitly */
-#include <mindone/compat.h>
+#include <linux/sched/clock.h>
 #include <linux/blkdev.h>
 #include <linux/cpumask.h>
 #include <linux/jiffies.h>
@@ -1186,7 +1185,7 @@ static ssize_t mtk_btag_mictx_sub_write(struct file *file,
 
 	ret = copy_from_user(cmd, ubuf, count);
 
-	if (ret < 0)
+	if (ret)
 		goto err;
 
 	if (cmd[0] == '1')
@@ -1957,14 +1956,12 @@ static int __init mtk_btag_init(void)
 	mtk_fuse_init();
 #endif
 	mtk_btag_install_tracepoints();
-	MINDONE_MRDUMP_SET_EXTRA_DUMP(AEE_EXTRA_FILE_BLOCKIO, mtk_btag_get_aee_buffer);
 
 	return 0;
 }
 
 static void __exit mtk_btag_exit(void)
 {
-	MINDONE_MRDUMP_SET_EXTRA_DUMP(AEE_EXTRA_FILE_BLOCKIO, NULL);
 	proc_remove(btag_proc_root);
 	mtk_btag_uninstall_tracepoints();
 #if IS_ENABLED(CONFIG_MTK_FUSE_DEBUG)

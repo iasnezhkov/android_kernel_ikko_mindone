@@ -45,32 +45,25 @@ static int musb_probe(struct platform_device *pdev)
 	pr_info("%s: version " MUSB_VERSION ", ?dma?, otg (peripheral+host)\n"
 		, musb_driver_names);
 
-	/* F979: without this NULL check, this used to be a KERNEL CRASH, not a clean
-	 * startup failure. platform_get_resource() returns NULL when no region with
-	 * that number exists, and the next line dereferenced the null pointer
-	 * (iomem->start). Per F952 the child device is exactly NOT given resources,
-	 * so this condition did trigger. Now the driver fails cleanly and boot continues. */
 	iomem = platform_get_resource(pdev, IORESOURCE_MEM, 0);
 	if (!iomem) {
-		dev_err(dev, "MINDONE-USB: no memory region 0, aborting startup\n");
+		dev_err(dev, "no memory region 0, aborting startup\n");
 		return -ENODEV;
 	}
 	base = devm_ioremap(dev, iomem->start, resource_size(iomem));
-	/* devm_ioremap() returns NULL on failure, NOT an error pointer;
-	 * the previous IS_ERR() check never caught a null pointer at all. */
 	if (!base) {
-		dev_err(dev, "MINDONE-USB: memory region 0 did not map\n");
+		dev_err(dev, "memory region 0 did not map\n");
 		return -ENOMEM;
 	}
 
 	iomem = platform_get_resource(pdev, IORESOURCE_MEM, 1);
 	if (!iomem) {
-		dev_err(dev, "MINDONE-USB: no memory region 1, aborting startup\n");
+		dev_err(dev, "no memory region 1, aborting startup\n");
 		return -ENODEV;
 	}
 	pbase = devm_ioremap(dev, iomem->start, resource_size(iomem));
 	if (!pbase) {
-		dev_err(dev, "MINDONE-USB: memory region 1 did not map\n");
+		dev_err(dev, "memory region 1 did not map\n");
 		return -ENOMEM;
 	}
 

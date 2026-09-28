@@ -23,8 +23,6 @@
 #include <lpm_call_type.h>
 /* FIXME */
 #include <gs/v1/lpm_power_gs.h>
-/* MINDONE: on 6.12 this header is no longer pulled in transitively, and the file uses
- * of_find_compatible_node/of_property_read_string_index/of_node_put directly. */
 #include <linux/of.h>
 
 

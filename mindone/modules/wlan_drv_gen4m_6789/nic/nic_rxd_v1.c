@@ -552,7 +552,17 @@ void nic_rxd_v1_check_wakeup_reason(
 				u2Temp);
 			break;
 		case ETH_P_ARP:
+		{
+			uint16_t u2ArpOp = (pvHeader[ETH_HLEN + 6] << 8) |
+					   pvHeader[ETH_HLEN + 7];
+
+			DBGLOG(RX, INFO,
+				"ARP %s From IP: " IPV4STR " wakeup host\n",
+				u2ArpOp == ARP_PRO_REQ ? "Req" : "Rsp",
+				IPV4TOSTR(&pvHeader[ETH_HLEN +
+					ARP_SENDER_IP_OFFSET]));
 			break;
+		}
 		case ETH_P_1X:
 		case ETH_P_PRE_1X:
 #if CFG_SUPPORT_WAPI
@@ -645,6 +655,21 @@ void nic_rxd_v1_check_wakeup_reason(
 			DBGLOG(RX, INFO,
 				"MGMT frame subtype: %d\n",
 				ucSubtype);
+			if ((prWlanMgmtHeader->u2FrameCtrl & MASK_FRAME_TYPE) ==
+				MAC_FRAME_DEAUTH ||
+			    (prWlanMgmtHeader->u2FrameCtrl & MASK_FRAME_TYPE) ==
+				MAC_FRAME_DISASSOC) {
+				struct WLAN_DEAUTH_FRAME *prDeauthFrame =
+					(struct WLAN_DEAUTH_FRAME *)pvHeader;
+
+				DBGLOG(RX, INFO,
+					"MGMT frame DA[" MACSTR "] SA[" MACSTR
+					"] BSSID[" MACSTR "] ReasonCode[0x%x] wakeup host\n",
+					MAC2STR(prDeauthFrame->aucDestAddr),
+					MAC2STR(prDeauthFrame->aucSrcAddr),
+					MAC2STR(prDeauthFrame->aucBSSID),
+					prDeauthFrame->u2ReasonCode);
+			}
 			DBGLOG(RX, INFO,
 				" SeqCtrl %d wakeup host\n",
 				prWlanMgmtHeader->u2SeqCtrl);

@@ -452,7 +452,7 @@ static void headset_volume_ramp(struct mt6358_priv *priv, int from, int to)
 		dev_warn(priv->dev, "%s(), volume index is not valid, from %d, to %d\n",
 			 __func__, from, to);
 
-	dev_info(priv->dev, "%s(), from %d, to %d\n",
+	dev_dbg(priv->dev, "%s(), from %d, to %d\n",
 		 __func__, from, to);
 
 	if (to > from)
@@ -815,13 +815,6 @@ static const struct snd_kcontrol_new hpr_in_mux_control =
 	SOC_DAPM_ENUM("HPR Select", hpr_in_mux_map_enum);
 
 static const char * const rcv_in_mux_map[] = {
-	/*
-	 * MINDONE (F4434): "Media Playback" reuses the RCV_MUX_VOICE_PLAYBACK
-	 * mux setting (earpiece fed from DACL) but is a media-labeled selection
-	 * so the audio HAL can drive the receiver as the LEFT channel of a
-	 * stereo speaker output (bottom speaker = DACR, earpiece = DACL) without
-	 * touching the voice-call path. Same electrical route, distinct label.
-	 */
 	"Open", "Mute", "Voice Playback", "Test Mode", "Media Playback"
 };
 
@@ -3789,7 +3782,7 @@ static const struct snd_soc_dapm_route mt6358_dapm_routes[] = {
 
 	/* Receiver Path */
 	{"RCV Mux", "Voice Playback", "DACL"},
-	{"RCV Mux", "Media Playback", "DACL"},	/* MINDONE F4434: earpiece as stereo LEFT */
+	{"RCV Mux", "Media Playback", "DACL"},
 	{"Receiver", NULL, "RCV Mux"},
 
 	/* VOW */
@@ -4148,7 +4141,7 @@ static int calculate_trim_result(struct mt6358_priv *priv,
 	/* calculate result */
 	for (i = discard_num; i < trim_times - discard_num; i++) {
 		offset += on_value[i] - off_value[i];
-		dev_info(priv->dev, "%s(), offset diff = %d, on = %d, off = %d\n",
+		dev_dbg(priv->dev, "%s(), offset diff = %d, on = %d, off = %d\n",
 			 __func__,
 			 on_value[i] - off_value[i], on_value[i], off_value[i]);
 	}

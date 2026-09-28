@@ -2,9 +2,6 @@
 /*
  * Copyright (c) 2019 MediaTek Inc.
  */
-
-
-#include <linux/version.h>
 #include <linux/workqueue.h>
 #include <linux/sched/clock.h>
 #include <linux/atomic.h>
@@ -259,10 +256,10 @@ GED_ERROR ged_notify_sw_vsync(GED_VSYNC_TYPE eType,
 	{
 #ifdef ENABLE_COMMON_DVFS
 
-	long phase = 0;
-	unsigned long t;
-	bool bHWEventKick = false;
-	long long llDiff = 0;
+	long __maybe_unused phase = 0;
+	unsigned long __maybe_unused t;
+	bool __maybe_unused bHWEventKick = false;
+	long long __maybe_unused llDiff = 0;
 
 	unsigned long long temp;
 	unsigned long ul3DFenceDoneTime;

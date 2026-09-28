@@ -29,12 +29,6 @@
 
 struct transceiver_config {
 	uint8_t length;
-	/* MINDONE: same false-positive class as sensor_comm_ctrl.data (see
-	 * sensor_comm.h) -- kzalloc(sizeof(*cfg)+length) here in transceiver_config()
-	 * and the memcpy()s in transceiver_copy_config() are all function-local, but
-	 * without __counted_by() the FORTIFY runtime check sees the flexible array's
-	 * declared size (0) and warns on legitimate copies (transceiver.c:199/703).
-	 * length is always set before data is touched. */
 	uint8_t data[] __counted_by(length) __aligned(4);
 };
 
@@ -579,6 +573,8 @@ static int transceiver_comm_with(int sensor_type, int cmd,
 	struct sensor_comm_ctrl *ctrl = NULL;
 
 	ctrl = kzalloc(sizeof(*ctrl) + length, GFP_KERNEL);
+	if (!ctrl)
+		return -ENOMEM;
 	ctrl->sensor_type = sensor_type;
 	ctrl->command = cmd;
 	ctrl->length = length;

@@ -250,7 +250,6 @@ void kbase_device_term(struct kbase_device *kbdev)
 	kbase_mem_halt(kbdev);
 }
 
-extern void mindone_mali_mark(int step);
 
 int kbase_device_init(struct kbase_device *kbdev)
 {
@@ -262,20 +261,10 @@ int kbase_device_init(struct kbase_device *kbdev)
 	kbase_device_id_init(kbdev);
 	kbase_disjoint_init(kbdev);
 
-	/* MINDONE: marker on EVERY step of the init table.
-	 * `mali_kbase_mt6789.mindone_mali_stop=100+N` - reboot BEFORE step N.
-	 * One build covers the whole table this way, bisection runs via the module param.
-	 */
 	for (i = 0; i < ARRAY_SIZE(dev_init); i++) {
-		mindone_mali_mark(100 + (int)i);
 		if (dev_init[i].init) {
 			err = dev_init[i].init(kbdev);
 			if (err) {
-				/* MINDONE: marker on the ERROR branch. Without it, "the next marker never
-				 * fired" is indistinguishable from "we died": the loop breaks on error
-				 * and later markers never run at all.
-				 */
-				mindone_mali_mark(200);
 				if (err != -EPROBE_DEFER)
 					dev_err(kbdev->dev, "%s error = %d\n",
 						dev_init[i].err_mes, err);
@@ -283,12 +272,6 @@ int kbase_device_init(struct kbase_device *kbdev)
 				break;
 			}
 		}
-		/* MINDONE: marker at the VERY END of the loop body - separates "iteration
-		 * finished" from "died inside it". 🔴 The number MUST depend on the iteration:
-		 * a fixed number would fire on the FIRST iteration and answer nothing
-		 * (lesson from F657). Threshold 150+N asks "did we survive through iteration N".
-		 */
-		mindone_mali_mark(150 + (int)i);
 	}
 
 	return err;

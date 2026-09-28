@@ -6,7 +6,6 @@
 #include <linux/clk.h>
 #include <drivers/misc/mediatek/smi/mtk-smi-dbg.h>
 
-/* MINDONE (F2383): does the layer configuration reach the overlay at all? Pure measurement. */
 #include <linux/moduleparam.h>
 unsigned long mindone_olc_calls;
 module_param(mindone_olc_calls, ulong, 0444);
@@ -1160,8 +1159,10 @@ static enum mtk_ovl_colorspace mtk_ovl_map_cs(enum mtk_drm_dataspace ds)
 		break;
 	case MTK_DRM_DATASPACE_STANDARD_ADOBE_RGB:
 		DDPPR_ERR("%s: ovl get cs ADOBE_RGB\n", __func__);
+		fallthrough;
 	case MTK_DRM_DATASPACE_STANDARD_BT2020:
 		DDPPR_ERR("%s: ovl does not support BT2020\n", __func__);
+		fallthrough;
 	default:
 		cs = OVL_SRGB;
 		break;
@@ -1181,9 +1182,11 @@ static enum mtk_ovl_transfer mtk_ovl_map_transfer(enum mtk_drm_dataspace ds)
 	case MTK_DRM_DATASPACE_TRANSFER_GAMMA2_6:
 	case MTK_DRM_DATASPACE_TRANSFER_GAMMA2_8:
 		DDPINFO("%s: ovl does not support gamma 2.6/2.8, use gamma 2.2\n", __func__);
+		fallthrough;
 	case MTK_DRM_DATASPACE_TRANSFER_ST2084:
 	case MTK_DRM_DATASPACE_TRANSFER_HLG:
 		DDPINFO("%s: HDR transfer\n", __func__);
+		fallthrough;
 	default:
 		xfr = OVL_GAMMA2_2;
 		break;
@@ -3340,11 +3343,6 @@ static dma_addr_t read_ext_layer_hdr_addr(struct mtk_ddp_comp *comp, int id)
 	return layer_addr;
 }
 
-/* MINDONE: probe on readl(SRC_CON) in the LK-boot-splash handover path (F776-F780,
- * low priority - this code only runs from the first half of first_enable(), and per
- * F780 is NOT required to reproduce the hang; kept as an elimination test).
- * Default 0, behavior unchanged.
- */
 static int mindone_skip_ovl_layer_readback;
 module_param(mindone_skip_ovl_layer_readback, int, 0444);
 
@@ -4372,15 +4370,7 @@ static int mtk_disp_ovl_probe(struct platform_device *pdev)
 		return -ENOMEM;
 
 	irq = platform_get_irq(pdev, 0);
-	/* MINDONE-OVL: diagnostic. Bind fails with -517 after 14us, and the only deferral in
-	 * the shared code logs a message that is absent from our log. Checking what the
-	 * interrupt request actually returns. Boot survives this. See F587/F593.
-	 */
-	/* 08.09 (F3942): this used to be pr_emerg -- the highest level for a one-off line at
-	 * probe. The display work this was written for is done (the screen works), and
-	 * pr_emerg goes to the console and slows down boot. Keep the visibility, drop the
-	 * "emergency" severity. */
-	pr_info("MINDONE-OVL: %s platform_get_irq=%d\n", dev_name(dev), irq);
+	pr_debug("MINDONE-OVL: %s platform_get_irq=%d\n", dev_name(dev), irq);
 	if (irq < 0)
 		return irq;
 

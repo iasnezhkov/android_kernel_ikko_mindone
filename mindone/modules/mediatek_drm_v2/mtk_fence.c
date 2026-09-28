@@ -19,10 +19,9 @@
 #include "mtk_sync.h"
 #include <linux/moduleparam.h>
 #include <drivers/gpu/drm/mediatek/mediatek_v2/mtk_fence.h>
-/* MINDONE F2887: how many times the present marker was substituted with ktime_get() */
 unsigned long mindone_pf_time_fix;
 module_param(mindone_pf_time_fix, ulong, 0444);
-MODULE_PARM_DESC(mindone_pf_time_fix, "present fence timestamps replaced by ktime_get() (F2887)");
+MODULE_PARM_DESC(mindone_pf_time_fix, "present fence timestamps replaced by ktime_get()");
 #include "mtk_drm_ddp_comp.h"
 #include "mtk_drm_session.h"
 #include "mtk_drm_plane.h"
@@ -551,12 +550,6 @@ int mtk_release_present_fence(unsigned int session_id, unsigned int fence_idx, k
 
 	mtk_drm_trace_begin("present_fence_rel:%s-%d",
 		mtk_fence_session_mode_spy(session_id), fence_idx);
-	/* MINDONE F2887: the present timestamp comes from mtk_crtc->pf_time, written
-	 * ONLY by RDMA frame-done. An empty frame commit doesn't write it - the
-	 * timestamp stalls, present signals with a stale time, HWC sees "2 same signal
-	 * time" and resets its vsync estimate (resetAvgVSyncPeriod) => HWC misses every
-	 * vsync => SF never wakes the producer => a loop (F2886, +93/s while stuck).
-	 * Guarantee monotonicity: 0 or a repeat => use ktime_get(). */
 	{
 		static ktime_t mindone_last_pf_time;
 
@@ -797,17 +790,9 @@ int mtk_fence_convert_input_to_fence_layer_info(
  * @buf struct @fb_overlay_buffer
  * @return struct @mtk_fence_buf_info
  */
-/* MINDONE F2899: a layer fence is created AHEAD (++fence_idx) on MTK_GEM_SUBMIT and
- * signals only once the frame with that index reaches the callback. HWC prepares
- * buffers ~20ms AFTER the last empty packet and sends nothing more (F2899 window:
- * S+ up to 1095, release up to 1100, then P+ 1101..1103 and silence) - those fds
- * hang forever in Fence::waitForever. Can't fix it in the callback by construction.
- * Kernel-side timeout instead: every prepare_buf restarts the layer's delayed work;
- * if the timeline hasn't reached fence_idx after 500ms, force-release it (like
- * sw_sync timeout). On the normal path release already happened, so it's a no-op. */
 unsigned long mindone_fence_timeout_fired;
 module_param(mindone_fence_timeout_fired, ulong, 0444);
-MODULE_PARM_DESC(mindone_fence_timeout_fired, "layer fences force-released by kernel timeout (F2899)");
+MODULE_PARM_DESC(mindone_fence_timeout_fired, "layer fences force-released by kernel timeout");
 unsigned int mindone_fence_timeout_ms = 500;
 module_param(mindone_fence_timeout_ms, uint, 0644);
 MODULE_PARM_DESC(mindone_fence_timeout_ms, "layer fence timeout in ms, 0 = disabled");
@@ -819,10 +804,6 @@ struct mindone_fence_wd {
 	bool inited;
 };
 static struct mindone_fence_wd mindone_fence_wd_tbl[MTK_TIMELINE_COUNT];
-/* MINDONE F2909: timers only fire after an EMPTY commit (LYE_IDX=0) - normal
- * (idle, interactive) traffic never has one, but the hang is always preceded by
- * one. Without this gate the timer released pipeline buffers before they were
- * shown => black flashes. */
 unsigned long mindone_empty_commit_jiffies;
 unsigned int mindone_wd_window_ms = 3000;
 module_param(mindone_wd_window_ms, uint, 0644);
@@ -856,7 +837,6 @@ static void mindone_fence_wd_fn(struct work_struct *w)
 	cur = li->timeline->value;
 	mutex_unlock(&li->sync_lock);
 	if (cur < target) {
-		/* F2911: the pathology outlasts the window - extend it while we still find stuck ones */
 		mindone_empty_commit_jiffies = jiffies;
 		mindone_fence_timeout_fired++;
 		if ((mindone_fence_timeout_fired & 0xf) == 1)

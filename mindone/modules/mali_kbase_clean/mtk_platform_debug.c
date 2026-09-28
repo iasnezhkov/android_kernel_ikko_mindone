@@ -688,11 +688,7 @@ void mtk_debug_csf_dump_groups_and_queues(struct kbase_device *kbdev, int pid)
 						case BASE_KCPU_COMMAND_TYPE_FENCE_SIGNAL:
 						{
 							struct kbase_sync_fence_info info;
-#if (KERNEL_VERSION(4, 10, 0) > LINUX_VERSION_CODE)
-							struct fence *fence;
-#else
 							struct dma_fence *fence;
-#endif
 
 							fence = cmd->info.fence.fence;
 							kbase_sync_fence_info_get(fence, &info);
@@ -718,11 +714,7 @@ void mtk_debug_csf_dump_groups_and_queues(struct kbase_device *kbdev, int pid)
 						case BASE_KCPU_COMMAND_TYPE_FENCE_WAIT:
 						{
 							struct kbase_sync_fence_info info;
-#if (KERNEL_VERSION(4, 10, 0) > LINUX_VERSION_CODE)
-							struct fence *fence;
-#else
 							struct dma_fence *fence;
-#endif
 
 							fence = cmd->info.fence.fence;
 							kbase_sync_fence_info_get(fence, &info);

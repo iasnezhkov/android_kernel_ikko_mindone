@@ -4,8 +4,6 @@
  */
 
 #include <linux/delay.h>
-#include <mindone/compat.h>
-#include <mindone/compat-thermal.h>
 #include <linux/of_irq.h>
 #include <linux/interrupt.h>
 #include <linux/kernel.h>
@@ -218,7 +216,7 @@ static int lvts_read_tc_temperature(struct lvts_data *lvts_data, unsigned int tz
 
 static int soc_temp_lvts_read_temp(struct thermal_zone_device *tz, int *temperature)
 {
-	struct soc_temp_tz *lvts_tz = (struct soc_temp_tz *) MINDONE_TZ_DEVDATA(tz);
+	struct soc_temp_tz *lvts_tz = (struct soc_temp_tz *) thermal_zone_device_priv(tz);
 	struct lvts_data *lvts_data = lvts_tz->lvts_data;
 
 	if (lvts_tz->id == 0)
@@ -687,7 +685,7 @@ void lvts_wait_for_all_sensing_point_idle(struct lvts_data *lvts_data)
 			break;
 
 		if ((cnt + 1) % 10 == 0) {
-                        dev_info(dev, "Cnt= %d LVTS TC %d, LVTSMSRCTL1[10,7,0] = %d,%d,%d, LVTSMSRCTL1[10:0] = 0x%x\n",
+                        dev_info(dev, "Cnt= %d LVTS TC %d, LVTSMSRCTL1[10,7,0] = %lu,%lu,%lu, LVTSMSRCTL1[10:0] = 0x%lx\n",
 					cnt + 1, (temp >> 16),
 					((temp & BIT(2)) >> 2),
 					((temp & BIT(1)) >> 1),
@@ -963,12 +961,12 @@ static void update_all_tc_hw_reboot_point(struct lvts_data *lvts_data,
 		tc[i].hw_reboot_trip_point = trip_point;
 }
 
-static int soc_temp_lvts_set_trip_temp(MINDONE_TZ_SET_TRIP_TEMP_PARAMS)
+static int soc_temp_lvts_set_trip_temp(struct thermal_zone_device *tz, const struct thermal_trip *trip, int temp)
 {
-	struct soc_temp_tz *lvts_tz = (struct soc_temp_tz *) MINDONE_TZ_DEVDATA(tz);
+	struct soc_temp_tz *lvts_tz = (struct soc_temp_tz *) thermal_zone_device_priv(tz);
 	struct lvts_data *lvts_data = lvts_tz->lvts_data;
 
-	if (MINDONE_TZ_TRIP_TYPE(lvts_data->tz_dev, trip) != THERMAL_TRIP_CRITICAL || lvts_tz->id != 0)
+	if ((trip->type) != THERMAL_TRIP_CRITICAL || lvts_tz->id != 0)
 		return 0;
 
 	update_all_tc_hw_reboot_point(lvts_data, temp);
@@ -1000,7 +998,7 @@ static bool lvts_lk_init_check(struct lvts_data *lvts_data)
 			writel(0x0, LVTSSPARE0_0 + base);
                         ret = true;
 		} else {
-                        dev_info(dev, "%s, %d\n", __func__, i);
+                        dev_dbg(dev, "%s, %d\n", __func__, i);
                 	ret = false;
                         break;
                 }
@@ -1294,12 +1292,6 @@ static int of_update_lvts_data(struct lvts_data *lvts_data,
 		}
 
 		/* Get interrupt number */
-		/* MINDONE-LVTS-IRQ (F3224): platform_get_resource(IORESOURCE_IRQ) reads a
-		 * resource table that on 6.1 is still empty when this node probes (the
-		 * interrupt controller isn't ready yet) -> permanent -EINVAL, no SoC
-		 * thermal zones ever register. Same defect class that broke USB three
-		 * times (F552). platform_get_irq() maps ON DEMAND via of_irq_get() and
-		 * returns -EPROBE_DEFER instead, so the kernel retries probe later. */
 		ret = platform_get_irq(pdev, i);
 		if (ret < 0) {
 			dev_err(dev, "No irq resource, index %d (ret=%d)\n", i, ret);
@@ -1532,7 +1524,7 @@ static int lvts_suspend_noirq(struct device *dev)
 	struct lvts_data *lvts_data;
 
 	lvts_data = (struct lvts_data *) dev_get_drvdata(dev);
-	dev_info(dev, "[Thermal/LVTS]%s\n", __func__);
+	dev_dbg(dev, "[Thermal/LVTS]%s\n", __func__);
 
 	lvts_close(lvts_data);
 
@@ -1545,7 +1537,7 @@ static int lvts_resume_noirq(struct device *dev)
 	struct lvts_data *lvts_data;
 
 	lvts_data = (struct lvts_data *) dev_get_drvdata(dev);
-	dev_info(dev, "[Thermal/LVTS]%s\n", __func__);
+	dev_dbg(dev, "[Thermal/LVTS]%s\n", __func__);
 
 
 	ret = lvts_init(lvts_data);

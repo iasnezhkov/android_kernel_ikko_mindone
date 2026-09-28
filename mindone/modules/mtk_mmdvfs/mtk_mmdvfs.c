@@ -114,10 +114,6 @@ static void set_all_muxes(struct mmdvfs_drv_data *drv_data, u32 opp_level)
 	for (i = 0; i < num_muxes; i++) {
 		mux = drv_data->muxes[i].mux;
 		clk_src = drv_data->muxes[i].clk_src[opp_level];
-		/* MINDONE (03.09.2026, first 6.12 boot): a mux or source whose clk lookup failed is
-		 * kept here as an ERR_PTR, and this used to be handed straight to the clk core. On
-		 * 6.12 one of these lookups comes back -ENOENT and the ERR_PTR faulted inside
-		 * clk_prepare(), killing PID 1. Skip entries we never got a real clock for. */
 		if (IS_ERR_OR_NULL(mux) || IS_ERR_OR_NULL(clk_src))
 			continue;
 		err = clk_prepare_enable(mux);
@@ -144,7 +140,6 @@ static void set_all_hoppings(struct mmdvfs_drv_data *drv_data, u32 opp_level)
 	for (i = 0; i < num_hoppings; i++) {
 		hopping = drv_data->hoppings[i].hopping_clk;
 		hopping_rate = drv_data->hoppings[i].hopping_rate[opp_level];
-		/* MINDONE: same guard as set_all_muxes() - a failed lookup is stored as an ERR_PTR. */
 		if (IS_ERR_OR_NULL(hopping))
 			continue;
 		err = clk_prepare_enable(hopping);

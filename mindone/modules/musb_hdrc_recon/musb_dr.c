@@ -71,10 +71,6 @@ int mt_usb_set_vbus(struct otg_switch_mtk *otg_sx, int is_on)
 		}
 		otg_sx->vbus_on = true;
 	} else {
-		/* Only undo our own enable: the first role_sx_set at init turns vbus "off" while
-		 * we never enabled it, and regulator_is_enabled() is not a substitute for the
-		 * consumer use count (the bootloader may leave the rail on) -> WARN at
-		 * drivers/regulator/core.c:3038 (F3568). */
 		if (!otg_sx->vbus_on)
 			return 0;
 		regulator_disable(vbus);

@@ -6,7 +6,7 @@
 #include "vdec_fmt_dmabuf.h"
 #include "vdec_fmt_utils.h"
 
-#include <linux/of_platform.h>	/* of_find_device_by_node: 6.12 no longer pulls it in implicitly */
+#include <linux/of_platform.h>
 int fmt_dmabuf_get_iova(struct dma_buf *dbuf, u64 *iova,
 	struct device *dev, struct dma_buf_attachment **attach, struct sg_table **sgt,
 	bool cache_sync)
@@ -93,7 +93,7 @@ u64 fmt_translate_fd(u64 fd, u32 offset, struct dmabufmap map[], struct device *
 	ret = fmt_dmabuf_get_iova(*dbuf, &iova, dev, attach, sgt, cache_sync);
 
 	if (ret != 0) {
-		fmt_debug(0, "fd: %lu iova get failed", fd);
+		fmt_debug(0, "fd: %llu iova get failed", fd);
 		return 0;
 	}
 

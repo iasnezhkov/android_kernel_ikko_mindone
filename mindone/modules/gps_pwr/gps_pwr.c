@@ -8,7 +8,6 @@
 * Dependency
 *******************************************************************************/
 #include <linux/kernel.h>
-#include <mindone/compat.h>
 #include <linux/module.h>
 #include <linux/init.h>
 #include <linux/types.h>
@@ -21,7 +20,6 @@
 #include <linux/io.h>
 #include <linux/uaccess.h>
 #include <linux/printk.h>
-#include <linux/version.h>
 #include <linux/wait.h>
 #include <conn_power_throttling.h>
 #include <linux/poll.h>
@@ -193,7 +191,7 @@ static int gps_pwr_init(void)
 		pr_info("cdev_add fail: %d\n", err);
 		goto err_out;
 	}
-	gps_pwr_devobj->cls = MINDONE_CLASS_CREATE("gps_pwr");
+	gps_pwr_devobj->cls = class_create("gps_pwr");
 	if (IS_ERR(gps_pwr_devobj->cls)) {
 		pr_info("Unable to create class, err = %d\n", (int)PTR_ERR(gps_pwr_devobj->cls));
 	goto err_out;

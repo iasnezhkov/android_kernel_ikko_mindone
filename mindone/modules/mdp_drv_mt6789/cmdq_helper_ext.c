@@ -3664,7 +3664,7 @@ s32 cmdq_core_suspend(void)
 	ref_count = atomic_read(&cmdq_thread_usage);
 	if (ref_count)
 		exec_thread = CMDQ_REG_GET32(CMDQ_CURR_LOADED_THR);
-	CMDQ_LOG("%s usage:%d exec thread:0x%x\n",
+	CMDQ_MSG("%s usage:%d exec thread:0x%x\n",
 		__func__, ref_count, exec_thread);
 
 	if (cmdq_mdp_get_func()->mdpIsModuleSuspend(cmdq_mdp_get_engines()) < 0) {
@@ -3702,7 +3702,7 @@ s32 cmdq_core_resume_notifier(void)
 {
 	s32 ref_count = atomic_read(&cmdq_thread_usage);
 
-	CMDQ_LOG("%s ref:%d\n", __func__, ref_count);
+	CMDQ_MSG("%s ref:%d\n", __func__, ref_count);
 
 	/* TEE project limitation:
 	 * .t-base daemon process is available after process-unfreeze
@@ -4761,6 +4761,10 @@ void cmdq_core_initialize(void)
 
 	cmdq_wait_queue = kcalloc(max_thread_count, sizeof(*cmdq_wait_queue),
 		GFP_KERNEL);
+	if (!cmdq_group_cb || !cmdq_wait_queue) {
+		CMDQ_ERR("%s: no memory for the thread tables\n", __func__);
+		return;
+	}
 	for (index = 0; index < max_thread_count; index++)
 		init_waitqueue_head(&cmdq_wait_queue[index]);
 

@@ -10,7 +10,6 @@
 #include <linux/string.h>
 #include <linux/uaccess.h>
 #include <linux/unistd.h>
-#include <linux/version.h>
 
 #include "ssmr/memory_ssmr.h"
 #include "private/tmem_entry.h"

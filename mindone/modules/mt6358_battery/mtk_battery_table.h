@@ -303,10 +303,6 @@
 /*#define MTK_GET_BATTERY_ID_BY_GPIO*/
 
 /* Qmax for battery  */
-/* MINDONE 12.09 (F4170): g_Q_MAX / g_Q_MAX_H_CURRENT (battery #1, T0-T5) and
- * fg_temp_table (10 kOhm NTC) were restored to the values from this device's stock
- * mt6358_battery.ko (vendor_boot, 5.10.233). The vendor's 2946...2211 mAh overstated
- * capacity by a factor of 1.4; stock is 1960...1520. */
 int g_Q_MAX[MAX_TABLE][TOTAL_BATTERY_NUMBER] = {
 	/*bat1,   bat2,   bat3,    bat4*/
 	{ 1960, 2712, 2490, 1965},/*T0*/

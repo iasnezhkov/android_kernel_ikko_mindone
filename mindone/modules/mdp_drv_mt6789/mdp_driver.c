@@ -5,7 +5,6 @@
 
 #include "mdp_ioctl_ex.h"
 #include <linux/vmalloc.h>
-#include <mindone/compat.h>
 #include "mdp_driver.h"
 #include "cmdq_struct.h"
 #include "cmdq_virtual.h"
@@ -241,7 +240,7 @@ void cmdq_driver_dump_readback(dma_addr_t *addrs, u32 count, u32 *values)
 
 	i = 0;
 	while (i < count) {
-		ret = snprintf(buf, sizeof(buf), "%#lx:", addrs[i]);
+		ret = snprintf(buf, sizeof(buf), "%#llx:", addrs[i]);
 		if (ret < 0)
 			CMDQ_ERR("%s snprintf failed!!!\n", __func__);
 		else
@@ -1062,6 +1061,14 @@ static long cmdq_ioctl(struct file *pf, unsigned int code,
 		CMDQ_MSG("ioctl CMDQ_IOCTL_READ_READBACK_SLOTS\n");
 		status = mdp_ioctl_read_readback_slots(param);
 		break;
+	case CMDQ_IOCTL_IOVA_UNMAP:
+		CMDQ_MSG("ioctl CMDQ_IOCTL_IOVA_UNMAP\n");
+		status = mdp_ioctl_iova_unmap(pf, param);
+		break;
+	case CMDQ_IOCTL_IOVA_CACHE:
+		CMDQ_MSG("ioctl CMDQ_IOCTL_IOVA_CACHE\n");
+		status = mdp_ioctl_iova_cache(pf, param);
+		break;
 #ifdef MDP_COMMAND_SIMULATE
 	case CMDQ_IOCTL_SIMULATE:
 		CMDQ_LOG("ioctl CMDQ_IOCTL_SIMULATE\n");
@@ -1069,12 +1076,12 @@ static long cmdq_ioctl(struct file *pf, unsigned int code,
 		break;
 #endif
 	default:
-		CMDQ_ERR("unrecognized ioctl 0x%08x\n", code);
+		CMDQ_MSG("unrecognized ioctl 0x%08x\n", code);
 		return -ENOIOCTLCMD;
 	}
 
 	if (status < 0)
-		CMDQ_ERR("ioctl return fail:%d\n", status);
+		CMDQ_MSG("ioctl return fail:%d\n", status);
 
 	return status;
 }
@@ -1100,6 +1107,8 @@ static long cmdq_ioctl_compat(struct file *pFile, unsigned int code,
 	case CMDQ_IOCTL_FREE_READBACK_SLOTS:
 	case CMDQ_IOCTL_READ_READBACK_SLOTS:
 	case CMDQ_IOCTL_SIMULATE:
+	case CMDQ_IOCTL_IOVA_UNMAP:
+	case CMDQ_IOCTL_IOVA_CACHE:
 		/* All ioctl structures should be the same size in
 		 * 32-bit and 64-bit linux.
 		 */
@@ -1109,11 +1118,11 @@ static long cmdq_ioctl_compat(struct file *pFile, unsigned int code,
 		CMDQ_ERR("[COMPAT]deprecated ioctl 0x%08x\n", code);
 		return -ENOIOCTLCMD;
 	default:
-		CMDQ_ERR("[COMPAT]unrecognized ioctl 0x%08x\n", code);
+		CMDQ_MSG("[COMPAT]unrecognized ioctl 0x%08x\n", code);
 		return -ENOIOCTLCMD;
 	}
 
-	CMDQ_ERR("[COMPAT]unrecognized ioctl 0x%08x\n", code);
+	CMDQ_MSG("[COMPAT]unrecognized ioctl 0x%08x\n", code);
 	return -ENOIOCTLCMD;
 }
 #endif
@@ -1214,7 +1223,7 @@ static int cmdq_probe(struct platform_device *pDevice)
 
 	status = cdev_add(gMdpCDev, gMdpDevNo, 1);
 
-	gMDPClass = MINDONE_CLASS_CREATE(MDP_DRIVER_DEVICE_NAME);
+	gMDPClass = class_create(MDP_DRIVER_DEVICE_NAME);
 	object = device_create(gMDPClass, NULL, gMdpDevNo, NULL,
 		MDP_DRIVER_DEVICE_NAME);
 

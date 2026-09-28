@@ -198,14 +198,14 @@ static int parse_md_limit_table(struct device *dev)
 static int mtk_md_power_throttling_probe(struct platform_device *pdev)
 {
 	int ret;
-	struct md_pt_priv *priv;
 
 	ret = parse_md_limit_table(&pdev->dev);
 	if (ret != 0)
 		return ret;
 #if IS_ENABLED(CONFIG_MTK_LOW_BATTERY_POWER_THROTTLING)
 	if (md_pt_info[LBAT_POWER_THROTTLING].max_lv > 0) {
-		priv = &md_pt_info[LBAT_POWER_THROTTLING];
+		struct md_pt_priv *priv = &md_pt_info[LBAT_POWER_THROTTLING];
+
 		if (priv->threshold) {
 			lbat_user_register_ext("md pa dedicate throttle", priv->threshold,
 				priv->max_lv + 1, md_lbat_dedicate_callback);

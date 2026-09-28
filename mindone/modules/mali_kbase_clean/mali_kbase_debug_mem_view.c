@@ -26,7 +26,6 @@
 #include "mali_kbase_debug_mem_view.h"
 #include "mali_kbase.h"
 
-#include <mindone/compat.h>
 #include <linux/list.h>
 #include <linux/file.h>
 
@@ -205,7 +204,7 @@ static int debug_mem_open(struct inode *i, struct file *file)
 	struct debug_mem_data *mem_data;
 	int ret;
 
-	if (!MINDONE_GET_FILE_RCU(kctx->filp))
+	if (!atomic_long_inc_not_zero(&kctx->filp->f_count))
 		return -ENOENT;
 
 	ret = seq_open(file, &ops);

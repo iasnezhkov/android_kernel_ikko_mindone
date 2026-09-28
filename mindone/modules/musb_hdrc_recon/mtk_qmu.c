@@ -249,7 +249,7 @@ int qmu_init_gpd_pool(struct device *dev)
 		Rx_gpd_free_count[i] = Rx_gpd_max_count[i] - 1;
 		TGPD_CLR_FLAGS_HWO(Rx_gpd_end[i]);
 		gpd_ptr_align(RXQ, i, Rx_gpd_end[i]);
-		QMU_DBG("RXGPD HEAD[%d] VIRT<0x%lx> DMA<0x%lx> RQSAR<0x%lx>\n",
+		QMU_DBG("RXGPD HEAD[%d] VIRT<%p> DMA<%p> RQSAR<%p>\n",
 			i, Rx_gpd_head[i], io_ptr,
 			(void *)(uintptr_t) gpd_virt_to_phys(
 				Rx_gpd_end[i], RXQ, i));
@@ -273,7 +273,7 @@ int qmu_init_gpd_pool(struct device *dev)
 		Tx_gpd_free_count[i] = Tx_gpd_max_count[i] - 1;
 		TGPD_CLR_FLAGS_HWO(Tx_gpd_end[i]);
 		gpd_ptr_align(TXQ, i, Tx_gpd_end[i]);
-		QMU_DBG("TXGPD HEAD[%d] VIRT<0x%lx> DMA<0x%lx> TQSAR<0x%lx>\n",
+		QMU_DBG("TXGPD HEAD[%d] VIRT<%p> DMA<%p> TQSAR<%p>\n",
 			i, Tx_gpd_head[i], io_ptr,
 			(void *)(uintptr_t)gpd_virt_to_phys(
 				Tx_gpd_end[i], TXQ, i));
@@ -414,32 +414,24 @@ void qmu_reset_gpd_pool(u32 ep_num, u8 isRx)
 {
 	u32 size;
 
-	/* MINDONE-QMU-EP0 30.08 (F3114): no pool for this EP -> nothing to reset */
 	if (ep_num > MAX_QMU_EP || !(isRx ? Rx_gpd_head[ep_num] : Tx_gpd_head[ep_num])) {
 		QMU_WARN("reset %s(%d): no gpd pool, skip\n", isRx ? "RQ" : "TQ", ep_num);
 		return;
 	}
 
-	/* MINDONE-QMU-GUARD (29.08, F2962): the GPD pool is only allocated for queues 1..N;
-	 * stop_activity()->nuke() calls flush for EP0 too, and after gadget unbind
-	 * (sys.usb.config none) Rx/Tx_gpd_head[0]==NULL -> NULL read in
-	 * TGPD_CLR_FLAGS_HWO -> kernel panic. Nothing to flush for EP0 or an unallocated pool. */
 	if (ep_num == 0 ||
 	    (isRx ? (Rx_gpd_head[ep_num] == NULL) : (Tx_gpd_head[ep_num] == NULL))) {
-		pr_notice_ratelimited("MINDONE-QMU-GUARD: skip reset %s(%u), pool not allocated\n",
+		pr_notice_ratelimited("qmu: skip reset %s(%u), pool not allocated\n",
 				      isRx ? "RQ" : "TQ", ep_num);
 		return;
 	}
 
 
-	/* MINDONE-QMU-RACE (29.08, cov1 pstore 428s): NULL-deref in this function AFTER the head
-	 * check - the pool was freed concurrently (gadget unbind) while the pointer kept getting
-	 * re-read from the global array. Work off a local copy of the head, taken ONCE after the check. */
 	{
 		struct TGPD *head = isRx ? Rx_gpd_head[ep_num] : Tx_gpd_head[ep_num];
 
 		if (!head) {
-			pr_notice_ratelimited("MINDONE-QMU-RACE: pool %s(%u) vanished, skip reset\n",
+			pr_notice_ratelimited("qmu: pool %s(%u) vanished, skip reset\n",
 					      isRx ? "RQ" : "TQ", ep_num);
 			return;
 		}
@@ -653,7 +645,7 @@ void mtk_qmu_enable(struct musb *musb, u8 ep_num, u8 isRx)
 	musb_ep_select(mbase, ep_num);
 
 	if (isRx) {
-		QMU_WARN("enable RQ(%d)\n", ep_num);
+		QMU_INFO("enable RQ(%d)\n", ep_num);
 
 		Rx_enable[ep_num] = true;
 
@@ -731,7 +723,7 @@ void mtk_qmu_enable(struct musb *musb, u8 ep_num, u8 isRx)
 		MGC_WriteQMU32(base, MGC_O_QMU_RQCSR(ep_num), DQMU_QUE_START);
 
 	} else {
-		QMU_WARN("enable TQ(%d)\n", ep_num);
+		QMU_INFO("enable TQ(%d)\n", ep_num);
 
 		Tx_enable[ep_num] = true;
 
@@ -871,7 +863,7 @@ static void mtk_qmu_disable(u8 ep_num, u8 isRx)
 	}
 
 	if (state_change)
-		QMU_WARN("disable %s(%d)\n", isRx ? "RQ" : "TQ", ep_num);
+		QMU_INFO("disable %s(%d)\n", isRx ? "RQ" : "TQ", ep_num);
 
 	mtk_qmu_stop(ep_num, isRx);
 	if (isRx) {
@@ -973,7 +965,7 @@ void qmu_done_rx(struct musb *musb, u8 ep_num)
 	request = &req->request;
 	if (!request) {
 		QMU_ERR(
-			"[RXD]%s Cannot get next usb_request of %d",
+			"[RXD]%s Cannot get next usb_request of %d"
 			"but we should have next request and QMU has done.\n"
 			, __func__, ep_num);
 		return;
@@ -993,7 +985,7 @@ void qmu_done_rx(struct musb *musb, u8 ep_num)
 	 */
 	if (gpd == gpd_current) {
 
-		QMU_ERR(
+		QMU_INFO(
 			"[RXD][ERROR] gpd(%p) == gpd_current(%p)\n"
 			"[RXD][ERROR]EP%d RQCSR=%x, RQSAR=%x, RQCPR=%x, RQLDPR=%x\n"
 			"[RXD][ERROR]QCR0=%x, QCR2=%x, QCR3=%x, QGCSR=%x\n"

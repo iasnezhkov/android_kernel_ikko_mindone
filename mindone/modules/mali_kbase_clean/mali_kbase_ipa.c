@@ -477,42 +477,6 @@ static u32 get_static_power_locked(struct kbase_device *kbdev,
 	return power;
 }
 
-#if KERNEL_VERSION(5, 10, 0) > LINUX_VERSION_CODE
-#if defined(CONFIG_MALI_PWRSOFT_765) ||                                        \
-	KERNEL_VERSION(4, 10, 0) <= LINUX_VERSION_CODE
-static unsigned long kbase_get_static_power(struct devfreq *df,
-					    unsigned long voltage)
-#else
-static unsigned long kbase_get_static_power(unsigned long voltage)
-#endif
-{
-	struct kbase_ipa_model *model;
-	u32 power = 0;
-#if defined(CONFIG_MALI_PWRSOFT_765) ||                                        \
-	KERNEL_VERSION(4, 10, 0) <= LINUX_VERSION_CODE
-	struct kbase_device *kbdev = dev_get_drvdata(&df->dev);
-#else
-	struct kbase_device *kbdev = kbase_find_device(-1);
-#endif
-
-	if (!kbdev)
-		return 0ul;
-
-	mutex_lock(&kbdev->ipa.lock);
-
-	model = get_current_model(kbdev);
-	power = get_static_power_locked(kbdev, model, voltage);
-
-	mutex_unlock(&kbdev->ipa.lock);
-
-#if !(defined(CONFIG_MALI_PWRSOFT_765) ||                                      \
-	KERNEL_VERSION(4, 10, 0) <= LINUX_VERSION_CODE)
-	kbase_release_device(kbdev);
-#endif
-
-	return power;
-}
-#endif /* KERNEL_VERSION(5, 10, 0) > LINUX_VERSION_CODE */
 
 /**
  * opp_translate_freq_voltage() - Translate nominal OPP frequency from
@@ -551,71 +515,6 @@ static void opp_translate_freq_voltage(struct kbase_device *kbdev,
 	}
 }
 
-#if KERNEL_VERSION(5, 10, 0) > LINUX_VERSION_CODE
-#if defined(CONFIG_MALI_PWRSOFT_765) ||                                        \
-	KERNEL_VERSION(4, 10, 0) <= LINUX_VERSION_CODE
-static unsigned long kbase_get_dynamic_power(struct devfreq *df,
-					     unsigned long freq,
-					     unsigned long voltage)
-#else
-static unsigned long kbase_get_dynamic_power(unsigned long freq,
-					     unsigned long voltage)
-#endif
-{
-	struct kbase_ipa_model *model;
-	unsigned long freqs[KBASE_IPA_BLOCK_TYPE_NUM] = {0};
-	unsigned long volts[KBASE_IPA_BLOCK_TYPE_NUM] = {0};
-	u32 power_coeffs[KBASE_IPA_BLOCK_TYPE_NUM] = {0};
-	u32 power = 0;
-	int err = 0;
-#if defined(CONFIG_MALI_PWRSOFT_765) ||                                        \
-	KERNEL_VERSION(4, 10, 0) <= LINUX_VERSION_CODE
-	struct kbase_device *kbdev = dev_get_drvdata(&df->dev);
-#else
-	struct kbase_device *kbdev = kbase_find_device(-1);
-#endif
-
-	if (!kbdev)
-		return 0ul;
-
-	mutex_lock(&kbdev->ipa.lock);
-
-	model = kbdev->ipa.fallback_model;
-
-	err = model->ops->get_dynamic_coeff(model, power_coeffs);
-
-	if (!err) {
-		opp_translate_freq_voltage(kbdev, freq, voltage, freqs, volts);
-
-		power = kbase_scale_dynamic_power(
-			power_coeffs[KBASE_IPA_BLOCK_TYPE_TOP_LEVEL],
-			freqs[KBASE_IPA_BLOCK_TYPE_TOP_LEVEL],
-			volts[KBASE_IPA_BLOCK_TYPE_TOP_LEVEL]);
-
-		/* Here unlike kbase_get_real_power(), shader core frequency is
-		 * used for the scaling as simple power model is used to obtain
-		 * the value of dynamic coefficient (which is is a fixed value
-		 * retrieved from the device tree).
-		 */
-		power += kbase_scale_dynamic_power(
-			 power_coeffs[KBASE_IPA_BLOCK_TYPE_SHADER_CORES],
-			 freqs[KBASE_IPA_BLOCK_TYPE_SHADER_CORES],
-			 volts[KBASE_IPA_BLOCK_TYPE_SHADER_CORES]);
-	} else
-		dev_err_ratelimited(kbdev->dev,
-				    "Model %s returned error code %d\n",
-				    model->ops->name, err);
-
-	mutex_unlock(&kbdev->ipa.lock);
-
-#if !(defined(CONFIG_MALI_PWRSOFT_765) ||                                      \
-	KERNEL_VERSION(4, 10, 0) <= LINUX_VERSION_CODE)
-	kbase_release_device(kbdev);
-#endif
-
-	return power;
-}
-#endif /* KERNEL_VERSION(5, 10, 0) > LINUX_VERSION_CODE */
 
 int kbase_get_real_power_locked(struct kbase_device *kbdev, u32 *power,
 				unsigned long freq,
@@ -724,14 +623,7 @@ int kbase_get_real_power(struct devfreq *df, u32 *power,
 KBASE_EXPORT_TEST_API(kbase_get_real_power);
 
 struct devfreq_cooling_power kbase_ipa_power_model_ops = {
-#if KERNEL_VERSION(5, 10, 0) > LINUX_VERSION_CODE
-	.get_static_power = &kbase_get_static_power,
-	.get_dynamic_power = &kbase_get_dynamic_power,
-#endif /* KERNEL_VERSION(5, 10, 0) > LINUX_VERSION_CODE */
-#if defined(CONFIG_MALI_PWRSOFT_765) ||                                        \
-	KERNEL_VERSION(4, 10, 0) <= LINUX_VERSION_CODE
 	.get_real_power = &kbase_get_real_power,
-#endif
 };
 KBASE_EXPORT_TEST_API(kbase_ipa_power_model_ops);
 

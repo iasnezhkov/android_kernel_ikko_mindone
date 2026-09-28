@@ -18,12 +18,14 @@
 #include <linux/ktime.h>
 #include "mtk_gauge.h"
 
+struct thermal_zone_device;
 
 #define NETLINK_FGD 26
 #define UNIT_TRANS_10	10
 #define UNIT_TRANS_100	100
 #define UNIT_TRANS_1000	1000
 #define UNIT_TRANS_60	60
+#define FGR_AGING_MIN_BP	7000
 #define MAX_TABLE		10
 #define MAX_CHARGE_RDC 5
 
@@ -113,12 +115,15 @@ enum battery_property {
 	BAT_PROP_FG_RESET,
 	BAT_PROP_LOG_LEVEL,
 	BAT_PROP_TEMP_TH_GAP,
+	BAT_PROP_LEARNED_AGING_BP,
+	BAT_PROP_LEARNED_CYCLES_X100,
 };
 
 struct battery_data {
 	struct power_supply_desc psd;
 	struct power_supply_config psy_cfg;
 	struct power_supply *psy;
+	struct thermal_zone_device *tzd;
 	struct power_supply *chg_psy;
 	struct notifier_block battery_nb;
 	int bat_status;
@@ -725,6 +730,7 @@ struct mtk_battery_algo {
 	int fg_c_d0_ocv;
 	int fg_c_d0_dod;
 	int fg_c_d0_soc;
+	int fg_c_d0_car;
 	int fg_c_dod;
 	int fg_c_soc;
 	int fg_bat_int1_gap;
@@ -761,6 +767,13 @@ struct mtk_battery_algo {
 	/* Interrupt control */
 	int uisoc_ht_en;
 	int uisoc_lt_en;
+
+	int zcv_learn_car;
+	int zcv_learn_soc;
+	bool zcv_learn_valid;
+	int sw_cycle_car;
+	int sw_cycle_ncar;
+	bool sw_cycle_valid;
 };
 
 struct simulator_log {
@@ -894,6 +907,7 @@ struct mtk_battery {
 	struct hrtimer fg_hrtimer;
 	struct mutex ops_lock;
 	struct mutex fg_update_lock;
+	struct mutex algo_lock;
 
 	struct battery_data bs_data;
 	struct mtk_coulomb_service cs;
@@ -944,16 +958,6 @@ struct mtk_battery {
 	int d_saved_car;
 	struct zcv_filter zcvf;
 
-	/* MINDONE (F4306/F4323, BATTERY-METRICS-1409): charge_counter
-	 * anchor. The raw hardware coulomb counter (GAUGE_PROP_COULOMB) is a
-	 * free-running accumulator, not an absolute "remaining charge" value, so
-	 * it has to be anchored against a trusted reference. We snapshot it every
-	 * time ui_soc crosses a whole percent (the same value userspace already
-	 * sees as "battery %") and report charge_counter as that anchor plus the
-	 * coulomb delta since, which gives real uAh resolution between percent
-	 * steps instead of a flat line. Zero-initialized by devm_kzalloc; a fresh
-	 * boot starts with cc_anchor_valid == false, so the first read falls back
-	 * to the old ui_soc*q_max formula until the first anchor is taken. */
 	bool cc_anchor_valid;
 	int cc_anchor_ui_soc;
 	int cc_anchor_car;
@@ -993,6 +997,8 @@ struct mtk_battery {
 	int bat_tmp_int_ht;
 	int bat_tmp_int_lt;
 	int cur_bat_temp;
+	ktime_t last_tbat_conv;
+	bool last_tbat_conv_done;
 
 	/*nafg monitor */
 	int last_nafg_cnt;
@@ -1136,6 +1142,7 @@ extern int gauge_set_property(enum gauge_property gp,
 			    int val);
 extern int battery_init(struct platform_device *pdev);
 extern int battery_psy_init(struct platform_device *pdev);
+extern void battery_psy_unregister_thermal(struct battery_data *bs_data);
 extern struct mtk_battery *get_mtk_battery(void);
 extern int battery_get_property(enum battery_property bp, int *val);
 extern int battery_get_int_property(enum battery_property bp);
@@ -1157,12 +1164,18 @@ extern int get_shutdown_cond(struct mtk_battery *gm);
 extern int get_shutdown_cond_flag(struct mtk_battery *gm);
 extern void set_shutdown_cond_flag(struct mtk_battery *gm, int val);
 extern bool set_charge_power_sel(enum charge_sel select);
+extern int mtk_battery_get_learned_q_max(struct mtk_battery *gm);
 extern int dump_pseudo100(enum charge_sel select);
 /*mtk_battery.c end */
 
 /* mtk_battery_algo.c */
 extern void battery_algo_init(struct mtk_battery *gm);
-extern void do_fg_algo(struct mtk_battery *gm, unsigned int intr_num);
+extern void do_fg_algo(struct mtk_battery *gm, unsigned int intr_num,
+	int cmd, int para1);
+extern int fgr_learned_aging_get(struct mtk_battery *gm, int *aging_bp);
+extern int fgr_learned_aging_set(struct mtk_battery *gm, int aging_bp);
+extern int fgr_learned_cycles_get(struct mtk_battery *gm, int *cycles_x100);
+extern int fgr_learned_cycles_set(struct mtk_battery *gm, int cycles_x100);
 extern void fg_bat_temp_int_internal(struct mtk_battery *gm);
 /* mtk_battery_algo.c end */
 extern void disable_all_irq(struct mtk_battery *gm);

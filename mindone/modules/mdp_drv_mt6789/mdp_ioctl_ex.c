@@ -8,6 +8,7 @@
 #include <linux/errno.h>
 #include <linux/fs.h>
 #include <linux/platform_device.h>
+#include <linux/sched.h>
 #include <linux/sched/clock.h>
 #include <linux/slab.h>
 #include <linux/spinlock.h>
@@ -66,6 +67,27 @@ struct mdp_job_mapping {
 	void *node;
 };
 static DEFINE_MUTEX(mdp_job_mapping_list_mutex);
+
+#define MDP_IOVA_CACHE_MAX 256
+
+struct mdp_iova_cache_entry {
+	struct list_head list_entry;
+	void *node;
+	struct dma_buf *buf;
+	struct dma_buf_attachment *attach;
+	struct sg_table *sgt;
+	dma_addr_t mva;
+};
+static struct list_head mdp_iova_cache_list;
+static u32 mdp_iova_cache_count;
+static DEFINE_MUTEX(mdp_iova_cache_mutex);
+
+struct mdp_cache_node {
+	struct list_head list_entry;
+	void *node;
+};
+static struct list_head mdp_cache_node_list;
+static DEFINE_MUTEX(mdp_cache_node_mutex);
 
 #define SLOT_GROUP_NUM 64
 #define MAX_RB_SLOT_NUM (SLOT_GROUP_NUM*64)
@@ -217,52 +239,6 @@ static s32 mdp_process_read_request(struct mdp_read_readback *req_user)
 	return status;
 }
 
-static bool mdp_ion_get_dma_buf(struct device *dev, int fd,
-	struct dma_buf **buf_out, struct dma_buf_attachment **attach_out,
-	struct sg_table **sgt_out)
-{
-	struct dma_buf *buf = NULL;
-	struct dma_buf_attachment *attach = NULL;
-	struct sg_table *sgt = NULL;
-
-	if (fd <= 0) {
-		CMDQ_ERR("ion error fd %d\n", fd);
-		goto err;
-	}
-
-	buf = dma_buf_get(fd);
-	if (IS_ERR(buf)) {
-		CMDQ_ERR("ion buf get fail %ld\n", PTR_ERR(buf));
-		goto err;
-	}
-
-	attach = dma_buf_attach(buf, dev);
-	if (IS_ERR(attach)) {
-		CMDQ_ERR("ion buf attach fail %ld", PTR_ERR(attach));
-		goto err_attach;
-	}
-
-	sgt =  dma_buf_map_attachment(attach, DMA_BIDIRECTIONAL);
-	if (IS_ERR(sgt)) {
-		CMDQ_ERR("ion buf map fail %ld", PTR_ERR(sgt));
-		goto err_map;
-	}
-
-	*buf_out = buf;
-	*attach_out = attach;
-	*sgt_out = sgt;
-
-	return true;
-
-err_map:
-	dma_buf_detach(buf, attach);
-
-err_attach:
-	dma_buf_put(buf);
-err:
-	return false;
-}
-
 static void mdp_ion_free_dma_buf(struct dma_buf *buf,
 	struct dma_buf_attachment *attach, struct sg_table *sgt)
 {
@@ -271,12 +247,155 @@ static void mdp_ion_free_dma_buf(struct dma_buf *buf,
 	dma_buf_put(buf);
 }
 
+static struct mdp_iova_cache_entry *mdp_iova_cache_find(void *node,
+	struct dma_buf *buf)
+{
+	struct mdp_iova_cache_entry *entry;
+
+	list_for_each_entry(entry, &mdp_iova_cache_list, list_entry)
+		if (entry->node == node && entry->buf == buf)
+			return entry;
+
+	return NULL;
+}
+
+static void mdp_iova_cache_evict_locked(struct mdp_iova_cache_entry *entry)
+{
+	list_del(&entry->list_entry);
+	mdp_iova_cache_count--;
+	mdp_ion_free_dma_buf(entry->buf, entry->attach, entry->sgt);
+	kfree(entry);
+}
+
+void mdp_ioctl_free_iova_cache_by_node(void *node)
+{
+	struct mdp_iova_cache_entry *entry, *tmp;
+	u32 count = 0;
+
+	mutex_lock(&mdp_iova_cache_mutex);
+	list_for_each_entry_safe(entry, tmp, &mdp_iova_cache_list, list_entry) {
+		if (entry->node != node)
+			continue;
+		mdp_iova_cache_evict_locked(entry);
+		count++;
+	}
+	mutex_unlock(&mdp_iova_cache_mutex);
+
+	if (count)
+		CMDQ_LOG("%s freed %u cached iova mapping(s) for node:%p\n",
+			__func__, count, node);
+}
+
+s32 mdp_ioctl_iova_unmap(struct file *pf, unsigned long param)
+{
+	struct mdp_iova_unmap req;
+	struct dma_buf *buf;
+	struct mdp_iova_cache_entry *entry;
+
+	if (copy_from_user(&req, (void *)param, sizeof(req))) {
+		CMDQ_ERR("%s copy_from_user failed\n", __func__);
+		return -EFAULT;
+	}
+
+	if (req.fd <= 0) {
+		CMDQ_MSG("%s invalid fd:%d\n", __func__, req.fd);
+		return -EINVAL;
+	}
+
+	buf = dma_buf_get(req.fd);
+	if (IS_ERR(buf)) {
+		CMDQ_MSG("%s dma_buf_get fail fd:%d %ld\n",
+			__func__, req.fd, PTR_ERR(buf));
+		return PTR_ERR(buf);
+	}
+
+	mutex_lock(&mdp_iova_cache_mutex);
+	entry = mdp_iova_cache_find(pf->private_data, buf);
+	if (entry)
+		mdp_iova_cache_evict_locked(entry);
+	mutex_unlock(&mdp_iova_cache_mutex);
+
+	dma_buf_put(buf);
+
+	return entry ? 0 : -ENOENT;
+}
+
+static struct mdp_cache_node *mdp_cache_node_find(void *node)
+{
+	struct mdp_cache_node *entry;
+
+	list_for_each_entry(entry, &mdp_cache_node_list, list_entry)
+		if (entry->node == node)
+			return entry;
+
+	return NULL;
+}
+
+static bool mdp_iova_cache_enabled(void *node)
+{
+	bool enabled;
+
+	mutex_lock(&mdp_cache_node_mutex);
+	enabled = mdp_cache_node_find(node) != NULL;
+	mutex_unlock(&mdp_cache_node_mutex);
+	return enabled;
+}
+
+static void mdp_cache_node_clear(void *node)
+{
+	struct mdp_cache_node *entry;
+
+	mutex_lock(&mdp_cache_node_mutex);
+	entry = mdp_cache_node_find(node);
+	if (entry) {
+		list_del(&entry->list_entry);
+		kfree(entry);
+	}
+	mutex_unlock(&mdp_cache_node_mutex);
+}
+
+s32 mdp_ioctl_iova_cache(struct file *pf, unsigned long param)
+{
+	struct mdp_iova_cache_ctl req;
+	struct mdp_cache_node *entry;
+	void *node = pf->private_data;
+
+	if (copy_from_user(&req, (void *)param, sizeof(req))) {
+		CMDQ_ERR("%s copy_from_user failed\n", __func__);
+		return -EFAULT;
+	}
+
+	mutex_lock(&mdp_cache_node_mutex);
+	entry = mdp_cache_node_find(node);
+	if (req.enable && !entry) {
+		entry = kzalloc(sizeof(*entry), GFP_KERNEL);
+		if (!entry) {
+			mutex_unlock(&mdp_cache_node_mutex);
+			return -ENOMEM;
+		}
+		entry->node = node;
+		list_add_tail(&entry->list_entry, &mdp_cache_node_list);
+		CMDQ_LOG("%s iova cache enabled for node:%p\n", __func__, node);
+	} else if (!req.enable && entry) {
+		list_del(&entry->list_entry);
+		kfree(entry);
+		CMDQ_LOG("%s iova cache disabled for node:%p\n", __func__, node);
+	}
+	mutex_unlock(&mdp_cache_node_mutex);
+
+	if (!req.enable)
+		mdp_ioctl_free_iova_cache_by_node(node);
+
+	return 0;
+}
+
 static unsigned long translate_fd(struct op_meta *meta,
 				struct mdp_job_mapping *mapping_job)
 {
 	struct dma_buf *buf = NULL;
 	struct dma_buf_attachment *attach = NULL;
 	struct sg_table *sgt = NULL;
+	struct mdp_iova_cache_entry *entry;
 	dma_addr_t ion_addr;
 	u32 i;
 
@@ -287,41 +406,124 @@ static unsigned long translate_fd(struct op_meta *meta,
 
 	for (i = 0; i < mapping_job->handle_count; i++)
 		if (mapping_job->fds[i] == meta->fd)
-			break;
+			return mapping_job->mvas[i] + meta->fd_offset;
 
-	if (i == mapping_job->handle_count) {
-		if (i >= MAX_HANDLE_NUM) {
-			CMDQ_ERR("%s no more handle room\n", __func__);
-			return 0;
-		}
-		/* need to map ion fd to iova */
-		if (!mdp_ion_get_dma_buf(mdpsys_con_ctx.dev, meta->fd, &buf,
-			&attach, &sgt))
-			return 0;
-
-		ion_addr = sg_dma_address(sgt->sgl);
-		if (ion_addr) {
-			mapping_job->fds[i] = meta->fd;
-			mapping_job->attaches[i] = attach;
-			mapping_job->dma_bufs[i] = buf;
-			mapping_job->sgts[i] = sgt;
-			mapping_job->mvas[i] = ion_addr;
-			mapping_job->handle_count++;
-
-			CMDQ_MSG("%s fd:%d -> iova:%#llx\n",
-				__func__, meta->fd, (u64)ion_addr);
-		} else {
-			CMDQ_ERR("%s fail to get iova for fd:%d\n",
-				__func__, meta->fd);
-			mdp_ion_free_dma_buf(buf, attach, sgt);
-			return 0;
-		}
-	} else {
-		ion_addr = mapping_job->mvas[i];
+	if (mapping_job->handle_count >= MAX_HANDLE_NUM) {
+		CMDQ_ERR("%s no more handle room\n", __func__);
+		return 0;
 	}
-	ion_addr += meta->fd_offset;
 
-	return ion_addr;
+	if (meta->fd <= 0) {
+		CMDQ_ERR("%s ion error fd %d\n", __func__, meta->fd);
+		return 0;
+	}
+
+	buf = dma_buf_get(meta->fd);
+	if (IS_ERR(buf)) {
+		CMDQ_ERR("%s ion buf get fail fd:%d %ld pid:%d tgid:%d comm:%s\n",
+			__func__, meta->fd, PTR_ERR(buf),
+			task_pid_nr(current), task_tgid_nr(current), current->comm);
+		return 0;
+	}
+
+	if (mdp_iova_cache_enabled(mapping_job->node)) {
+		mutex_lock(&mdp_iova_cache_mutex);
+
+		entry = mdp_iova_cache_find(mapping_job->node, buf);
+		if (entry) {
+			ion_addr = entry->mva;
+			mutex_unlock(&mdp_iova_cache_mutex);
+			dma_buf_put(buf);
+			goto record;
+		}
+
+		if (mdp_iova_cache_count < MDP_IOVA_CACHE_MAX) {
+			attach = dma_buf_attach(buf, mdpsys_con_ctx.dev);
+			if (IS_ERR(attach)) {
+				CMDQ_ERR("%s ion buf attach fail %ld\n",
+					__func__, PTR_ERR(attach));
+				mutex_unlock(&mdp_iova_cache_mutex);
+				dma_buf_put(buf);
+				return 0;
+			}
+
+			sgt = dma_buf_map_attachment(attach, DMA_BIDIRECTIONAL);
+			if (IS_ERR(sgt)) {
+				CMDQ_ERR("%s ion buf map fail %ld\n", __func__, PTR_ERR(sgt));
+				dma_buf_detach(buf, attach);
+				mutex_unlock(&mdp_iova_cache_mutex);
+				dma_buf_put(buf);
+				return 0;
+			}
+
+			ion_addr = sg_dma_address(sgt->sgl);
+			if (!ion_addr) {
+				CMDQ_ERR("%s fail to get iova for fd:%d\n", __func__, meta->fd);
+				mdp_ion_free_dma_buf(buf, attach, sgt);
+				mutex_unlock(&mdp_iova_cache_mutex);
+				return 0;
+			}
+
+			entry = kzalloc(sizeof(*entry), GFP_KERNEL);
+			if (!entry) {
+				mdp_ion_free_dma_buf(buf, attach, sgt);
+				mutex_unlock(&mdp_iova_cache_mutex);
+				return 0;
+			}
+
+			entry->node = mapping_job->node;
+			entry->buf = buf;
+			entry->attach = attach;
+			entry->sgt = sgt;
+			entry->mva = ion_addr;
+			list_add_tail(&entry->list_entry, &mdp_iova_cache_list);
+			mdp_iova_cache_count++;
+
+			CMDQ_MSG("%s fd:%d -> iova:%#llx (cached, node:%p, count:%u)\n",
+				__func__, meta->fd, (u64)ion_addr, mapping_job->node,
+				mdp_iova_cache_count);
+
+			mutex_unlock(&mdp_iova_cache_mutex);
+			goto record;
+		}
+
+		mutex_unlock(&mdp_iova_cache_mutex);
+		CMDQ_MSG("%s iova cache full (%u), node:%p, falling back to per-job map for fd:%d\n",
+			__func__, mdp_iova_cache_count, mapping_job->node, meta->fd);
+	}
+
+	attach = dma_buf_attach(buf, mdpsys_con_ctx.dev);
+	if (IS_ERR(attach)) {
+		CMDQ_ERR("%s ion buf attach fail %ld\n", __func__, PTR_ERR(attach));
+		dma_buf_put(buf);
+		return 0;
+	}
+
+	sgt = dma_buf_map_attachment(attach, DMA_BIDIRECTIONAL);
+	if (IS_ERR(sgt)) {
+		CMDQ_ERR("%s ion buf map fail %ld\n", __func__, PTR_ERR(sgt));
+		dma_buf_detach(buf, attach);
+		dma_buf_put(buf);
+		return 0;
+	}
+
+	ion_addr = sg_dma_address(sgt->sgl);
+	if (!ion_addr) {
+		CMDQ_ERR("%s fail to get iova for fd:%d\n", __func__, meta->fd);
+		mdp_ion_free_dma_buf(buf, attach, sgt);
+		return 0;
+	}
+
+	mapping_job->dma_bufs[mapping_job->handle_count] = buf;
+	mapping_job->attaches[mapping_job->handle_count] = attach;
+	mapping_job->sgts[mapping_job->handle_count] = sgt;
+
+record:
+	mapping_job->fds[mapping_job->handle_count] = meta->fd;
+	mapping_job->mvas[mapping_job->handle_count] = ion_addr;
+	mapping_job->handle_count++;
+
+	return ion_addr + meta->fd_offset;
 }
 
 static s32 translate_meta(struct op_meta *meta,
@@ -813,6 +1015,7 @@ s32 mdp_ioctl_async_exec(struct file *pf, unsigned long param)
 		status = -ENOMEM;
 		goto done;
 	}
+	mapping_job->node = pf->private_data;
 
 	if (copy_from_user(&user_job, (void *)param, sizeof(user_job))) {
 		CMDQ_ERR("copy mdp_submit from user fail\n");
@@ -927,7 +1130,6 @@ s32 mdp_ioctl_async_exec(struct file *pf, unsigned long param)
 	user_job.job_id = job_mapping_idx;
 	job_mapping_idx++;
 	mapping_job->job = handle;
-	mapping_job->node = pf->private_data;
 	list_add_tail(&mapping_job->list_entry, &job_mapping_list);
 	mutex_unlock(&mdp_job_mapping_list_mutex);
 
@@ -971,8 +1173,9 @@ void mdp_check_pending_task(struct mdp_job_mapping *mapping_job)
 
 	list_del(&mapping_job->list_entry);
 	for (i = 0; i < mapping_job->handle_count; i++)
-		mdp_ion_free_dma_buf(mapping_job->dma_bufs[i],
-			mapping_job->attaches[i], mapping_job->sgts[i]);
+		if (mapping_job->dma_bufs[i])
+			mdp_ion_free_dma_buf(mapping_job->dma_bufs[i],
+				mapping_job->attaches[i], mapping_job->sgts[i]);
 	kfree(mapping_job);
 }
 
@@ -1056,8 +1259,9 @@ s32 mdp_ioctl_async_wait(unsigned long param)
 			exec_cost, handle);
 
 	for (i = 0; i < mapping_job->handle_count; i++)
-		mdp_ion_free_dma_buf(mapping_job->dma_bufs[i],
-			mapping_job->attaches[i], mapping_job->sgts[i]);
+		if (mapping_job->dma_bufs[i])
+			mdp_ion_free_dma_buf(mapping_job->dma_bufs[i],
+				mapping_job->attaches[i], mapping_job->sgts[i]);
 
 	kfree(mapping_job);
 	if (handle) {
@@ -1469,8 +1673,8 @@ done:
 
 void mdp_ioctl_free_job_by_node(void *node)
 {
-	uint32_t i;
 	struct mdp_job_mapping *mapping_job = NULL, *tmp = NULL;
+	uint32_t i;
 
 	/* verify job handle */
 	mutex_lock(&mdp_job_mapping_list_mutex);
@@ -1484,11 +1688,15 @@ void mdp_ioctl_free_job_by_node(void *node)
 
 		list_del(&mapping_job->list_entry);
 		for (i = 0; i < mapping_job->handle_count; i++)
-			mdp_ion_free_dma_buf(mapping_job->dma_bufs[i],
-				mapping_job->attaches[i], mapping_job->sgts[i]);
+			if (mapping_job->dma_bufs[i])
+				mdp_ion_free_dma_buf(mapping_job->dma_bufs[i],
+					mapping_job->attaches[i], mapping_job->sgts[i]);
 		kfree(mapping_job);
 	}
 	mutex_unlock(&mdp_job_mapping_list_mutex);
+
+	mdp_ioctl_free_iova_cache_by_node(node);
+	mdp_cache_node_clear(node);
 }
 
 void mdp_ioctl_free_readback_slots_by_node(void *fp)
@@ -1557,6 +1765,8 @@ void mdp_ioctl_free_readback_slots_by_node(void *fp)
 int mdp_limit_dev_create(struct platform_device *device)
 {
 	INIT_LIST_HEAD(&job_mapping_list);
+	INIT_LIST_HEAD(&mdp_iova_cache_list);
+	INIT_LIST_HEAD(&mdp_cache_node_list);
 
 	return 0;
 }

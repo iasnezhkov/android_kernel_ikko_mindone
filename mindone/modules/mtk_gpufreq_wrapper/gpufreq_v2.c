@@ -15,13 +15,6 @@
  */
 #include <linux/module.h>
 
-/* MINDONE-TRACE: leftover power-control instrumentation printed ~25k dmesg lines per 100 min
- * (F3591). Off by default; echo 1 > /sys/module/<mod>/parameters/mindone_gfw_trace to enable. */
-static int mindone_gfw_trace;
-module_param(mindone_gfw_trace, int, 0644);
-#define MINDONE_GFW_TRACE(fmt, ...) \
-	do { if (mindone_gfw_trace) pr_notice(fmt, ##__VA_ARGS__); } while (0)
-
 #include <linux/platform_device.h>
 #include <linux/of_address.h>
 #include <linux/of_device.h>
@@ -61,7 +54,7 @@ static void gpufreq_init_external_callback(void);
 static int gpufreq_ipi_to_gpueb(struct gpufreq_ipi_data data);
 static int gpufreq_validate_target(unsigned int *target);
 static void gpufreq_dump_dvfs_status(void);
-static void gpufreq_abort(void);
+static void __maybe_unused gpufreq_abort(void);
 
 /**
  * ===============================================
@@ -82,7 +75,7 @@ static struct platform_driver g_gpufreq_wrapper_pdrv = {
 	},
 };
 
-static int g_ipi_channel;
+static int g_ipi_channel __maybe_unused;
 static unsigned int g_dual_buck;
 static unsigned int g_gpueb_support;
 static phys_addr_t g_status_shared_mem_va;
@@ -872,7 +865,6 @@ int gpufreq_power_control(enum gpufreq_power_state power)
 	GPUFREQ_TRACE_START("power=%d", power);
 
 	mutex_lock(&gpufreq_dump_lock);
-	MINDONE_GFW_TRACE("MINDONE-GPUFREQ-P1: enter gpufreq_power_control power=%d\n", power);
 	if (!gpufreq_power_ctrl_enable()) {
 		GPUFREQ_LOGD("power control is disabled");
 		ret = GPUFREQ_SUCCESS;
@@ -908,7 +900,6 @@ done:
 			power ? "POWER_ON" : "POWER_OFF",
 			ret);
 
-	MINDONE_GFW_TRACE("MINDONE-GPUFREQ-P14: exit gpufreq_power_control ret=%d\n", ret);
 	GPUFREQ_TRACE_END();
 
 	mutex_unlock(&gpufreq_dump_lock);
@@ -1822,7 +1813,7 @@ static void gpufreq_dump_dvfs_status(void)
 
 	shared_status = (struct gpufreq_shared_status *)(uintptr_t)g_status_shared_mem_va;
 	if (shared_status) {
-		GPUFREQ_LOGI("== [GPUFREQ DVFS STATUS: 0x%llx] ==", shared_status);
+		GPUFREQ_LOGI("== [GPUFREQ DVFS STATUS: %p] ==", shared_status);
 		GPUFREQ_LOGI("GPU[%d] Freq: %d, Volt: %d, Vsram: %d",
 			shared_status->cur_oppidx_gpu, shared_status->cur_fgpu,
 			shared_status->cur_vgpu, shared_status->cur_vsram_gpu);
@@ -1847,7 +1838,7 @@ static void gpufreq_dump_dvfs_status(void)
  * Function Name      : gpufreq_abort
  * Description        : Trigger exception when fatal error and dump infra status
  ***********************************************************************************/
-static void gpufreq_abort(void)
+static void __maybe_unused gpufreq_abort(void)
 {
 #if defined(MTK_GPU_EB_SUPPORT)
 	gpueb_dump_status();

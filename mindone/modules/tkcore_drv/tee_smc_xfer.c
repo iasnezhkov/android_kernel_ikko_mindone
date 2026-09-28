@@ -13,14 +13,6 @@
  */
 
 #include <linux/spinlock.h>
-#include <linux/moduleparam.h>
-
-/* MINDONE-TRACE: the F3282 TEE-RPC diagnostic fired on EVERY secure call - ~63k dmesg lines per
- * 100 min, the single noisiest source in the log (F3591). Off by default. */
-static int mindone_tee_trace;
-module_param(mindone_tee_trace, int, 0644);
-#define MINDONE_TEE_TRACE(fmt, ...) \
-	do { if (mindone_tee_trace) pr_info(fmt, ##__VA_ARGS__); } while (0)
 
 #include <linux/wait.h>
 #include <linux/semaphore.h>
@@ -31,8 +23,6 @@ module_param(mindone_tee_trace, int, 0644);
 #include <linux/atomic.h>
 #include <linux/hrtimer.h>
 #include <linux/ktime.h>
-
-#include <linux/version.h>
 
 #include <linux/tee_clkmgr.h>
 
@@ -104,22 +94,9 @@ static int handle_nonpreempt_rpc(struct smc_param *p)
 	if ((func_id & 0xff) != T6SMC_RPC_NONPREEMPT_CMD)
 		return 1;
 
-	/* MINDONE-TEE-RPCLOG (F3282): a mark on EVERY non-preemptible call, not just
-	 * unknown ones. Two reasons: (1) need to tell "the CLKMGR branch ran" apart
-	 * from "we never reached it" -- disappearing errors alone don't show that
-	 * (F3281). (2) the tail of the capture gets lost, since the adb stream dies
-	 * with the device and drops the last stdio block; printing every call
-	 * supplies the volume that keeps a block from being lost. */
-	MINDONE_TEE_TRACE("MINDONE-TEE-RPC: a0=0x%llx func=0x%x nonpreempt_func=%u\n",
-		(unsigned long long) p->a0, func_id,
-		(unsigned int) T6SMC_RPC_NONPREEMPT_GET_FUNC(p->a0));
-
 	switch (T6SMC_RPC_NONPREEMPT_GET_FUNC(p->a0)) {
 #if IS_ENABLED(CONFIG_TRUSTKERNEL_TEE_FP_SUPPORT)
 	case T6SMC_RPC_CLKMGR_CMD:
-		/* MINDONE-TEE-RPCLOG (F3282): proof that the branch ACTUALLY ran. */
-		MINDONE_TEE_TRACE("MINDONE-TEE-RPC: CLKMGR branch entered, a1=0x%llx a2=0x%llx\n",
-			(unsigned long long) p->a1, (unsigned long long) p->a2);
 		/* compatible with old interface */
 		p->a1 = tee_clkmgr_handle(p->a1,
 			(p->a1 & TEE_CLKMGR_TOKEN_NOT_LEGACY) ?

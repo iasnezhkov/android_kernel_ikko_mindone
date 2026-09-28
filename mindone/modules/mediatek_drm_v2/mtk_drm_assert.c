@@ -4,7 +4,6 @@
  */
 
 #include <drm/drm_fourcc.h>
-#include <mindone/compat.h>
 #include <drm/drm_gem.h>
 #include <linux/dma-buf.h>
 #include <linux/dma-mapping.h>
@@ -31,7 +30,7 @@
 
 #define MTK_FB_ALIGNMENT 32
 
-static MINDONE_DEFINE_SEMAPHORE(dal_sem);
+static DEFINE_SEMAPHORE(dal_sem, 1);
 
 static inline int DAL_LOCK(void)
 {

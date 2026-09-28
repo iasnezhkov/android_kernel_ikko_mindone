@@ -2417,7 +2417,7 @@ static int mtk_phy_jtag_init(struct phy *phy)
 	reg_base = syscon_node_to_regmap(args.np);
 	of_node_put(args.np);
 
-	dev_info(tphy->dev, "base - reg:0x%x, version:%d\n",
+	dev_info(tphy->dev, "base - reg:%p, version:%d\n",
 			reg_base, jtag_vers);
 
 	ret = clk_prepare_enable(instance->ref_clk);
@@ -2484,15 +2484,7 @@ static int mtk_phy_jtag_exit(struct phy *phy)
 	return 0;
 }
 
-/* 6.12 makes phy_provider::of_xlate take a const of_phandle_args; 6.1 does not.
- * The signature is part of the CFI type, so a stale prototype is a hard failure at the
- * indirect call ("CFI failure at _of_phy_get, target mtk_phy_xlate"), not a warning. */
-#include <linux/version.h>
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 12, 0)
 #define MINDONE_PHY_ARGS_CONST const
-#else
-#define MINDONE_PHY_ARGS_CONST
-#endif
 
 static struct phy *mtk_phy_xlate(struct device *dev,
 				 MINDONE_PHY_ARGS_CONST struct of_phandle_args *args)
@@ -2675,7 +2667,7 @@ static int mtk_tphy_probe(struct platform_device *pdev)
 		} else {
 			instance->ippc_base = devm_ioremap(dev, res.start,
 				resource_size(&res));
-			if (IS_ERR(instance->ippc_base))
+			if (!instance->ippc_base)
 				dev_info(dev, "failed to remap ippc regs\n");
 		}
 

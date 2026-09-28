@@ -20,7 +20,6 @@
 #include <linux/platform_device.h>
 #include <linux/power_supply.h>
 #include <linux/regmap.h>
-#include <linux/syscore_ops.h>
 
 #include <dt-bindings/iio/mt635x-auxadc.h>
 //#include <aee.h>
@@ -711,7 +710,7 @@ static int auxadc_get_rac(struct mt635x_auxadc_device *adc_dev)
 		/* Convert imp vbat raw data */
 		vbat_1 = auxadc_conv_imp_vbat(adc_dev);
 		enable_dummy_load(adc_dev);
-		mdelay(50);
+		msleep(50);
 
 		/* Trigger ADC PTIM mode again to get new VBAT and current */
 		if (adc_dev->info->imp_conv)
@@ -732,16 +731,16 @@ static int auxadc_get_rac(struct mt635x_auxadc_device *adc_dev)
 				ret = rac * 1;
 			if (ret < 50) {
 				ret = -1;
-				pr_info("bypass due to Rac < 50mOhm\n");
+				pr_debug("bypass due to Rac < 50mOhm\n");
 			}
 		} else {
 			ret = -1;
-			pr_info("bypass due to c_diff < 70mA\n");
+			pr_debug("bypass due to c_diff < 70mA\n");
 		}
-		pr_info("v1=%d,v2=%d,c1=%d,c2=%d,v_diff=%d,c_diff=%d\n",
+		pr_debug("v1=%d,v2=%d,c1=%d,c2=%d,v_diff=%d,c_diff=%d\n",
 			vbat_1, vbat_2, ibat_1, ibat_2,
 			(vbat_1 - vbat_2), (ibat_2 - ibat_1));
-		pr_info("rac=%d,ret=%d,retry=%d\n",
+		pr_debug("rac=%d,ret=%d,retry=%d\n",
 			rac, ret, retry_count);
 
 		if (++retry_count >= 3)
@@ -1118,7 +1117,7 @@ static int mt6358_batadc_cali(struct mt635x_auxadc_device *adc_dev,
 			g_GAIN_AUX, g_GAIN_BGRL, g_GAIN_BGRH,
 			g_TEMP_L_CALI, g_TEMP_H_CALI);
 	} else
-		pr_info("vbat_out_old=%d, vthr=%d, T_curr=%d, vbat_out=%d\n",
+		pr_debug("vbat_out_old=%d, vthr=%d, T_curr=%d, vbat_out=%d\n",
 			vbat_out_old, vthr, T_curr, vbat_out);
 
 	if (precision_factor > 1)
@@ -1231,27 +1230,19 @@ void auxadc_set_cali_fn(int channel,
 
 #define	IMIX_R_MIN_MOHM		100
 #define	IMIX_R_CALI_CNT		2
-static int auxadc_cali_imix_r(struct mt635x_auxadc_device *dev)
+static int auxadc_cali_imix_r(struct mt635x_auxadc_device *adc_dev)
 {
-	static struct mt635x_auxadc_device *adc_dev;
 	static int pre_uisoc = 101;
 	int cur_uisoc = auxadc_get_uisoc();
 	int i, imix_r_avg = 0, rac_val[IMIX_R_CALI_CNT];
 
-	if (dev) {
-		adc_dev = dev;
-		return 0;
-	} else if (!adc_dev) {
-		pr_info("%s NULL adc_dev, skip\n",
-			__func__);
-		return -EINVAL;
-	} else if (!get_mtk_gauge_psy()) {
-		pr_info("%s gauge disabled, skip\n",
+	if (!get_mtk_gauge_psy()) {
+		pr_debug("%s gauge disabled, skip\n",
 			__func__);
 		return -ENODEV;
 	} else if (cur_uisoc < 0 ||
 		   cur_uisoc == pre_uisoc) {
-		pr_info("%s pre_SOC=%d SOC=%d, skip\n",
+		pr_debug("%s pre_SOC=%d SOC=%d, skip\n",
 			__func__, pre_uisoc, cur_uisoc);
 		return 0;
 	}
@@ -1283,52 +1274,39 @@ static int auxadc_init_imix_r(struct mt635x_auxadc_device *adc_dev,
 	if (ret)
 		dev_notice(adc_dev->dev, "no imix_r, ret=%d\n", ret);
 	adc_dev->imix_r = (int)val;
-	auxadc_cali_imix_r(adc_dev);
 	return 0;
 }
 
-static int pmic_auxadc_suspend(struct platform_device *pdev, pm_message_t state)
+static int mt635x_auxadc_suspend(struct device *dev)
 {
-	struct mt6397_chip *chip = dev_get_drvdata(pdev->dev.parent);
+	struct mt6397_chip *chip = dev_get_drvdata(dev->parent);
 
-	switch (chip->chip_id) {
-	case MT6359P_CHIP_ID:
-		/*enable MDRT wakeup when enter suspend */
+	if (chip->chip_id == MT6359P_CHIP_ID)
 		regmap_write(chip->regmap, MT6359P_AUXADC_MDRT_2, 0x4);
-		break;
-	default:
-		break;
-	}
 	return 0;
 }
 
-static int pmic_auxadc_resume(struct platform_device *pdev)
+static int mt635x_auxadc_resume(struct device *dev)
 {
-	struct mt6397_chip *chip = dev_get_drvdata(pdev->dev.parent);
+	struct mt6397_chip *chip = dev_get_drvdata(dev->parent);
 
-	switch (chip->chip_id) {
-	case MT6359P_CHIP_ID:
-		/* disable MDRT when resume */
+	if (chip->chip_id == MT6359P_CHIP_ID)
 		regmap_write(chip->regmap, MT6359P_AUXADC_MDRT_2, 0);
-		break;
-	default:
-		break;
-	}
 	return 0;
 }
 
-static int auxadc_suspend_enter(void)
+static int mt635x_auxadc_suspend_late(struct device *dev)
 {
-	auxadc_cali_imix_r(NULL);
+	auxadc_cali_imix_r(dev_get_drvdata(dev));
 #if AUXADC_DEBUG
-	/* Restore bat_temp_prev when entering suspend */
 	mt635x_bat_temp_cali(NULL, -1, -1);
 #endif
 	return 0;
 }
 
-static struct syscore_ops auxadc_syscore_ops = {
-	.suspend = auxadc_suspend_enter,
+static const struct dev_pm_ops mt635x_auxadc_pm_ops = {
+	SYSTEM_SLEEP_PM_OPS(mt635x_auxadc_suspend, mt635x_auxadc_resume)
+	LATE_SYSTEM_SLEEP_PM_OPS(mt635x_auxadc_suspend_late, NULL)
 };
 
 static int auxadc_get_data_from_dt(struct mt635x_auxadc_device *adc_dev,
@@ -1436,6 +1414,7 @@ static int mt635x_auxadc_probe(struct platform_device *pdev)
 		return -ENOMEM;
 
 	adc_dev = iio_priv(indio_dev);
+	platform_set_drvdata(pdev, adc_dev);
 	adc_dev->regmap = chip->regmap;
 	adc_dev->dev = &pdev->dev;
 	mutex_init(&adc_dev->lock);
@@ -1460,7 +1439,6 @@ static int mt635x_auxadc_probe(struct platform_device *pdev)
 		dev_notice(&pdev->dev, "failed to register iio device!\n");
 		return ret;
 	}
-	register_syscore_ops(&auxadc_syscore_ops);
 #if AUXADC_DEBUG
 	switch (chip->chip_id) {
 	case MT6357_CHIP_ID:
@@ -1510,10 +1488,9 @@ static struct platform_driver mt635x_auxadc_driver = {
 	.driver = {
 		.name = "mt635x-auxadc",
 		.of_match_table = mt635x_auxadc_of_match,
+		.pm = pm_sleep_ptr(&mt635x_auxadc_pm_ops),
 	},
 	.probe	= mt635x_auxadc_probe,
-	.suspend = pmic_auxadc_suspend,
-	.resume =  pmic_auxadc_resume,
 };
 module_platform_driver(mt635x_auxadc_driver);
 

@@ -165,8 +165,6 @@ config ARCH_MEDIATEK
 	select ARM_GIC
 	select PINCTRL
 	select MTK_TIMER
-	select DRM_DISPLAY_HELPER if DRM
-	select DRM_GEM_DMA_HELPER if DRM
 	help
 	  This enables support for MediaTek MT27xx, MT65xx, MT76xx
 	  & MT81xx ARMv8 SoCs

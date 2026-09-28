@@ -10,7 +10,6 @@
 #define _TRACE_EVENT_GPU_HARDSTOP_H
 
 #include <linux/tracepoint.h>
-#include <mindone/compat.h>
 
 TRACE_EVENT(gpu_hardstop,
 	TP_PROTO(char *string, char *sub_string,
@@ -31,8 +30,8 @@ TRACE_EVENT(gpu_hardstop,
 		__field(unsigned int, stack_volt)
 		__field(unsigned int, stack_vsram)
 	),
-	TP_fast_assign(MINDONE_ASSIGN_STR(str0, string);
-		MINDONE_ASSIGN_STR(str1, sub_string);
+	TP_fast_assign(__assign_str(str0);
+		__assign_str(str1);
 		__entry->gpu_freq = gpu_freq;
 		__entry->gpu_volt = gpu_volt;
 		__entry->gpu_vsram = gpu_vsram;

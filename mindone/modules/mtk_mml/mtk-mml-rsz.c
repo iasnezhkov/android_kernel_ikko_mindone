@@ -170,6 +170,10 @@ static s32 rsz_prepare(struct mml_comp *comp, struct mml_task *task,
 	mml_trace_ex_begin("%s", __func__);
 
 	rsz_frm = kzalloc(sizeof(*rsz_frm), GFP_KERNEL);
+	if (!rsz_frm) {
+		mml_trace_ex_end();
+		return -ENOMEM;
+	}
 	ccfg->data = rsz_frm;
 	rsz_frm->relay_mode = rsz_can_relay(cfg, src, dest);
 	/* C42 conversion: drop if source is YUV422 or YUV420 */
@@ -764,11 +768,11 @@ static s32 dbg_get(char *buf, const struct kernel_param *kp)
 			struct mml_comp *comp = &dbg_probed_components[i]->comp;
 
 			length += snprintf(buf + length, PAGE_SIZE - length,
-				"  - [%d] mml comp_id: %d.%d @%08x name: %s bound: %d\n", i,
+				"  - [%d] mml comp_id: %d.%d @%08llx name: %s bound: %d\n", i,
 				comp->id, comp->sub_idx, comp->base_pa,
 				comp->name ? comp->name : "(null)", comp->bound);
 			length += snprintf(buf + length, PAGE_SIZE - length,
-				"  -         larb_port: %d @%08x pw: %d clk: %d\n",
+				"  -         larb_port: %d @%08llx pw: %d clk: %d\n",
 				comp->larb_port, comp->larb_base,
 				comp->pw_cnt, comp->clk_cnt);
 			length += snprintf(buf + length, PAGE_SIZE - length,

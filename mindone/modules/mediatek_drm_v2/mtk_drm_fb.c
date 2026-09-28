@@ -139,14 +139,6 @@ mtk_drm_framebuffer_init(struct drm_device *dev,
 	drm_helper_mode_fill_fb_struct(dev, &mtk_fb->base, mode);
 
 	mtk_fb->gem_obj = obj;
-	/* MINDONE-FB-OBJ (F687): the driver is architecturally single-plane (see the
-	 * struct mtk_drm_fb comment and mtk_drm_mode_fb_create(), which reads only
-	 * cmd->handles[0]) and fills ONLY its private gem_obj, leaving fb->obj[] NULL.
-	 * The kernel's generic drm_gem_plane_helper_prepare_fb() (used automatically
-	 * since mtk_plane_helper_funcs.prepare_fb isn't set) reads fb->obj[plane] and
-	 * unconditionally returns -EINVAL on NULL, rejecting EVERY atomic commit and
-	 * crashing vendor.hwcomposer-2-3 each cycle. Mirror the value under the name
-	 * the kernel expects; num_planes is always 1 here, so index 0 suffices. */
 	mtk_fb->base.obj[0] = obj;
 
 	ret = drm_framebuffer_init(dev, &mtk_fb->base, &mtk_drm_fb_funcs);

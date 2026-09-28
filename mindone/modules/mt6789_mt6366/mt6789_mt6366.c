@@ -7,7 +7,6 @@
  */
 
 #include <linux/module.h>
-#include <mindone/compat-sound.h>
 #include <linux/pm_runtime.h>
 #include <sound/pcm_params.h>
 #include <sound/soc.h>
@@ -31,12 +30,6 @@
 /* prize added by pengzhipeng, fs1599, 20221103-end */
 
 /*add by anhengxuan for aw87xxx audio PA,20220402,start*/
-/* MINDONE-SPKAMP (F3332): our Kconfig tree never defines CONFIG_SND_SOC_AW87XXX, so this
- * guard was permanently false and aw87xxx_set_profile() got silently compiled out, even
- * though the amp is real hardware and snd_soc_aw87xxx.ko (which exports that symbol)
- * already loads before this module. Force the branch on locally instead of touching the
- * global Kconfig menu. Single amp only -- do NOT define the _DUAL variant. See
- * the fact log F3332 and AUDIT-AUDIO-2908 for the full comparison. */
 #define CONFIG_SND_SOC_AW87XXX 1
 #if IS_ENABLED(CONFIG_SND_SOC_AW87XXX) || IS_ENABLED(CONFIG_SND_SOC_AW87XXX_V2_13_0)
 extern int aw87xxx_set_profile(int dev_index, char *profile);
@@ -215,7 +208,7 @@ static int mt6789_mt6366_i2s_hw_params(struct snd_pcm_substream *substream,
 	unsigned int rate = params_rate(params);
 	unsigned int mclk_fs_ratio = 128;
 	unsigned int mclk_fs = rate * mclk_fs_ratio;
-	struct snd_soc_dai *cpu_dai = MINDONE_RTD_TO_CPU(rtd, 0);
+	struct snd_soc_dai *cpu_dai = snd_soc_rtd_to_cpu(rtd, 0);
 
 	return snd_soc_dai_set_sysclk(cpu_dai,
 				      0, mclk_fs, SND_SOC_CLOCK_OUT);
@@ -1212,11 +1205,6 @@ struct snd_soc_dai_link_component awinic_codecs[] =
 };
 #endif
 //prize add by lipengpeng 20220615 end 
-/* MINDONE: stub for the missing speaker amplifier. In our tree, the
- * mediatek,speaker-codec node references richtek,rt5512, which does not exist
- * on this board (the node is EMPTY in the extracted real device tree) and has
- * no driver either here or on stock. Without this stub, probe defers forever
- * and the sound card never appears. */
 static struct snd_soc_dai_link_component mindone_dummy_codec[] = {
 	{ .name = "snd-soc-dummy", .dai_name = "snd-soc-dummy-dai" },
 };
@@ -1271,8 +1259,6 @@ static int mt6789_mt6366_dev_probe(struct platform_device *pdev)
 			if (ret < 0) {
 				dev_err(&pdev->dev,
 					"Speaker Codec get_dai_link fail: %d\n", ret);
-				/* MINDONE: no amplifier on this board -- use the stub
-				 * and continue, otherwise the card never registers. */
 				dev_notice(&pdev->dev,
 					"MINDONE: amplifier unavailable (%d), using stub\n", ret);
 				dai_link->codecs = mindone_dummy_codec;
@@ -1298,8 +1284,6 @@ static int mt6789_mt6366_dev_probe(struct platform_device *pdev)
 			if (ret < 0) {
 				dev_err(&pdev->dev,
 					"Speaker Codec Ref get_dai_link fail: %d\n", ret);
-				/* MINDONE: no amplifier on this board -- use the stub
-				 * and continue, otherwise the card never registers. */
 				dev_notice(&pdev->dev,
 					"MINDONE: amplifier unavailable (%d), using stub\n", ret);
 				dai_link->codecs = mindone_dummy_codec;

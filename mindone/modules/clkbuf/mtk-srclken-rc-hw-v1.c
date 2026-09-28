@@ -711,19 +711,22 @@ static int srclken_rc_dts_base_init(struct platform_device *pdev)
 
 	cfg_res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
 	sta_res = platform_get_resource(pdev, IORESOURCE_MEM, 1);
+	if (!cfg_res || !sta_res) {
+		pr_notice("srclken rc memory resource missing\n");
+		goto RC_BASE_INIT_FAILED;
+	}
 
 	rc_cfg.hw.base.addr = devm_ioremap(&pdev->dev,
 			cfg_res->start, resource_size(cfg_res));
-	if (IS_ERR(rc_cfg.hw.base.addr)) {
-		pr_notice("get rc_cfg base failed: %l\n",
-			PTR_ERR(rc_cfg.hw.base.addr));
+	if (!rc_cfg.hw.base.addr) {
+		pr_notice("get rc_cfg base failed\n");
 		goto RC_BASE_INIT_FAILED;
 	}
 	rc_cfg.hw.enable = true;
 
 	rc_sta.hw.base.addr = devm_ioremap(&pdev->dev,
 			sta_res->start, resource_size(sta_res));
-	if (IS_ERR(rc_sta.hw.base.addr)) {
+	if (!rc_sta.hw.base.addr) {
 		pr_notice("get rc_sta base failed\n");
 		goto RC_BASE_INIT_FAILED;
 	}

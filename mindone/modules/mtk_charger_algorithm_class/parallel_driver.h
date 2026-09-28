@@ -22,7 +22,6 @@
 #include <linux/irq.h>
 #include <linux/interrupt.h>
 #include <asm/uaccess.h>
-#include <mindone/compat.h>
 //#include <mt-plat/mtk_boot.h>
 //
 #define  sd77428_data  fg_bms_chip

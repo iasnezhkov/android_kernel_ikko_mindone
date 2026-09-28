@@ -45,7 +45,6 @@ static void get_rec_addr(void)
 	rec_phys_addr = sspm_reserve_mem_get_phys(GPU_MEM_ID);
 	rec_virt_addr = sspm_reserve_mem_get_virt(GPU_MEM_ID);
 	rec_size = sspm_reserve_mem_get_size(GPU_MEM_ID);
-	/* MINDONE-GPUBM-GUARD: before ioremap in sspm_v3, virt=0 at size=4K -- cleanup on NULL crashed the boot */
 	if (!rec_virt_addr || !rec_size) {
 		pr_info("ged_gpu_bm: sspm reserved mem for GPU not ready (virt %#llx size %#llx)\n",
 			(u64)rec_virt_addr, (u64)rec_size);

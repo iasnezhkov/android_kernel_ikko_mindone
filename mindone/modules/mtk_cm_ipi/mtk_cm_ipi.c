@@ -57,7 +57,7 @@ unsigned int cm_mgr_to_sspm_command(unsigned int cmd, unsigned int val)
 		goto error;
 	}
 
-	pr_info("#@# %s(%d) cmd 0x%x, arg 0x%x\n", __func__, __LINE__, cm_ipi_d.cmd, cm_ipi_d.arg);
+	pr_debug("#@# %s(%d) cmd 0x%x, arg 0x%x\n", __func__, __LINE__, cm_ipi_d.cmd, cm_ipi_d.arg);
 	ret = scmi_tinysys_common_set(_tinfo->ph, scmi_cm_id,
 			cm_ipi_d.cmd, cm_ipi_d.arg, 0, 0, 0);
 	if (ret) {
@@ -78,9 +78,6 @@ void cm_ipi_init(void)
 
 	_tinfo = get_scmi_tinysys_info();
 
-	/* F3767: on 6.12 the scmi tinysys provider may not be registered yet here (init
-	 * order differs from 6.1); _tinfo would be NULL and _tinfo->sdev would Oops (same
-	 * class as F3703). Bail out as "not ready" instead. */
 	if (!_tinfo || !_tinfo->sdev) {
 		pr_info("cm_ipi: scmi tinysys not ready\n");
 		cm_sspm_ready = -2;

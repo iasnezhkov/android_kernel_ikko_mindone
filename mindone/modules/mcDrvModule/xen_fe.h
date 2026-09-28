@@ -16,8 +16,6 @@
 #ifndef _MC_XEN_FE_H_
 #define _MC_XEN_FE_H_
 
-#include <linux/version.h>
-
 #include "main.h"
 #include "client.h"
 #include "protocol_common.h"

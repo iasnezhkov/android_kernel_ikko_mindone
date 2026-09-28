@@ -320,13 +320,6 @@ static const struct resource mt6366_chrdet_resources[] = {
 	DEFINE_RES_IRQ_NAMED(MT6366_IRQ_CHRDET_EDGE, "CHRDET"),
 };
 
-/* MINDONE (CHRDET-2908): the mfd_cell for the BC1.2/chrdet detector was missing
- * for mt6366 in this tree (only mt6357_devs had it) -- the DT node
- * `/soc/pwrap@10026000/mt6366/mtk_chrdet` (compatible "mediatek,mtk-chr-det")
- * stayed without a platform_device and therefore without a driver. The IRQ
- * name "CHRDET" (uppercase) is confirmed by disassembly of the shipped
- * mtk_chg_det.ko -- see modules/charger-mtk-chg-det/RECONSTRUCTION.md and
- * CHRDET-2908. */
 static const struct resource mt6366_accdet_resources[] = {
 	DEFINE_RES_IRQ_NAMED(MT6366_IRQ_ACCDET, "ACCDET_IRQ"),
 	DEFINE_RES_IRQ_NAMED(MT6366_IRQ_ACCDET_EINT0, "ACCDET_EINT0"),

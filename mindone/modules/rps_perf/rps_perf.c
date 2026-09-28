@@ -23,7 +23,6 @@
  *
  ****************************************************************************/
 #include <linux/netdevice.h>
-#include <mindone/compat-net.h>
 #include <linux/ip.h>
 #include <linux/tcp.h>
 #include <linux/ipv6.h>
@@ -32,6 +31,8 @@
 #include <linux/skbuff.h>
 #include <linux/module.h>
 #include <linux/debugfs.h>
+#include <net/netdev_rx_queue.h>
+#include <net/rps.h>
 
 #include "rps_perf.h"
 
@@ -48,7 +49,7 @@ int set_rps_map(struct netdev_rx_queue *queue, unsigned long rps_value)
 
 	*cpumask_bits(mask) = rps_value;
 	map = kzalloc(max_t(unsigned int,
-			MINDONE_RPS_MAP_SIZE(cpumask_weight(mask)), L1_CACHE_BYTES),
+			RPS_MAP_SIZE(cpumask_weight(mask)), L1_CACHE_BYTES),
 			GFP_KERNEL);
 	if (!map) {
 		free_cpumask_var(mask);

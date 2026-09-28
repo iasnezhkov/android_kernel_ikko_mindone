@@ -955,6 +955,7 @@ struct CMD_UPDATE_STA_RECORD {
 		struct CMD_EHT_BA_SIZE rEhtBaSize;
 	} rBaSize;
 
+	struct_group(rTxBfPfmuStaInfo,
 	uint16_t   u2PfmuId;   /* 0xFFFF means no access right for PFMU*/
 	uint8_t   fgSU_MU;    /* 0 : SU, 1 : MU*/
 	uint8_t   fgETxBfCap; /* 0 : ITxBf, 1 : ETxBf*/
@@ -983,6 +984,7 @@ struct CMD_UPDATE_STA_RECORD {
 	uint8_t    uciBfNcol;
 	uint8_t    uciBfNrow;
 	uint8_t    aucPadding1[3];
+	);
 
 	uint8_t ucTxAmsduInAmpdu;
 	uint8_t ucRxAmsduInAmpdu;

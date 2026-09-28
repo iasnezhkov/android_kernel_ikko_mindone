@@ -969,7 +969,7 @@ void scp_crash_log_move_to_buf(enum scp_core_id scp_id)
 		    SCP_A_log_ctl->buff_ofs + w_pos;
 		/* check write address don't over logger reserve memory */
 		if (dram_logger_buf > dram_logger_limit) {
-			pr_debug("[SCP] %s: dram_logger_buf %x oversize reserve mem %x\n",
+			pr_debug("[SCP] %s: dram_logger_buf %p oversize reserve mem %p\n",
 			__func__, dram_logger_buf, dram_logger_limit);
 		goto exit;
 		}

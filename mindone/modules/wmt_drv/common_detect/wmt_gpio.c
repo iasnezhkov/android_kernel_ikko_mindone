@@ -13,9 +13,6 @@
 */
 
 #include "wmt_gpio.h"
-#if (LINUX_VERSION_CODE >> 8) == 0x40E
-#include <wmt_build_in_adapter.h>
-#endif
 
 /*******************************************************************************
 *                         C O M P I L E R   F L A G S
@@ -427,9 +424,6 @@ INT32 wmt_gpio_init(struct platform_device *pdev)
 		iret = -1;
 	}
 
-#if (LINUX_VERSION_CODE >> 8) == 0x40E
-	KERNEL_mtk_wcn_cmb_sdio_request_eirq();
-#endif
 err:
 	return iret;
 }

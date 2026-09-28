@@ -114,14 +114,12 @@ hf_manager	hf_manager.ko	1-ramdisk	hf_manager
 hynitron_touch	hynitron_touch.ko	1-ramdisk	hynitron_touch
 i2c_mt65xx	i2c_mt65xx.ko	1-ramdisk,recovery	i2c_mt65xx
 imgsensor_isp6s	imgsensor_isp6s.ko	1-ramdisk	imgsensor_isp6s
-industrialio_triggered_buffer		-	industrialio_triggered_buffer
 iommu_debug	iommu_debug.ko	1-ramdisk,recovery	iommu_debug
 iommu_gz	iommu_gz.ko	1-ramdisk	iommu_gz
 iommu_secure	iommu_secure.ko	1-ramdisk,recovery	iommu_secure
 iommu_test	iommu_test.ko	1-ramdisk,recovery	iommu_test
 irq_dbg	irq_dbg.ko	1-ramdisk,recovery	irq_dbg
 jobskip		-	jobskip
-kfifo_buf	kfifo_buf.ko	1-ramdisk,recovery	kfifo_buf
 ktrace		-	ktrace
 leds_mtk	leds_mtk.ko	1-ramdisk,recovery	leds_mtk
 leds_mtk_disp	leds_mtk_disp.ko	1-ramdisk	leds_mtk_disp

@@ -4,7 +4,6 @@
  */
 
 #include <linux/list.h>
-#include <mindone/compat.h>
 #include <linux/device.h>
 #include <linux/module.h>
 #include <linux/kernel.h>
@@ -53,7 +52,7 @@ EXPORT_SYMBOL(ccci_register_dev_node);
 int ccci_init(void)
 {
 	CCCI_INIT_LOG(-1, CORE, "ccci core init\n");
-	dev_class = MINDONE_CLASS_CREATE("ccci_node");
+	dev_class = class_create("ccci_node");
 	ccci_subsys_bm_init();
 	return 0;
 }

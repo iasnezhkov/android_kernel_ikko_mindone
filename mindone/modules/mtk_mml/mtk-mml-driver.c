@@ -483,7 +483,7 @@ s32 mml_subcomp_init(struct platform_device *comp_pdev,
 	if (!of_mml_read_comp_name_index(node, subcomponent, &comp->name)) {
 		ret = snprintf(name, sizeof(name), "%s-clock-names", comp->name);
 		if (ret >= sizeof(name)) {
-			dev_err(dev, "len:%d over name size:%d",
+			dev_err(dev, "len:%d over name size:%lu",
 				ret, sizeof(name));
 			name[sizeof(name) - 1] = '\0';
 		}

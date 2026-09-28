@@ -25,7 +25,6 @@
 #include <linux/string.h>
 #include <linux/uaccess.h>
 #include <linux/unistd.h>
-#include <linux/version.h>
 
 #include "private/mld_helper.h"
 #include "private/tmem_error.h"

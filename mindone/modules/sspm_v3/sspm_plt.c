@@ -8,7 +8,6 @@
  * but the mark ended up higher, in the sysfs function, and the build failed with
  * "call to undeclared function".
  */
-extern void mindone_sspm_mark(int step);
 #include <linux/module.h>       /* needed by all modules */
 #include <linux/init.h>         /* needed by module macros */
 #include <linux/fs.h>           /* needed by file_operations* */
@@ -66,7 +65,6 @@ static ssize_t sspm_alive_show(struct device *kobj,
 	int ret;
 	struct scmi_tinysys_info_st *tinfo = get_scmi_tinysys_info();
 
-	/* F3767: guard against a not-yet-registered scmi provider (same class as F3703). */
 	if (!tinfo)
 		return snprintf(buf, PAGE_SIZE, "Unknown\n");
 
@@ -81,8 +79,6 @@ DEVICE_ATTR_RO(sspm_alive);
 
 int sspm_plt_init(void)
 {
-	mindone_sspm_mark(11);
-
 	phys_addr_t phys_addr, virt_addr, mem_sz;
 	struct plt_msg_s msg_data;
 	struct plt_ctrl_s *plt_ctl;
@@ -117,7 +113,6 @@ int sspm_plt_init(void)
 		goto error;
 	}
 
-	mindone_sspm_mark(12);
 	b = (unsigned char *) (uintptr_t)virt_addr;
 	for (last_ofs = 0; last_ofs < sizeof(*plt_ctl); last_ofs++)
 		b[last_ofs] = 0x0;
@@ -133,7 +128,6 @@ int sspm_plt_init(void)
 	plt_ctl->size = sizeof(*plt_ctl);
 	plt_ctl->mem_sz = mem_sz;
 
-	mindone_sspm_mark(13);
 	last_ofs = plt_ctl->size;
 
 
@@ -152,18 +146,10 @@ int sspm_plt_init(void)
 	pr_debug("SSPM: %s(): after logger, ofs=%u\n", __func__, last_ofs);
 #endif
 
-	mindone_sspm_mark(14);
-	/* TESTING A HYPOTHESIS (F437). Between marks 14 and 15 the only thing that can
-	 * fail is dereferencing `tinfo`, taken from get_scmi_tinysys_info() and never
-	 * checked. If it's empty, the dereference crashes the kernel, and without a
-	 * console that's indistinguishable from a hang. Here the emptiness becomes a
-	 * DISTINGUISHABLE answer: mark 17 = tinfo empty (hypothesis confirmed), mark 18
-	 * = tinfo intact (something else on that line is at fault).
-	 */
-	if (!tinfo || !tinfo->sdev)
-		mindone_sspm_mark(17);
-	else
-		mindone_sspm_mark(18);
+	if (!tinfo || !tinfo->sdev) {
+		pr_err("SSPM: tinysys scmi not available\n");
+		goto error;
+	}
 	msg_data.cmd = PLT_INIT;
 	msg_data.u.ctrl.phys = phys_addr;
 	msg_data.u.ctrl.size = mem_sz;
@@ -171,11 +157,9 @@ int sspm_plt_init(void)
 	of_property_read_u32(tinfo->sdev->dev.of_node,
 		"scmi_plt", &scmi_plt_id);
 
-	mindone_sspm_mark(15);
 	ret = scmi_tinysys_common_set(tinfo->ph, scmi_plt_id,
 		msg_data.cmd, msg_data.u.ctrl.phys, msg_data.u.ctrl.size, 0, 0);
 
-	mindone_sspm_mark(16);
 	if (ret) {
 		pr_err("SSPM: plt init fail (ret=%d)\n", ret);
 		goto error;

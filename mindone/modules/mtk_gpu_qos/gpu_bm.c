@@ -155,7 +155,6 @@ static void setupfw_work_handler(struct work_struct *work)
 		qos_d.u.gpu_info.size, QOS_IPI_SCMI_SET);
 
 	if (ret) {
-		/* MINDONE-GPUQOS-IPI: the mtk_qos SCMI channel may come up after us -- retry for up to 30 s */
 		static int mindone_retries;
 
 		pr_info("%s: sspm_ipi_to_scmi fail (%d), retry %d\n", __func__, ret, mindone_retries);

@@ -73,15 +73,15 @@ static void set_pd_state(struct pdpe_config *pdpe,int state)
 		return;
 	}
 	*/
-	pr_err("gezi %s ori state = %d,new state = %d\n",__func__,pdpe->pdpe_state,state);
+	pr_debug("%s ori state = %d,new state = %d\n",__func__,pdpe->pdpe_state,state);
 	pdpe->pdpe_state = state;
 	
 	if(pdpe->pdpe_state == PDPE_WORK_PE_NOT_SUPPORT || pdpe->pdpe_state == PDPE_WORK_PD_CHECK){
-		pr_err("gezi %s state = %d schedule_delayed_work\n",__func__,pdpe->pdpe_state);
+		pr_debug("%s state = %d schedule_delayed_work\n",__func__,pdpe->pdpe_state);
 		schedule_delayed_work(&pdpe->pd_detect_work, msecs_to_jiffies(PDPE_WORK_RUN_INTERVAL));
 	}
 	else{
-		pr_err("gezi %s----111---state = %d\n", __func__,pdpe->pdpe_state);
+		pr_debug("%s----111---state = %d\n", __func__,pdpe->pdpe_state);
 		cancel_delayed_work(&pdpe->pd_detect_work);
 	}
 }
@@ -102,7 +102,7 @@ int psy_pd_set_property(struct power_supply *psy,
 	
 	switch (psp) {
 	case POWER_SUPPLY_PROP_ONLINE:
-		pr_err("gezi %s------%d\n",__func__,val->intval);
+		pr_debug("%s------%d\n",__func__,val->intval);
 		set_pd_state(pdpe,val->intval);
 		break;
 	case POWER_SUPPLY_PROP_TEMP:
@@ -128,10 +128,10 @@ static int pdpe_psy_reg(struct pdpe_config *pdpe,struct platform_device *pdev)
 
 	pdpe->sw_psy = power_supply_register(&pdev->dev, &pdpe->sw_desc,&pdpe->sw_cfg);
 	if (IS_ERR(pdpe->sw_psy)){
-		pr_err("gezi register sw_psy fail\n");
+		pr_err("register sw_psy fail\n");
 	}
 	else{
-		pr_err("gezi register sw_psy success\n");
+		pr_debug("register sw_psy success\n");
 	}
 	return 0;
 }
@@ -141,7 +141,7 @@ static void pd_detect_work(struct work_struct *work)
     struct pdpe_config *pdpe = container_of(work, struct pdpe_config, pd_detect_work.work);
 	
 	if(pdpe->pdpe_state == PDPE_WORK_PE_NOT_SUPPORT || pdpe->pdpe_state == PDPE_WORK_PD_CHECK){
-		pr_err("gezi %s----000---state = %d\n", __func__,pdpe->pdpe_state);
+		pr_debug("%s----000---state = %d\n", __func__,pdpe->pdpe_state);
 		usbpd_pm_schedule();
 		schedule_delayed_work(&pdpe->pd_detect_work, msecs_to_jiffies(PDPE_WORK_RUN_INTERVAL));
 	}
@@ -150,8 +150,8 @@ static void pd_detect_work(struct work_struct *work)
 
 static void pdpe_check_usb_psy(struct pdpe_config *pdpe)
 {
-    if (!pdpe->usb_psy) { 
-        pdpe->usb_psy = power_supply_get_by_name("charger");
+    if (!pdpe->usb_psy) {
+        pdpe->usb_psy = power_supply_get_by_name("mtk-master-charger");
         if (!pdpe->usb_psy)
             pr_err("usb psy not found!\n");
     }
@@ -199,16 +199,16 @@ static void kpoc_detect_work(struct work_struct *work)
     struct pdpe_config *pdpe = container_of(work, struct pdpe_config, kpoc_detect_work.work);
 	
 	if((pdpe->pdpe_state == PDPE_WORK_IDLE || pdpe->pdpe_state == PDPE_WORK_INIT_DONE)&& (pdpe_get_charge_state(pdpe) == 0)){
-		pr_err("gezi %s----000---state = %d,kpoc_cnt = %d\n", __func__,pdpe->pdpe_state,pdpe->kpoc_cnt);
+		pr_debug("%s----000---state = %d,kpoc_cnt = %d\n", __func__,pdpe->pdpe_state,pdpe->kpoc_cnt);
 		pdpe->kpoc_cnt++;
 		schedule_delayed_work(&pdpe->kpoc_detect_work, msecs_to_jiffies(PDPE_KPROC_WORK_RUN_INTERVAL));
 		if(pdpe->kpoc_cnt >= 8){ //drv add by lipengpeng 20230315 C to C connection charging and data disconnection
-			pr_err("gezi KERNEL POWER OFF %s state = %d,kpoc_cnt = %d\n", __func__,pdpe->pdpe_state,pdpe->kpoc_cnt);
+			pr_err("KERNEL POWER OFF %s state = %d,kpoc_cnt = %d\n", __func__,pdpe->pdpe_state,pdpe->kpoc_cnt);
 			kernel_power_off();
 		}
 	}
 	else{
-		pr_err("gezi %s----000---state = %d\n", __func__,pdpe->pdpe_state);
+		pr_debug("%s----000---state = %d\n", __func__,pdpe->pdpe_state);
 		pdpe->psy_change_running = false;
 		pdpe->kpoc_cnt = 0;
 	}
@@ -233,12 +233,12 @@ static int pdpe_psy_notifier_cb(struct notifier_block *nb,
 	
     if ((!pdpe->psy_change_running) && (!state) && is_kpoc_mode(pdpe))
 	{
-		pr_err(" gezi %s ,charger state = %d\n",__func__,state);
+		pr_debug("%s ,charger state = %d\n",__func__,state);
 		pdpe->psy_change_running = true;
 		schedule_delayed_work(&pdpe->kpoc_detect_work, msecs_to_jiffies(PDPE_KPROC_WORK_RUN_INTERVAL / 10));
     }
 	else{
-		pr_err(" gezi %s charger state = %d,boot_mode = %d\n",__func__,state,pdpe->boot_mode);
+		pr_debug("%s charger state = %d,boot_mode = %d\n",__func__,state,pdpe->boot_mode);
 	}
 
     return NOTIFY_OK;
@@ -250,7 +250,7 @@ int pdpe_init(struct platform_device *pdev)
 {
     struct pdpe_config *pdpe;
 	
-	pr_err("gezi %s------------------------%d\n", __func__,__LINE__);
+	pr_debug("%s------------------------%d\n", __func__,__LINE__);
 
     pdpe = kzalloc(sizeof(*pdpe), GFP_KERNEL);
     if (!pdpe){

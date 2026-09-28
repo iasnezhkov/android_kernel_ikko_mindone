@@ -39,6 +39,8 @@ static u32 last_boot_phase = FLAG_INVALID;
 static struct regmap *map;
 static u32 pmic_addr;
 
+#define KLOG_SNAPSHOT_SIZE LOG_STORE_SIZE
+static char *klog_snapshot;
 
 #define LOG_BLOCK_SIZE (512)
 #define EXPDB_LOG_SIZE (2*1024*1024)
@@ -391,20 +393,22 @@ static int __init log_store_late_init(void)
 }
 
 
-/* need mapping virtual address to phy address */
-void store_printk_buff(void)
+static void log_store_dump_kmsg(struct kmsg_dumper *dumper,
+		struct kmsg_dump_detail *detail)
 {
+	struct kmsg_dump_iter iter;
 	phys_addr_t log_buf;
-	char *buff;
-	int size;
+	size_t len = 0;
 
-	if (!sram_dram_buff) {
-		pr_notice("log_store: sram_dram_buff is null.\n");
+	if (!sram_dram_buff || !klog_snapshot)
 		return;
-	}
-	buff = log_buf_addr_get();
-	log_buf = __virt_to_phys_nodebug((unsigned long)buff);
-	size = log_buf_len_get();
+
+	kmsg_dump_rewind(&iter);
+	if (!kmsg_dump_get_buffer(&iter, true, klog_snapshot,
+			KLOG_SNAPSHOT_SIZE, &len))
+		return;
+
+	log_buf = __virt_to_phys_nodebug((unsigned long)klog_snapshot);
 	/* support 32/64 bits */
 #ifdef CONFIG_PHYS_ADDR_T_64BIT
 	if ((log_buf >> 32) == 0)
@@ -414,13 +418,40 @@ void store_printk_buff(void)
 #else
 	sram_dram_buff->klog_addr = log_buf;
 #endif
-	sram_dram_buff->klog_size = size;
+	sram_dram_buff->klog_size = len;
 	if (!early_log_disable)
 		sram_dram_buff->flag |= BUFF_EARLY_PRINTK;
 	pr_notice("log_store printk_buff addr:0x%x,sz:0x%x,buff-flag:0x%x.\n",
 		sram_dram_buff->klog_addr,
 		sram_dram_buff->klog_size,
 		sram_dram_buff->flag);
+}
+
+static struct kmsg_dumper log_store_kmsg_dumper = {
+	.dump = log_store_dump_kmsg,
+	.max_reason = KMSG_DUMP_SHUTDOWN,
+};
+
+/* need mapping virtual address to phy address */
+void store_printk_buff(void)
+{
+	if (!sram_dram_buff) {
+		pr_notice("log_store: sram_dram_buff is null.\n");
+		return;
+	}
+
+	if (!klog_snapshot)
+		klog_snapshot = (char *)__get_free_pages(GFP_KERNEL | GFP_DMA32,
+							 get_order(KLOG_SNAPSHOT_SIZE));
+	if (!klog_snapshot) {
+		pr_notice("log_store: klog snapshot alloc failed.\n");
+		return;
+	}
+
+	if (!log_store_kmsg_dumper.registered)
+		kmsg_dump_register(&log_store_kmsg_dumper);
+
+	log_store_dump_kmsg(&log_store_kmsg_dumper, NULL);
 }
 EXPORT_SYMBOL_GPL(store_printk_buff);
 
@@ -537,6 +568,12 @@ static void __exit log_store_exit(void)
 {
 	if (entry)
 		proc_remove(entry);
+
+	if (log_store_kmsg_dumper.registered)
+		kmsg_dump_unregister(&log_store_kmsg_dumper);
+	if (klog_snapshot)
+		free_pages((unsigned long)klog_snapshot, get_order(KLOG_SNAPSHOT_SIZE));
+	klog_snapshot = NULL;
 
 	unregister_pm_notifier(&logstore_pm_nb);
 }

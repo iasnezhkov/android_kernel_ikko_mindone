@@ -69,8 +69,10 @@ struct mtk_ddic_dsi_msg {
 
 struct DSI_RX_DATA_REG {
 	unsigned char byte0;
+	struct_group(rx_short_data,
 	unsigned char byte1;
 	unsigned char byte2;
+	);
 	unsigned char byte3;
 };
 

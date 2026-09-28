@@ -19,26 +19,6 @@
 #define pr_debug vcu_mem_dbg_log
 
 
-/*
- * Kernel 6.1's struct vb2_mem_ops gained a leading `struct vb2_buffer *vb`
- * parameter on alloc/vaddr/cookie/get_dmabuf (upstream reworked videobuf2
- * backends to read per-queue dma_attrs/dma_dir/non_coherent_mem off
- * vb->vb2_queue instead of taking them as explicit alloc() arguments; see
- * kernel6/common61/include/media/videobuf2-core.h struct vb2_mem_ops).
- * This driver (ported from a pre-refactor 5.10 tree) allocates some
- * buffers standalone -- outside any real videobuf2 queue/buffer lifecycle
- * -- so at several call sites below there is no live vb2_buffer to pass.
- *
- * Verified by reading videobuf2-dma-contig.c in this kernel tree:
- * vb2_dc_cookie()/vb2_dc_vaddr()/vb2_dc_get_dmabuf() (the backend this
- * file uses, see vcu_queue->mem_ops = &vb2_dma_contig_memops below) never
- * dereference `vb` at all, so passing NULL there is safe. vb2_dc_alloc()
- * DOES dereference vb->vb2_queue->{dma_attrs,dma_dir,non_coherent_mem}, so
- * it needs a real (if synthetic) vb2_buffer -- vcu_mem_ops_alloc() below
- * supplies one whose queue is zero-initialized, reproducing exactly the
- * semantics of the old 5-argument call this file used to make:
- * alloc(dev, attrs=0, size, dma_dir=DMA_BIDIRECTIONAL(0), gfp=0).
- */
 static void *vcu_mem_ops_alloc(const struct vb2_mem_ops *mem_ops,
 	struct device *dev, unsigned long size)
 {
@@ -118,7 +98,7 @@ void mtk_vcu_mem_release(struct mtk_vcu_queue *vcu_queue)
 			if (vcu_sec_handle->dbuf != NULL)
 				dma_heap_buffer_free(vcu_sec_handle->dbuf);
 
-			pr_debug("Free sec %d dbuf = %p sec_handle = %llx size = %d mem_priv = %lx ref_cnt = %d\n",
+			pr_debug("Free sec %d dbuf = %p sec_handle = %x size = %d mem_priv = %lx ref_cnt = %d\n",
 				 handle, vcu_sec_handle->dbuf,
 				 vcu_sec_handle->sec_handle,
 				 (unsigned int)vcu_sec_handle->size,
@@ -133,7 +113,7 @@ void mtk_vcu_mem_release(struct mtk_vcu_queue *vcu_queue)
 			vcu_queue->cmdq_clt,
 			(void *)(unsigned long)tmp->kva,
 			(dma_addr_t)tmp->pa);
-		pr_info("Free cmdq pa %llx ref_cnt = %d\n", tmp->pa,
+		pr_info("Free cmdq pa %lx ref_cnt = %d\n", tmp->pa,
 			atomic_read(&tmp->ref_cnt));
 		list_del(p);
 		kfree(tmp);
@@ -270,7 +250,7 @@ void *mtk_vcu_get_buffer(struct mtk_vcu_queue *vcu_queue,
 	mutex_unlock(&vcu_queue->mmap_lock);
 	atomic_set(&vcu_buffer->ref_cnt, 1);
 
-	pr_debug("[%s] Num_buffers = %d iova = %llx va = %llx va_id = %lld size = %d mem_priv = %lx\n",
+	pr_debug("[%s] Num_buffers = %d iova = %llx va = %p va_id = %lld size = %d mem_priv = %lx\n",
 		__func__, vcu_queue->num_buffers, mem_buff_data->iova,
 		cook, vcu_buffer->va_id, (unsigned int)vcu_buffer->size,
 		(unsigned long)vcu_buffer->mem_priv);
@@ -449,7 +429,7 @@ int mtk_vcu_free_buffer(struct mtk_vcu_queue *vcu_queue,
 			if (vcu_buffer->dbuf != NULL)
 				continue;
 			if (vcu_buffer->mem_priv == NULL || vcu_buffer->size == 0) {
-				pr_info("[VCU][Error] %s remove invalid vcu_queue bufs[%u] in num_buffers %u (mem_priv 0x%x size %d ref_cnt %d)\n",
+				pr_info("[VCU][Error] %s remove invalid vcu_queue bufs[%u] in num_buffers %u (mem_priv %p size %zu ref_cnt %d)\n",
 					__func__, buffer, num_buffers,
 					vcu_buffer->mem_priv, vcu_buffer->size,
 					atomic_read(&vcu_buffer->ref_cnt));
@@ -463,7 +443,7 @@ int mtk_vcu_free_buffer(struct mtk_vcu_queue *vcu_queue,
 			    mem_buff_data->iova == *(dma_addr_t *)dma_addr &&
 			    mem_buff_data->len == vcu_buffer->size &&
 			    atomic_read(&vcu_buffer->ref_cnt) == 1) {
-				pr_debug("Free buff = %d iova = %llx va = %llx va_id = %llx, queue_num = %d\n",
+				pr_debug("Free buff = %d iova = %llx va = %p va_id = %llx, queue_num = %d\n",
 					buffer, mem_buff_data->iova,
 					cook, mem_buff_data->va,
 					num_buffers);
@@ -541,7 +521,7 @@ int mtk_vcu_free_sec_buffer(struct mtk_vcu_queue *vcu_queue,
 	mutex_lock(&vcu_queue->mmap_lock);
 	num_sec_buf = vcu_queue->num_sec_buffers;
 
-	pr_info("Free buffer sec_iova = %lx, len %d queue_num = %d\n",
+	pr_info("Free buffer sec_iova = %llx, len %d queue_num = %d\n",
 		mem_buff_data->iova, mem_buff_data->len, num_sec_buf);
 	if (num_sec_buf != 0U) {
 		for (i = 0; i < num_sec_buf; i++) {
@@ -584,7 +564,7 @@ int mtk_vcu_free_sec_buffer(struct mtk_vcu_queue *vcu_queue,
 	mutex_unlock(&vcu_queue->mmap_lock);
 
 	if (ret != 0)
-		pr_info("Can not free memory sec_iova %lx len %u!\n",
+		pr_info("Can not free memory sec_iova %llx len %u!\n",
 			mem_buff_data->iova, mem_buff_data->len);
 
 	return ret;

@@ -1503,8 +1503,14 @@ static void cldma_tx_ring_init(struct md_cd_ctrl *md_ctrl,
 		for (i = 0; i < ring->length; i++) {
 			item = kzalloc(sizeof(struct cldma_request),
 				GFP_KERNEL);
+			if (!item)
+				return;
 			item->gpd = dma_pool_alloc(md_ctrl->gpd_dmapool,
 				GFP_KERNEL, &item->gpd_addr);
+			if (!item->gpd) {
+				kfree(item);
+				return;
+			}
 			tgpd = (struct cldma_tgpd *)item->gpd;
 			memset(tgpd, 0, sizeof(struct cldma_tgpd));
 			tgpd->gpd_flags = 0x80;	/* IOC */
@@ -1524,8 +1530,14 @@ static void cldma_tx_ring_init(struct md_cd_ctrl *md_ctrl,
 		for (i = 0; i < ring->length; i++) {
 			item = kzalloc(sizeof(struct cldma_request),
 				GFP_KERNEL);
+			if (!item)
+				return;
 			item->gpd = dma_pool_alloc(md_ctrl->gpd_dmapool,
 				GFP_KERNEL, &item->gpd_addr);
+			if (!item->gpd) {
+				kfree(item);
+				return;
+			}
 			tgpd = (struct cldma_tgpd *)item->gpd;
 			memset(tgpd, 0, sizeof(struct cldma_tgpd));
 			tgpd->gpd_flags = 0x82;	/* IOC|BDP */
@@ -1543,9 +1555,15 @@ static void cldma_tx_ring_init(struct md_cd_ctrl *md_ctrl,
 			for (j = 0; j < MAX_BD_NUM + 1; j++) {
 				bd_item = kzalloc(sizeof(struct cldma_request),
 					GFP_KERNEL);
+				if (!bd_item)
+					return;
 				bd_item->gpd = dma_pool_alloc(
 					md_ctrl->gpd_dmapool,
 					GFP_KERNEL, &bd_item->gpd_addr);
+				if (!bd_item->gpd) {
+					kfree(bd_item);
+					return;
+				}
 				bd = (struct cldma_tbd *)bd_item->gpd;
 				memset(bd, 0, sizeof(struct cldma_tbd));
 				if (j == 0)
@@ -3019,7 +3037,7 @@ static int ccci_cldma_hif_init(struct platform_device *pdev,
 	md_ctrl->plat_val.offset_epof_md1 = 7*1024+0x234;
 
 	CCCI_NORMAL_LOG(md_id, TAG,
-		"[%s]: md_gen: %d; infra_ao_base: %p; offset_epof_md1: %lld\n",
+		"[%s]: md_gen: %d; infra_ao_base: %p; offset_epof_md1: %lu\n",
 		__func__,
 		md_ctrl->plat_val.md_gen,
 		md_ctrl->plat_val.infra_ao_base,
@@ -3236,7 +3254,7 @@ static int __init ccci_cldma_init(void)
 static void __exit ccci_cldma_exit(void)
 {
 	CCCI_NORMAL_LOG(-1, TAG,
-		"[%S] CLDMA driver is exit.", __func__);
+		"[%s] CLDMA driver is exit.", __func__);
 }
 
 module_init(ccci_cldma_init);

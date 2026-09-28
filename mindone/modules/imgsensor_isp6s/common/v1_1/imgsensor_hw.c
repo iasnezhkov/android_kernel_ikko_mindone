@@ -16,35 +16,6 @@
 int curr_sensor_id;// prize add by zhuzhengjiang for camera 20220110 start
 int last_sensor_idx; // prize add by zhuzhengjiang for  switch camera slow
 
-/* MINDONE-CAM-BISECT: manual, insmod-time power-sequence bisection, ON branch
- * only (OFF/cleanup untouched). mindone_pwr_stop=N: stop after 0-based step N
- * of IMX766 sensor_power_sequence[] (default 99 = run all; step numbering in
- * CAMERA-IMX766-2908 §8.4.1). mindone_pwr_skip_mclk=1: skip only the
- * MCLK step, isolating whether the GPIO126 MCLK function change kills the
- * board (§8.4 hypothesis c).
- */
-static int mindone_pwr_stop = 99;
-module_param(mindone_pwr_stop, int, 0644);
-MODULE_PARM_DESC(mindone_pwr_stop,
-	"MINDONE-CAM-BISECT: 0-based IMX766 power-on step to stop after (inclusive), default 99=run all");
-
-static bool mindone_pwr_skip_mclk;
-module_param(mindone_pwr_skip_mclk, bool, 0644);
-MODULE_PARM_DESC(mindone_pwr_skip_mclk,
-	"MINDONE-CAM-BISECT: 1 = skip the MCLK (pin=10) power-on step, still run every other step");
-
-/* MINDONE-CAM-BISECT 29.08 (round 2): isolate GPIO15(RST)=HIGH itself, with
- * NO rails and NO MCLK ever driven first -- tests whether the RST=HIGH
- * transition alone is what the board reacts to (systemic/shared-net wiring),
- * independent of the "rails+RST combination" hypothesis. When set, every ON
- * step is skipped EXCEPT the one matching (pin==RST && state==HIGH) -- i.e.
- * PDN/AVDD/AVDD1/AFVDD/DVDD/DOVDD/MCLK and even RST=LOW are all skipped, only
- * the single RST=HIGH pdev->set() call actually executes.
- */
-static bool mindone_rst_only;
-module_param(mindone_rst_only, bool, 0644);
-MODULE_PARM_DESC(mindone_rst_only,
-	"MINDONE-CAM-BISECT: 1 = skip every ON step except RST=HIGH (no rails, no MCLK, no PDN, no RST=LOW)");
 /*the index is consistent with enum IMGSENSOR_HW_PIN*/
 char * const imgsensor_hw_pin_names[] = {
 	"none",
@@ -114,17 +85,6 @@ enum IMGSENSOR_RETURN imgsensor_hw_init(struct IMGSENSOR_HW *phw)
 
 		/* i2c_dev */
 		switch (i) {
-		case IMGSENSOR_SENSOR_IDX_MAIN2:
-			{
-				if (IS_MT6877(phw->g_platform_id) ||
-					IS_MT6833(phw->g_platform_id) ||
-					IS_MT6781(phw->g_platform_id) ||
-					IS_MT6779(phw->g_platform_id))
-					pcust_pwr_cfg->i2c_dev = IMGSENSOR_I2C_DEV_1;
-				else
-					pcust_pwr_cfg->i2c_dev = IMGSENSOR_I2C_DEV_1;//prize modify by linchong 20220613
-			}
-			break;
 		case IMGSENSOR_SENSOR_IDX_SUB2:
 			{
 				if (IS_MT6785(phw->g_platform_id) ||
@@ -175,25 +135,12 @@ enum IMGSENSOR_RETURN imgsensor_hw_init(struct IMGSENSOR_HW *phw)
 						== 0) {
 						PK_DBG("imgsensor_hw_cfg hw_pin:%s,name:%s,id:%d\n",
 							str_prop_name, pin_hw_id_name, j);
-						/* MINDONE-CAM-PWR: per-pin dt-override trace (F3056/F3063 test done; pr_debug = quiet). */
-						pr_debug("MINDONE-CAM-PWR: %s dt-override id=%d(%s)\n",
-							str_prop_name, j, imgsensor_hw_id_names[j]);
 						ppwr_info->id = j;
 						break;
 					}
 				}
 			} else {
-				/* MINDONE-CAM-IMX766-B: do NOT force IMGSENSOR_HW_ID_NONE.
-				 * This board's kd_camera_hw1 DT node has no cam%d_pin_%s
-				 * properties, so this branch used to run for every pin,
-				 * silently overwriting the sane compile-time defaults
-				 * with NONE and making power_sequence() skip every
-				 * pdev->set() -- a silent power no-op. Keep the default
-				 * when the DT override is absent. */
 				PK_DBG("NOTICE: imgsensor_hw_cfg hw_pin:%s, dts override absent, keep default id:%d\n",
-					str_prop_name, ppwr_info->id);
-				/* MINDONE-CAM-PWR: same pr_info reasoning as above. */
-				pr_debug("MINDONE-CAM-PWR: %s dt-absent, kept-default id=%d\n",
 					str_prop_name, ppwr_info->id);
 			}
 			ppwr_info++;
@@ -236,18 +183,6 @@ enum IMGSENSOR_RETURN imgsensor_hw_init(struct IMGSENSOR_HW *phw)
 					j++) {
 				}
 				psensor_pwr->id[ppwr_info->pin] = j;
-				/* MINDONE-CAM-PWR 29.08: this is the value
-				 * imgsensor_hw_power_sequence() will actually read
-				 * for this (sensor_idx, pin) at power-on/off time --
-				 * log it once here, at commit time, so it doesn't
-				 * need per-call ratelimiting.
-				 */
-				pr_debug("MINDONE-CAM-PWR: sensor_idx=%d pin=%d(%s) final id=%d(%s)\n",
-					i, ppwr_info->pin,
-					imgsensor_hw_pin_names[ppwr_info->pin],
-					j,
-					(j < IMGSENSOR_HW_ID_MAX_NUM)
-						? imgsensor_hw_id_names[j] : "NONE");
 			}
 			ppwr_info++;
 		}
@@ -327,72 +262,27 @@ static enum IMGSENSOR_RETURN imgsensor_hw_power_sequence(
 	       ppwr_info < ppwr_seq->pwr_info + IMGSENSOR_HW_POWER_INFO_MAX) {
 
 		if (pwr_status == IMGSENSOR_HW_POWER_STATUS_ON) {
-			if (ppwr_info->pin != IMGSENSOR_HW_PIN_UNDEF) {
-				bool mindone_skip_step = false;
-				const char *mindone_skip_reason = NULL;
+			if (ppwr_info->pin != IMGSENSOR_HW_PIN_UNDEF &&
+			    psensor_pwr->id[ppwr_info->pin] != IMGSENSOR_HW_ID_MAX_NUM) {
+				pdev = phw->pdev[psensor_pwr->id[ppwr_info->pin]];
 
-				if (mindone_pwr_skip_mclk &&
-					ppwr_info->pin == IMGSENSOR_HW_PIN_MCLK) {
-					mindone_skip_step = true;
-					mindone_skip_reason = "mindone_pwr_skip_mclk=1";
-				} else if (mindone_rst_only &&
-					!(ppwr_info->pin == IMGSENSOR_HW_PIN_RST &&
-					  ppwr_info->pin_state_on ==
-					  IMGSENSOR_HW_PIN_STATE_LEVEL_HIGH)) {
-					mindone_skip_step = true;
-					mindone_skip_reason = "mindone_rst_only=1, not the RST=HIGH step";
-				}
+				if (__ratelimit(&ratelimit))
+					PK_DBG(
+					"sensor_idx %d, ppwr_info->pin %d, ppwr_info->pin_state_on %d, delay %u",
+					sensor_idx,
+					ppwr_info->pin,
+					ppwr_info->pin_state_on,
+					ppwr_info->pin_on_delay);
 
-				if (mindone_skip_step) {
-					pr_debug("MINDONE-CAM-PWR: ON  step=%d sensor_idx=%d pin=%d state=%d SKIP (%s)\n",
-						pin_cnt, sensor_idx, ppwr_info->pin,
-						ppwr_info->pin_state_on, mindone_skip_reason);
-				} else if (psensor_pwr->id[ppwr_info->pin] != IMGSENSOR_HW_ID_MAX_NUM) {
-					pdev = phw->pdev[psensor_pwr->id[ppwr_info->pin]];
-
-					if (__ratelimit(&ratelimit))
-						PK_DBG(
-						"sensor_idx %d, ppwr_info->pin %d, ppwr_info->pin_state_on %d, delay %u",
+				if (pdev->set != NULL)
+					pdev->set(
+						pdev->pinstance,
 						sensor_idx,
 						ppwr_info->pin,
-						ppwr_info->pin_state_on,
-						ppwr_info->pin_on_delay);
-
-					/* MINDONE-CAM-PWR 29.08: pr_debug above is a
-					 * silent no-op on this build -- pr_info always
-					 * prints, no dynamic_debug needed.
-					 */
-					pr_debug("MINDONE-CAM-PWR: ON  step=%d sensor_idx=%d pin=%d id=%d state=%d delay=%u set=%s\n",
-						pin_cnt, sensor_idx, ppwr_info->pin,
-						psensor_pwr->id[ppwr_info->pin],
-						ppwr_info->pin_state_on,
-						ppwr_info->pin_on_delay,
-						(pdev->set != NULL) ? "yes" : "NULL");
-
-					if (pdev->set != NULL)
-						pdev->set(
-							pdev->pinstance,
-							sensor_idx,
-							ppwr_info->pin,
-							ppwr_info->pin_state_on);
-				} else {
-					pr_debug("MINDONE-CAM-PWR: ON  step=%d sensor_idx=%d pin=%d id=NONE -- SKIPPED (no device)\n",
-						pin_cnt, sensor_idx, ppwr_info->pin);
-				}
+						ppwr_info->pin_state_on);
 			}
 
 			mdelay(ppwr_info->pin_on_delay);
-
-			/* MINDONE-CAM-BISECT: stop the ON sequence right here, after
-			 * this step's mdelay, so timing up to the stop point matches
-			 * a real run. The OFF branch is a separate call, never reached
-			 * from here, and always runs its full reverse sequence later. */
-			if (pin_cnt >= mindone_pwr_stop) {
-				pr_debug("MINDONE-CAM-PWR: STOP after step=%d pin=%d sensor_idx=%d (mindone_pwr_stop=%d)\n",
-					pin_cnt, ppwr_info->pin, sensor_idx,
-					mindone_pwr_stop);
-				return IMGSENSOR_RETURN_SUCCESS;
-			}
 		}
 
 		ppwr_info++;
@@ -416,22 +306,12 @@ static enum IMGSENSOR_RETURN imgsensor_hw_power_sequence(
 						ppwr_info->pin_state_off,
 						ppwr_info->pin_on_delay);
 
-					pr_debug("MINDONE-CAM-PWR: OFF sensor_idx=%d pin=%d id=%d state=%d delay=%u set=%s\n",
-						sensor_idx, ppwr_info->pin,
-						psensor_pwr->id[ppwr_info->pin],
-						ppwr_info->pin_state_off,
-						ppwr_info->pin_on_delay,
-						(pdev->set != NULL) ? "yes" : "NULL");
-
 					if (pdev->set != NULL)
 						pdev->set(
 							pdev->pinstance,
 							sensor_idx,
 							ppwr_info->pin,
 							ppwr_info->pin_state_off);
-				} else {
-					pr_debug("MINDONE-CAM-PWR: OFF sensor_idx=%d pin=%d id=NONE -- SKIPPED (no device)\n",
-						sensor_idx, ppwr_info->pin);
 				}
 			}
 

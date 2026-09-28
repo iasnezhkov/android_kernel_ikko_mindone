@@ -327,7 +327,7 @@ void musb_disable_q_all(struct musb *musb)
 {
 	u32 ep_num;
 
-	QMU_WARN("disable_q_all\n");
+	QMU_INFO("disable_q_all\n");
 	mtk_host_active_dev_resource_reset();
 #if IS_ENABLED(CONFIG_MTK_UAC_POWER_SAVING)
 	low_power_timer_resource_reset();
@@ -408,10 +408,6 @@ EXPORT_SYMBOL(musb_q_irq);
 
 void musb_flush_qmu(u32 ep_num, u8 isRx)
 {
-	/* MINDONE-QMU-EP0 30.08 (F3114): stop_activity()/nuke() flush every endpoint incl. EP0,
-	 * but QMU gpd pools exist only for 1..MAX_QMU_EP; for EP0 qmu_reset_gpd_pool() did
-	 * TGPD_CLR_FLAGS_HWO(NULL) -> NULL deref -> panic on every gadget teardown
-	 * (config_usb_cfg_unlink from init). The same code appears in MediaTek's sources. */
 	if (ep_num == 0 || ep_num > MAX_QMU_EP) {
 		QMU_DBG("flush %s(%d): no QMU pool, skip\n", isRx ? "RQ" : "TQ", ep_num);
 		return;

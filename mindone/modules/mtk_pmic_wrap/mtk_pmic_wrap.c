@@ -16,7 +16,7 @@
 #include <linux/reset.h>
 #include <linux/printk.h>
 
-#include <linux/of_platform.h>	/* of_platform_populate: 6.12 no longer pulls it in implicitly */
+#include <linux/of_platform.h>
 #define PWRAP_MT8135_BRIDGE_IORD_ARB_EN		0x4
 #define PWRAP_MT8135_BRIDGE_WACS3_EN		0x10
 #define PWRAP_MT8135_BRIDGE_INIT_DONE3		0x14

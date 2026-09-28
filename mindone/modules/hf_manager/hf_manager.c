@@ -6,7 +6,6 @@
 #define pr_fmt(fmt) "[hf_manager]" fmt
 
 #include <linux/kernel.h>
-#include <mindone/compat.h>
 #include <linux/module.h>
 #include <linux/device.h>
 #include <linux/fs.h>
@@ -37,14 +36,9 @@
 #include <linux/usb.h>
 #include <linux/power_supply.h>
 #include <linux/regulator/consumer.h>
-#include <linux/version.h>
 
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(4,9,0)
 #define USB_POWER_SUPPLY_NAME   "charger"
 //#define USB_POWER_SUPPLY_NAME   "mtk-master-charger"
-#else
-#define USB_POWER_SUPPLY_NAME   "usb"
-#endif
 
 #define AW_SAR_CONFIG_MTK_CHARGER
 
@@ -1964,7 +1958,7 @@ int psy_pd_set_property(struct power_supply *psy,
 			const union power_supply_propval *val)
 {
 
-	pr_err("gezi %s------%d\n",__func__,val->intval);
+	pr_debug("%s------%d\n",__func__,val->intval);
 	
 	switch (psp) {
 	case POWER_SUPPLY_PROP_ONLINE:
@@ -1993,19 +1987,16 @@ static int sar_cali_psy_reg(struct device *dev)
 
 	sw_psy = power_supply_register(dev, &sw_desc,&sw_cfg);
 	if (IS_ERR(sw_psy)){
-		pr_err("gezi register sw_psy fail\n");
+		pr_err("register sw_psy fail\n");
 	}
 	else{
-		pr_err("gezi register sw_psy success\n");
+		pr_debug("register sw_psy success\n");
 	}
 	return 0;
 }
 //prize add by dengzhiyuan 20230801 end
 
 
-/* MINDONE-SAR-PSY (F3264). This board has NO power supply named "charger":
- * there's mtk-master-charger (online=1), battery, usb, mtk-gauge, etc. The vendor
- * left the correct string in a comment, but the wrong one went into the build. */
 #define AW_SAR_CHARGER_PSY_NAME "mtk-master-charger"
 
 static int aw_sar_ps_get_state(struct power_supply *psy, bool *present)
@@ -2013,10 +2004,6 @@ static int aw_sar_ps_get_state(struct power_supply *psy, bool *present)
 	union power_supply_propval pval = { 0 };
 	int retval;
 
-	/* MINDONE-SAR-PSY (F3264): cannot ask ANY supply for ONLINE. battery has no
-	 * such property at all (/sys/class/power_supply/battery/online is absent)
-	 * -> -EINVAL on every event -> 187 error messages overnight. We only care
-	 * about the charger; exit silently for everything else. */
 	if (!psy->desc->name || strcmp(psy->desc->name, AW_SAR_CHARGER_PSY_NAME) != 0)
 		return -ENODEV;
 
@@ -2031,7 +2018,7 @@ static int aw_sar_ps_get_state(struct power_supply *psy, bool *present)
 		pr_err("sar %s psy get property failed\n", psy->desc->name);
 		return retval;
 	}
-	pr_info("sar pys name:%s\n",  psy->desc->name);
+	pr_debug("sar pys name:%s\n",  psy->desc->name);
 	if (strcmp(psy->desc->name, AW_SAR_CHARGER_PSY_NAME) == 0) {
 
 		*present = (pval.intval) ? true : false;
@@ -2049,14 +2036,10 @@ static int aw_sar_ps_notify_callback(struct notifier_block *self,
 	struct power_supply *psy = p;
 	bool present;
 	int retval;
-	pr_info("sar %s\n", __func__);
+	pr_debug("sar %s\n", __func__);
 	if ((event == PSY_EVENT_PROP_CHANGED)
 		&& psy && psy->desc->get_property && psy->desc->name){
 		//pr_info("sar1 %s\n", __func__);
-		/* MINDONE-SAR-PSY (F3264): power_supply_reg_notifier puts us in a
-		 * BLOCKING chain. A non-zero return from the callback ABORTS it, and
-		 * the remaining power-event subscribers never see it. Always return 0;
-		 * an unrelated/unsupported supply is simply not our concern. */
 		retval = aw_sar_ps_get_state(psy, &present);
 		if (retval)
 			return NOTIFY_DONE;
@@ -2135,7 +2118,7 @@ static int __init hf_manager_init(void)
 		goto err_exit;
 	}
 
-	hf_manager_class = MINDONE_CLASS_CREATE("hf_manager");
+	hf_manager_class = class_create("hf_manager");
 	if (IS_ERR(hf_manager_class)) {
 		pr_err("Failed to create class\n");
 		ret = PTR_ERR(hf_manager_class);

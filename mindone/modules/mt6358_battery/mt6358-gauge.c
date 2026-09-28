@@ -5,7 +5,6 @@
  */
 
 #include <linux/cdev.h>
-#include <mindone/compat.h>
 #include <linux/device.h>
 #include <linux/iio/consumer.h>
 #include <linux/interrupt.h>
@@ -2206,7 +2205,7 @@ static int get_ptim_current(struct mtk_gauge *gauge)
 	/* ptim current >0 means discharge, different to bat_current */
 	/* Check (-1) */
 	dvalue = dvalue * -1;
-	bm_err("[%s]ptim current:%d\n", __func__, dvalue);
+	bm_debug("[%s]ptim current:%d\n", __func__, dvalue);
 
 	return dvalue;
 }
@@ -2274,6 +2273,11 @@ static int psy_gauge_set_property(struct power_supply *psy,
 		gm = gauge->gm;
 		if (gm != NULL && val->intval == 1)
 			set_shutdown_cond(gm, DLPT_SHUTDOWN);
+		break;
+	case POWER_SUPPLY_PROP_ENERGY_EMPTY_DESIGN:
+		gm = gauge->gm;
+		if (gm != NULL && val->intval > 0)
+			WRITE_ONCE(gm->imix, val->intval);
 		break;
 	default:
 		ret = -EINVAL;
@@ -2624,7 +2628,13 @@ static int get_charger_zcv(struct mtk_gauge *gauge_dev)
 
 	ret = power_supply_get_property(chg_psy,
 		POWER_SUPPLY_PROP_VOLTAGE_BOOT, &val);
-	bm_err("[%s]_hw_ocv_chgin=%d, ret=%d\n", __func__, val.intval, ret);
+	power_supply_put(chg_psy);
+	if (ret)
+		val.intval = 0;
+	if (ret && ret != -EINVAL)
+		bm_err("[%s]_hw_ocv_chgin=%d, ret=%d\n", __func__, val.intval, ret);
+	else
+		bm_debug("[%s]_hw_ocv_chgin=%d, ret=%d\n", __func__, val.intval, ret);
 
 	return val.intval;
 }
@@ -3572,8 +3582,10 @@ static ssize_t gauge_sysfs_store(struct device *dev,
 		struct mtk_gauge_sysfs_field_info, attr);
 	if (gauge_attr->set != NULL) {
 		mutex_lock(&gauge->ops_lock);
-		gauge_attr->set(gauge, gauge_attr, val);
+		ret = gauge_attr->set(gauge, gauge_attr, val);
 		mutex_unlock(&gauge->ops_lock);
+		if (ret < 0)
+			return ret;
 	}
 
 	return count;
@@ -3829,7 +3841,7 @@ struct file *filp, unsigned int cmd, unsigned long arg)
 	}
 
 	if (sizeof(arg) != sizeof(adc_out_datas)) {
-		bm_err("%s sizeof(arg)=%d sizeof(adc_out_data)=%d\n",
+		bm_err("%s sizeof(arg)=%zu sizeof(adc_out_data)=%zu\n",
 			__func__, sizeof(arg), sizeof(adc_out_datas));
 		return -EFAULT;
 	}
@@ -4039,7 +4051,7 @@ static int adc_cali_cdev_init(struct platform_device *pdev)
 		bm_err("adc_cali Error: cdev_add\n");
 
 	bat_cali_major = MAJOR(bat_cali_devno);
-	bat_cali_class = MINDONE_CLASS_CREATE(BAT_CALI_DEVNAME);
+	bat_cali_class = class_create(BAT_CALI_DEVNAME);
 	class_dev = (struct class_device *)device_create(bat_cali_class,
 		NULL,
 		bat_cali_devno,
@@ -4207,8 +4219,11 @@ static void mt6358_gauge_remove(struct platform_device *pdev)
 {
 	struct mtk_gauge *gauge = platform_get_drvdata(pdev);
 
-	if (gauge)
+	if (gauge) {
+		if (gauge->gm)
+			battery_psy_unregister_thermal(&gauge->gm->bs_data);
 		devm_kfree(&pdev->dev, gauge);
+	}
 	return;
 }
 

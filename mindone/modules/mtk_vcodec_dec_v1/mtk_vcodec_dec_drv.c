@@ -6,7 +6,6 @@
  */
 
 #include <linux/slab.h>
-#include <mindone/compat.h>
 #include <linux/interrupt.h>
 #include <linux/irq.h>
 #include <linux/module.h>
@@ -407,10 +406,6 @@ static int mtk_vcodec_dec_probe(struct platform_device *pdev)
 			reg_index, dev->dec_reg_base[reg_index]);
 	}
 
-	/* MINDONE: prerivanija ustrojstv iz dereva v jadre 6 ne zapolnjajutsja
-	 * zaranee v spisok resursov -- platform_get_resource(IORESOURCE_IRQ)
-	 * vozvrashhaet NULL daze kogda uzel neset "interrupts". Nastojashhij
-	 * zapros nize po kodu idjot cherez platform_get_irq (lenivyj). */
 	if (platform_get_irq(pdev, 0) < 0) {
 		dev_info(&pdev->dev, "failed to get irq resource");
 		ret = -ENOENT;
@@ -541,9 +536,7 @@ static int mtk_vcodec_dec_probe(struct platform_device *pdev)
 			devm_kzalloc(&pdev->dev, sizeof(*pdev->dev.dma_parms), GFP_KERNEL);
 	}
 	if (pdev->dev.dma_parms) {
-		ret = MINDONE_DMA_SET_MAX_SEG_SIZE(&pdev->dev, (unsigned int)DMA_BIT_MASK(34));
-		if (ret)
-			dev_info(&pdev->dev, "Failed to set DMA segment size\n");
+		dma_set_max_seg_size(&pdev->dev, (unsigned int)DMA_BIT_MASK(34));
 	}
 
 	mtk_vdec_translation_fault_callback_setting(dev);
@@ -606,6 +599,7 @@ static void mtk_vcodec_dec_remove(struct platform_device *pdev)
 {
 	struct mtk_vcodec_dev *dev = platform_get_drvdata(pdev);
 
+	unregister_pm_notifier(&dev->pm_notifier);
 	mtk_unprepare_vdec_emi_bw(dev);
 	mtk_unprepare_vdec_dvfs(dev);
 

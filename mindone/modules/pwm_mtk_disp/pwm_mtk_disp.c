@@ -6,7 +6,6 @@
  */
 
 #include <linux/clk.h>
-#include <mindone/compat.h>
 #include <linux/err.h>
 #include <linux/io.h>
 #include <linux/module.h>
@@ -47,7 +46,6 @@ struct mtk_pwm_data {
 };
 
 struct mtk_disp_pwm {
-	MINDONE_PWMCHIP_MEMBER
 	struct pwm_chip *pwmchip;
 	const struct mtk_pwm_data *data;
 	struct clk *clk_main;
@@ -61,7 +59,7 @@ struct mtk_disp_pwm {
 
 static inline struct mtk_disp_pwm *to_mtk_disp_pwm(struct pwm_chip *chip)
 {
-	return MINDONE_PWMCHIP_PRIV(chip, struct mtk_disp_pwm);
+	return ((struct mtk_disp_pwm *)pwmchip_get_drvdata(chip));
 }
 
 static void mtk_disp_pwm_update_bits(struct mtk_disp_pwm *mdp, u32 offset,
@@ -159,13 +157,13 @@ static int mtk_disp_pwm_config(struct pwm_chip *chip, struct pwm_device *pwm,
 	if (mdp->data->need_power_on != true) {
 		err = clk_prepare_enable(mdp->clk_main);
 		if (err < 0) {
-			dev_err(MINDONE_PWMCHIP_PARENT(chip), "Can't enable mdp->clk_main: %pe\n", ERR_PTR(err));
+			dev_err(pwmchip_parent(chip), "Can't enable mdp->clk_main: %pe\n", ERR_PTR(err));
 			return err;
 		}
 
 		err = clk_prepare_enable(mdp->clk_mm);
 		if (err < 0) {
-			dev_err(MINDONE_PWMCHIP_PARENT(chip), "Can't enable mdp->clk_mm: %pe\n", ERR_PTR(err));
+			dev_err(pwmchip_parent(chip), "Can't enable mdp->clk_mm: %pe\n", ERR_PTR(err));
 			clk_disable_unprepare(mdp->clk_main);
 			return err;
 		}
@@ -180,7 +178,7 @@ static int mtk_disp_pwm_config(struct pwm_chip *chip, struct pwm_device *pwm,
 	 * period = (PWM_CLK_RATE * period_ns) / (10^9 * (clk_div + 1)) - 1
 	 * high_width = (PWM_CLK_RATE * duty_ns) / (10^9 * (clk_div + 1))
 	 */
-	dev_dbg(MINDONE_PWMCHIP_PARENT(mdp->pwmchip), "%s duty=%d period=%d\n", __func__, duty_ns, period_ns);
+	dev_dbg(pwmchip_parent(mdp->pwmchip), "%s duty=%d period=%d\n", __func__, duty_ns, period_ns);
 
 	rate = clk_get_rate(mdp->clk_main);
 	clk_div = div_u64(rate * period_ns, NSEC_PER_SEC) >>
@@ -202,7 +200,7 @@ static int mtk_disp_pwm_config(struct pwm_chip *chip, struct pwm_device *pwm,
 	high_width = div64_u64(rate * duty_ns, div);
 	value = period | (high_width << PWM_HIGH_WIDTH_SHIFT);
 
-	dev_dbg(MINDONE_PWMCHIP_PARENT(mdp->pwmchip),
+	dev_dbg(pwmchip_parent(mdp->pwmchip),
 		"%s rate[%llx] clk_div[%u] div[%llx] high_width[%u] value[%u] period[%u]",
 		__func__, rate, clk_div, div, high_width, value, period);
 
@@ -214,14 +212,14 @@ static int mtk_disp_pwm_config(struct pwm_chip *chip, struct pwm_device *pwm,
 	} else {
 		err = clk_enable(mdp->clk_main);
 		if (err < 0) {
-			dev_info(MINDONE_PWMCHIP_PARENT(mdp->pwmchip), "%s clk_main is error\n", __func__);
+			dev_info(pwmchip_parent(mdp->pwmchip), "%s clk_main is error\n", __func__);
 			return err;
 		}
 
 		err = clk_enable(mdp->clk_mm);
 		if (err < 0) {
 			clk_disable(mdp->clk_main);
-			dev_info(MINDONE_PWMCHIP_PARENT(mdp->pwmchip), "%s clk_mm is error\n", __func__);
+			dev_info(pwmchip_parent(mdp->pwmchip), "%s clk_mm is error\n", __func__);
 			return err;
 		}
 		if (mdp->data->bls_debug && !mdp->data->has_commit) {
@@ -271,21 +269,21 @@ static int mtk_disp_pwm_enable(struct pwm_chip *chip, struct pwm_device *pwm)
 
 	if (mdp->data->need_power_on == true) {
 		if (mdp->pwm_src_set != true && !IS_ERR(mdp->clk_source)) {
-			if (get_pwm_src_base(MINDONE_PWMCHIP_PARENT(mdp->pwmchip), mdp) >= 0) {
+			if (get_pwm_src_base(pwmchip_parent(mdp->pwmchip), mdp) >= 0) {
 				pwm_src_power_on(mdp);
 				err = clk_prepare_enable(mdp->clk_mm);
 				if (err < 0) {
-					dev_info(MINDONE_PWMCHIP_PARENT(mdp->pwmchip), "clk prepare enable failed!\n");
+					dev_info(pwmchip_parent(mdp->pwmchip), "clk prepare enable failed!\n");
 					return err;
 				}
 				err = clk_set_parent(mdp->clk_mm, mdp->clk_source);
 				if (err < 0) {
-					dev_info(MINDONE_PWMCHIP_PARENT(mdp->pwmchip), "no pwm_src\n");
+					dev_info(pwmchip_parent(mdp->pwmchip), "no pwm_src\n");
 					return err;
 				}
 				clk_disable_unprepare(mdp->clk_mm);
 				mdp->pwm_src_set = true;
-				dev_info(MINDONE_PWMCHIP_PARENT(mdp->pwmchip), "select clk_mm with pwm_src\n");
+				dev_info(pwmchip_parent(mdp->pwmchip), "select clk_mm with pwm_src\n");
 			}
 		}
 		pwm_src_power_on(mdp);
@@ -295,13 +293,13 @@ static int mtk_disp_pwm_enable(struct pwm_chip *chip, struct pwm_device *pwm)
 	} else {
 		err = clk_prepare_enable(mdp->clk_main);
 		if (err < 0) {
-			dev_err(MINDONE_PWMCHIP_PARENT(chip), "Can't enable mdp->clk_main: %pe\n", ERR_PTR(err));
+			dev_err(pwmchip_parent(chip), "Can't enable mdp->clk_main: %pe\n", ERR_PTR(err));
 			return err;
 		}
 
 		err = clk_prepare_enable(mdp->clk_mm);
 		if (err < 0) {
-			dev_err(MINDONE_PWMCHIP_PARENT(chip), "Can't enable mdp->clk_mm: %pe\n", ERR_PTR(err));
+			dev_err(pwmchip_parent(chip), "Can't enable mdp->clk_mm: %pe\n", ERR_PTR(err));
 			clk_disable_unprepare(mdp->clk_main);
 			return err;
 		}
@@ -360,7 +358,6 @@ static int mtk_disp_pwm_apply(struct pwm_chip *chip, struct pwm_device *pwm,
 
 static const struct pwm_ops mtk_disp_pwm_ops = {
 	.apply = mtk_disp_pwm_apply,
-	MINDONE_PWM_OPS_OWNER
 };
 
 static int mtk_disp_pwm_probe(struct platform_device *pdev)
@@ -372,10 +369,10 @@ static int mtk_disp_pwm_probe(struct platform_device *pdev)
 	int ret;
 
 	dev_info(&pdev->dev, "%s+\n", __func__);
-	chip = MINDONE_PWMCHIP_ALLOC(&pdev->dev, 1, struct mtk_disp_pwm);
+	chip = devm_pwmchip_alloc(&pdev->dev, 1, sizeof(struct mtk_disp_pwm));
 	if (IS_ERR(chip))
 		return PTR_ERR(chip);
-	mdp = MINDONE_PWMCHIP_PRIV(chip, struct mtk_disp_pwm);
+	mdp = ((struct mtk_disp_pwm *)pwmchip_get_drvdata(chip));
 	mdp->pwmchip = chip;
 
 	mdp->data = of_device_get_match_data(&pdev->dev);
@@ -406,23 +403,22 @@ static int mtk_disp_pwm_probe(struct platform_device *pdev)
 			if (get_pwm_src_base(&pdev->dev, mdp) >= 0) {
 				ret = clk_prepare_enable(mdp->clk_mm);
 				if (ret < 0) {
-					dev_info(MINDONE_PWMCHIP_PARENT(mdp->pwmchip), "clk prepare enable failed!\n");
+					dev_info(pwmchip_parent(mdp->pwmchip), "clk prepare enable failed!\n");
 					return ret;
 				}
 				ret = clk_set_parent(mdp->clk_mm, mdp->clk_source);
 				if (ret < 0) {
-					dev_info(MINDONE_PWMCHIP_PARENT(mdp->pwmchip), "no pwm_src\n");
+					dev_info(pwmchip_parent(mdp->pwmchip), "no pwm_src\n");
 					return ret;
 				}
 				clk_disable_unprepare(mdp->clk_mm);
 				mdp->pwm_src_set = true;
-				dev_info(MINDONE_PWMCHIP_PARENT(mdp->pwmchip), "select clk_mm with pwm_src\n");
+				dev_info(pwmchip_parent(mdp->pwmchip), "select clk_mm with pwm_src\n");
 			}
 		} else
 			dev_info(&pdev->dev, "get pwm_src failed\n");
 	}
 
-	MINDONE_PWMCHIP_INIT(chip, &pdev->dev);
 	chip->ops = &mtk_disp_pwm_ops;
 
 	ret = pwmchip_add(chip);

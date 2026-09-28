@@ -1376,56 +1376,6 @@ static int platform_uevent(const struct device *dev, struct kobj_uevent_env *env
 	return 0;
 }
 
-/*
- * MINDONE diagnostic: forced snapshot panic.
- *
- * The 6.12 boot dies silently and the reset wipes DRAM, so the ramoops ring is empty and
- * nothing shows how far userspace got. A panic, on the other hand, writes a dump and the
- * memory survives - every 6.12 crash so far was read exactly that way. So this gives a
- * controlled way to trigger one at a chosen moment and capture the full log of the first
- * N seconds, including everything init printed.
- *
- * Enabled by the kernel argument mindone_snapshot=<seconds>; a no-op without it.
- */
-static int mindone_snap_secs;
-
-static int mindone_snap_ms;
-
-static int __init mindone_snap_ms_setup(char *str)
-{
-	get_option(&str, &mindone_snap_ms);
-	return 1;
-}
-
-static int __init mindone_snap_setup(char *str)
-{
-	get_option(&str, &mindone_snap_secs);
-	return 1;
-}
-__setup("mindone_snapshot=", mindone_snap_setup);
-__setup("mindone_snapshot_ms=", mindone_snap_ms_setup);
-
-static void mindone_snap_fn(struct work_struct *work)
-{
-	panic("MINDONE-SNAPSHOT: forced dump after %d s\n", mindone_snap_secs);
-}
-static DECLARE_DELAYED_WORK(mindone_snap_work, mindone_snap_fn);
-
-static int __init mindone_snap_init(void)
-{
-	if (mindone_snap_secs > 0) {
-		pr_info("MINDONE-SNAPSHOT: will panic in %d s to capture the boot log\n",
-			mindone_snap_secs);
-		schedule_delayed_work(&mindone_snap_work, mindone_snap_secs * HZ);
-	} else if (mindone_snap_ms > 0) {
-		pr_info("MINDONE-SNAPSHOT: will panic in %d ms to capture the boot log\n",
-			mindone_snap_ms);
-		schedule_delayed_work(&mindone_snap_work, msecs_to_jiffies(mindone_snap_ms));
-	}
-	return 0;
-}
-late_initcall(mindone_snap_init);
-
 static int platform_probe(struct device *_dev)
 {
 	struct platform_driver *drv = to_platform_driver(_dev->driver);
@@ -1450,11 +1400,6 @@ static int platform_probe(struct device *_dev)
 	if (ret)
 		goto out;
 
-	/* MINDONE diagnostic: name the driver and device before the indirect call.
-	 * A deferred probe here jumps to a garbage pointer on 6.12 and we need to know
-	 * WHICH driver owns it. Temporary, for the 6.12 bring-up only. */
-	pr_info("MINDONE-PROBE: dev=%s drv=%s probe=%pS\n",
-		dev_name(_dev), _dev->driver ? _dev->driver->name : "?", drv->probe);
 	if (drv->probe) {
 		ret = drv->probe(dev);
 		if (ret)

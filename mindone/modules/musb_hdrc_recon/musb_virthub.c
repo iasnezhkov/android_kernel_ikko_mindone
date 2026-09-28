@@ -10,8 +10,8 @@
 #include <linux/init.h>
 #include <linux/time.h>
 #include <linux/timer.h>
+#include <linux/unaligned.h>
 
-#include <mindone/compat.h>
 
 #include "musb_core.h"
 

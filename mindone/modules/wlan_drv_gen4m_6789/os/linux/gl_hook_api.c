@@ -68,9 +68,7 @@
 #include "gl_cfg80211.h"
 #include "gl_ate_agent.h"
 #include "gl_qa_agent.h"
-#if KERNEL_VERSION(3, 8, 0) <= CFG80211_VERSION_CODE
 #include <uapi/linux/nl80211.h>
-#endif
 
 /*******************************************************************************
  *						C O N S T A N T S
@@ -4707,8 +4705,7 @@ uint32_t ServiceWlanOid(void *winfos,
 		(oidType == OP_WLAN_OID_QUERY_RX_STATISTICS)) {
 
 		/* 264 = 66 items * 4 bytes */
-		kalMemCopy(&prStatsData->mac_rx_fcs_err_cnt,
-		&(g_HqaRxStat.MAC_FCS_Err), 264);
+		kalMemCopy(prStatsData, &g_HqaRxStat, 264);
 	}
 
 	if ((rsp_data) &&

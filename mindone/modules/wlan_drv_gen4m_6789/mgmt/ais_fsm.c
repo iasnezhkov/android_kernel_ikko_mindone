@@ -2998,6 +2998,7 @@ void aisFsmStateAbort(IN struct ADAPTER *prAdapter,
 
 	case AIS_STATE_ONLINE_SCAN:
 		fgIsCheckConnected = TRUE;
+		fallthrough;
 	case AIS_STATE_SCAN:
 		/* Do abort SCAN */
 		aisFsmStateAbort_SCAN(prAdapter, ucBssIndex);
@@ -6944,12 +6945,6 @@ void aisSendNeighborRequest(struct ADAPTER *prAdapter,
 	uint8_t ucBssIndex)
 {
 	struct SUB_ELEMENT_LIST *prSSIDIE;
-	/* mind_one (tail): SUB_ELEMENT.aucOptInfo is now a real flexible
-	 * array member (was aucOptInfo[1]), so sizeof(*prSSIDIE) no longer
-	 * donates one placeholder byte to the tail. Use ELEM_MAX_LEN_SSID
-	 * (32, same cap COPY_SSID enforces) instead of the old "+ 31" so the
-	 * buffer still has exactly 32 bytes of tail room for the SSID copy.
-	 */
 	uint8_t aucBuffer[sizeof(*prSSIDIE) + ELEM_MAX_LEN_SSID];
 	struct BSS_INFO *prBssInfo
 		= aisGetAisBssInfo(prAdapter, ucBssIndex);

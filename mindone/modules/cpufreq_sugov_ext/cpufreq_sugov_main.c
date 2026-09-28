@@ -10,10 +10,10 @@
  * Copyright (c) 2019 MediaTek Inc.
  *
  */
+#undef pr_fmt
 #define pr_fmt(fmt) KBUILD_MODNAME ": " fmt
 
 #include <sched/sched.h>
-#include <mindone/compat.h>
 #include "cpufreq.h"
 #include "sugov_types.h"
 #include "common.h"
@@ -320,8 +320,11 @@ EXPORT_SYMBOL(mtk_cpu_util);
 static unsigned long sugov_get_util(struct sugov_cpu *sg_cpu)
 {
 	struct rq *rq = cpu_rq(sg_cpu->cpu);
-	unsigned long util = MINDONE_CPU_UTIL_CFS(rq, sg_cpu->cpu);
-	unsigned long max = MINDONE_CAPACITY_ORIG_OF(sg_cpu->cpu);
+	unsigned long util = min_t(unsigned long,
+				   max_t(unsigned long, READ_ONCE(rq->cfs.avg.util_avg),
+					 READ_ONCE(rq->cfs.avg.util_est)),
+				   arch_scale_cpu_capacity(sg_cpu->cpu));
+	unsigned long max = arch_scale_cpu_capacity(sg_cpu->cpu);
 
 	sg_cpu->max = max;
 	sg_cpu->bw_dl = cpu_bw_dl(rq);
@@ -494,7 +497,7 @@ void mtk_set_cpu_min_opp(int cpu, unsigned long min_util)
 	if (!pd)
 		return;
 	scale_cpu = arch_scale_cpu_capacity(cpu);
-	ps = &MINDONE_EM_TABLE(pd)[pd->nr_perf_states - 1];
+	ps = &em_perf_state_from_pd(pd)[pd->nr_perf_states - 1];
 	freq = map_util_freq(min_util, ps->frequency, scale_cpu);
 
 	/*
@@ -503,7 +506,7 @@ void mtk_set_cpu_min_opp(int cpu, unsigned long min_util)
 	 * requested frequency.
 	 */
 	for (i = 0; i < pd->nr_perf_states; i++) {
-		ps = &MINDONE_EM_TABLE(pd)[i];
+		ps = &em_perf_state_from_pd(pd)[i];
 		if (ps->frequency >= freq)
 			break;
 	}

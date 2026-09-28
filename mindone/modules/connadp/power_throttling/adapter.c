@@ -4,7 +4,6 @@
  */
 
 #include <linux/types.h>
-#include <mindone/compat.h>
 #include <linux/string.h>
 #include <linux/printk.h>
 #include <linux/module.h>
@@ -392,7 +391,7 @@ int conn_pwr_notify_event(enum conn_pwr_drv_type drv, enum conn_pwr_event_type e
 	}
 
 	if (g_event_cb_tbl[drv] == NULL) {
-		pr_info("event cb is not registered.\n", drv);
+		pr_info("event cb is not registered for drv %d.\n", (int)drv);
 		return -2;
 	}
 
@@ -506,7 +505,7 @@ static int conn_pwr_dev_init(void)
 		goto err1;
 	}
 
-	pConnPwrClass = MINDONE_CLASS_CREATE(CONN_PWR_DEVICE_NAME);
+	pConnPwrClass = class_create(CONN_PWR_DEVICE_NAME);
 	if (IS_ERR(pConnPwrClass)) {
 		pr_info("class create fail, error code(%ld)\n",
 						PTR_ERR(pConnPwrClass));

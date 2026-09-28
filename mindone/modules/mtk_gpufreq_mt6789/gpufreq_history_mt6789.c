@@ -48,7 +48,7 @@ void __gpufreq_record_history_entry(void)
 {
 
 	struct gpu_dvfs_source gpu_db_top = {};
-	struct gpu_dvfs_source gpu_db_stack = {};
+	struct gpu_dvfs_source gpu_db_stack __maybe_unused = {};
 	enum gpufreq_history_state history_state;
 	u64 time_s = 0;
 

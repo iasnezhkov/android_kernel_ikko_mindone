@@ -781,6 +781,7 @@ scanSearchExistingBssDescWithSsid(IN struct ADAPTER *prAdapter,
 	case BSS_TYPE_P2P_DEVICE:
 		fgCheckSsid = FALSE;
 		/* fall through */
+		fallthrough;
 	case BSS_TYPE_INFRASTRUCTURE:
 		/* fall through */
 	case BSS_TYPE_BOW_DEVICE:

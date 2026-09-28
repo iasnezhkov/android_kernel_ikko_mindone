@@ -184,7 +184,7 @@ static void update_dlpt_imix_r(void)
 			return;
 		}
 	}
-	pr_info("[dlpt] imix_r=%d\n", dlpt.imix_r);
+	pr_debug("[dlpt] imix_r=%d\n", dlpt.imix_r);
 }
 
 static int dlpt_adc_chan_init(struct platform_device *pdev)
@@ -468,9 +468,9 @@ static int dlpt_notify_handler(void *unused)
 		cur_ui_soc = dlpt_get_uisoc();
 
 		if (dlpt.imix_r == 0)
-			pr_info("[DLPT] imix_r==0, skip\n");
+			pr_debug("[DLPT] imix_r==0, skip\n");
 		else if (!get_mtk_gauge_psy())
-			pr_info("[DLPT] gauge disabled, skip\n");
+			pr_debug("[DLPT] gauge disabled, skip\n");
 		else {
 			if (dlpt_get_rgs_chrdet())
 				dlpt.imix = get_dlpt_imix_charging();
@@ -517,7 +517,6 @@ static void dlpt_timer_func(struct timer_list *t)
 
 static void dlpt_notify_init(void)
 {
-	int ret = 0;
 	unsigned long dlpt_notify_interval;
 
 	dlpt_notify_interval = HZ * 30;

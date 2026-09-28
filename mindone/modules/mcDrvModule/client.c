@@ -13,13 +13,11 @@
  * GNU General Public License for more details.
  */
 #include <linux/list.h>
-#include <mindone/compat.h>
 #include <linux/slab.h>
 #include <linux/device.h>
 #include <linux/mm.h>
 #include <linux/err.h>
 #include <linux/sched.h>	/* struct task_struct */
-#include <linux/version.h>
 #include <linux/sched/mm.h>	/* get_task_mm */
 #include <linux/sched/task.h>	/* put_task_struct */
 #include <net/sock.h>		/* sockfd_lookup */
@@ -1156,7 +1154,7 @@ int client_cbuf_create(struct tee_client *client, u32 len, uintptr_t *addr,
 	}
 
 	order = get_order(len);
-	if (order > MINDONE_MAX_PAGE_ORDER) {
+	if (order > MAX_PAGE_ORDER) {
 		ret = -ENOMEM;
 		mc_dev_err(ret, "Buffer size too large");
 		return ret;

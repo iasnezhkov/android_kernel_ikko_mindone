@@ -2166,13 +2166,7 @@ int connac_get_rx_rate_info(IN struct ADAPTER *prAdapter,
 	if (prStaRec) {
 		ucWlanIdx = prStaRec->ucWlanIndex;
 	} else {
-		/* mind_one wlanGetRxRate() is polled periodically by the
-		 * framework regardless of association state, so a transient
-		 * miss here (disconnected/roaming/reconnecting) is expected,
-		 * not a driver fault — same class as the RxVector0/1==0 case
-		 * a few lines below, which already uses WARN+DBGLOG_LIMITED.
-		 */
-		DBGLOG_LIMITED(SW4, WARN, "prStaRecOfAP is null\n");
+		DBGLOG_LIMITED(SW4, TRACE, "prStaRecOfAP is null\n");
 		return -1;
 	}
 

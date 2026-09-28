@@ -348,9 +348,6 @@ size_t mtk_gce_get_dummy_table(unsigned int mmsys_id, struct dummy_mapping **tab
 
 int _parse_tag_videolfb(unsigned int *vramsize, phys_addr_t *fb_base,
 	unsigned int *fps);
-/* MINDONE-LK-TAKEOVER: take over the bootloader's display when it is verified alive
- * (mtk_drm_drv.c). Armed by the module parameter mindone_lk_takeover; the decision
- * is made once, in the DSI0 probe, from the hardware state. */
 extern int mindone_lk_takeover;
 unsigned int mindone_lk_islcmfound(void);
 bool mindone_lk_display_alive(void);

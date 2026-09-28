@@ -70,8 +70,6 @@
 *                    E X T E R N A L   R E F E R E N C E S
 ********************************************************************************
 */
-
-#include <linux/version.h>
 #include <linux/interrupt.h>
 #include <linux/irq.h>
 #include <asm/arch/system.h>

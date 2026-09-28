@@ -71,7 +71,7 @@ struct MSG_P2P_SCAN_REQUEST {
 	uint32_t u4IELen;
 	u_int8_t fgIsAbort;
 	enum ENUM_SCAN_REASON eScanReason;
-	struct RF_CHANNEL_INFO arChannelListInfo[1];
+	struct RF_CHANNEL_INFO arChannelListInfo[];
 };
 
 struct MSG_P2P_CHNL_REQUEST {
@@ -205,7 +205,7 @@ struct MSG_P2P_ACS_REQUEST {
 	enum ENUM_MAX_BANDWIDTH_SETTING eChnlBw;
 	enum P2P_VENDOR_ACS_HW_MODE eHwMode;
 	uint32_t u4NumChannel;
-	struct RF_CHANNEL_INFO arChannelListInfo[1];
+	struct RF_CHANNEL_INFO arChannelListInfo[];
 };
 
 /*========================= Initial ============================*/

@@ -28,7 +28,6 @@
 #include <linux/freezer.h>
 #include <asm/barrier.h>
 #include <linux/irq.h>
-#include <linux/version.h>
 #include <linux/sched/clock.h>	/* local_clock */
 
 #include "public/GP/tee_client_api.h"	/* GP error codes/origins FIXME move */

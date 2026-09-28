@@ -271,6 +271,11 @@ static int hifAxiProbe(void)
 
 	ASSERT(g_prPlatDev);
 
+	if (g_fgDriverProbed) {
+		DBGLOG(INIT, INFO, "hifAxiProbe: adapter already probed, nothing to do\n");
+		return 0;
+	}
+
 	prDriverData = get_platform_driver_data();
 	prChipInfo = prDriverData->chip_info;
 

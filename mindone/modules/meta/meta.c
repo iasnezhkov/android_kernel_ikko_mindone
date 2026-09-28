@@ -9,13 +9,13 @@
  */
 
 #include <linux/init.h>
-#include <mindone/compat.h>
 #include <linux/module.h>
 #include <linux/fs.h>
 #include <linux/delay.h>
 #include <linux/kernel.h>
 #include <linux/utsname.h>
 #include <linux/platform_device.h>
+#include <linux/of.h>
 
 #include <linux/usb/ch9.h>
 #include <linux/usb/composite.h>
@@ -25,7 +25,7 @@
 #include "u_fs.h"
 #include "f_mass_storage.h"
 
-#include <linux/of_platform.h>	/* of_find_device_by_node: 6.12 no longer pulls it in implicitly */
+#include <linux/of_platform.h>
 MODULE_AUTHOR("Mike Lockwood");
 MODULE_DESCRIPTION("Android Composite USB Driver");
 MODULE_LICENSE("GPL");
@@ -1373,7 +1373,7 @@ static int usb_meta_probe(struct platform_device *pdev)
 
 	pr_info("%s: config %d", __func__, config);
 
-	android_class = MINDONE_CLASS_CREATE("android_usb_meta");
+	android_class = class_create("android_usb_meta");
 	if (IS_ERR(android_class))
 		return PTR_ERR(android_class);
 

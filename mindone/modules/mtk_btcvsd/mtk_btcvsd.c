@@ -6,7 +6,6 @@
 // Author: KaiChieh Chuang <kaichieh.chuang@mediatek.com>
 
 #include <linux/mfd/syscon.h>
-#include <mindone/compat-sound.h>
 #include <linux/module.h>
 #include <linux/timer.h>
 #include <linux/of_address.h>
@@ -676,7 +675,7 @@ static irqreturn_t mtk_btcvsd_snd_irq_handler(int irq_id, void *dev)
 irq_handler_exit:
 	*bt->bt_reg_ctl |= BT_CVSD_TX_UNDERFLOW;
 	*bt->bt_reg_ctl &= ~BT_CVSD_CLEAR;
-	dev_warn(bt->dev, "%s(), irq_handler_exit, bt_reg_ctl = 0x%lx\n",
+	dev_warn(bt->dev, "%s(), irq_handler_exit, bt_reg_ctl = 0x%x\n",
 		 __func__, *bt->bt_reg_ctl);
 
 	return IRQ_HANDLED;
@@ -747,7 +746,7 @@ static int wait_for_bt_irq(struct mtk_btcvsd_snd *bt,
 }
 
 static ssize_t mtk_btcvsd_snd_read(struct mtk_btcvsd_snd *bt,
-				   mindone_snd_buf_t buf,
+				   struct iov_iter *buf,
 				   size_t count)
 {
 	ssize_t read_size = 0, read_count = 0, cur_read_idx, cont;
@@ -795,7 +794,7 @@ static ssize_t mtk_btcvsd_snd_read(struct mtk_btcvsd_snd *bt,
 		if (read_size > cont)
 			read_size = cont;
 
-		if (MINDONE_SND_COPY_TO_USER(MINDONE_SND_BUF_AT(buf, cur_buf_ofs), bt->rx_packet_buf + cur_read_idx, read_size)) {
+		if ((copy_to_iter(bt->rx_packet_buf + cur_read_idx, read_size, buf) != read_size)) {
 			dev_warn(bt->dev, "%s(), copy_to_user fail\n",
 				 __func__);
 			return -EFAULT;
@@ -828,7 +827,7 @@ static ssize_t mtk_btcvsd_snd_read(struct mtk_btcvsd_snd *bt,
 }
 
 static ssize_t mtk_btcvsd_snd_write(struct mtk_btcvsd_snd *bt,
-				    mindone_snd_buf_t buf,
+				    struct iov_iter *buf,
 				    size_t count)
 {
 	int written_size = count, avail = 0, cur_write_idx, write_size, cont;
@@ -888,8 +887,8 @@ static ssize_t mtk_btcvsd_snd_write(struct mtk_btcvsd_snd *bt,
 		if (write_size > cont)
 			write_size = cont;
 
-		if (MINDONE_SND_COPY_FROM_USER(bt->tx_packet_buf +
-				   cur_write_idx, MINDONE_SND_BUF_AT(buf, cur_buf_ofs), write_size)) {
+		if ((copy_from_iter(bt->tx_packet_buf +
+				   cur_write_idx, write_size, buf) != write_size)) {
 			dev_warn(bt->dev, "%s(), copy_from_user fail\n",
 				 __func__);
 			return -EFAULT;
@@ -1091,7 +1090,7 @@ static snd_pcm_uframes_t mtk_pcm_btcvsd_pointer(
 static int mtk_pcm_btcvsd_copy(struct snd_soc_component *component,
 			       struct snd_pcm_substream *substream,
 			       int channel, unsigned long pos,
-			       mindone_snd_buf_t buf, unsigned long count)
+			       struct iov_iter *buf, unsigned long count)
 {
 	struct mtk_btcvsd_snd *bt = snd_soc_component_get_drvdata(component);
 
@@ -1356,7 +1355,7 @@ static const struct snd_soc_component_driver mtk_btcvsd_snd_platform = {
 	.prepare	= mtk_pcm_btcvsd_prepare,
 	.trigger	= mtk_pcm_btcvsd_trigger,
 	.pointer	= mtk_pcm_btcvsd_pointer,
-	MINDONE_SND_COPY_OP(mtk_pcm_btcvsd_copy),
+	.copy = mtk_pcm_btcvsd_copy,
 };
 
 static int mtk_btcvsd_snd_probe(struct platform_device *pdev)

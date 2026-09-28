@@ -15,7 +15,6 @@
 
 #ifndef __AW87XXX_H__
 #define __AW87XXX_H__
-#include <linux/version.h>
 #include <linux/kernel.h>
 #include <sound/control.h>
 #include <sound/soc.h>
@@ -53,21 +52,13 @@
  * aw87xxx codec control compatible with kernel 4.19
  *
  ***********************************************************/
-#if KERNEL_VERSION(4, 19, 1) <= LINUX_VERSION_CODE
 #define AW_KERNEL_VER_OVER_4_19_1
-#endif
 
-#if KERNEL_VERSION(5, 4, 0) <= LINUX_VERSION_CODE
 #define AW_KERNEL_VER_OVER_5_4_0
 //MODULE_IMPORT_NS(VFS_internal_I_am_really_a_filesystem_and_am_NOT_a_driver);
-#endif
 
-#if KERNEL_VERSION(5, 10, 0) <= LINUX_VERSION_CODE
 #define AW_KERNEL_VER_OVER_5_10_0
-#endif
-#if KERNEL_VERSION(6, 1, 0) <= LINUX_VERSION_CODE
 #define AW_KERNEL_VER_OVER_6_1_0
-#endif
 
 
 #ifdef AW_KERNEL_VER_OVER_4_19_1

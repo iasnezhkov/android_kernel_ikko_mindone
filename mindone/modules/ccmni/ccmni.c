@@ -23,8 +23,8 @@
  *
  ****************************************************************************/
 #include <linux/if_arp.h>
-#include <mindone/compat.h>
 #include <linux/netdevice.h>
+#include <linux/u64_stats_sync.h>
 #include <linux/etherdevice.h>
 #include <linux/ip.h>
 #include <linux/tcp.h>
@@ -34,7 +34,6 @@
 #include <linux/skbuff.h>
 #include <linux/module.h>
 #include <linux/timer.h>
-#include <linux/version.h>
 #include <linux/sockios.h>
 #include <linux/device.h>
 #include <linux/debugfs.h>
@@ -83,7 +82,7 @@ static struct ctl_table tcp_pacing_table[] = {
 static struct ctl_table_header *sysctl_header;
 static int register_tcp_pacing_sysctl(void)
 {
-	sysctl_header = MINDONE_REGISTER_SYSCTL("net", tcp_pacing_table);
+	sysctl_header = register_sysctl_sz("net", tcp_pacing_table, ARRAY_SIZE(tcp_pacing_table) - 1);
 	if (sysctl_header == NULL) {
 		pr_info("CCCI:CCMNI:register tcp_pacing failed\n");
 		return -1;
@@ -1228,16 +1227,12 @@ static inline void ccmni_dev_init(int md_id, struct net_device *dev)
 	dev->addr_len = 0;        /* hasn't ethernet header */
 	dev->priv_destructor = free_netdev;
 	dev->netdev_ops = &ccmni_netdev_ops;
-	/* MINDONE-DEVADDR: dev_addr is const on 6.1 — writing it directly trips dev_addr_check ("Incorrect netdev->dev_addr" WARN on every ccmni open) */
 	eth_hw_addr_random(dev);
 }
 
-/* Plain Ethernet header ops (the kernel's eth_header_ops is not exported since 6.12). */
 static const struct header_ops ccmni_plain_eth_header_ops ____cacheline_aligned = {
 	.create		= eth_header,
 	.parse		= eth_header_parse,
-	.cache		= eth_header_cache,
-	.cache_update	= eth_header_cache_update,
 	.parse_protocol	= eth_header_parse_protocol,
 };
 
@@ -1245,21 +1240,8 @@ static const struct header_ops ccmni_plain_eth_header_ops ____cacheline_aligned 
 const struct header_ops ccmni_eth_header_ops ____cacheline_aligned = {
 	.create		= eth_header,
 	.parse		= eth_header_parse,
-	.cache		= eth_header_cache,
-	.cache_update	= eth_header_cache_update,
 };
 #endif
-
-/* vendor hook callback function
- * used to disable auto generate ipv6 link-local address for ccmni device
- */
-static void mtk_dis_ipv6_lla(void *ignore, struct net_device *dev, bool *ret)
-{
-	if (!strncmp(dev->name, "ccmni", 5))
-		*ret = true;
-	else
-		*ret = false;
-}
 
 static int ccmni_init(int md_id, struct ccmni_ccci_ops *ccci_info)
 {
@@ -1305,12 +1287,6 @@ static int ccmni_init(int md_id, struct ccmni_ccci_ops *ccci_info)
 	ccmni_ctl_blk[md_id] = ctlb;
 
 	memcpy(ctlb->ccci_ops, ccci_info, sizeof(struct ccmni_ccci_ops));
-
-	ret = MINDONE_REGISTER_IPV6_LLA_HOOK(mtk_dis_ipv6_lla, NULL);
-	if (ret) {
-		pr_debug("register mtk_dis_ipv6_lla failed, ret: %d\n", ret);
-		goto alloc_mem_fail;
-	}
 
 	for (i = 0; i < ctlb->ccci_ops->ccmni_num; i++) {
 		/* allocate netdev */
@@ -1863,7 +1839,7 @@ static void ccmni_dump(int md_id, int ccmni_idx, unsigned int flag)
 		 * packets is count by qdisc in net device layer
 		 */
 		CCMNI_DBG_MSG(md_id,
-			"%s(%d,%d), irat_MD%d, rx=(%ld,%ld,%d), tx=(%ld,%llu,%lld), txq_len=(%d,%d), tx_drop=(%ld,%d,%d), rx_drop=(%ld,%ld), tx_busy=(%ld,%ld), sta=(0x%lx,0x%x,0x%lx,0x%lx)\n",
+			"%s(%d,%d), irat_MD%d, rx=(%ld,%ld,%d), tx=(%ld,%llu,%llu), txq_len=(%d,%d), tx_drop=(%ld,%d,%d), rx_drop=(%ld,%ld), tx_busy=(%ld,%ld), sta=(0x%lx,0x%x,0x%lx,0x%lx)\n",
 				  dev->name,
 				  atomic_read(&ccmni->usage),
 				  atomic_read(&ccmni_tmp->usage),
@@ -1871,8 +1847,9 @@ static void ccmni_dump(int md_id, int ccmni_idx, unsigned int flag)
 			      dev->stats.rx_packets,
 				  dev->stats.rx_bytes,
 				  ccmni->rx_gro_cnt,
-			      dev->stats.tx_packets, qdisc->bstats.packets,
-				  ack_qdisc->bstats.packets,
+			      dev->stats.tx_packets,
+				  u64_stats_read(&qdisc->bstats.packets),
+				  u64_stats_read(&ack_qdisc->bstats.packets),
 			      qdisc->q.qlen, ack_qdisc->q.qlen,
 			      dev->stats.tx_dropped, qdisc->qstats.drops,
 				  ack_qdisc->qstats.drops,

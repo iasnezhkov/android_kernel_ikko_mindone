@@ -6,7 +6,6 @@
 #include <drm/drm_framebuffer.h>
 #include <linux/vmalloc.h>
 
-/* MINDONE (F2383): count which gate stops the layer configuration. Pure measurement. */
 #include <linux/moduleparam.h>
 unsigned long mindone_cpu_calls;
 module_param(mindone_cpu_calls, ulong, 0444);
@@ -23,35 +22,31 @@ MODULE_PARM_DESC(mindone_cpu_passed, "of those, that reached the configuration b
 unsigned long mindone_rif_calls;
 module_param(mindone_rif_calls, ulong, 0444);
 MODULE_PARM_DESC(mindone_rif_calls, "entries into mtk_crtc_release_input_layer_fence");
-/* MINDONE F2862: how many times the frame index came out NOT HIGHER than the GCE
- * slot value. It used to silently skip updating the slot, locking the system up
- * forever. Nonzero = a monotonicity anomaly happened and was worked around. */
 unsigned long mindone_lostid_recovered;
 module_param(mindone_lostid_recovered, ulong, 0444);
-MODULE_PARM_DESC(mindone_lostid_recovered, "lost LYE_IDX commits recovered via last valid lyeblob (F2873)");
+MODULE_PARM_DESC(mindone_lostid_recovered, "lost LYE_IDX commits recovered via last valid lyeblob");
 unsigned long mindone_lostid_released;
 module_param(mindone_lostid_released, ulong, 0444);
-MODULE_PARM_DESC(mindone_lostid_released, "lost LYE_IDX commits where all layer fences were force-released (F2876)");
+MODULE_PARM_DESC(mindone_lostid_released, "lost LYE_IDX commits where all layer fences were force-released");
 unsigned long mindone_lostid_pf;
 module_param(mindone_lostid_pf, ulong, 0444);
-MODULE_PARM_DESC(mindone_lostid_pf, "lost LYE_IDX commits where present fences were force-released (F2879)");
+MODULE_PARM_DESC(mindone_lostid_pf, "lost LYE_IDX commits where present fences were force-released");
 unsigned long mindone_emptycb_pf;
 module_param(mindone_emptycb_pf, ulong, 0444);
-MODULE_PARM_DESC(mindone_emptycb_pf, "empty-commit cmdq callbacks where present fences were caught up (F2881)");
+MODULE_PARM_DESC(mindone_emptycb_pf, "empty-commit cmdq callbacks where present fences were caught up");
 unsigned long mindone_emptycb_layers;
 module_param(mindone_emptycb_layers, ulong, 0444);
-MODULE_PARM_DESC(mindone_emptycb_layers, "empty-commit cmdq callbacks where all layer fences were released (F2896)");
+MODULE_PARM_DESC(mindone_emptycb_layers, "empty-commit cmdq callbacks where all layer fences were released");
 unsigned long mindone_lostid_skipped;
 module_param(mindone_lostid_skipped, ulong, 0444);
 MODULE_PARM_DESC(mindone_lostid_skipped, "lost LYE_IDX commits with no valid lyeblob to fall back on");
 unsigned long mindone_fencefix_resync;
 module_param(mindone_fencefix_resync, ulong, 0444);
-MODULE_PARM_DESC(mindone_fencefix_resync, "times cur_fence <= slot last_fence (resynced, F2862)");
+MODULE_PARM_DESC(mindone_fencefix_resync, "times cur_fence <= slot last_fence (resynced)");
 unsigned long mindone_rif_pwroff;
 module_param(mindone_rif_pwroff, ulong, 0444);
 MODULE_PARM_DESC(mindone_rif_pwroff, "of those, early-returned on power_state == false");
 
-/* MINDONE F2744 - type ulong, not bool: param_ops_bool would add a __versions entry. */
 unsigned long mindone_rif_release_when_off = 1;
 module_param(mindone_rif_release_when_off, ulong, 0644);
 MODULE_PARM_DESC(mindone_rif_release_when_off,
@@ -112,7 +107,6 @@ MODULE_PARM_DESC(mindone_rif_last_rel, "layer0 (fence_idx - subtractor) from las
 extern unsigned long mindone_lr_jiffies, mindone_lr_calls;
 extern int mindone_lr_layers, mindone_lr_pid;
 extern unsigned int mindone_lr_last_hrt_idx;
-/* MINDONE F2909: fence-watchdog prototypes - used in update_ddp_state/ddp_cmdq_cb above their definitions */
 void mindone_fence_wd_kick_all(unsigned int session_id);
 static void mindone_pf_wd_kick(struct drm_device *dev, unsigned int idx, bool sf);
 #include "mtk_sync.h"
@@ -671,7 +665,7 @@ struct mtk_ddp_comp *mtk_ddp_comp_request_first(struct mtk_drm_crtc *mtk_crtc)
 	int i, j;
 
 	for_each_comp_in_cur_crtc_path(comp, mtk_crtc, i, j)
-		if (comp && mtk_ddp_comp_get_type(comp->id != MTK_DISP_VIRTUAL))
+		if (comp && mtk_ddp_comp_get_type(comp->id != (enum mtk_ddp_comp_id)MTK_DISP_VIRTUAL))
 			return comp;
 
 	/* This CRTC does not contain output comp */
@@ -934,10 +928,6 @@ static int mtk_crtc_enable_vblank_thread(void *data)
 	return 0;
 }
 
-/* MINDONE-VB: F794 - tests the hypothesis that enable_vblank opens the tap too early.
- * 0 (default) - behavior unchanged. 1 - function returns immediately without
- * setting vblank_en or waking the idlemgr thread (mtk_drm_idlemgr_enable_crtc never runs).
- */
 static int mindone_skip_enable_vblank;
 module_param(mindone_skip_enable_vblank, int, 0444);
 
@@ -1497,6 +1487,10 @@ void mtk_crtc_prepare_dual_pipe(struct mtk_drm_crtc *mtk_crtc)
 			struct mtk_ddp_comp *comp;
 
 			comp = kzalloc(sizeof(*comp), GFP_KERNEL);
+			if (!comp) {
+				DDPPR_ERR("%s: no memory for comp_id:%d\n", __func__, comp_id);
+				return;
+			}
 			comp->id = comp_id;
 			mtk_crtc->dual_pipe_ddp_ctx.ddp_comp[i][j] = comp;
 			continue;
@@ -2383,7 +2377,7 @@ _mtk_crtc_wb_addon_module_connect(
 			addon_config.addon_wdma_config.p_golden_setting_context
 				= __get_golden_setting_context(mtk_crtc);
 
-			DDPFENCE("S+/PL12/e1/id%d/mva0x%08llx/size0x%08lx\n",
+			DDPFENCE("S+/PL12/e1/id%d/mva0x%08llx/size0x%08lx/sec%d\n",
 				(unsigned int)state->prop_val[CRTC_PROP_OUTPUT_FENCE_IDX],
 				mtk_fb_get_dma(fb), mtk_fb_get_size(fb), mtk_drm_fb_is_secure(fb));
 
@@ -2830,6 +2824,10 @@ bool mtk_crtc_alloc_sram(struct mtk_drm_crtc *mtk_crtc, unsigned int hrt_idx)
 	if (kref_read(&mtk_crtc->mml_ir_sram.ref) < 1) {
 
 		sram = kzalloc(sizeof(struct slbc_data), GFP_KERNEL);
+		if (!sram) {
+			ret = -ENOMEM;
+			goto fail;
+		}
 		sram->type = TP_BUFFER;
 		sram->uid = UID_DISP;
 
@@ -2855,6 +2853,10 @@ bool mtk_crtc_alloc_sram(struct mtk_drm_crtc *mtk_crtc, unsigned int hrt_idx)
 	}
 
 	sram_acquired = kzalloc(sizeof(struct mtk_drm_sram_list), GFP_KERNEL);
+	if (!sram_acquired) {
+		ret = -ENOMEM;
+		goto done;
+	}
 	sram_acquired->hrt_idx = hrt_idx;
 	list_add_tail(&sram_acquired->head, &mtk_crtc->mml_ir_sram.list.head);
 
@@ -2880,7 +2882,7 @@ static void mtk_crtc_free_sram(struct mtk_drm_crtc *mtk_crtc)
 	if (!sram)
 		return;
 
-	DDPMSG("%s address:0x%x size:0x%lx\n", __func__, sram->paddr, sram->size);
+	DDPMSG("%s address:%p size:0x%lx\n", __func__, sram->paddr, sram->size);
 	slbc_power_off(sram);
 	slbc_release(sram);
 	mtk_crtc->mml_ir_sram.data = NULL;
@@ -3325,17 +3327,6 @@ static void mtk_crtc_update_hrt_state(struct drm_crtc *crtc,
 		}
 	}
 
-	/* mind_one 09.09.2026: floor for the requested bandwidth on MT6789.
-	 * The layout layer in our tree does not compute real overlap, so frame_weight is
-	 * always at the floor of 800 (measured by probe: 389 calls out of 389), and the
-	 * request comes out to 1078 MB/s -- that is two layers, whereas there are more of them
-	 * during transitions. The value 3433 is taken from the same vendor mapping of
-	 * bandwidth to memory frequency twenty lines above (2944 <-> 1600 MHz,
-	 * 3433 <-> 2400 MHz), and 2400 MHz is the step at which the F4083 measurement shows
-	 * zero frame drops longer than 250 ms. The floor lifts itself once the display goes
-	 * idle: the idle manager calls mtk_disp_set_hrt_bw(crtc, 0) via a separate path.
-	 * Analysis -- F4088.
-	 */
 	if (crtc_idx == 0 && crtc->state && crtc->state->active && bw < 5500) {
 		DDPINFO("%s CRTC0 HRT bw %u -> 5500 (mind_one floor)\n", __func__, bw);
 		bw = 5500;
@@ -3802,11 +3793,6 @@ static void mtk_crtc_frame_buffer_release(struct drm_crtc *crtc,
 	struct mtk_drm_private *priv = crtc->dev->dev_private;
 
 #ifdef CONFIG_MTK_DISP_NO_LK
-	/* MINDONE-LK-TAKEOVER: the bootloader framebuffer (mblock-13-framebuffer,
-	 * 16 MiB) is scanned out only while the display taken over from the
-	 * bootloader shows it; once the first real frame is in, it is returned
-	 * to the page allocator exactly as the legacy build does. Without a
-	 * takeover nothing ever mapped it and there is nothing to release. */
 	if (!mindone_lk_display_alive())
 		return;
 #endif
@@ -3876,14 +3862,6 @@ static void mtk_crtc_update_ddp_state(struct drm_crtc *crtc,
 	list_for_each_entry_safe(lyeblob_ids, next, &mtk_drm->lyeblob_head,
 				 list) {
 		if (lyeblob_ids->lye_idx > prop_lye_idx) {
-			/* MINDONE F2873: the commit arrived with an LYE_IDX that has no blob (live:
-			 * LYE_IDX=0 with an active screen, panel "share"). The previous break exited
-			 * BEFORE mtk_crtc_atmoic_ddp_config: planes weren't configured, no frame was
-			 * sent, the CUR_CONFIG_FENCE slot never advanced, fences never released -
-			 * producer stuck in Fence::waitForever with no way out (n=2 live failures,
-			 * F2858/F2860). Fix: with CRTC0 active, take the LAST valid blob (the list
-			 * grows at the tail, layering_rule_base.c:2344) and take the normal path - a
-			 * frame from a past layering rule beats no frame at all. */
 			struct mtk_drm_lyeblob_ids *last = NULL, *it;
 
 			DDPMSG("lyeblob lost ID:%d\n", prop_lye_idx);
@@ -3923,14 +3901,6 @@ static void mtk_crtc_update_ddp_state(struct drm_crtc *crtc,
 						  lyeblob_ids, cmdq_handle);
 			mtk_crtc_get_plane_comp_state(crtc, cmdq_handle);
 			mtk_crtc_atmoic_ddp_config(crtc, lyeblob_ids, cmdq_handle);
-			/* MINDONE F2876: configuring off the old blob is NOT ENOUGH (n=4 live
-			 * failures - the rescue kicked in, but composition still stuck). A commit
-			 * without a blob carries planes with no new buffers => the CUR_CONFIG_FENCE
-			 * slot never moves => already-queued buffers never return to the producer.
-			 * We do what the screen-on recovery path already does
-			 * (mtk_drm_crtc_release_fence): release layers up to the last QUEUED index.
-			 * On a live CRTC this call runs routinely via pf_release_thread (RL+ appears
-			 * by the thousand in dmesg) - safe by construction. */
 			{
 				int sid = mtk_get_session_id(crtc);
 				int li;
@@ -3938,13 +3908,6 @@ static void mtk_crtc_update_ddp_state(struct drm_crtc *crtc,
 				for (li = 0; li < to_mtk_crtc(crtc)->layer_nr; li++)
 					mtk_release_layer_fence(sid, li);
 				mindone_lostid_released++;
-				/* MINDONE F2879: layers aren't what the app is waiting on. It waits on
-				 * the PRESENT fence, issued AHEAD via MTK_CRTC_GETFENCE (crtc_present++)
-				 * and signaled only by the frame-packet callback carrying that
-				 * PRES_FENCE_IDX. An empty commit never delivers that packet - fd
-				 * 5353..5355 hung forever (n=6). We do what the screen-on recovery path
-				 * already does (mtk_drm_crtc_release_fence): signal present up to the
-				 * last one issued. */
 				mtk_drm_suspend_release_present_fence(crtc->dev->dev, index);
 				mtk_drm_suspend_release_sf_present_fence(crtc->dev->dev, index);
 				mindone_lostid_pf++;
@@ -4366,7 +4329,7 @@ void mtk_crtc_pkt_create(struct cmdq_pkt **cmdq_handle, struct drm_crtc *crtc,
 {
 	*cmdq_handle = cmdq_pkt_create(cl);
 	if (IS_ERR_OR_NULL(*cmdq_handle)) {
-		DDPPR_ERR("%s create handle fail, %x\n",
+		DDPPR_ERR("%s create handle fail, %p\n",
 				__func__, *cmdq_handle);
 		return;
 	}
@@ -4620,10 +4583,6 @@ static void mtk_crtc_release_input_layer_fence(
 		if ((mindone_rif_pwroff & 0x3f) == 1)
 			pr_notice("MINDONE-RIF: pwroff calls=%lu pwroff=%lu id=%u\n",
 				  mindone_rif_calls, mindone_rif_pwroff, mindone_id);
-		/* MINDONE F2744: the vendor's early-return path loses the fence of a frame that
-		 * was in flight - the render thread hangs in Fence::waitForever with no timeout
-		 * (F2735/F2740). Safe to read here: GCE slots live in RAM, not in registers.
-		 */
 		if (!mindone_rif_release_when_off)
 			return;
 		mindone_rif_forced++;
@@ -4904,7 +4863,7 @@ static void ddp_cmdq_cb(struct cmdq_cb_data data)
 	unsigned int _dsi_state_dbg7_2 = 0;
 	ktime_t pf_time = 0;
 
-	DDPINFO("crtc_state:%x, atomic_state:%x, crtc:%x\n",
+	DDPINFO("crtc_state:%p, atomic_state:%p, crtc:%p\n",
 		crtc_state,
 		atomic_state,
 		crtc);
@@ -4918,14 +4877,6 @@ static void ddp_cmdq_cb(struct cmdq_cb_data data)
 
 	id = drm_crtc_index(crtc);
 
-	/* MINDONE F2881: a packet with no frame (empty commit, LYE_IDX=0) carries no
-	 * PRES_FENCE_IDX, yet HWC already issued a present fd for it ahead of time
-	 * (crtc_present++). The normal release below only signals
-	 * cb_data->pres_fence_idx, so those fds hang forever - the app sits in
-	 * Fence::waitForever (n=7 live failures). A one-shot release on lost ID didn't
-	 * help: HWC keeps grabbing new fds between empty commits. So instead, in the
-	 * callback of EVERY packet: if the packet is empty, catch present up to the
-	 * last one issued. */
 	if (id == 0 && cb_data->hrt_idx == 0) {
 		mtk_release_present_fence(session_id,
 			atomic_read(&priv->crtc_present[id]), 0);
@@ -4935,11 +4886,6 @@ static void ddp_cmdq_cb(struct cmdq_cb_data data)
 		mindone_fence_wd_kick_all(session_id);
 		mindone_pf_wd_kick(mtk_crtc->base.dev, id, false);
 		mindone_pf_wd_kick(mtk_crtc->base.dev, id, true);
-		/* MINDONE F2896: a LAYER fence is created ahead of time on MTK_GEM_SUBMIT
-		 * (mtk_fence_prepare_buf: ++fence_idx) and signals only on the next frame on
-		 * that same layer. After a layout switch (LYE_IDX=0), layers 2/3 get no more
-		 * frames - the GED dump showed exactly P_0_2/P_0_3 status(0) (F2895). Release
-		 * layers on every empty packet, same as present. */
 		{
 			int li;
 
@@ -5162,9 +5108,6 @@ static void ddp_cmdq_cb_blocking(struct mtk_cmdq_cb_data *cb_data)
 #endif
 #endif
 
-/* MINDONE: marker+probe around the FIRST direct OVL read during composition (F776-F780).
- * Default 0 - behavior unchanged, only pre/post markers are printed.
- */
 static int mindone_skip_ovl_busy_read;
 module_param(mindone_skip_ovl_busy_read, int, 0444);
 
@@ -5366,11 +5309,6 @@ void mtk_crtc_start_sodi_loop(struct drm_crtc *crtc)
 		return;
 	}
 
-	/* MINDONE: this loop waits on disp_token_sodi0, which MT6789 does not define -
-	 * cmdq_dev_get_event() returns a negative errno and the caller stores it as is.
-	 * Encoded into a GCE instruction it becomes a bogus positive event id and the loop
-	 * parks on it forever. The vendor itself calls this loop a workaround for a GCE
-	 * hardware bug, so skipping it when its events are missing is safer than hanging. */
 	if (mtk_crtc->gce_obj.event[EVENT_SYNC_TOKEN_SODI] < 0 ||
 	    mtk_crtc->gce_obj.event[EVENT_CMD_EOF] < 0) {
 		DDPMSG("MINDONE-DRM: sodi loop skipped, unresolved GCE events SODI=%d CMD_EOF=%d\n",
@@ -5419,13 +5357,6 @@ void mtk_crtc_start_event_loop(struct drm_crtc *crtc)
 		return;
 	}
 
-	/* MINDONE: MT6789 has no TE0/PRETE GCE tokens (mt6789-gce.h defines none), so
-	 * cmdq_dev_get_event() returns a negative errno that callers store unchecked,
-	 * decaying into a bogus event id (seen live as 998) that this self-restarting
-	 * cmdq loop then waits on forever - stalling the panel while composition keeps
-	 * producing correct frames (esd recover fails, driver gives up). Refuse to
-	 * start the loop unless every event it needs actually resolved. Full repro:
-	 * MINDONE-MODULES-NOTES-0901. */
 	if (mtk_crtc->gce_obj.event[EVENT_SYNC_TOKEN_TE] < 0 ||
 	    mtk_crtc->gce_obj.event[EVENT_SYNC_TOKEN_PRETE] < 0 ||
 	    mtk_crtc->gce_obj.event[EVENT_TE] < 0) {
@@ -5537,8 +5468,6 @@ static void cmdq_pkt_wait_te(struct cmdq_pkt *cmdq_handle,
 
 void mtk_crtc_start_trig_loop(struct drm_crtc *crtc)
 {
-	/* MINDONE: report which of the four CRTC0 events failed to resolve, so the
-	 * measurement is possible at all - DDPINFO is filtered out entirely on this build. */
 	MINDONE_PR("MINDONE-DISP: trig-loop-setup begin crtc=%px\n", crtc);
 #ifdef DRM_CMDQ_DISABLE
 	DDPINFO("%s+\n", __func__);
@@ -5549,7 +5478,7 @@ void mtk_crtc_start_trig_loop(struct drm_crtc *crtc)
 	struct mtk_drm_crtc *mtk_crtc = to_mtk_crtc(crtc);
 	unsigned long crtc_id = (unsigned long)drm_crtc_index(crtc);
 
-	DDPMSG("MINDONE-DRMFIX: trig_loop crtc=%ld TE=%d PRETE=%d SODI=%d VFP=%d\n",
+	DDPDBG("MINDONE-DRMFIX: trig_loop crtc=%ld TE=%d PRETE=%d SODI=%d VFP=%d\n",
 		crtc_id,
 		mtk_crtc->gce_obj.event[EVENT_SYNC_TOKEN_TE],
 		mtk_crtc->gce_obj.event[EVENT_SYNC_TOKEN_PRETE],
@@ -5629,13 +5558,6 @@ void mtk_crtc_start_trig_loop(struct drm_crtc *crtc)
 							cmdq_handle,mtk_crtc->gce_obj.base);
 				}
 			} else {
-				/* MINDONE: this is the wait that actually hangs the display - same
-				 * TE0/PRETE-token issue as the loop-start guard above (mt6789-gce.h
-				 * defines no PRETE token, cmdq_dev_get_event() returns a negative
-				 * errno stored unchecked, decaying into a bogus event id that this
-				 * trigger loop parks on forever). The guard belongs in the condition,
-				 * not around the call: the paired clear_event must be skipped too.
-				 * Full repro: MINDONE-MODULES-NOTES-0901. */
 				if (cur_fps != 60 && mtk_drm_helper_get_opt(priv->helper_opt,
 						MTK_DRM_OPT_PRE_TE) &&
 					mtk_crtc->gce_obj.event[EVENT_SYNC_TOKEN_PRETE] >= 0) {
@@ -5819,8 +5741,6 @@ void mtk_crtc_start_trig_loop(struct drm_crtc *crtc)
 				cmdq_pkt_clear_event(cmdq_handle,
 							mtk_crtc->gce_obj.event[EVENT_CMD_EOF]);
 				/*clear vfp period token*/
-					/* MINDONE: disp_token_vfp_period0 is absent on MT6789; waiting on the
-					 * bogus id it decays into parks this loop forever. */
 					if (mtk_crtc->gce_obj.event[EVENT_SYNC_TOKEN_VFP_PERIOD] >= 0)
 				cmdq_pkt_clear_event(cmdq_handle,
 							mtk_crtc->gce_obj.event[EVENT_SYNC_TOKEN_VFP_PERIOD]);
@@ -5935,7 +5855,7 @@ long mtk_crtc_wait_status(struct drm_crtc *crtc, bool status, long timeout)
 	ret = wait_event_interruptible_timeout(mtk_crtc->crtc_status_wq,
 				 mtk_crtc->enabled == status, timeout);
 	if (ret <= 0)
-		DDPMSG("%s wait event fail, ret = %d\n", __func__, ret);
+		DDPMSG("%s wait event fail, ret = %ld\n", __func__, ret);
 	return ret;
 }
 
@@ -7343,11 +7263,6 @@ static void mtk_drm_crtc_update_interface(struct drm_crtc *crtc,
 void mtk_drm_crtc_atomic_resume(struct drm_crtc *crtc,
 				struct drm_atomic_state *astate)
 {
-	/* KERNEL 6.1 passes drm_atomic_state, not drm_crtc_state (F1756).
-	 * The old signature read a field at offset 0x148, 136 bytes past the end
-	 * of the object. Fetch the real old object the proper way. */
-	/* 🔴 One caller (line ~8706) passes NULL instead of a state -
-	 * preserve the old behavior for it, or the fix itself introduces a fault. */
 	struct drm_crtc_state *old_crtc_state =
 		astate ? drm_atomic_get_old_crtc_state(astate, crtc) : NULL;
 
@@ -7730,9 +7645,6 @@ void mtk_crtc_first_enable_ddp_config(struct mtk_drm_crtc *mtk_crtc)
 		mtk_crtc_set_dirty(mtk_crtc);
 }
 
-/* MINDONE: skip the controller's first enable - tests causality of memory
- * protection violations. Default 0, behavior unchanged.
- */
 static int mindone_skip_first_enable;
 module_param(mindone_skip_first_enable, int, 0444);
 
@@ -8119,6 +8031,7 @@ void mml_cmdq_pkt_init(struct drm_crtc *crtc, struct cmdq_pkt *cmdq_handle)
 			    mtk_crtc, id[i], false, cmdq_handle,
 			    mtk_crtc_get_mutex_id(crtc, mtk_crtc->ddp_mode, DDP_COMPONENT_OVL0));
 		}
+		fallthrough;
 	case MML_IR_RACING:
 		mml_drm_racing_config_sync(mml_ctx, cmdq_handle);
 		break;
@@ -8260,7 +8173,7 @@ static void msync_add_frame_time(struct mtk_drm_crtc *mtk_crtc,
 			msync_dy->record[last_msync_idx].time;
 		/* integer fixed-point (x10) in place of the original float divide --
 		 * see MSYNC_MIN_FPS_X10 in mtk_drm_crtc.h for why. */
-		DDPDBG("[Msync] min fps_x10:%d, fps:%d, time_diff:%d\n", MSYNC_MIN_FPS_X10, fps, time_diff);
+		DDPDBG("[Msync] min fps_x10:%d, fps:%d, time_diff:%llu\n", MSYNC_MIN_FPS_X10, fps, time_diff);
 		if ((1000ULL * 1000 * 1000 * 10) / MSYNC_MIN_FPS_X10 < time_diff) {
 			msync_dy->record[msync_dy->record_index].low_frame = true;
 			DDPDBG("[Msync] low_frame = true\n");
@@ -8946,11 +8859,6 @@ static void update_frame_weight(struct drm_crtc *crtc,
 static void mtk_drm_crtc_atomic_begin(struct drm_crtc *crtc,
 				      struct drm_atomic_state *astate)
 {
-	/* KERNEL 6.1 passes drm_atomic_state, not drm_crtc_state (F1756).
-	 * The old signature read a field at offset 0x148, 136 bytes past the end
-	 * of the object. Fetch the real old object the proper way. */
-	/* 🔴 One caller (line ~8706) passes NULL instead of a state -
-	 * preserve the old behavior for it, or the fix itself introduces a fault. */
 	struct drm_crtc_state *old_crtc_state =
 		astate ? drm_atomic_get_old_crtc_state(astate, crtc) : NULL;
 
@@ -9324,14 +9232,6 @@ void mtk_drm_crtc_plane_disable(struct drm_crtc *crtc, struct drm_plane *plane,
 
 	addr = mtk_get_gce_backup_slot_pa(mtk_crtc,
 		DISP_SLOT_CUR_CONFIG_FENCE(mtk_get_plane_slot_idx(mtk_crtc, plane_index)));
-	/* MINDONE F2862: the old condition "cur_fence > last_fence" locked the system on
-	 * itself. DISP_SLOT_CUR_CONFIG_FENCE is the ONLY source of what to release
-	 * (mtk_crtc_release_input_layer_fence -> mtk_release_fence); once the slot is
-	 * NOT LOWER than the current frame index, writes get silently skipped, releases
-	 * stop, the producer hangs in Fence::waitForever with no timeout and no log line
-	 * (proven live twice: F2858, F2860). The frame index is authoritative (from
-	 * plane state), so we write it ALWAYS - a monotonicity violation is reported,
-	 * not turned into a permanent lockup. */
 	if (cur_fence != -1) {
 		if (cur_fence <= last_fence) {
 			mindone_fencefix_resync++;
@@ -10222,11 +10122,6 @@ static void sf_cmdq_cb(struct cmdq_cb_data data)
 static void mtk_drm_crtc_atomic_flush(struct drm_crtc *crtc,
 				      struct drm_atomic_state *astate)
 {
-	/* KERNEL 6.1 passes drm_atomic_state, not drm_crtc_state (F1756).
-	 * The old signature read a field at offset 0x148, 136 bytes past the end
-	 * of the object. Fetch the real old object the proper way. */
-	/* 🔴 One caller (line ~8706) passes NULL instead of a state -
-	 * preserve the old behavior for it, or the fix itself introduces a fault. */
 	struct drm_crtc_state *old_crtc_state =
 		astate ? drm_atomic_get_old_crtc_state(astate, crtc) : NULL;
 
@@ -10242,11 +10137,6 @@ static void mtk_drm_crtc_atomic_flush(struct drm_crtc *crtc,
 	struct mtk_crtc_state *state = to_mtk_crtc_state(crtc_state);
 	struct cmdq_pkt *cmdq_handle = state->cmdq_handle;
 
-	/* MINDONE-DRMFIX (F1266-F1268): state->cmdq_handle sometimes arrives bogus
-	 * (observed 0x0000000300000000), and cmdq_pkt_write faults reading it:
-	 * Unable to handle kernel paging request, level 1 translation fault.
-	 * On arm64 a real kernel address is NEGATIVE under a signed compare, while
-	 * garbage is positive - so the check is exact, no heuristics involved. */
 	if (unlikely((long)cmdq_handle >= 0)) {
 		pr_err_once("MINDONE-DRMFIX: bogus cmdq_handle=%px, frame skipped\n",
 			cmdq_handle);
@@ -10442,10 +10332,10 @@ static void mtk_drm_crtc_atomic_flush(struct drm_crtc *crtc,
 				mtk_crtc->gce_obj.event[EVENT_SYNC_TOKEN_VFP_PERIOD]);
 		cb_data->msync2_enable = 1;
 
-		DDPDBG("[Msync]cmdq pkt size = %d\n", cmdq_handle->cmd_buf_size);
+		DDPDBG("[Msync]cmdq pkt size = %zu\n", cmdq_handle->cmd_buf_size);
 		if (cmdq_handle->cmd_buf_size >= 4096) {
 			/*ToDo: if larger than 4096 need consider change pages*/
-			DDPPR_ERR("[Msync]cmdq pkt size = %d\n", cmdq_handle->cmd_buf_size);
+			DDPPR_ERR("[Msync]cmdq pkt size = %zu\n", cmdq_handle->cmd_buf_size);
 		}
 	}
 
@@ -10834,7 +10724,7 @@ void mtk_crtc_update_gce_event(struct mtk_drm_crtc *mtk_crtc)
 	/* Load CRTC GCE event again after re-enable crtc */
 	for (i = 0; i < EVENT_TYPE_MAX; i++) {
 		mtk_crtc_get_event_name(mtk_crtc, buf, sizeof(buf), i);
-		mtk_crtc->gce_obj.event[i] = cmdq_dev_get_event(dev, buf);
+		mtk_crtc->gce_obj.event[i] = cmdq_dev_get_event_optional(dev, buf);
 	}
 }
 
@@ -10895,7 +10785,7 @@ static void mtk_crtc_init_gce_obj(struct drm_device *drm_dev,
 	/* Load CRTC GCE event */
 	for (i = 0; i < EVENT_TYPE_MAX; i++) {
 		mtk_crtc_get_event_name(mtk_crtc, buf, sizeof(buf), i);
-		mtk_crtc->gce_obj.event[i] = cmdq_dev_get_event(dev, buf);
+		mtk_crtc->gce_obj.event[i] = cmdq_dev_get_event_optional(dev, buf);
 	}
 
 	cmdq_buf = &(mtk_crtc->gce_obj.buf);
@@ -11180,7 +11070,7 @@ static int mtk_drm_cwb_copy_buf(struct drm_crtc *crtc,
 		tmp->meta.timestamp = cwb_info->buffer[buf_idx].timestamp;
 		memcpy(tmp->data.image, (void *)addr_va, size);
 	}
-	DDPMSG("[capture] copy buf from 0x%x, (w,h)=(%d,%d), ts:%llu done\n",
+	DDPMSG("[capture] copy buf from 0x%lx, (w,h)=(%d,%d), ts:%llu done\n",
 			addr_va, width, height, time);
 
 	return 0;
@@ -11632,6 +11522,10 @@ int mtk_drm_crtc_create(struct drm_device *drm_dev,
 			struct mtk_ddp_comp *comp;
 
 			comp = kzalloc(sizeof(*comp), GFP_KERNEL);
+			if (!comp) {
+				DDPPR_ERR("%s: no memory for comp_id:%d\n", __func__, comp_id);
+				return 0;
+			}
 			comp->id = comp_id;
 			mtk_crtc->ddp_ctx[p_mode].ddp_comp[i][j] = comp;
 			continue;
@@ -11692,6 +11586,10 @@ int mtk_drm_crtc_create(struct drm_device *drm_dev,
 			struct mtk_ddp_comp *comp;
 
 			comp = kzalloc(sizeof(*comp), GFP_KERNEL);
+			if (!comp) {
+				DDPPR_ERR("%s: no memory for comp_id:%d\n", __func__, comp_id);
+				return 0;
+			}
 			comp->id = comp_id;
 			mtk_crtc->ddp_ctx[p_mode].wb_comp[i] = comp;
 			continue;
@@ -12116,16 +12014,9 @@ int mtk_drm_get_msync_params_ioctl(struct drm_device *dev, void *data,
 	return 0;
 }
 
-/* MINDONE F2906: present fence is issued AHEAD (++crtc_present) and signals only
- * via the frame-packet callback carrying that PRES_FENCE_IDX. After the last
- * GETFENCE, no more packets arrive (ioctl=0 while stuck) - the fd hangs, producer
- * sits in Fence::waitForever (GED dump: -P_0_13- status(0) on an already-closed
- * layer). Symmetric to the layer timeout (F2899, #7): every GETFENCE restarts the
- * delayed work; if the present timeline hasn't reached crtc_present after
- * mindone_pf_timeout_ms, release it. */
 unsigned long mindone_pf_timeout_fired;
 module_param(mindone_pf_timeout_fired, ulong, 0444);
-MODULE_PARM_DESC(mindone_pf_timeout_fired, "present fences force-released by kernel timeout (F2906)");
+MODULE_PARM_DESC(mindone_pf_timeout_fired, "present fences force-released by kernel timeout");
 unsigned int mindone_pf_timeout_ms = 500;
 module_param(mindone_pf_timeout_ms, uint, 0644);
 MODULE_PARM_DESC(mindone_pf_timeout_ms, "present fence timeout in ms, 0 = disabled");

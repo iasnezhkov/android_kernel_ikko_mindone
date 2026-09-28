@@ -23,9 +23,7 @@
  *
  */
 #include <linux/init.h>		/* For init/exit macros */
-#include <mindone/compat.h>
 #include <linux/module.h>
-#include <linux/version.h>	/* For MODULE_ marcros  */
 #include <linux/fs.h>
 #include <linux/device.h>
 #include <linux/interrupt.h>
@@ -79,17 +77,6 @@ bool g_charge_is_screen_on = 1;
 EXPORT_SYMBOL(g_charge_is_screen_on);
 #endif
 
-//prize add by lipengpeng 20210621 start 
-//#if IS_ENABLED(CONFIG_PRIZE_MT5725_SUPPORT_15W)
-extern int reset_mt5725_info(void);
-extern int get_MT5725_status(void);
-extern void En_Dis_add_current(int i);
-struct mtk_charger *mt5725_info;
-extern int get_wireless_charge_current(struct charger_data *pdata);
-
-//#endif
-extern int mt5725_wireless_init(void);
-//prize end
 struct tag_bootmode {
 	u32 size;
 	u32 tag;
@@ -554,7 +541,7 @@ static void mtk_charger_start_timer(struct mtk_charger *info)
 	info->endtime = end_time;
 	ktime = ktime_set(info->endtime.tv_sec, info->endtime.tv_nsec);
 
-	chr_debug("%s: alarm timer start:%d, %ld %ld\n", __func__, ret,
+	chr_debug("%s: alarm timer start:%d, %lld %ld\n", __func__, ret,
 		info->endtime.tv_sec, info->endtime.tv_nsec);
 	alarm_start(&info->charger_timer, ktime);
 }
@@ -880,7 +867,7 @@ static bool is_pump_express(struct mtk_charger *info,bool ori)
 	/* 8 = KERNEL_POWER_OFF_CHARGING_BOOT */
 	/* 9 = LOW_POWER_OFF_CHARGING_BOOT */
 	
-	pr_err("gezi:[%s],boot_mode = %d,ori = %d\n", __func__, boot_mode, ori);
+	pr_debug("[%s],boot_mode = %d,ori = %d\n", __func__, boot_mode, ori);
 
 	if (boot_mode == 8 || boot_mode == 9) {
 		return false;
@@ -1581,7 +1568,7 @@ int smart_charging(struct mtk_charger *info)
 	else
 		info->sc.disable_charger = false;
 	chr_debug("[sc]disable_charger: %d\n", info->sc.disable_charger);
-	chr_err("[sc1]en:%d t:%d,%d,%d,%d t:%d,%d,%d,%d c:%d,%d ibus:%d uisoc: %d,%d s:%d ans:%s\n",
+	chr_debug("[sc1]en:%d t:%d,%d,%d,%d t:%d,%d,%d,%d c:%d,%d ibus:%d uisoc: %d,%d s:%d ans:%s\n",
 		info->sc.enable, info->sc.start_time, info->sc.end_time,
 		sc_real_time, sc_left_time, info->sc.left_time_for_cv,
 		time_to_target, time_to_full_default_current, time_to_full_default_current_limit,
@@ -1955,7 +1942,7 @@ static ssize_t sc_ibat_limit_store(
 			return -EINVAL;
 		if (val < 0) {
 			chr_err(
-				"[smartcharging ibat limit] val is %ld ??\n",
+				"[smartcharging ibat limit] val is %d ??\n",
 				(int)val);
 			val = 0;
 		}
@@ -1972,11 +1959,7 @@ static ssize_t sc_ibat_limit_store(
 static DEVICE_ATTR_RW(sc_ibat_limit);
 
 //prize begin
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 4, 0)	/* class_attribute show/store take const since 6.4 */
 static ssize_t show_cmd_charge_disable(const struct class *class, const struct class_attribute *attr, char *buf)
-#else
-static ssize_t show_cmd_charge_disable(struct class *class, struct class_attribute *attr,	char *buf)
-#endif
 {
 	struct mtk_charger *info = NULL;
 	struct power_supply *chg_psy = NULL;
@@ -1996,11 +1979,7 @@ static ssize_t show_cmd_charge_disable(struct class *class, struct class_attribu
 	return sprintf(buf, "%d\n",info->cmd_discharging);
 }
 
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 4, 0)	/* class_attribute show/store take const since 6.4 */
 static ssize_t store_cmd_charge_disable(const struct class *class, const struct class_attribute *attr, const char *buf, size_t count)
-#else
-static ssize_t store_cmd_charge_disable(struct class *class, struct class_attribute *attr,	const char *buf, size_t count)
-#endif
 {
 	
 	struct mtk_charger *info = NULL;
@@ -2592,20 +2571,13 @@ static int mtk_charger_plug_out(struct mtk_charger *info)
 		alg = info->alg[i];
 		chg_alg_notifier_call(alg, &notify);
 	}
-//prize add by lipengpeng 20210621 start 
-#if IS_ENABLED(CONFIG_PRIZE_MT5725_SUPPORT_15W)
-	   reset_mt5725_info();
-	   printk("lpp--- plug out enable add current\n");
-#endif
-//prize add by lipengpeng 20210621 end 
-	
+
 	memset(&info->sc.data, 0, sizeof(struct scd_cmd_param_t_1));
 	charger_dev_set_input_current(info->chg1_dev, 100000);
 	charger_dev_set_mivr(info->chg1_dev, info->data.min_charger_voltage);
 	charger_dev_plug_out(info->chg1_dev);
 	mtk_charger_force_disable_power_path(info, CHG1_SETTING, true);
 
-	/* MINDONE-CHG-EVENT: announce the plug-out state change (see plug_in). */
 	power_supply_changed(info->psy1);
 
 	if (info->enable_vbat_mon)
@@ -2640,17 +2612,6 @@ static int mtk_charger_plug_in(struct mtk_charger *info,
 
 	vbat = get_battery_voltage(info);
 
-//prize add by lipengpeng 20210621 start 
-//#if IS_ENABLED(CONFIG_PRIZE_MT5725_SUPPORT_15W)
-     printk("lpp---000-- plug in enable add current\n");
-    if(((info->chr_type == POWER_SUPPLY_TYPE_USB)&&(info->usb_type == POWER_SUPPLY_USB_TYPE_DCP)) && (get_MT5725_status() == 0))
-	{
-		printk("lpp---111-- plug in enable add current\n");
-		En_Dis_add_current(0x00);
-	}
-//#endif
-//prize add by lipengpeng 20210621 end 
-
 	notify.evt = EVT_PLUG_IN;
 	notify.value = 0;
 	for (i = 0; i < MAX_ALG_NO; i++) {
@@ -2665,10 +2626,6 @@ static int mtk_charger_plug_in(struct mtk_charger *info,
 	charger_dev_plug_in(info->chg1_dev);
 	mtk_charger_force_disable_power_path(info, CHG1_SETTING, false);
 
-	/* MINDONE-CHG-EVENT (01.09.2026, F3386): the plug-in transition
-	 * changed this supply's state but emitted no event — the UI learned
-	 * of it only from the next slow poll or an unrelated screen event.
-	 * A producer must announce its own state change. */
 	power_supply_changed(info->psy1);
 
 	return 0;
@@ -2679,6 +2636,13 @@ static bool mtk_is_charger_on(struct mtk_charger *info)
 	int chr_type;
 
 	chr_type = get_charger_type(info);
+
+	if (chr_type == POWER_SUPPLY_TYPE_UNKNOWN &&
+	    info->chr_type != POWER_SUPPLY_TYPE_UNKNOWN) {
+		msleep(200);
+		chr_type = get_charger_type(info);
+	}
+
 	if (chr_type == POWER_SUPPLY_TYPE_UNKNOWN) {
 		if (info->chr_type != POWER_SUPPLY_TYPE_UNKNOWN) {
 			mtk_charger_plug_out(info);
@@ -2762,9 +2726,6 @@ static void kpoc_power_off_check(struct mtk_charger *info)
 
 static void charger_status_check(struct mtk_charger *info)
 {
-	/* MINDONE-CHG-STATUS: same class as in mtk_battery.c -- a failed
-	 * get_property() leaves the propval untouched, so start from defined
-	 * values instead of whatever is on the stack. */
 	union power_supply_propval online = { .intval = 0 };
 	union power_supply_propval status = {
 		.intval = POWER_SUPPLY_STATUS_UNKNOWN };
@@ -2828,32 +2789,32 @@ static int charger_routine_thread(void *arg)
 	int vbat_min, vbat_max;
 	u32 chg_cv = 0;
 
+	while (is_module_init_done == false) {
+		if (charger_init_algo(info) == true) {
+			is_module_init_done = true;
+			if (info->charger_unlimited) {
+				info->enable_sw_safety_timer = false;
+				charger_dev_enable_safety_timer(info->chg1_dev, false);
+			}
+		}
+		else {
+			if (init_times > 0) {
+				chr_err("retry to init charger\n");
+				init_times = init_times - 1;
+				msleep(10000);
+			} else {
+				chr_err("holding to init charger\n");
+				msleep(60000);
+			}
+		}
+	}
+
 	while (1) {
 		ret = wait_event_interruptible(info->wait_que,
 			(info->charger_thread_timeout == true));
 		if (ret < 0) {
 			chr_err("%s: wait event been interrupted(%d)\n", __func__, ret);
 			continue;
-		}
-
-		while (is_module_init_done == false) {
-			if (charger_init_algo(info) == true) {
-				is_module_init_done = true;
-				if (info->charger_unlimited) {
-					info->enable_sw_safety_timer = false;
-					charger_dev_enable_safety_timer(info->chg1_dev, false);
-				}
-			}
-			else {
-				if (init_times > 0) {
-					chr_err("retry to init charger\n");
-					init_times = init_times - 1;
-					msleep(10000);
-				} else {
-					chr_err("holding to init charger\n");
-					msleep(60000);
-				}
-			}
 		}
 
 		mutex_lock(&info->charger_lock);
@@ -2871,7 +2832,7 @@ static int charger_routine_thread(void *arg)
 		if (vbat_min != 0)
 			vbat_min = vbat_min / 1000;
 
-		chr_err("Vbat=%d vbats=%d vbus:%d ibus:%d I=%d T=%d uisoc:%d type:%s>%s pd:%d swchg_ibat:%d cv:%d\n",
+		chr_info("Vbat=%d vbats=%d vbus:%d ibus:%d I=%d T=%d uisoc:%d type:%s>%s pd:%d swchg_ibat:%d cv:%d\n",
 			get_battery_voltage(info),
 			vbat_min,
 			get_vbus(info),
@@ -2979,7 +2940,7 @@ static enum alarmtimer_restart
 	info->timer_cb_duration[7] = ktime_get_boottime();
 
 	if (ktime_us_delta(time_p[7], time_p[0]) > 5000)
-		chr_err("%s: delta_t: %ld %ld %ld %ld %ld %ld %ld (%ld)\n",
+		chr_err("%s: delta_t: %lld %lld %lld %lld %lld %lld %lld (%lld)\n",
 			__func__,
 			ktime_us_delta(time_p[1], time_p[0]),
 			ktime_us_delta(time_p[2], time_p[1]),
@@ -3013,7 +2974,7 @@ static int cmd_charge_disable_sysfs_create(void)
 {
 	int i = 0,ret = 0;
 	
-	hd8040_class = MINDONE_CLASS_CREATE("cmd_charge_disable");
+	hd8040_class = class_create("cmd_charge_disable");
 	if (IS_ERR(hd8040_class))
 		return PTR_ERR(hd8040_class);
 	for (i = 0; hd8040_class_attrs[i].attr.name; i++) {
@@ -3253,6 +3214,9 @@ static int psy_charger_get_property(struct power_supply *psy,
 	case POWER_SUPPLY_PROP_ONLINE:
 		if (chg == info->dvchg1_dev) {
 			val->intval = false;
+			if (info->config != DIVIDER_CHARGER &&
+			    info->config != DUAL_DIVIDER_CHARGERS)
+				break;
 			alg = get_chg_alg_by_name("pe5");
 			if (alg == NULL)
 				chr_err("get pe5 fail\n");
@@ -3273,15 +3237,6 @@ static int psy_charger_get_property(struct power_supply *psy,
 			val->intval = false;
 		break;
 	case POWER_SUPPLY_PROP_STATUS:
-		/*
-		 * MINDONE-CHG-STATUS: this psy never implemented STATUS, so
-		 * power_supply_get_property() fell through to -EINVAL and left
-		 * the caller's propval untouched.  mtk_battery.c does not check
-		 * that return value, so the battery psy latched whatever was on
-		 * the stack and reported "Not charging" to userspace while the
-		 * charger IC was actually pushing ~460 mA into the cell.
-		 * Report the charger's own state instead.
-		 */
 		if (!is_charger_exist(info)) {
 			val->intval = POWER_SUPPLY_STATUS_DISCHARGING;
 			break;
@@ -3320,9 +3275,13 @@ static int psy_charger_get_property(struct power_supply *psy,
 			val->intval = -127;
 		break;
 	case POWER_SUPPLY_PROP_CONSTANT_CHARGE_CURRENT_MAX:
+		if (chg == NULL)
+			return -ENODATA;
 		val->intval = get_charger_charging_current(info, chg);
 		break;
 	case POWER_SUPPLY_PROP_INPUT_CURRENT_LIMIT:
+		if (chg == NULL)
+			return -ENODATA;
 		val->intval = get_charger_input_current(info, chg);
 		break;
 	case POWER_SUPPLY_PROP_USB_TYPE:
@@ -3470,22 +3429,10 @@ int psy_charger_set_property(struct power_supply *psy,
 			info->enable_hv_charging = false;
 		break;
 	case POWER_SUPPLY_PROP_CONSTANT_CHARGE_CURRENT_MAX:
-	//prize begin
-		if(get_MT5725_status() ==0){
-			info->chg_data[idx].thermal_charging_current_limit = val->intval;
-		}
-		else{
-			info->chg_data[idx].thermal_charging_current_limit = -1;
-		}
+		info->chg_data[idx].thermal_charging_current_limit = val->intval;
 		break;
 	case POWER_SUPPLY_PROP_INPUT_CURRENT_LIMIT:
-		if(get_MT5725_status() ==0){
-			info->chg_data[idx].thermal_input_current_limit = val->intval;
-		}
-		else{
-			info->chg_data[idx].thermal_input_current_limit = -1;
-		}
-	//prize end
+		info->chg_data[idx].thermal_input_current_limit = val->intval;
 		break;
 	case POWER_SUPPLY_PROP_CHARGE_CONTROL_LIMIT:
 		if (val->intval > 0)
@@ -3547,6 +3494,13 @@ static void mtk_charger_external_power_changed(struct power_supply *psy)
 
 		info->vbat0_flag = vbat0.intval;
 	}
+
+	if (info->ext_psy_last_online == prop.intval &&
+		info->ext_psy_last_usb_type == prop2.intval)
+		return;
+
+	info->ext_psy_last_online = prop.intval;
+	info->ext_psy_last_usb_type = prop2.intval;
 
 	pr_notice("%s event, name:%s online:%d type:%d vbus:%d\n", __func__,
 		psy->desc->name, prop.intval, prop2.intval,
@@ -3696,10 +3650,8 @@ static int charge_fb_notifier_callback(struct notifier_block *self, unsigned lon
         if (event == MTK_DISP_EVENT_BLANK) {
                 if (*evdata == MTK_DISP_BLANK_UNBLANK) {
 						g_charge_is_screen_on = 1;
-					    printk("lpp---mtk charge is screen on \n");
                 } else if (*evdata == MTK_DISP_BLANK_POWERDOWN) {
 						g_charge_is_screen_on = 0;
-					    printk("lpp---mtk charge is screen off \n");
                 }
         }
 		
@@ -3712,14 +3664,6 @@ static struct notifier_block charge_fb_notifier = {
 #endif
 //prize end
 
-//prize add by lipengpeng 20210621 start 
-//#if IS_ENABLED(CONFIG_PRIZE_MT5725_SUPPORT_15W)
-int MT5725_init(struct mtk_charger *info){
-    mt5725_info = info;
-	return 0;
-}
-//#endif
-//prize add by lipengpeng 20210621 end 
 static char *mtk_charger_supplied_to[] = {
 	"battery"
 };
@@ -3740,13 +3684,6 @@ static int mtk_charger_probe(struct platform_device *pdev)
 	info->pdev = pdev;
 
 	mtk_charger_parse_dt(info, &pdev->dev);
- //prize add by lipengpeng 20220614 start   
-	ret=mt5725_wireless_init();
-	if(ret<0){
-		printk("lpp---mt5725_wireless_init failed\n");
-		
-	}
- //prize add by lipengpeng 20220614 end  	
 	mutex_init(&info->cable_out_lock);
 	mutex_init(&info->charger_lock);
 	mutex_init(&info->pd_lock);
@@ -3780,6 +3717,8 @@ static int mtk_charger_probe(struct platform_device *pdev)
 		info->chg_data[i].thermal_input_current_limit = -1;
 		info->chg_data[i].input_current_limit_by_aicl = -1;
 	}
+	info->ext_psy_last_online = -1;
+	info->ext_psy_last_usb_type = -1;
 	info->enable_hv_charging = true;
 
 	info->psy_desc1.name = "mtk-master-charger";
@@ -3886,18 +3825,14 @@ static int mtk_charger_probe(struct platform_device *pdev)
 	if (info != NULL && info->bootmode != 8 && info->bootmode != 9)
 		mtk_charger_force_disable_power_path(info, CHG1_SETTING, true);
 
-//prize add by lipengpeng 20210621 start 	
-//#if IS_ENABLED(CONFIG_PRIZE_MT5725_SUPPORT_15W)
-    MT5725_init(info);
 	pdpe_init(pdev);
 	mtk_pe_init();
-	usbpd_pm_init();
-//#endif
-//prize add by lipengpeng 20210621 end 
+	if (info->config == DIVIDER_CHARGER || info->config == DUAL_DIVIDER_CHARGERS)
+		usbpd_pm_init();
 //prize begin
 	info->pdpe_psy = power_supply_get_by_name("pdpe-state");
 	if(info->pdpe_psy == NULL){
-		pr_err("gezi get info->pdpe_psy failed\n");
+		pr_err("get info->pdpe_psy failed\n");
 	}
 	else{
 		pdpe_update_boot_mode(info,info->bootmode);

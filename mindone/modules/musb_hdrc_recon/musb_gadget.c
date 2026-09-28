@@ -1195,14 +1195,17 @@ get_function_descriptors(struct usb_function *f,
 		descriptors = f->ssp_descriptors;
 		if (descriptors)
 			break;
+		fallthrough;
 	case USB_SPEED_SUPER:
 		descriptors = f->ss_descriptors;
 		if (descriptors)
 			break;
+		fallthrough;
 	case USB_SPEED_HIGH:
 		descriptors = f->hs_descriptors;
 		if (descriptors)
 			break;
+		fallthrough;
 	default:
 		descriptors = f->fs_descriptors;
 	}
@@ -2361,7 +2364,7 @@ static int musb_gadget_pullup(struct usb_gadget *gadget, int is_on)
 
 	DBG(0, "is_on=%d, softconnect=%d ++\n", is_on, musb->softconnect);
 
-	is_on = !!is_on; /* MINDONE: NOPULLUP stub (F774, 24.08) removed 29.08 - gadget pulls D+ up again */
+	is_on = !!is_on;
 	pm_runtime_get_sync(musb->controller);
 
 	/* NOTE: this assumes we are sensing vbus; we'd rather
@@ -2664,11 +2667,6 @@ static void stop_activity(struct musb *musb)
 		}
 		musb_stop(musb);
 	} else {
-		/* MINDONE 19.09 (BACKLOG O61): adbd rebinding the gadget while the controller is
-		 * already off (cable out, clocks unprepared) went through musb_stop() and tried nine
-		 * register accesses; usb_enable_clock() refused each (WARN in musb_io.h) - without
-		 * that guard an unclocked access stalls the bus (see the note at the top of
-		 * musb_core.c). The hardware is already down: only reset the software state. */
 		musb->softconnect = 0;
 		musb->is_active = 0;
 		DBG(0, "%s: controller off, no register access\n", __func__);
@@ -2736,12 +2734,6 @@ static int musb_gadget_stop(struct usb_gadget *g)
 
 	musb->is_active = 0;
 	musb->gadget_driver = NULL;
-	/* MINDONE-ISREADY (29.08, F2991): UDC unbind powers the controller down via
-	 * musb_stop() above, but is_ready stayed latched from the first bind, so the next
-	 * musb_gadget_pullup(1) skipped mt_usb_reconnect() and SOFTCONN was never written
-	 * (musb_pullup() requires musb->power). Re-arm exactly like the driver already does on
-	 * its own disconnect path (musb_dr.c: mt_usb_set_mailbox(), MUSB_ID_FLOAT). No PHY touch.
-	 */
 	musb->is_ready = false;
 	musb_platform_try_idle(musb, 0);
 

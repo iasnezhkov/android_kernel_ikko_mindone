@@ -76,6 +76,7 @@ static int check_codec_id(struct vdec_vcu_ipi_ack *msg, unsigned int fmt, unsign
 		codec_id = VDEC_H264;
 		break;
 	case V4L2_PIX_FMT_H265:
+	case V4L2_PIX_FMT_HEVC:
 		codec_id = VDEC_H265;
 		break;
 	case V4L2_PIX_FMT_HEIF:
@@ -240,7 +241,7 @@ int vcu_dec_ipi_handler(void *data, unsigned int len, void *priv)
 		else
 			vcodec_trace_count("VDEC_HW_LAT", 1);
 
-		mtk_vcodec_perf_log("irq:%ld",
+		mtk_vcodec_perf_log("irq:%lld",
 			(t_e.tv_sec - t_s.tv_sec) * 1000000LL +
 			(t_e.tv_nsec - t_s.tv_nsec) / 1000);
 		if (ret == -1 && msg->status == MTK_VDEC_CORE) {
@@ -755,7 +756,7 @@ int vcu_dec_set_frame_buffer(struct vdec_vcu_inst *vcu, void *fb)
 			if (pfb->dma_general_buf != 0) {
 				ipi_fb.dma_general_addr = pfb->dma_general_addr;
 				ipi_fb.general_size = pfb->dma_general_buf->size;
-				mtk_vcodec_debug(vcu, "FB id=%d dma_addr (%llx,%llx) dma_general_buf %p size %lu dma %lu",
+				mtk_vcodec_debug(vcu, "FB id=%d dma_addr (%llx,%llx) dma_general_buf %p size %lu dma %llu",
 					pfb->index, ipi_fb.y_fb_dma, ipi_fb.c_fb_dma,
 					pfb->dma_general_buf, pfb->dma_general_buf->size, pfb->dma_general_addr);
 			} else {

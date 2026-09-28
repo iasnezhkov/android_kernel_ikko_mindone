@@ -518,6 +518,7 @@ int __mtk_pdc_get_setting(struct chg_alg_device *alg, int *newvbus, int *newcur,
 	unsigned int pd_max_watt, pd_min_watt, now_max_watt;
 	struct mtk_pd *pd = dev_get_drvdata(&alg->dev);
 	int ibus = 0, vbus;
+	bool no_ibus = false;
 	int chg2_watt = 0;
 	bool boost = false, buck = false;
 	struct pd_power_cap *cap;
@@ -538,8 +539,11 @@ int __mtk_pdc_get_setting(struct chg_alg_device *alg, int *newvbus, int *newcur,
 
 	ret = pd_hal_get_ibus(alg, &ibus);
 	if (ret < 0) {
-		pd_err("[%s] get ibus fail, keep default voltage\n", __func__);
-		return -1;
+		if (ret != -EOPNOTSUPP) {
+			pd_err("[%s] get ibus fail, keep default voltage\n", __func__);
+			return -1;
+		}
+		no_ibus = true;
 	}
 
 #ifdef FIXME
@@ -633,7 +637,14 @@ int __mtk_pdc_get_setting(struct chg_alg_device *alg, int *newvbus, int *newcur,
 	if (pd_min_watt <= 5000000)
 		pd_min_watt = 5000000;
 
-	if ((now_max_watt >= pd_max_watt) || chg1_mivr || chg2_mivr) {
+	if (no_ibus) {
+		if (chg1_mivr || chg2_mivr) {
+			*newidx = pd->pd_boost_idx;
+			boost = true;
+		} else {
+			*newidx = selected_idx;
+		}
+	} else if ((now_max_watt >= pd_max_watt) || chg1_mivr || chg2_mivr) {
 		*newidx = pd->pd_boost_idx;
 		boost = true;
 	} else if (now_max_watt <= pd_min_watt) {

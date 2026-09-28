@@ -3,7 +3,6 @@
 // Copyright (C) 2018 MediaTek Inc.
 
 #include <linux/module.h>
-#include <mindone/compat.h>
 #include <linux/kernel.h>
 #include <linux/init.h>
 #include <linux/err.h>
@@ -117,7 +116,7 @@ static struct mtk_spk_i2c_ctrl mtk_spk_list[MTK_SPK_TYPE_NUM] = {
 
 };
 
-static const struct i2c_device_id mtk_spk_i2c_id[];	/* defined below; needed by the 1-arg probe (F3776 port) */
+static const struct i2c_device_id mtk_spk_i2c_id[];
 
 static int mtk_spk_i2c_probe(struct i2c_client *client)
 {
@@ -425,7 +424,7 @@ static struct i2c_driver mtk_spk_i2c_driver = {
 		.owner = THIS_MODULE,
 		.of_match_table = of_match_ptr(mtk_spk_match_table),
 	},
-	MINDONE_I2C_PROBE(mtk_spk_i2c_probe),
+	.probe = mtk_spk_i2c_probe,
 	.remove = mtk_spk_i2c_remove,
 	.shutdown = mtk_spk_i2c_shutdown,
 	.id_table = mtk_spk_i2c_id,

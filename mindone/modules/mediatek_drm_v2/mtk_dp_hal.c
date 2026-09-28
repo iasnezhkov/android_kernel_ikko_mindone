@@ -594,8 +594,6 @@ void mhal_DPTx_PG_HorizontalRamping(struct mtk_dp *mtk_dp, BYTE BGR,
 {
 	DWORD Ramp = 0x3FFF;
 
-	ColorDepth = 0x0000;
-
 	msWriteByteMask(mtk_dp, REG_3038_DP_ENCODER0_P0 + 1, BIT3, BIT3);
 	msWriteByteMask(mtk_dp, REG_31B0_DP_ENCODER0_P0, BIT5, MASKBIT(6:4));
 	msWriteByteMask(mtk_dp, REG_31B0_DP_ENCODER0_P0, BIT7, BIT7);

@@ -189,7 +189,7 @@ static int mcupm_hopping_v1(void *priv_data, char *domain_name, int fh_id,
 		dump_hw(regs, data);
 
 		/* tr/time via HW */
-		FHDBG("time_ns<%lx>\n", time_ns);
+		FHDBG("time_ns<%llx>\n", time_ns);
 		if (d->reg_tr) {
 			val = readl(d->reg_tr);
 			FHDBG("reg_tr<%x>\n", val);
@@ -321,6 +321,11 @@ static int mcupm_init_v1(struct pll_dts *array, struct match *match)
 
 	priv_data = kzalloc(sizeof(*priv_data), GFP_KERNEL);
 	hdlr = kzalloc(sizeof(*hdlr), GFP_KERNEL);
+	if (!priv_data || !hdlr) {
+		kfree(priv_data);
+		kfree(hdlr);
+		return -ENOMEM;
+	}
 	init_fh_domain(array->domain,
 			array->comp,
 			array->fhctl_base,

@@ -142,17 +142,11 @@
 #include <linux/limits.h>
 
 #ifdef CONFIG_ANDROID
-#if (KERNEL_VERSION(4, 9, 0) <= LINUX_VERSION_CODE)
 #include <linux/device.h>
 #include <linux/pm_wakeup.h>
-#else
-#include <linux/wakelock.h>
-#endif
 #endif
 
-#if KERNEL_VERSION(2, 6, 12) < LINUX_VERSION_CODE
 #include <linux/irq.h>		/* IRQT_FALLING */
-#endif
 
 #include <linux/netdevice.h>	/* struct net_device, struct net_device_stats */
 #include <linux/etherdevice.h>	/* for eth_type_trans() function */
@@ -233,16 +227,10 @@
 #include <net/addrconf.h>
 #endif /* CFG_SUPPORT_PASSPOINT */
 
-#if KERNEL_VERSION(3, 8, 0) <= CFG80211_VERSION_CODE
 #include <uapi/linux/nl80211.h>
-#endif
 
 #ifdef UDP_SKT_WIFI
-#if (KERNEL_VERSION(4, 4, 0) <= CFG80211_VERSION_CODE)
 #include <linux/trace_events.h>
-#else
-#include <linux/ftrace_event.h>
-#endif
 #endif
 
 #include "gl_typedef.h"
@@ -274,9 +262,7 @@
 #endif
 #include <linux/time.h>
 #include <linux/fb.h>
-#if KERNEL_VERSION(5, 4, 0) <= CFG80211_VERSION_CODE
 #include "mtk_disp_notify.h"
-#endif
 
 #if CFG_SUPPORT_NAN
 #include "nan_base.h"
@@ -1333,11 +1319,7 @@ static inline u16 mtk_wlan_ndev_select_queue(
 	u16 queue_index = 0;
 
 	/* cfg80211_classify8021d returns 0~7 */
-#if KERNEL_VERSION(3, 14, 0) > CFG80211_VERSION_CODE
-	skb->priority = cfg80211_classify8021d(skb);
-#else
 	skb->priority = cfg80211_classify8021d(skb, NULL);
-#endif
 	queue_index = ieee8021d_to_queue[skb->priority];
 	if (is_critical_packet(dev, skb, queue_index)) {
 		skb->priority = WMM_UP_VO_INDEX;
@@ -1347,26 +1329,12 @@ static inline u16 mtk_wlan_ndev_select_queue(
 	return queue_index;
 }
 
-#if KERNEL_VERSION(2, 6, 34) > LINUX_VERSION_CODE
-#define netdev_for_each_mc_addr(mclist, dev) \
-	for (mclist = dev->mc_list; mclist; mclist = mclist->next)
-#endif
 
-#if KERNEL_VERSION(2, 6, 34) > LINUX_VERSION_CODE
-#define GET_ADDR(ha) (ha->da_addr)
-#else
 #define GET_ADDR(ha) (ha->addr)
-#endif
 
-#if KERNEL_VERSION(2, 6, 35) <= LINUX_VERSION_CODE
 #define LIST_FOR_EACH_IPV6_ADDR(_prIfa, _ip6_ptr) \
 	list_for_each_entry(_prIfa, &((struct inet6_dev *) \
 	_ip6_ptr)->addr_list, if_list)
-#else
-#define LIST_FOR_EACH_IPV6_ADDR(_prIfa, _ip6_ptr) \
-	for (_prIfa = ((struct inet6_dev *) _ip6_ptr)->addr_list; _prIfa; \
-	_prIfa = _prIfa->if_next)
-#endif
 
 /*******************************************************************************
  *                  F U N C T I O N   D E C L A R A T I O N S
@@ -1406,26 +1374,9 @@ void p2pSetMulticastListWorkQueueWrapper(struct GLUE_INFO
 #endif
 
 struct GLUE_INFO *wlanGetGlueInfo(void);
-#if KERNEL_VERSION(5, 4, 0) <= LINUX_VERSION_CODE
 u16 wlanSelectQueue(struct net_device *dev,
 		    struct sk_buff *skb,
 		    struct net_device *sb_dev);
-#elif KERNEL_VERSION(4, 19, 0) <= CFG80211_VERSION_CODE
-u16 wlanSelectQueue(struct net_device *dev,
-		struct sk_buff *skb,
-		struct net_device *sb_dev, select_queue_fallback_t fallback);
-#elif KERNEL_VERSION(3, 14, 0) <= CFG80211_VERSION_CODE
-u16 wlanSelectQueue(struct net_device *dev,
-		    struct sk_buff *skb,
-		    void *accel_priv, select_queue_fallback_t fallback);
-#elif KERNEL_VERSION(3, 13, 0) <= LINUX_VERSION_CODE
-u16 wlanSelectQueue(struct net_device *dev,
-		    struct sk_buff *skb,
-		    void *accel_priv);
-#else
-u16 wlanSelectQueue(struct net_device *dev,
-		    struct sk_buff *skb);
-#endif
 
 void wlanDebugInit(void);
 

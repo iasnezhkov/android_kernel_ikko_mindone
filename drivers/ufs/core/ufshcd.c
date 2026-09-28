@@ -1599,22 +1599,13 @@ static int ufshcd_devfreq_target(struct device *dev,
 	}
 
 	/* Decide based on the target or rounded-off frequency and update */
-	if (hba->use_pm_opp) {
+	if (hba->use_pm_opp)
 		scale_up = *freq > hba->clk_scaling.target_freq;
-	} else {
-		/*
-		 * MINDONE (F4251): on MediaTek the scaled clock is a mux whose max
-		 * parent does not deliver exactly max_freq (msdcpll_d2 runs at
-		 * 191999939 Hz while DT says 192000000), and clk_round_rate() above
-		 * returned that real rate. Comparing for equality never yielded
-		 * scale_up, so devfreq could never scale the clock up. Treat anything
-		 * closer to max_freq than to min_freq as "up" and normalise *freq to
-		 * the table value (otherwise devfreq cannot find it in the OPP table).
-		 */
-		scale_up = *freq > clki->min_freq +
-			   (clki->max_freq - clki->min_freq) / 2;
-		*freq = scale_up ? clki->max_freq : clki->min_freq;
-	}
+	else
+		scale_up = *freq == clki->max_freq;
+
+	if (!hba->use_pm_opp && !scale_up)
+		*freq = clki->min_freq;
 
 	/* Update the frequency */
 	if (!ufshcd_is_devfreq_scaling_required(hba, *freq, scale_up)) {
@@ -6053,6 +6044,7 @@ static int ufshcd_disable_auto_bkops(struct ufs_hba *hba)
 
 	hba->auto_bkops_enabled = false;
 	trace_ufshcd_auto_bkops_state(hba, "Disabled");
+	hba->urgent_bkops_lvl = BKOPS_STATUS_PERF_IMPACT;
 	hba->is_urgent_bkops_lvl_checked = false;
 out:
 	return err;
@@ -6157,7 +6149,7 @@ static void ufshcd_bkops_exception_event_handler(struct ufs_hba *hba)
 	 * impacted or critical. Handle these device by determining their urgent
 	 * bkops status at runtime.
 	 */
-	if (curr_status < BKOPS_STATUS_PERF_IMPACT) {
+	if ((curr_status > BKOPS_STATUS_NO_OP) && (curr_status < BKOPS_STATUS_PERF_IMPACT)) {
 		dev_err(hba->dev, "%s: device raised urgent BKOPS exception for bkops status %d\n",
 				__func__, curr_status);
 		/* update the current status as the urgent bkops level */

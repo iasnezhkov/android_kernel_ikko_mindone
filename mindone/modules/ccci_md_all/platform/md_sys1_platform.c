@@ -12,7 +12,7 @@
 #include <linux/of_irq.h>
 #include <linux/of_address.h>
 #include "ccci_config.h"
-#include "ccci_auxadc.h" /* MINDONE-MD-ADC */
+#include "ccci_auxadc.h"
 #include "ccci_common_config.h"
 #include <linux/clk.h>
 #ifdef USING_PM_RUNTIME
@@ -1378,7 +1378,7 @@ int md_cd_vcore_config(unsigned int md_id, unsigned int hold_req)
 	if (hold_req && is_hold == 0) {
 		vcore_reg_ref = devm_regulator_get(&md->plat_dev->dev, "dvfsrc-vcore");
 		if (IS_ERR(vcore_reg_ref)) {
-			pr_notice("%s: get regulator fail(%d)\n", __func__, PTR_ERR(vcore_reg_ref));
+			pr_notice("%s: get regulator fail(%ld)\n", __func__, PTR_ERR(vcore_reg_ref));
 			return PTR_ERR(vcore_reg_ref);
 		}
 		volt_cnt = regulator_count_voltages(vcore_reg_ref);
@@ -1903,11 +1903,10 @@ static int __init modem_cd_init(void)
 {
 	int ret;
 
-	/* MINDONE-MD-ADC 30.08 (F3132): register md_auxadc platform driver so ccci_get_adc_mV() is real (stock: 680mV => Phone) */
 	if (ccci_auxadc_init())
-		pr_notice("MINDONE-MD-ADC: ccci_auxadc_init failed\n");
+		pr_err("ccci: ccci_auxadc_init failed\n");
 	else
-		pr_notice("MINDONE-MD-ADC: auxadc registered, mV=%d\n", ccci_get_adc_mV());
+		pr_debug("ccci: auxadc registered, mV=%d\n", ccci_get_adc_mV());
 
 	ret = platform_driver_register(&ccci_modem_driver);
 	if (ret) {

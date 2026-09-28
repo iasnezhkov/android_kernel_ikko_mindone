@@ -89,7 +89,7 @@ static int thermal_of_populate_trip(struct device_node *np,
 		return ret;
 	}
 
-	trip->flags = THERMAL_TRIP_FLAG_RW;
+	trip->flags = THERMAL_TRIP_FLAG_RW_TEMP;
 	trace_android_vh_update_thermal_trip_flag(trip);
 
 	trip->priv = np;

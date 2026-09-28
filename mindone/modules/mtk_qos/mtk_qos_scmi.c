@@ -122,11 +122,6 @@ void qos_ipi_init(struct mtk_qos *qos)
 
 	_tinfo = get_scmi_tinysys_info();
 
-	/* F3703: without this check this was a kernel Oops, not a soft failure. On 6.12 the
-	 * scmi tinysys provider is not registered yet at this point and get_scmi_tinysys_info()
-	 * returns NULL; the next line dereferenced _tinfo->sdev->dev.of_node (pc:
-	 * qos_ipi_init+0x2c). On 6.1 it only worked because init order differs. Behave like
-	 * the regular failure branch below: mark the subsystem unavailable and bail out. */
 	if (!_tinfo || !_tinfo->sdev) {
 		pr_info("scmi tinysys info not ready, qos over scmi disabled\n");
 		qos_sspm_ready = -2;

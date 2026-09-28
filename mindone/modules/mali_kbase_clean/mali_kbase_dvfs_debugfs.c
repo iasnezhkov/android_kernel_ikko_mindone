@@ -77,11 +77,7 @@ static const struct file_operations kbasep_dvfs_utilization_debugfs_fops = {
 void kbase_dvfs_status_debugfs_init(struct kbase_device *kbdev)
 {
 	struct dentry *file;
-#if (KERNEL_VERSION(4, 7, 0) <= LINUX_VERSION_CODE)
 	const mode_t mode = 0444;
-#else
-	const mode_t mode = 0400;
-#endif
 
 	if (WARN_ON(!kbdev || IS_ERR_OR_NULL(kbdev->mali_debugfs_directory)))
 		return;

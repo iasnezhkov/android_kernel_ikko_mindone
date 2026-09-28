@@ -22,7 +22,6 @@
 #include <linux/of_device.h>
 #include <linux/of_irq.h>
 #include <linux/platform_device.h>
-#include <linux/pm_qos.h>//prize add by dengzhiyuan 20230801
 #include <linux/scatterlist.h>
 #include <linux/sched.h>
 #include <linux/slab.h>
@@ -306,7 +305,6 @@ struct mtk_i2c {
 	bool ctrl_data_hold;
 	struct mtk_i2c_ac_timing ac_timing;
 	const struct mtk_i2c_compatible *dev_comp;
-	struct pm_qos_request i2c_qos_request;//prize add by dengzhiyuan 20230801
 };
 
 /**
@@ -1475,9 +1473,6 @@ static int mtk_i2c_transfer(struct i2c_adapter *adap,
 	struct i2c_msg multi_msg[1];
 	struct mtk_i2c *i2c = i2c_get_adapdata(adap);
 
-	/* update qos to prevent deep idle during transfer */
-	cpu_latency_qos_update_request(&i2c->i2c_qos_request, 50);//prize add by dengzhiyuan 20230801
-
 	ret = mtk_i2c_clock_enable(i2c);
 	if (ret)
 		return ret;
@@ -1504,7 +1499,7 @@ static int mtk_i2c_transfer(struct i2c_adapter *adap,
 		if (i >= num - 1) {
 			i2c->op = I2C_MASTER_CONTINUOUS_WR;
 			j = 0;
-			dma_multi_wr_buf = kzalloc(msgs->len * num, GFP_KERNEL);
+			dma_multi_wr_buf = kcalloc(num, msgs->len, GFP_KERNEL);
 			if (!dma_multi_wr_buf) {
 				ret =  -ENOMEM;
 				goto err_exit;
@@ -1571,7 +1566,6 @@ static int mtk_i2c_transfer(struct i2c_adapter *adap,
 
 err_exit:
 	mtk_i2c_clock_disable(i2c);
-	cpu_latency_qos_update_request(&i2c->i2c_qos_request, PM_QOS_DEFAULT_VALUE);//prize add by dengzhiyuan 20230801
 	return ret;
 }
 
@@ -1727,7 +1721,6 @@ static int mtk_i2c_probe(struct platform_device *pdev)
 		clk = i2c->clk_pmic;
 	}
 
-	/* strlcpy was removed in 6.12; strscpy exists in both and the return value is unused here */
 	strscpy(i2c->adap.name, I2C_DRV_NAME, sizeof(i2c->adap.name));
 
 	if (i2c->ch_offset_i2c == I2C_OFFSET_SCP) {
@@ -1768,9 +1761,6 @@ static int mtk_i2c_probe(struct platform_device *pdev)
 	}
 	mtk_i2c_init_hw(i2c);
 	mtk_i2c_clock_disable(i2c);
-
-	/* register qos to prevent deep idle during transfer */
-	cpu_latency_qos_add_request(&i2c->i2c_qos_request, PM_QOS_DEFAULT_VALUE);//prize add by dengzhiyuan 20230801
 
 	ret = devm_request_irq(&pdev->dev, irq, mtk_i2c_irq,
 			       IRQF_NO_SUSPEND | IRQF_TRIGGER_NONE,

@@ -10,8 +10,6 @@
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
  * See http://www.gnu.org/licenses/gpl-2.0.html for more details.
  */
-
-#include <linux/version.h>
 #include <linux/module.h>
 
 #include <linux/kernel.h>
@@ -44,8 +42,6 @@
 
 #define HCIUARTSETPROTO        _IOW('U', 200, int)
 
-#define MAX(a, b)        ((a) > (b) ? (a) : (b))
-#define MIN(a, b)        ((a) < (b) ? (a) : (b))
 
 #define PFX                         "[UART] "
 #define UART_LOG_LOUD                 4
@@ -205,9 +201,6 @@ static INT32 stp_uart_tty_open(struct tty_struct *tty)
 	UART_PR_DBG("stp_uart_tty_opentty: %p\n", tty);
 
 	tty->receive_room = 65536;
-#if (LINUX_VERSION_CODE < KERNEL_VERSION(5, 15, 0))
-	tty->port->low_latency = 1;
-#endif
 
 	/* Flush any pending characters in the driver and line discipline. */
 
@@ -345,16 +338,8 @@ static VOID stp_uart_rx_handling(ULONG func_data)
 static VOID stp_uart_tty_receive(
 	struct tty_struct *tty,
 	const unsigned char *data,
-#if (LINUX_VERSION_CODE < KERNEL_VERSION(5, 15, 0))
-	PINT8 flags,
-	INT32 count)
-#elif (LINUX_VERSION_CODE < KERNEL_VERSION(6, 6, 0))
-	const char *flags,
-	INT32 count)
-#else
 	const unsigned char *flags,
 	size_t count)
-#endif
 {
 	UINT32 fifo_avail_len = LDISC_RX_FIFO_SIZE - kfifo_len(g_stp_uart_rx_fifo);
 	UINT32 how_much_put = 0;
@@ -370,11 +355,7 @@ static VOID stp_uart_tty_receive(
 /* write_lock(&g_stp_uart_rx_handling_lock); */
 	if (count > 2000) {
 		/*this is abnormal */
-#if (LINUX_VERSION_CODE < KERNEL_VERSION(6, 6, 0))
-		pr_info("abnormal: buffer count = %d\n", count);
-#else
 		pr_info("abnormal: buffer count = %zu\n", count);
-#endif
 	}
 	/*How much empty seat? */
 	if (fifo_avail_len > 0) {
@@ -509,26 +490,14 @@ static VOID stp_uart_rx_worker(struct work_struct *work)
 static VOID stp_uart_tty_receive(
 	struct tty_struct *tty,
 	const unsigned char *data,
-#if (LINUX_VERSION_CODE < KERNEL_VERSION(5, 15, 0))
-	PINT8 flags,
-	INT32 count)
-#elif (LINUX_VERSION_CODE < KERNEL_VERSION(6, 6, 0))
-	const char *flags,
-	INT32 count)
-#else
 	const unsigned char *flags,
 	size_t count)
-#endif
 {
 	UINT32 written;
 
 	/* UART_LOUD_FUNC("URX:%d\n", count); */
 	if (unlikely(count > 2000))
-#if (LINUX_VERSION_CODE < KERNEL_VERSION(6, 6, 0))
-		UART_PR_ERR("abnormal: buffer count = %d\n", count);
-#else
 		UART_PR_ERR("abnormal: buffer count = %lu\n", count);
-#endif
 
 	if (unlikely(!g_stp_uart_rx_fifo || !g_stp_uart_rx_work || !g_stp_uart_rx_wq)) {
 		UART_PR_ERR
@@ -555,16 +524,8 @@ static VOID stp_uart_tty_receive(
 static VOID stp_uart_tty_receive(
 	struct tty_struct *tty,
 	const unsigned char *data,
-#if (LINUX_VERSION_CODE < KERNEL_VERSION(5, 15, 0))
-	PINT8 flags,
-	INT32 count)
-#elif (LINUX_VERSION_CODE < KERNEL_VERSION(6, 6, 0))
-	const char *flags,
-	INT32 count)
-#else
 	const unsigned char *flags,
 	size_t count)
-#endif
 {
 
 #if 0
@@ -573,11 +534,7 @@ static VOID stp_uart_tty_receive(
 
 	if (count > 2000) {
 		/*this is abnormal */
-#if (LINUX_VERSION_CODE < KERNEL_VERSION(6, 6, 0))
-		UART_PR_WARN("abnormal: buffer count = %d\n", count);
-#else
 		UART_PR_WARN("abnormal: buffer count = %lu\n", count);
-#endif
 	}
 #if 0
 	{
@@ -621,28 +578,16 @@ static VOID stp_uart_tty_receive(
  *
  * Return Value:    Command dependent
  */
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 17, 0))
 static INT32 stp_uart_tty_ioctl(struct tty_struct *tty, UINT32 cmd, ULONG arg)
-#else
-static INT32 stp_uart_tty_ioctl(struct tty_struct *tty, struct file *file, UINT32 cmd, ULONG arg)
-#endif
 {
 	INT32 err = 0;
 
 	switch (cmd) {
 	case HCIUARTSETPROTO:
-#if (LINUX_VERSION_CODE < KERNEL_VERSION(5, 15, 0))
-		UART_PR_DBG("<!!> Set low_latency to TRUE <!!>\n");
-		tty->port->low_latency = 1;
-#endif
 		break;
 	default:
 		UART_PR_DBG("<!!> n_tty_ioctl_helper <!!>\n");
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 17, 0))
 		err = n_tty_ioctl_helper(tty, cmd, arg);
-#else
-		err = n_tty_ioctl_helper(tty, file, cmd, arg);
-#endif
 		break;
 	};
 
@@ -652,14 +597,9 @@ static INT32 stp_uart_tty_ioctl(struct tty_struct *tty, struct file *file, UINT3
 /*
  * We don't provide read/write/poll interface for user space.
  */
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 10, 21))
 static ssize_t stp_uart_tty_read(struct tty_struct *tty, struct file *file,
 				unsigned char *buf, size_t nr,
 				void **cookie, unsigned long offset)
-#else
-static ssize_t stp_uart_tty_read(struct tty_struct *tty, struct file *file,
-				unsigned char __user *buf, size_t nr)
-#endif
 {
 	return 0;
 }
@@ -816,9 +756,6 @@ static INT32 mtk_wcn_stp_uart_init(VOID)
 
 	/* Register the tty discipline */
 	memset(&stp_uart_ldisc, 0, sizeof(stp_uart_ldisc));
-#if (LINUX_VERSION_CODE < KERNEL_VERSION(5, 15, 0))
-	stp_uart_ldisc.magic = TTY_LDISC_MAGIC;
-#endif
 	stp_uart_ldisc.name = "n_mtkstp";
 	stp_uart_ldisc.open = stp_uart_tty_open;
 	stp_uart_ldisc.close = stp_uart_tty_close;
@@ -829,16 +766,9 @@ static INT32 mtk_wcn_stp_uart_init(VOID)
 	stp_uart_ldisc.receive_buf = stp_uart_tty_receive;
 	stp_uart_ldisc.write_wakeup = stp_uart_tty_wakeup;
 	stp_uart_ldisc.owner = THIS_MODULE;
-	/* MINDONE-NTTY 30.08 (F3207): on 6.1 the ldisc number comes from ops->num; without it
-	 * it's 0 = N_TTY, and n_mtkstp replaces the standard discipline for ALL new ttys
-	 * (pty slave read->0 -> rild EOF/TRM). */
 	stp_uart_ldisc.num = N_MTKSTP;
 
-#if (LINUX_VERSION_CODE < KERNEL_VERSION(5, 15, 0))
-	err = tty_register_ldisc(N_MTKSTP, &stp_uart_ldisc);
-#else
 	err = tty_register_ldisc(&stp_uart_ldisc);
-#endif
 	if (err) {
 		UART_PR_ERR("MTK STP line discipline registration failed. (%d)\n", err);
 		goto init_err;
@@ -875,20 +805,11 @@ init_err:
 
 static VOID mtk_wcn_stp_uart_exit(VOID)
 {
-#if (LINUX_VERSION_CODE < KERNEL_VERSION(5, 15, 0))
-	INT32 err;
-#endif
 
 	mtk_wcn_stp_register_if_tx(STP_UART_IF_TX, NULL);	/* unregister if_tx function */
 
 	/* Release tty registration of line discipline */
-#if (LINUX_VERSION_CODE < KERNEL_VERSION(5, 15, 0))
-	err = tty_unregister_ldisc(N_MTKSTP);
-	if (err)
-		UART_PR_ERR("Can't unregister MTK STP line discipline (%d)\n", err);
-#else
 	tty_unregister_ldisc(&stp_uart_ldisc);
-#endif
 
 
 #if (LDISC_RX == LDISC_RX_TASKLET)

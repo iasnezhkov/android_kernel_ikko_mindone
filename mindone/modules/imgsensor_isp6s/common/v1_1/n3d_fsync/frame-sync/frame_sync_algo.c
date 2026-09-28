@@ -134,7 +134,7 @@ calcLineTimeInNs(unsigned int pclk, unsigned int linelength)
 	val = (unsigned long long)linelength * 1000000 + ((pclk / 1000) - 1);
 	do_div(val, (pclk / 1000));
 
-	LOG_INF("lineTime(us):%u\n", val);
+	LOG_INF("lineTime(us):%llu\n", val);
 
 	return (unsigned int)val;
 }

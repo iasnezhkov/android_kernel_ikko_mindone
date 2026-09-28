@@ -35,10 +35,6 @@
 #include <linux/build_bug.h>
 #include <clk-fmeter.h>
 
-/* this include is made UNCONDITIONAL: MFD_MT6397 is disabled for us as a duplicate
-   (F410), but the mt6397_chip struct is needed regardless of that option -- the
-   stock mt6397.ko puts it in drvdata. The header itself is always present in the
-   kernel tree. */
 #include <linux/mfd/mt6397/core.h>
 
 #if IS_ENABLED(CONFIG_OF)
@@ -757,12 +753,6 @@ void wait_scp_dvfs_init_done(void)
 		if (count > 3000) {
 			pr_notice("SCP dvfs driver init fail\n");
 			WARN_ON(1);
-			/* MINDONE: time out and bail (F1020). Previously there was only a
-			 * warning here, and the loop kept going FOREVER: if the ready flag
-			 * was never set, the module-load thread hung forever and took the
-			 * whole debug session down with it (measured: without this module
-			 * the session lived 83s; loading it killed the connection instantly).
-			 * Now an init failure is an ordinary error, not a hang. */
 			return;
 		}
 	}
@@ -1877,39 +1867,11 @@ static void turn_onoff_ulposc2(enum ulposc_onoff_enum on, unsigned int is_init_d
 	udelay(50);
 }
 
-/* MINDONE: bisect stop points without rebuilding the module set.
- * 0 = normal operation; N > 0 = return right AFTER point N.
- * Check it took effect: /sys/module/scp/parameters/mindone_dvfs_stop
- */
-static int mindone_dvfs_stop;
-module_param(mindone_dvfs_stop, int, 0444);
-MODULE_PARM_DESC(mindone_dvfs_stop, "MINDONE: exit after point N (0=off)");
-/* MINDONE: skip ONLY the oscillator calibration, leaving the rest of the init alone,
- * so that confirming the culprit and moving forward can be told apart: with the skip the
- * boot must proceed to the next barrier instead of stopping at the probe exit.
- */
-static int mindone_skip_cali;
-module_param(mindone_skip_cali, int, 0444);
-MODULE_PARM_DESC(mindone_skip_cali, "MINDONE: skip ulposc calibration (1=skip)");
-
-#define MINDONE_CALI_STOP(n) do { \
-	pr_notice("MINDONE-CALI: point %d passed\n", (n)); \
-	if (mindone_dvfs_stop == (n)) { \
-		pr_notice("MINDONE-CALI: STOPPED at point %d\n", (n)); \
-		return 0; \
-	} \
-} while (0)
-
 static int mt_scp_dvfs_do_ulposc_cali_process(void)
 {
 	int ret = 0;
 	unsigned int i;
 	unsigned int is_init_done = 0;
-
-	if (mindone_skip_cali) {
-		pr_notice("MINDONE-CALI: skipped by module parameter\n");
-		return 0;
-	}
 
 	if (!dvfs.ulposc_hw.do_ulposc_cali) {
 		pr_notice("[%s]: ulposc2 calibration is not done by AP\n",
@@ -1919,7 +1881,6 @@ static int mt_scp_dvfs_do_ulposc_cali_process(void)
 
 	for (i = 0; i < dvfs.ulposc_hw.cali_nums; i++) {
 		turn_onoff_ulposc2(ULPOSC_OFF, is_init_done);
-		MINDONE_CALI_STOP(5);
 
 		ret += scp_reg_update(dvfs.ulposc_hw.ulposc_regmap,
 			&dvfs.ulposc_hw.ulposc_regs->_con0,
@@ -1936,10 +1897,8 @@ static int mt_scp_dvfs_do_ulposc_cali_process(void)
 			return ret;
 		}
 
-		MINDONE_CALI_STOP(6);
 
 		turn_onoff_ulposc2(ULPOSC_ON, is_init_done);
-		MINDONE_CALI_STOP(7);
 
 		if (dvfs.vlpck_support)
 			ret = ulposc_cali_process_vlp(i, &dvfs.ulposc_hw.cali_val_ext[i], &dvfs.ulposc_hw.cali_val[i]);
@@ -2755,15 +2714,6 @@ int scp_dvfs_feature_enable(void)
 
 /* NOT __init: the driver stays registered after module init, so a DEFERRED probe can
  * run after the init section is freed and jump into whatever reused that memory. */
-#define MINDONE_DVFS_STOP(n) do { \
-	pr_notice("MINDONE-DVFS: point %d passed\n", (n)); \
-	if (mindone_dvfs_stop == (n)) { \
-		pr_notice("MINDONE-DVFS: STOPPED at point %d\n", (n)); \
-		g_scp_dvfs_init_flag = 1; \
-		return 0; \
-	} \
-} while (0)
-
 static int mt_scp_dvfs_pdrv_probe(struct platform_device *pdev)
 {
 	int ret = 0;
@@ -2774,7 +2724,6 @@ static int mt_scp_dvfs_pdrv_probe(struct platform_device *pdev)
 			__func__, ret);
 		goto DTS_INIT_FAILED;
 	}
-	MINDONE_DVFS_STOP(1);
 
 	if (!scp_dvfs_feature_enable()) {
 		g_scp_dvfs_init_flag = 1;
@@ -2786,31 +2735,13 @@ static int mt_scp_dvfs_pdrv_probe(struct platform_device *pdev)
 	ret = mt_scp_dts_gpio_check(pdev);
 	if (ret)
 		goto GPIO_CHECK_FAILED;
-	MINDONE_DVFS_STOP(2);
 
 	/* init sshub */
 	if (!dvfs.vlp_support)
 		mt_pmic_sshub_init();
-	/* MINDONE: print what the calibration got as input BEFORE running it, because after
-	 * it the system used to die and the log never made it out (F3695). */
-	pr_notice("MINDONE-DVFS-IN: secure=%d vlp=%d vlpck=%d do_cali=%d cali_nums=%u\n",
-		dvfs.secure_access_scp, dvfs.vlp_support, dvfs.vlpck_support,
-		dvfs.ulposc_hw.do_ulposc_cali, dvfs.ulposc_hw.cali_nums);
-	pr_notice("MINDONE-DVFS-IN: clk_regmap=%p ulposc_regmap=%p fmeter_regmap=%p cali_configs=%p\n",
-		dvfs.clk_hw ? dvfs.clk_hw->scp_clk_regmap : NULL,
-		dvfs.ulposc_hw.ulposc_regmap, dvfs.ulposc_hw.fmeter_regmap,
-		dvfs.ulposc_hw.cali_configs);
-	if (dvfs.clk_hw)
-		pr_notice("MINDONE-DVFS-IN: high_en ofs=0x%x msk=0x%x bit=%u · ulposc2_en ofs=0x%x · ulposc2_cg ofs=0x%x\n",
-			dvfs.clk_hw->_clk_high_en.ofs, dvfs.clk_hw->_clk_high_en.msk,
-			dvfs.clk_hw->_clk_high_en.bit,
-			dvfs.clk_hw->_ulposc2_en.ofs, dvfs.clk_hw->_ulposc2_cg.ofs);
-	MINDONE_DVFS_STOP(3);
-
 	/* do ulposc calibration */
 	mt_scp_dvfs_do_ulposc_cali_process();
 	kfree(dvfs.ulposc_hw.cali_configs);
-	MINDONE_DVFS_STOP(4);
 
 	scp_suspend_lock = wakeup_source_register(NULL, "scp wakelock");
 

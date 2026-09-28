@@ -24,7 +24,6 @@
  */
 
 #include <linux/debugfs.h>
-#include <mindone/compat.h>
 #include <linux/dma-mapping.h>
 #include <linux/seq_file.h>
 #include <linux/kernel.h>
@@ -278,9 +277,7 @@ int kbase_device_misc_init(struct kbase_device * const kbdev)
 	 * is already allocated by the platform.
 	 */
 	if (kbdev->dev->dma_parms)
-		err = MINDONE_DMA_SET_MAX_SEG_SIZE(kbdev->dev, UINT_MAX);
-	if (err)
-		goto dma_set_mask_failed;
+		dma_set_max_seg_size(kbdev->dev, UINT_MAX);
 
 	kbdev->nr_hw_address_spaces = kbdev->gpu_props.num_address_spaces;
 
@@ -480,43 +477,31 @@ void kbase_device_put_list(const struct list_head *dev_list)
 }
 KBASE_EXPORT_TEST_API(kbase_device_put_list);
 
-extern void mindone_mali_mark(int step);
-extern int mindone_mali_nopwroff;
 
 int kbase_device_early_init(struct kbase_device *kbdev)
 {
 	int err;
 
-	mindone_mali_mark(300);
 	err = kbasep_platform_device_init(kbdev);
 	if (err)
 		return err;
 
-	mindone_mali_mark(301);
 	err = kbase_pm_runtime_init(kbdev);
 	if (err)
 		goto fail_runtime_pm;
 
 	/* Ensure we can access the GPU registers */
-	mindone_mali_mark(302);
 	kbase_pm_register_access_enable(kbdev);
 
 	/* Find out GPU properties based on the GPU feature registers */
-	mindone_mali_mark(303);
 	kbase_gpuprops_set(kbdev);
 
 	/* We're done accessing the GPU registers for now. */
-	mindone_mali_mark(304);
-	/* MINDONE: keep register access enabled (`mindone_mali_nopwroff=1`).
-	 * Tests the hypothesis of a DELAYED bus fault, arriving after power is already removed (F658).
-	 */
-	if (!mindone_mali_nopwroff)
-		kbase_pm_register_access_disable(kbdev);
+	kbase_pm_register_access_disable(kbdev);
 
 	/* This spinlock has to be initialized before installing interrupt
 	 * handlers that require to hold it to process interrupts.
 	 */
-	mindone_mali_mark(305);
 	spin_lock_init(&kbdev->hwaccess_lock);
 #ifdef CONFIG_MALI_ARBITER_SUPPORT
 	if (kbdev->arb.arb_if)
@@ -526,11 +511,9 @@ int kbase_device_early_init(struct kbase_device *kbdev)
 #else
 	err = kbase_install_interrupts(kbdev);
 #endif
-	mindone_mali_mark(306);
 	if (err)
 		goto fail_interrupts;
 
-	mindone_mali_mark(307);
 	return 0;
 
 fail_interrupts:

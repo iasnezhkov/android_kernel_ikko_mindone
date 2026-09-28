@@ -28,6 +28,7 @@
 
 #include <debug_kinfo.h>
 #include <mrdump.h>
+#include <mrdump_helper.h>
 #include <mt-plat/mboot_params.h>
 #include <mt-plat/mtk_system_reset.h>
 #include "mrdump_mini.h"
@@ -57,23 +58,21 @@ static void aee_exception_reboot(int reboot_reason)
 }
 
 
-#if defined(CONFIG_RANDOMIZE_BASE) && defined(CONFIG_ARM64)
 static inline void show_kaslr(void)
 {
-	u64 const kaslr_off = kaslr_offset();
+	unsigned long text = aee_get_text();
+	u64 kaslr_off;
 
+	if (!text) {
+		pr_notice("Kernel Offset: unknown\n");
+		return;
+	}
+	kaslr_off = text - KIMAGE_VADDR;
 	pr_notice("Kernel Offset: 0x%llx from 0x%lx\n",
 			kaslr_off, KIMAGE_VADDR);
 	pr_notice("PHYS_OFFSET: 0x%llx\n", PHYS_OFFSET);
 	aee_rr_rec_kaslr_offset(kaslr_off);
 }
-#else
-static inline void show_kaslr(void)
-{
-	pr_notice("Kernel Offset: disabled\n");
-	aee_rr_rec_kaslr_offset(0xd15ab1e);
-}
-#endif
 
 static char nested_panic_buf[1024];
 int aee_nested_printf(const char *fmt, ...)
@@ -107,6 +106,21 @@ static void check_last_ko(void)
 	}
 }
 
+static void mrdump_rec_exp_type(int reboot_mode)
+{
+	switch (reboot_mode) {
+	case AEE_REBOOT_MODE_HANG_DETECT:
+		aee_rr_rec_exp_type(AEE_EXP_TYPE_HANG_DETECT);
+		break;
+	case AEE_REBOOT_MODE_WDT:
+		aee_rr_rec_exp_type(AEE_EXP_TYPE_HWT);
+		break;
+	default:
+		aee_rr_rec_exp_type(AEE_EXP_TYPE_KE);
+		break;
+	}
+}
+
 static void mrdump_cblock_update(enum AEE_REBOOT_MODE reboot_mode,
 				 struct pt_regs *regs, const char *msg, ...)
 {
@@ -118,24 +132,7 @@ static void mrdump_cblock_update(enum AEE_REBOOT_MODE reboot_mode,
 
 	local_irq_disable();
 
-	switch (reboot_mode) {
-	case AEE_REBOOT_MODE_KERNEL_OOPS:
-		aee_rr_rec_exp_type(AEE_EXP_TYPE_KE);
-		break;
-	case AEE_REBOOT_MODE_KERNEL_PANIC:
-		aee_rr_rec_exp_type(AEE_EXP_TYPE_KE);
-		break;
-	case AEE_REBOOT_MODE_HANG_DETECT:
-		aee_rr_rec_exp_type(AEE_EXP_TYPE_HANG_DETECT);
-		break;
-	case AEE_REBOOT_MODE_WDT:
-		aee_rr_rec_exp_type(AEE_EXP_TYPE_HWT);
-		break;
-	default:
-		/* Don't print anything */
-		aee_rr_rec_exp_type(AEE_EXP_TYPE_KE);
-		break;
-	}
+	mrdump_rec_exp_type(reboot_mode);
 	if (mrdump_cblock) {
 		crash_record = &mrdump_cblock->crash_record;
 
@@ -182,9 +179,6 @@ EXPORT_SYMBOL_GPL(mrdump_regist_hang_bt);
 
 static int num_die;
 atomic_t first_cpu = ATOMIC_INIT(-1);
-/* MINDONE 30.08 (F3107/F3104): 1 = do nothing on die/panic so the kernel takes the plain
- * panic()->emergency_restart() path (WDT SW reset, DRAM preserved, ramoops console survives)
- * instead of aee_exception_reboot() (PSCI SYSTEM_RESET2 AEE/DDR-reserve -> LK wipes DRAM). */
 static int mindone_no_dump;
 module_param(mindone_no_dump, int, 0644);
 MODULE_PARM_DESC(mindone_no_dump, "MINDONE: 1 = bypass mrdump die/panic handling (plain panic, keep DRAM)");
@@ -197,6 +191,7 @@ int mrdump_common_die(int reboot_reason, const char *msg,
 	int cpu_tmp;
 
 	if (mindone_no_dump) {
+		mrdump_rec_exp_type(reboot_reason);
 		pr_notice("mrdump: MINDONE bypass (mindone_no_dump=1): %s, plain panic path\n", msg ? msg : "");
 		return NOTIFY_DONE;
 	}
@@ -238,16 +233,20 @@ int mrdump_common_die(int reboot_reason, const char *msg,
 		aee_rr_rec_fiq_step(AEE_FIQ_STEP_COMMON_DIE_START);
 		mrdump_cblock_update(reboot_reason, regs, msg);
 		mrdump_mini_ke_cpu_regs(regs);
+		fallthrough;
 	case AEE_FIQ_STEP_COMMON_DIE_LOCK:
 		aee_rr_rec_fiq_step(AEE_FIQ_STEP_COMMON_DIE_LOCK);
 		/* release locks after set up cblock */
 		aee_reinit_die_lock();
+		fallthrough;
 	case AEE_FIQ_STEP_COMMON_DIE_KASLR:
 		aee_rr_rec_fiq_step(AEE_FIQ_STEP_COMMON_DIE_KASLR);
 		show_kaslr();
+		fallthrough;
 	case AEE_FIQ_STEP_COMMON_DIE_SCP:
 		aee_rr_rec_fiq_step(AEE_FIQ_STEP_COMMON_DIE_SCP);
 		aee_rr_rec_scp();
+		fallthrough;
 	case AEE_FIQ_STEP_COMMON_DIE_TRACE:
 		aee_rr_rec_fiq_step(AEE_FIQ_STEP_COMMON_DIE_TRACE);
 		switch (reboot_reason) {
@@ -266,14 +265,18 @@ int mrdump_common_die(int reboot_reason, const char *msg,
 		}
 		if (p_show_task_info && !strcmp(current->comm, "llkd"))
 			p_show_task_info();
+		fallthrough;
 	case AEE_FIQ_STEP_COMMON_DIE_EMISC:
 		aee_rr_rec_fiq_step(AEE_FIQ_STEP_COMMON_DIE_EMISC);
 		mrdump_mini_add_extra_misc();
 		check_last_ko();
+		fallthrough;
 	case AEE_FIQ_STEP_COMMON_DIE_CS:
 		aee_rr_rec_fiq_step(AEE_FIQ_STEP_COMMON_DIE_CS);
+		fallthrough;
 	case AEE_FIQ_STEP_COMMON_DIE_DONE:
 		aee_rr_rec_fiq_step(AEE_FIQ_STEP_COMMON_DIE_DONE);
+		fallthrough;
 	default:
 		aee_nested_printf("num_die-%d, last_step-%d, next_step-%d\n",
 				  num_die, last_step, next_step);
@@ -346,8 +349,6 @@ static __init int mrdump_parse_chosen(struct mrdump_params *mparams)
 	return -1;
 }
 
-#ifdef CONFIG_MODULES
-/* Module notifier call back, update module info list */
 static int mrdump_module_callback(struct notifier_block *nb,
 				  unsigned long val, void *data)
 {
@@ -364,7 +365,6 @@ static int mrdump_module_callback(struct notifier_block *nb,
 static struct notifier_block mrdump_module_nb = {
 	.notifier_call = mrdump_module_callback,
 };
-#endif
 
 static int __init mrdump_panic_init(void)
 {
@@ -372,6 +372,7 @@ static int __init mrdump_panic_init(void)
 	struct device_node *rmem_node;
 	struct reserved_mem *rmem;
 	void *kinfo_vaddr;
+	int ret;
 
 	if (!aee_is_enable()) {
 		pr_notice("%s: ipanic: mrdump is disable\n", __func__);
@@ -400,49 +401,41 @@ static int __init mrdump_panic_init(void)
 	if (!kinfo_vaddr) {
 		pr_info("[mrdump] failed to map debug-kinfo\n");
 		return -ENOMEM;
-	} else {
-		memset(kinfo_vaddr, 0, sizeof(struct kernel_all_info));
-		rmem->priv = kinfo_vaddr;
-		pr_info("[mrdump] rmem->priv = %px\n", rmem->priv);
 	}
+	memset(kinfo_vaddr, 0, sizeof(struct kernel_all_info));
 
 	mrdump_parse_chosen(&mparams);
-#ifdef MODULE
 	mrdump_module_init_mboot_params();
-#endif
 	mrdump_cblock_init(&mparams);
 	if (mrdump_cblock == NULL) {
+		rmem->priv = kinfo_vaddr;
 		pr_notice("%s: MT-RAMDUMP no control block\n", __func__);
 		return -EINVAL;
 	}
 	mrdump_mini_init(&mparams);
-
-#ifdef MODULE
-	mrdump_mini_add_misc_pa((unsigned long)rmem->priv, rmem->base,
+	mrdump_mini_add_misc_pa((unsigned long)kinfo_vaddr, rmem->base,
 			rmem->size, 0, MRDUMP_MINI_MISC_LOAD);
-	mrdump_ka_init(rmem->priv);
-#endif
 
 	atomic_notifier_chain_register(&panic_notifier_list, &panic_blk);
 	register_die_notifier(&die_blk);
-#ifdef CONFIG_MODULES
 	register_module_notifier(&mrdump_module_nb);
-#endif
+
+	ret = mrdump_ka_init(kinfo_vaddr);
+	if (ret)
+		pr_err("[mrdump] no debug-kinfo notification: %d\n", ret);
+	rmem->priv = kinfo_vaddr;
 	pr_debug("ipanic: startup\n");
 	return 0;
 }
 
 arch_initcall(mrdump_panic_init);
 
-#ifdef MODULE
 static void __exit mrdump_panic_exit(void)
 {
-	atomic_notifier_chain_unregister(&panic_notifier_list, &panic_blk);
-	unregister_die_notifier(&die_blk);
-#ifdef CONFIG_MODULES
+	mrdump_ka_exit();
 	unregister_module_notifier(&mrdump_module_nb);
-#endif
+	unregister_die_notifier(&die_blk);
+	atomic_notifier_chain_unregister(&panic_notifier_list, &panic_blk);
 	pr_debug("ipanic: exit\n");
 }
 module_exit(mrdump_panic_exit);
-#endif

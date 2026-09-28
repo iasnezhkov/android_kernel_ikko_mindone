@@ -12,6 +12,11 @@
 #include "mtk_gpu_dvfs.h"
 #include <mtk_gpu_utility.h>
 
+#ifdef CONFIG_TRACE_POWER_GPU_FREQUENCY
+#include <trace/events/power_gpu_frequency.h>
+#else
+#include "mali_power_gpu_frequency_trace.h"
+#endif
 
 #if IS_ENABLED(CONFIG_MALI_MIDGARD_DVFS) && IS_ENABLED(CONFIG_MALI_MTK_DVFS_POLICY)
 static unsigned int current_util_active;
@@ -200,6 +205,8 @@ EXPORT_SYMBOL(mtk_common_rate_change_notify_fp);
 void MTKGPUFreq_change_notify(u32 clk_idx, u32 gpufreq)
 {
 	struct kbase_device *kbdev = (struct kbase_device *)mtk_common_get_kbdev();
+
+	trace_gpu_frequency(gpufreq, clk_idx);
 
 	if (mtk_common_rate_change_notify_fp && !IS_ERR_OR_NULL(kbdev))
 		mtk_common_rate_change_notify_fp(kbdev, clk_idx, gpufreq);

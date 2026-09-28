@@ -6,7 +6,6 @@
 #undef pr_fmt
 #define pr_fmt(fmt) "Task-Turbo: " fmt
 
-#include <mindone/compat.h>
 #include <linux/sched.h>
 #include <linux/module.h>
 #include <linux/printk.h>
@@ -38,14 +37,6 @@
 
 LIST_HEAD(hmp_domains);
 
-/*
- * k6 bring-up: struct rwsem_waiter ported verbatim from common61
- * kernel/locking/rwsem.c (private there in 6.1; was public in the vendor
- * tree's include/linux/rwsem.h). Same rationale as the struct rq port
- * (k6-schedh-port): probe_android_vh_alter_rwsem_list_add() below
- * receives a real struct rwsem_waiter * from the live rwsem implementation,
- * so this has to match its actual layout, not just compile.
- */
 enum rwsem_waiter_type {
 	RWSEM_WAITING_FOR_WRITE,
 	RWSEM_WAITING_FOR_READ
@@ -250,18 +241,6 @@ static void probe_android_rvh_rtmutex_prepare_setprio(void *ignore, struct task_
 	}
 }
 
-/* MINDONE: the signatures of two vendor hooks SWAPPED PLACES on 6.12 (07.09, F3877):
- *   6.1 : android_rvh_set_user_nice(p, nice, allowed) . android_rvh_set_user_nice_locked(p, nice)
- *   6.12: android_rvh_set_user_nice(p, nice)          . android_rvh_set_user_nice_locked(p, nice, allowed)
- * A handler with the old signature on 6.12 does not just get garbage arguments -- it gets
- * killed by the control flow integrity check: `CFI failure at
- * __traceiter_android_rvh_set_user_nice`, `Internal error: Oops - CFI`. The core this
- * happens on stops responding (`SMP: failed to stop secondary CPUs N`), and the boot hangs.
- *
- * The `allowed` veto is not lost on 6.12, because it is redundant there: the body below
- * rewrites `*nice` to a valid value BEFORE the kernel does its own range check, and the
- * 6.12 kernel itself clamps genuinely invalid values (`nice < MIN_NICE || nice > MAX_NICE`).
- */
 static void mindone_set_user_nice_body(struct task_struct *p, long *nice, bool *allowed)
 {
 	struct task_turbo_t *turbo_data;
@@ -291,20 +270,12 @@ static void mindone_set_user_nice_body(struct task_struct *p, long *nice, bool *
 	trace_sched_set_user_nice(p, *nice, is_turbo_task(p));
 }
 
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 12, 0)
 static void probe_android_rvh_set_user_nice(void *ignore, struct task_struct *p, long *nice)
 {
 	bool allowed_unused;
 
 	mindone_set_user_nice_body(p, nice, &allowed_unused);
 }
-#else
-static void probe_android_rvh_set_user_nice(void *ignore, struct task_struct *p, long *nice,
-					    bool *allowed)
-{
-	mindone_set_user_nice_body(p, nice, allowed);
-}
-#endif
 
 static void probe_android_rvh_setscheduler(void *ignore, struct task_struct *p)
 {
@@ -493,7 +464,7 @@ static unsigned long cpu_util_without(int cpu, struct task_struct *p)
 	 */
 	if (sched_feat(UTIL_EST)) {
 		unsigned int estimated =
-			READ_ONCE(MINDONE_UTIL_EST(&cfs_rq->avg));
+			READ_ONCE(((&cfs_rq->avg)->util_est));
 
 		/*
 		 * Despite the following checks we still have a small window
@@ -523,7 +494,7 @@ static unsigned long cpu_util_without(int cpu, struct task_struct *p)
 	 * clamp to the maximum CPU capacity to ensure consistency with
 	 * the cpu_util call.
 	 */
-	return min_t(unsigned long, util, MINDONE_CAPACITY_ORIG_OF(cpu));
+	return min_t(unsigned long, util, arch_scale_cpu_capacity(cpu));
 }
 
 static inline unsigned long cpu_util(int cpu)
@@ -535,9 +506,9 @@ static inline unsigned long cpu_util(int cpu)
 	util = READ_ONCE(cfs_rq->avg.util_avg);
 
 	if (sched_feat(UTIL_EST))
-		util = max(util, READ_ONCE(MINDONE_UTIL_EST(&cfs_rq->avg)));
+		util = max(util, READ_ONCE(((&cfs_rq->avg)->util_est)));
 
-	return min_t(unsigned long, util, MINDONE_CAPACITY_ORIG_OF(cpu));
+	return min_t(unsigned long, util, arch_scale_cpu_capacity(cpu));
 }
 
 static inline unsigned long task_util(struct task_struct *p)
@@ -547,7 +518,7 @@ static inline unsigned long task_util(struct task_struct *p)
 
 static inline unsigned long _task_util_est(struct task_struct *p)
 {
-	return MINDONE_TASK_UTIL_EST(p);
+	return READ_ONCE(p->se.avg.util_est) & ~UTIL_AVG_UNCHANGED;
 }
 
 int find_best_turbo_cpu(struct task_struct *p)
@@ -626,14 +597,6 @@ int select_turbo_cpu(struct task_struct *p)
 static void turbo_set_load_weight(struct task_struct *p, bool update_load)
 {
 	int prio = p->static_prio - MAX_RT_PRIO;
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 9, 0)
-	/* 6.9+ moved weight recomputation into the scheduler class method: the free-standing
-	 * reweight_task() function is gone, and the kernel's set_load_weight() is not exported
-	 * to modules. Below is a verbatim repeat of kernel/sched/core.c:set_load_weight() from
-	 * the 6.12 kernel, including the branch order: the weight is first computed into a
-	 * local struct, and only then either handed to the class or assigned directly.
-	 * Order matters: the old 6.1 code wrote the weight straight into p->se.load BEFORE the
-	 * call, and on 6.12 that would double-count the load. */
 	struct load_weight lw;
 
 	if (task_has_idle_policy(p)) {
@@ -648,29 +611,6 @@ static void turbo_set_load_weight(struct task_struct *p, bool update_load)
 		p->sched_class->reweight_task(task_rq(p), p, &lw);
 	else
 		p->se.load = lw;
-#else
-	struct load_weight *load = &p->se.load;
-
-	/*
-	 * SCHED_IDLE tasks get minimal weight:
-	 */
-	if (task_has_idle_policy(p)) {
-		load->weight = scale_load(WEIGHT_IDLEPRIO);
-		load->inv_weight = WMULT_IDLEPRIO;
-		return;
-	}
-
-	/*
-	 * SCHED_OTHER tasks have to update their load when changing their
-	 * weight
-	 */
-	if (update_load && p->sched_class == &fair_sched_class) {
-		reweight_task(p, prio);
-	} else {
-		load->weight = scale_load(sched_prio_to_weight[prio]);
-		load->inv_weight = sched_prio_to_wmult[prio];
-	}
-#endif
 }
 
 int idle_cpu(int cpu)
@@ -1245,15 +1185,6 @@ static void remove_turbo_list(struct task_struct *p)
 	spin_unlock(&TURBO_SPIN_LOCK);
 }
 
-/* MINDONE: the second hook with a mismatched signature (F3877). 6.12 added a cgroup and a
- * threadgroup flag to it: (int ret, struct cgroup *cgrp, struct task_struct *task,
- * bool threadgroup) versus (int ret, struct task_struct *task) on 6.1. This does not
- * break the build -- the handler is registered through a macro and types are not checked
- * at compile time -- but on the very first call the control flow integrity check kills
- * the CPU core. Found by combing through ALL 48 vendor hooks that our modules register,
- * not from an observed crash.
- * The body does not depend on the new arguments, so a correct wrapper is enough.
- */
 static void mindone_cgroup_set_task_body(int ret, struct task_struct *p)
 {
 	struct task_turbo_t *turbo_data;
@@ -1272,18 +1203,11 @@ static void mindone_cgroup_set_task_body(int ret, struct task_struct *p)
 	}
 }
 
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 12, 0)
 static void probe_android_vh_cgroup_set_task(void *ignore, int ret, struct cgroup *cgrp,
 					     struct task_struct *p, bool threadgroup)
 {
 	mindone_cgroup_set_task_body(ret, p);
 }
-#else
-static void probe_android_vh_cgroup_set_task(void *ignore, int ret, struct task_struct *p)
-{
-	mindone_cgroup_set_task_body(ret, p);
-}
-#endif
 
 static void probe_android_vh_syscall_prctl_finished(void *ignore, int option, struct task_struct *p)
 {

@@ -1141,7 +1141,7 @@ void mtk_dsc_dump(struct mtk_ddp_comp *comp)
 	int i, id = 0, offset = 0;
 
 DUMP:
-	DDPDUMP("== %s REGS:0x%x ==\n", mtk_dump_comp_str(comp), comp->regs_pa + offset);
+	DDPDUMP("== %s REGS:0x%llx ==\n", mtk_dump_comp_str(comp), comp->regs_pa + offset);
 	DDPDUMP("(0x%03x)DSC_START=0x%x\n", offset + DISP_REG_DSC_CON,
 		readl(baddr + DISP_REG_DSC_CON));
 	DDPDUMP("(0x%03x)DSC_SLICE_WIDTH=0x%x\n", offset + DISP_REG_DSC_SLICE_W,

@@ -43,11 +43,7 @@
 #include "wmt_plat.h"
 #include "stp_dbg.h"
 
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 10, 0))
 #include <soc/mediatek/emi.h>
-#else
-#include <memory/mediatek/emi.h>
-#endif
 
 #if CONSYS_PMIC_CTRL_ENABLE
 #include <linux/regulator/consumer.h>

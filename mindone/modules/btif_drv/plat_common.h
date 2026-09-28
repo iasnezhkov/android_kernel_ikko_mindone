@@ -7,7 +7,6 @@
 #define __HAL_PUB_H_
 
 #include <linux/kernel.h>
-#include <linux/version.h>
 #include <linux/types.h>
 #include <linux/delay.h>
 #include <linux/irq.h>

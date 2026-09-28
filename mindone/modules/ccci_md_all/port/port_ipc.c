@@ -361,7 +361,7 @@ static int send_new_time_to_md_before_6295(int md_id, int tz)
 	memcpy(in_ilm.local_para_ptr->data, timeinfo, 16);
 
 	CCCI_DEBUG_LOG(md_id, IPC,
-		"Update time(R): [sec=0x%lx][timezone=0x%08x][des=0x%08x]\n",
+		"Update time(R): [sec=0x%llx][timezone=0x%08x][des=0x%08x]\n",
 		tv.tv_sec, sys_tz.tz_minuteswest, sys_tz.tz_dsttime);
 	CCCI_DEBUG_LOG(md_id, IPC,
 		"Update time(A): [L:0x%08x][H:0x%08x][0x%08x][0x%08x]\n",

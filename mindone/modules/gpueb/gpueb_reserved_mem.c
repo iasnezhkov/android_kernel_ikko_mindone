@@ -187,6 +187,8 @@ int gpueb_reserved_mem_init(struct platform_device *pdev)
 	}
 
 	gpueb_reserve_mblock_ary = vzalloc(sizeof(struct gpueb_reserve_mblock) * gpueb_mem_num);
+	if (!gpueb_reserve_mblock_ary)
+		return -ENOMEM;
 
 	for (i = 0; i < gpueb_mem_num; i++) {
 		// Get reserved block's ID
@@ -198,7 +200,6 @@ int gpueb_reserved_mem_init(struct platform_device *pdev)
 			gpueb_pr_debug("@%s: Cannot get memory index(%d)\n", __func__, i);
 			return -1;
 		}
-		gpueb_reserve_mblock_ary[m_idx].num = m_idx;
 
 		// Get reserved block's size
 		ret = of_property_read_u32_index(pdev->dev.of_node,
@@ -215,6 +216,7 @@ int gpueb_reserved_mem_init(struct platform_device *pdev)
 			continue;
 		}
 
+		gpueb_reserve_mblock_ary[m_idx].num = m_idx;
 		gpueb_reserve_mblock_ary[m_idx].size = m_size;
 		gpueb_pr_debug("@%s: Reserved block <%d  %d>\n", __func__, m_idx, m_size);
 	}

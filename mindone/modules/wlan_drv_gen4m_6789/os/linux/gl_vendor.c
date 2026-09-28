@@ -76,7 +76,6 @@
 #include "gl_vendor.h"
 #include "wlan_oid.h"
 
-#if KERNEL_VERSION(3, 16, 0) <= LINUX_VERSION_CODE
 
 /*******************************************************************************
  *                              C O N S T A N T S
@@ -117,31 +116,13 @@ const struct nla_policy qca_wlan_vendor_attr_policy[
 const struct nla_policy nla_parse_wifi_attribute[
 	WIFI_ATTRIBUTE_MAX + 1] = {
 	[WIFI_ATTRIBUTE_BAND] = {.type = NLA_U32},
-#if KERNEL_VERSION(5, 9, 0) <= CFG80211_VERSION_CODE
 	[WIFI_ATTRIBUTE_PNO_RANDOM_MAC_OUI] = NLA_POLICY_MIN_LEN(0),
-#elif KERNEL_VERSION(5, 4, 0) <= CFG80211_VERSION_CODE
-	[WIFI_ATTRIBUTE_PNO_RANDOM_MAC_OUI] = {.type = NLA_MIN_LEN, .len = 0 },
-#else
-	[WIFI_ATTRIBUTE_PNO_RANDOM_MAC_OUI] = {.type = NLA_BINARY},
-#endif
 	[WIFI_ATTRIBUTE_COUNTRY_CODE] = {.type = NLA_STRING},
 	[WIFI_ATTRIBUTE_ROAMING_BLACKLIST_NUM] = {.type = NLA_U32},
-#if KERNEL_VERSION(5, 9, 0) <= CFG80211_VERSION_CODE
 	[WIFI_ATTRIBUTE_ROAMING_BLACKLIST_BSSID] =
 		NLA_POLICY_EXACT_LEN_WARN(MAC_ADDR_LEN),
-#else
-	[WIFI_ATTRIBUTE_ROAMING_BLACKLIST_BSSID] = {
-		.type = NLA_BINARY, .len = MAC_ADDR_LEN},
-#endif
 	[WIFI_ATTRIBUTE_ROAMING_WHITELIST_NUM] = {.type = NLA_U32},
-#if KERNEL_VERSION(5, 9, 0) <= CFG80211_VERSION_CODE
 	[WIFI_ATTRIBUTE_ROAMING_WHITELIST_SSID] = NLA_POLICY_MIN_LEN(0),
-#elif KERNEL_VERSION(5, 4, 0) <= CFG80211_VERSION_CODE
-	[WIFI_ATTRIBUTE_ROAMING_WHITELIST_SSID] = {
-		.type = NLA_MIN_LEN, .len = 0 },
-#else
-	[WIFI_ATTRIBUTE_ROAMING_WHITELIST_SSID] = {.type = NLA_BINARY},
-#endif
 	[WIFI_ATTRIBUTE_ROAMING_STATE] = {.type = NLA_U32},
 	[WIFI_ATTRIBUTE_TX_POWER_SCENARIO] = {.type = NLA_U32},
 };
@@ -161,16 +142,8 @@ const struct nla_policy nla_parse_wifi_rssi_monitor[
 
 const struct nla_policy nla_get_version_policy[
 		LOGGER_ATTRIBUTE_MAX + 1] = {
-#if KERNEL_VERSION(5, 9, 0) <= CFG80211_VERSION_CODE
 	[LOGGER_ATTRIBUTE_DRIVER_VER] = NLA_POLICY_MIN_LEN(0),
 	[LOGGER_ATTRIBUTE_FW_VER] = NLA_POLICY_MIN_LEN(0),
-#elif KERNEL_VERSION(5, 4, 0) <= CFG80211_VERSION_CODE
-	[LOGGER_ATTRIBUTE_DRIVER_VER] = { .type = NLA_MIN_LEN, .len = 0 },
-	[LOGGER_ATTRIBUTE_FW_VER] = { .type = NLA_MIN_LEN, .len = 0 },
-#else
-	[LOGGER_ATTRIBUTE_DRIVER_VER] = { .type = NLA_UNSPEC },
-	[LOGGER_ATTRIBUTE_FW_VER] = { .type = NLA_UNSPEC },
-#endif
 };
 
 const struct nla_policy nla_parse_offloading_policy[
@@ -178,26 +151,17 @@ const struct nla_policy nla_parse_offloading_policy[
 	[MKEEP_ALIVE_ATTRIBUTE_ID] = {.type = NLA_U8},
 	[MKEEP_ALIVE_ATTRIBUTE_IP_PKT] = {.type = NLA_BINARY},
 	[MKEEP_ALIVE_ATTRIBUTE_IP_PKT_LEN] = {.type = NLA_U16},
-#if KERNEL_VERSION(5, 9, 0) <= CFG80211_VERSION_CODE
 	[MKEEP_ALIVE_ATTRIBUTE_SRC_MAC_ADDR] =
 		NLA_POLICY_EXACT_LEN_WARN(MAC_ADDR_LEN),
 	[MKEEP_ALIVE_ATTRIBUTE_DST_MAC_ADDR] =
 		NLA_POLICY_EXACT_LEN_WARN(MAC_ADDR_LEN),
-#else
-	[MKEEP_ALIVE_ATTRIBUTE_SRC_MAC_ADDR] = {
-		.type = NLA_BINARY, .len = MAC_ADDR_LEN},
-	[MKEEP_ALIVE_ATTRIBUTE_DST_MAC_ADDR] = {
-		.type = NLA_BINARY, .len = MAC_ADDR_LEN},
-#endif
 	[MKEEP_ALIVE_ATTRIBUTE_PERIOD_MSEC] = {.type = NLA_U32},
 };
 
 const struct nla_policy nla_get_preferred_freq_list_policy[
 		WIFI_VENDOR_ATTR_PREFERRED_FREQ_LIST_MAX + 1] = {
 	[WIFI_VENDOR_ATTR_PREFERRED_FREQ_LIST_IFACE_TYPE] = {.type = NLA_U32},
-#if KERNEL_VERSION(5, 9, 0) <= CFG80211_VERSION_CODE
 	[WIFI_VENDOR_ATTR_PREFERRED_FREQ_LIST_GET] = NLA_POLICY_MIN_LEN(0),
-#endif
 };
 
 const struct nla_policy nla_get_acs_policy[
@@ -207,29 +171,15 @@ const struct nla_policy nla_get_acs_policy[
 	[WIFI_VENDOR_ATTR_ACS_HT40_ENABLED] = { .type = NLA_FLAG },
 	[WIFI_VENDOR_ATTR_ACS_VHT_ENABLED] = { .type = NLA_FLAG },
 	[WIFI_VENDOR_ATTR_ACS_CHWIDTH] = { .type = NLA_U16 },
-#if KERNEL_VERSION(5, 9, 0) <= CFG80211_VERSION_CODE
 	[WIFI_VENDOR_ATTR_ACS_CH_LIST] = NLA_POLICY_MIN_LEN(0),
 	[WIFI_VENDOR_ATTR_ACS_FREQ_LIST] = NLA_POLICY_MIN_LEN(0),
-#elif KERNEL_VERSION(5, 4, 0) <= CFG80211_VERSION_CODE
-	[WIFI_VENDOR_ATTR_ACS_CH_LIST] = { .type = NLA_MIN_LEN, .len = 0 },
-	[WIFI_VENDOR_ATTR_ACS_FREQ_LIST] = { .type = NLA_MIN_LEN, .len = 0 },
-#else
-	[WIFI_VENDOR_ATTR_ACS_CH_LIST] = { .type = NLA_UNSPEC },
-	[WIFI_VENDOR_ATTR_ACS_FREQ_LIST] = { .type = NLA_UNSPEC },
-#endif
 };
 
 const struct nla_policy nla_get_apf_policy[
 		APF_ATTRIBUTE_MAX + 1] = {
 	[APF_ATTRIBUTE_VERSION] = {.type = NLA_U32},
 	[APF_ATTRIBUTE_MAX_LEN] = {.type = NLA_U32},
-#if KERNEL_VERSION(5, 9, 0) <= CFG80211_VERSION_CODE
 	[APF_ATTRIBUTE_PROGRAM] = NLA_POLICY_MIN_LEN(0),
-#elif KERNEL_VERSION(5, 4, 0) <= CFG80211_VERSION_CODE
-	[APF_ATTRIBUTE_PROGRAM] = {.type = NLA_MIN_LEN, .len = 0},
-#else
-	[APF_ATTRIBUTE_PROGRAM] = {.type = NLA_UNSPEC},
-#endif
 	[APF_ATTRIBUTE_PROGRAM_LEN] = {.type = NLA_U32},
 };
 
@@ -2039,9 +1989,7 @@ int mtk_cfg80211_vendor_event_generic_response(
 	}
 
 	skb = cfg80211_vendor_event_alloc(wiphy,
-#if KERNEL_VERSION(4, 4, 0) <= CFG80211_VERSION_CODE
 			wdev,
-#endif
 			len, WIFI_EVENT_GENERIC_RESPONSE, GFP_KERNEL);
 	if (!skb) {
 		DBGLOG(REQ, ERROR, "%s allocate skb failed\n", __func__);
@@ -2120,15 +2068,9 @@ int mtk_cfg80211_vendor_event_rssi_beyond_range(
 	kalMemZero(&rRSSIEvt,
 		   sizeof(struct PARAM_RSSI_MONITOR_EVENT));
 
-#if KERNEL_VERSION(4, 4, 0) <= LINUX_VERSION_CODE
 	skb = cfg80211_vendor_event_alloc(wiphy, wdev,
 				  sizeof(struct PARAM_RSSI_MONITOR_EVENT),
 				  WIFI_EVENT_RSSI_MONITOR, GFP_KERNEL);
-#else
-	skb = cfg80211_vendor_event_alloc(wiphy,
-				  sizeof(struct PARAM_RSSI_MONITOR_EVENT),
-				  WIFI_EVENT_RSSI_MONITOR, GFP_KERNEL);
-#endif /* KERNEL_VERSION(4, 4, 0) <= LINUX_VERSION_CODE */
 
 	if (!skb) {
 		DBGLOG(REQ, ERROR, "%s allocate skb failed\n", __func__);
@@ -3230,7 +3172,6 @@ err_handle_label:
 	return i4Status;
 }
 
-#endif /* KERNEL_VERSION(3, 16, 0) <= LINUX_VERSION_CODE */
 
 /*----------------------------------------------------------------------------*/
 /*!
@@ -3295,9 +3236,7 @@ int mtk_cfg80211_vendor_event_reset_triggered(
 			wdev->netdev->name, data);
 
 	skb = cfg80211_vendor_event_alloc(wiphy,
-#if KERNEL_VERSION(4, 4, 0) <= CFG80211_VERSION_CODE
 			wdev,
-#endif
 			sizeof(uint32_t),
 			WIFI_EVENT_RESET_TRIGGERED,
 			GFP_KERNEL);

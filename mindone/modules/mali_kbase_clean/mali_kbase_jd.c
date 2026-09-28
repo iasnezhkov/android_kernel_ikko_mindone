@@ -25,7 +25,6 @@
 #endif
 #include <mali_kbase.h>
 #include <linux/random.h>
-#include <linux/version.h>
 #include <linux/ratelimit.h>
 #include <linux/priority_control_manager.h>
 #include <linux/sched/signal.h>
@@ -240,11 +239,7 @@ static int kbase_jd_pre_external_resources(struct kbase_jd_atom *katom, const st
 	if (implicit_sync) {
 		info.resv_objs =
 			kmalloc_array(katom->nr_extres,
-#if (KERNEL_VERSION(5, 4, 0) > LINUX_VERSION_CODE)
-				      sizeof(struct reservation_object *),
-#else
 				      sizeof(struct dma_resv *),
-#endif
 				      GFP_KERNEL);
 		if (!info.resv_objs) {
 			err = -ENOMEM;
@@ -301,11 +296,7 @@ static int kbase_jd_pre_external_resources(struct kbase_jd_atom *katom, const st
 #ifdef CONFIG_MALI_DMA_FENCE
 		if (implicit_sync &&
 		    reg->gpu_alloc->type == KBASE_MEM_TYPE_IMPORTED_UMM) {
-#if (KERNEL_VERSION(5, 4, 0) > LINUX_VERSION_CODE)
-			struct reservation_object *resv;
-#else
 			struct dma_resv *resv;
-#endif
 			resv = reg->gpu_alloc->imported.umm.dma_buf->resv;
 			if (resv)
 				kbase_dma_fence_add_reservation(resv, &info,
@@ -891,11 +882,7 @@ static bool jd_submit_atom(struct kbase_context *const kctx,
 	 */
 	jctx->job_nr++;
 
-#if KERNEL_VERSION(4, 10, 0) > LINUX_VERSION_CODE
-	katom->start_timestamp.tv64 = 0;
-#else
 	katom->start_timestamp = 0;
-#endif
 	katom->udata = user_atom->udata;
 	katom->kctx = kctx;
 	katom->nr_extres = user_atom->nr_extres;
@@ -1214,41 +1201,7 @@ static bool jd_submit_atom(struct kbase_context *const kctx,
 	return jd_done_nolock(katom, NULL);
 }
 
-static atomic_t mindone_mj_n_submit = ATOMIC_INIT(0);
-/* F820 follow-up: head+sampling instead of "first 40 and stop", same technique
- * as the ioctl dispatcher (mali_kbase_core_linux.c) - keeps it from losing the
- * tail if submit suddenly gets frequent (currently 0/40, the next debugging
- * goal is exactly to reach the first submit).
- */
-#define MINDONE_MJ_HEAD_SUBMIT 100
-#define MINDONE_MJ_K_SUBMIT 16
-static inline bool mindone_mj_log_submit(void)
-{
-	long n = atomic_inc_return(&mindone_mj_n_submit);
-
-	return (n <= MINDONE_MJ_HEAD_SUBMIT) || (n % MINDONE_MJ_K_SUBMIT == 0);
-}
-
-static int kbase_jd_submit_impl(struct kbase_context *kctx,
-		void __user *user_addr, u32 nr_atoms, u32 stride,
-		bool uk6_atom);
-
 int kbase_jd_submit(struct kbase_context *kctx,
-		void __user *user_addr, u32 nr_atoms, u32 stride,
-		bool uk6_atom)
-{
-	bool __mj_log = mindone_mj_log_submit();
-	int __mj_ret;
-
-	if (__mj_log)
-		;
-	__mj_ret = kbase_jd_submit_impl(kctx, user_addr, nr_atoms, stride, uk6_atom);
-	if (__mj_log)
-		;
-	return __mj_ret;
-}
-
-static int kbase_jd_submit_impl(struct kbase_context *kctx,
 		void __user *user_addr, u32 nr_atoms, u32 stride,
 		bool uk6_atom)
 {
@@ -1275,11 +1228,6 @@ static int kbase_jd_submit_impl(struct kbase_context *kctx,
 		return -EINVAL;
 	}
 
-/* MINDONE-STRIDE72: this device's userspace library is built with the `frame_nr`
- * field (CONFIG_MALI_MTK_GPU_BM_JM), so it sends a record 8 bytes longer. The
- * field is last and every other offset matches - accept the size and do NOT
- * read the tail. We do not enable bandwidth accounting itself: boot dies with it.
- */
 #define MINDONE_STRIDE_BM (sizeof(struct base_jd_atom) + 8)
 	if (stride != offsetof(struct base_jd_atom_v2, renderpass_id) &&
 		stride != sizeof(struct base_jd_atom_v2) &&
@@ -1318,9 +1266,6 @@ static int kbase_jd_submit_impl(struct kbase_context *kctx,
 			/* no seq_nr in v2 */
 			user_atom.seq_nr = 0;
 		} else {
-			/* MINDONE-STRIDE72: copy NO MORE than the size of our struct -
-			 * otherwise an out-of-bounds stack write happens at stride=72.
-			 */
 			if (copy_from_user(&user_atom, user_addr,
 					min_t(size_t, (size_t)stride, sizeof(user_atom))) != 0) {
 				dev_vdbg(kbdev->dev,

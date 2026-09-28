@@ -490,6 +490,7 @@ static int venc_set_param(unsigned long handle,
 			inst->vsi->config.profile = enc_prm->profile;
 			inst->vsi->config.level = enc_prm->level;
 		} else if (fmt == V4L2_PIX_FMT_H265 ||
+				fmt == V4L2_PIX_FMT_HEVC ||
 				fmt == V4L2_PIX_FMT_HEIF) {
 			inst->vsi->config.profile =
 				venc_h265_get_profile(inst, enc_prm->profile);

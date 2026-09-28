@@ -4,7 +4,6 @@
  */
 
 #include <drm/drm_framebuffer.h>
-#include <mindone/compat.h>
 #include <linux/vmalloc.h>
 #include <drm/drm_fourcc.h>
 #include <linux/string.h>
@@ -186,7 +185,7 @@ void polling_rdma_output_line_is_not_zero(void)
 	if (!comp || !comp->mtk_crtc ||
 			pm_penpd_status == GENPD_NOTIFY_PRE_OFF ||
 			pm_penpd_status == GENPD_NOTIFY_OFF) {
-		DDPDBG("%s DISP power status:%d\n",
+		DDPDBG("%s DISP power status:%lu\n",
 			__func__, pm_penpd_status);
 		return;
 	}
@@ -314,11 +313,6 @@ static char *_logger_pr_type_spy(enum DPREC_LOGGER_PR_TYPE type)
 
 static void init_log_buffer(void)
 {
-#if IS_ENABLED(CONFIG_DEBUG_FS)
-	unsigned long va;
-	unsigned long pa;
-	unsigned long size;
-#endif
 	int i, buf_size, buf_idx;
 	char *temp_buf;
 
@@ -381,13 +375,6 @@ static void init_log_buffer(void)
 	dprec_logger_buffer[4].buffer_ptr = status_buffer;
 
 	is_buffer_init = true;
-#if IS_ENABLED(CONFIG_DEBUG_FS)
-	va = (unsigned long)err_buffer[0];
-	pa = __pa_nodebug(va);
-	size = (DEBUG_BUFFER_SIZE - 4096);
-
-	MINDONE_MRDUMP_MINI_ADD_EXTRA_FILE(va, pa, size, "DISPLAY");
-#endif
 	DDPINFO("[DISP]%s success\n", __func__);
 	return;
 err:
@@ -1683,7 +1670,7 @@ int mtk_dprec_mmp_dump_cwb_buffer(struct drm_crtc *crtc,
 static void user_copy_done_function(void *buffer,
 	enum CWB_BUFFER_TYPE type)
 {
-	DDPMSG("[capture] I get buffer:0x%x, type:%d\n",
+	DDPMSG("[capture] I get buffer:%p, type:%d\n",
 			buffer, type);
 	complete(&cwb_cmp);
 }
@@ -1989,7 +1976,7 @@ bool mtk_drm_set_cwb_user_buf(void *user_buffer, enum CWB_BUFFER_TYPE type)
 	cwb_info->type = type;
 	cwb_info->user_buffer = user_buffer;
 	DDP_MUTEX_UNLOCK(&mtk_crtc->cwb_lock, __func__, __LINE__);
-	DDPMSG("[capture] User set buffer:0x%x, type:%d\n",
+	DDPMSG("[capture] User set buffer:%p, type:%d\n",
 			user_buffer, type);
 
 	return true;
@@ -3635,7 +3622,7 @@ int disp_met_stop_set(void *data, u64 val)
 	DDPMSG("MET Stop Condition list:\n");
 	DDPMSG("    1: underrun\n");
 	DDPMSG("    2: others\n");
-	DDPMSG("%s: update met stop condition from:%u to %lu\n",
+	DDPMSG("%s: update met stop condition from:%u to %llu\n",
 		__func__, disp_met_condition, val);
 
 	disp_met_condition = val;
@@ -3667,7 +3654,7 @@ static int disp_met_stop_get(void *data, u64 *val)
 		break;
 	}
 
-	DDPMSG("%s: met stop at condition:%u:%lu\n",
+	DDPMSG("%s: met stop at condition:%u:%llu\n",
 		__func__, disp_met_condition, *val);
 	return 0;
 }

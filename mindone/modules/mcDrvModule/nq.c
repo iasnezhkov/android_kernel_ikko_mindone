@@ -22,7 +22,6 @@
 #include <linux/of_irq.h>
 #include <linux/uaccess.h>
 #include <linux/delay.h> /* msleep */
-#include <linux/version.h>
 #include <linux/sched.h>
 #include <linux/wait.h>
 #include <linux/sched/clock.h>	/* local_clock */

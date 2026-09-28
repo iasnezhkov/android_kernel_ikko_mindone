@@ -35,3 +35,9 @@ config DRM_MEDIATEK_HDMI
 	select SND_SOC_HDMI_CODEC if SND_SOC
 	help
 	  DRM/KMS HDMI driver for Mediatek SoCs
+
+config DRM_MEDIATEK_HELPERS
+	tristate "DRM display and GEM-DMA helpers for the out-of-tree MediaTek display driver"
+	depends on DRM
+	select DRM_DISPLAY_HELPER
+	select DRM_GEM_DMA_HELPER

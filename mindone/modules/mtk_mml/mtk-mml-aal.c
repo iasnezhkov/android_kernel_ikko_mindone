@@ -263,6 +263,8 @@ static s32 aal_prepare(struct mml_comp *comp, struct mml_task *task,
 	struct aal_frame_data *aal_frm;
 
 	aal_frm = kzalloc(sizeof(*aal_frm), GFP_KERNEL);
+	if (!aal_frm)
+		return -ENOMEM;
 	ccfg->data = aal_frm;
 	aal_frm->reuse_curve.offs = aal_frm->offs_curve;
 	aal_frm->reuse_curve.offs_size = ARRAY_SIZE(aal_frm->offs_curve);
@@ -1142,6 +1144,8 @@ static void aal_task_done_readback(struct mml_comp *comp, struct mml_task *task,
 		u32 *phist = kmalloc((AAL_HIST_NUM+AAL_DUAL_INFO_NUM)*sizeof(u32),
 			GFP_KERNEL);
 
+		if (!phist)
+			goto hist_done;
 		for (i = 0; i < AAL_HIST_NUM; i++) {
 			if (aal_reg_poll(comp, AAL_INTSTA, (0x1 << 1), (0x1 << 1))) {
 				do {
@@ -1176,9 +1180,10 @@ static void aal_task_done_readback(struct mml_comp *comp, struct mml_task *task,
 			phist[dual_info_start++] = readl(base + AAL_DUAL_PIPE_15);
 		}
 		mml_pq_aal_readback(task, ccfg->pipe, phist);
+		kfree(phist);
 	}
 
-
+hist_done:
 	if (aal_frm->is_aal_need_readback)
 		mml_pq_aal_readback(task, ccfg->pipe,
 			&(task->pq_task->aal_hist[pipe]->va[offset/4]));

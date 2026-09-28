@@ -12,16 +12,6 @@
 #include <linux/wait.h>
 #include <linux/module.h>
 
-/*
- * MINDONE (F3592): every RX packet on a modem port holds a wakeup event for HZ/2. Measured on an
- * idle, screen-off device: port ttyC0 alone held the system awake 30.8 s out of 300 s (10 %),
- * which makes this the largest remaining wakeup source once the vendor debug loggers are off.
- * The timeout exists so userspace (rild) can read the packet before the system suspends, so the
- * stock 500 ms stays the default; this knob only makes the trade-off measurable at runtime:
- *   echo 200 > /sys/module/ccci_md_all/parameters/mindone_rx_wake_ms
- */
-static int mindone_rx_wake_ms = 500;
-module_param(mindone_rx_wake_ms, int, 0644);
 #include <linux/poll.h>
 #include <linux/proc_fs.h>
 #include <linux/icmpv6.h>
@@ -449,22 +439,6 @@ READ_START:
 		 */
 		if (port->rx_skb_list.qlen == 0) {
 			port_ask_more_req_to_md(port);
-			/* MINDONE-RXWAKE: the queue is empty -- the reader has taken
-			 * everything, so stop holding the system awake now instead of
-			 * waiting out the timeout armed at enqueue. The vendor armed a
-			 * blind HZ/2 (500 ms) wakeup event per RX packet and never
-			 * released it early, so every packet kept the AP awake half a
-			 * second regardless of how fast userspace consumed it. Measured
-			 * on this device: ttyC0 held 907 s of wakelock across 1728
-			 * packets in 9.9 h -- 1728 x 500 ms, matching the blind timeout
-			 * exactly, while gsm0710muxd drains each packet in well under a
-			 * millisecond. The timeout stays armed as a backstop for a dead
-			 * or stuck reader; this only ends the hold early when the data
-			 * is demonstrably consumed.
-			 * Done under rx_skb_list.lock, which port_recv_skb also takes,
-			 * so it cannot race a packet arriving between the emptiness
-			 * check and the release. __pm_relax on a timer-armed source
-			 * cancels the timer, and is a no-op if the source is idle. */
 			if (port->rx_wakelock)
 				__pm_relax(port->rx_wakelock);
 		}
@@ -1044,16 +1018,7 @@ int port_recv_skb(struct port_t *port, struct sk_buff *skb)
 		}
 
 		atomic_inc(&port->rx_pkg_cnt);
-		/* MINDONE-RXWAKE: arm the hold while the list lock is still held, so that
-		 * arming and enqueueing are one step as seen by the reader. The vendor
-		 * dropped the lock first; a reader could then take the packet and release
-		 * the hold (see the drain sites) before this line ran, and the hold would
-		 * be re-armed for a packet already consumed -- a stray 500 ms each time.
-		 * __pm_wakeup_event only takes the wakeup source's own lock, which nothing
-		 * takes before rx_skb_list.lock, so the order is consistent with the drain
-		 * sites and cannot deadlock. */
-		__pm_wakeup_event(port->rx_wakelock, mindone_rx_wake_ms > 0 ?
-			(unsigned int)mindone_rx_wake_ms : jiffies_to_msecs(HZ/2));
+		__pm_wakeup_event(port->rx_wakelock, jiffies_to_msecs(HZ / 2));
 		spin_unlock_irqrestore(&port->rx_skb_list.lock, flags);
 		spin_lock_irqsave(&port->rx_wq.lock, flags);
 		wake_up_all_locked(&port->rx_wq);
@@ -1107,9 +1072,6 @@ int port_kthread_handler(void *arg)
 		skb = __skb_dequeue(&port->rx_skb_list);
 		if (port->rx_skb_list.qlen == 0) {
 			port_ask_more_req_to_md(port);
-			/* MINDONE-RXWAKE: same as in port_dev_read -- release the hold
-			 * as soon as the queue is drained rather than waiting out the
-			 * blind timeout armed at enqueue. See the comment there. */
 			if (port->rx_wakelock)
 				__pm_relax(port->rx_wakelock);
 		}

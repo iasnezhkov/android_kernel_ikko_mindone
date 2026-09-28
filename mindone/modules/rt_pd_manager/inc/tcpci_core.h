@@ -375,7 +375,7 @@ struct tcpc_device {
 	uint8_t typec_role_new;
 	uint8_t typec_attach_old;
 	uint8_t typec_attach_new;
-	uint8_t pd_attach_notified; /* MINDONE-PD-NOREINJECT: attach already delivered via IRQ this cycle */
+	uint8_t pd_attach_notified;
 	uint8_t typec_local_cc;
 	uint8_t typec_local_rp_level;
 	uint8_t typec_remote_cc[2];

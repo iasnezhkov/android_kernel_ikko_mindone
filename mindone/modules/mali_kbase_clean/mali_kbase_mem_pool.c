@@ -20,19 +20,13 @@
  */
 
 #include <mali_kbase.h>
-#include <mindone/compat.h>
 #include <linux/mm.h>
 #include <linux/dma-mapping.h>
 #include <linux/highmem.h>
 #include <linux/spinlock.h>
 #include <linux/shrinker.h>
 #include <linux/atomic.h>
-#include <linux/version.h>
-#if KERNEL_VERSION(4, 11, 0) <= LINUX_VERSION_CODE
 #include <linux/sched/signal.h>
-#else
-#include <linux/signal.h>
-#endif
 
 #define pool_dbg(pool, format, ...) \
 	dev_vdbg(pool->kbdev->dev, "%s-pool [%zu/%zu]: " format,	\
@@ -367,7 +361,7 @@ static unsigned long kbase_mem_pool_reclaim_count_objects(struct shrinker *s,
 	struct kbase_mem_pool *pool;
 	size_t pool_size;
 
-	pool = MINDONE_SHRINKER_PRIV(s, struct kbase_mem_pool, reclaim);
+	pool = ((struct kbase_mem_pool *)s->private_data);
 
 	kbase_mem_pool_lock(pool);
 	if (pool->dont_reclaim && !pool->dying) {
@@ -386,7 +380,7 @@ static unsigned long kbase_mem_pool_reclaim_scan_objects(struct shrinker *s,
 	struct kbase_mem_pool *pool;
 	unsigned long freed;
 
-	pool = MINDONE_SHRINKER_PRIV(s, struct kbase_mem_pool, reclaim);
+	pool = ((struct kbase_mem_pool *)s->private_data);
 
 	kbase_mem_pool_lock(pool);
 	if (pool->dont_reclaim && !pool->dying) {
@@ -428,8 +422,15 @@ int kbase_mem_pool_init(struct kbase_mem_pool *pool,
 	spin_lock_init(&pool->pool_lock);
 	INIT_LIST_HEAD(&pool->page_list);
 
-	MINDONE_SHRINKER_SETUP(pool->reclaim, kbase_mem_pool_reclaim_count_objects,
-			       kbase_mem_pool_reclaim_scan_objects, DEFAULT_SEEKS, "", pool);
+	pool->reclaim = shrinker_alloc(0, "%s", "");
+	if (pool->reclaim) {
+		pool->reclaim->count_objects = kbase_mem_pool_reclaim_count_objects;
+		pool->reclaim->scan_objects = kbase_mem_pool_reclaim_scan_objects;
+		pool->reclaim->seeks = DEFAULT_SEEKS;
+		pool->reclaim->batch = 0;
+		pool->reclaim->private_data = pool;
+		shrinker_register(pool->reclaim);
+	}
 
 	pool_dbg(pool, "initialized\n");
 
@@ -454,7 +455,7 @@ void kbase_mem_pool_term(struct kbase_mem_pool *pool)
 
 	pool_dbg(pool, "terminate()\n");
 
-	MINDONE_SHRINKER_TEARDOWN(pool->reclaim);
+	shrinker_free(pool->reclaim);
 
 	kbase_mem_pool_lock(pool);
 	pool->max_size = 0;

@@ -4,7 +4,6 @@
  */
 
 #include <linux/init.h>
-#include <mindone/compat.h>
 #include <linux/types.h>
 #include <linux/device.h>
 #include <linux/cdev.h>
@@ -588,7 +587,7 @@ static inline int n3d_reg_char_dev(struct SENINF_N3D *pn3d)
 	}
 
 	/* Create class register */
-	pn3d->pclass = MINDONE_CLASS_CREATE(N3D_DEV_NAME);
+	pn3d->pclass = class_create(N3D_DEV_NAME);
 	if (IS_ERR(pn3d->pclass)) {
 		ret = PTR_ERR(pn3d->pclass);
 		LOG_PR_ERR("Unable to create class, err = %d\n", ret);

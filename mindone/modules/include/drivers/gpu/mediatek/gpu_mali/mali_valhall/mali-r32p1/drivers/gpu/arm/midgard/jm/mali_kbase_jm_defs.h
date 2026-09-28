@@ -519,11 +519,7 @@ struct kbase_jd_atom {
 		 * when working with this sub struct
 		 */
 #if defined(CONFIG_SYNC_FILE)
-#if (KERNEL_VERSION(4, 10, 0) > LINUX_VERSION_CODE)
-		struct fence *fence_in;
-#else
 		struct dma_fence *fence_in;
-#endif
 #endif
 		/* This points to the dma-buf output fence for this atom. If
 		 * this is NULL then there is no fence for this atom and the
@@ -536,11 +532,7 @@ struct kbase_jd_atom {
 		 * regardless of the event_code of the katom (signal also on
 		 * failure).
 		 */
-#if (KERNEL_VERSION(4, 10, 0) > LINUX_VERSION_CODE)
-		struct fence *fence;
-#else
 		struct dma_fence *fence;
-#endif
 		unsigned int context;
 		atomic_t seqno;
 		/* This contains a list of all callbacks set up to wait on

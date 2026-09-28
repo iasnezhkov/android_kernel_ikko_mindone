@@ -28,11 +28,6 @@ def run(*a):
     return subprocess.run(a, capture_output=True, text=True).stdout
 
 def syms(ko):
-    # MINDONE F3038 (29.08): a symbol's provider is ONLY what the module EXPORTS (an
-    # __ksymtab_<name> entry), not everything it defines in symtab (defined != exported).
-    # Duplicate exports are caught below.
-    # (mtk_irtx_pwm: it exports mtk_pwm symbols, CRC/license match, yet insmod returns
-    # -ENOENT -- cause OPEN, F3038; in first-stage init any insmod failure is a bootloop.)
     out = run(NM, ko)
     undef, exported = set(), set()
     for l in out.splitlines():
@@ -44,12 +39,6 @@ def syms(ko):
     return undef, exported
 
 def export_crcs(ko):
-    # CRCs of the provider module's exports. On arm64 (REL CRCs) the symbol __crc_<name>
-    # is an OFFSET within ITS OWN section (__kcrctab for EXPORT_SYMBOL, __kcrctab_gpl for
-    # EXPORT_SYMBOL_GPL), a u32 array; we read the u32 at that offset from whichever
-    # section the symbol is defined in (objdump -t gives the section name). Before 30.08
-    # we only read __kcrctab -- every GPL export produced a false mismatch (TODO from
-    # 29.08 closed, F3116).
     secs = {}
     for sec in ("__kcrctab", "__kcrctab_gpl"):
         tmp = f"{TMP}_kcrc_{sec}.bin"
@@ -123,11 +112,6 @@ def main():
     if not run(NM, ko).strip():
         print(f"PARSE BROKEN: {NM} produced no symbols"); sys.exit(3)
     print(f"   self-check passed: kernel exports {len(kernel_exports)}")
-    # MINDONE: the module_layout reference is taken from the Module.symvers PASSED IN
-    # (01.09): on a full kernel rebuild (CFI/BTF/level 202404, F3420) the layout changes,
-    # and the gate must compare against THAT kernel, whose symvers it was given, not
-    # against a hardcoded constant. Any difference from the historical 0xf4d8bdf7 is
-    # printed.
     global REF_LAYOUT
     ml_symvers = kernel_exports.get("module_layout")
     if ml_symvers:
@@ -150,17 +134,9 @@ def main():
 
     undef, my_exports = syms(ko)
     providers = {}
-    # MINDONE F3038: a duplicate export (the kernel or another module in the set already
-    # exports the same name) -- insmod replies "exports duplicate symbol ... (owned by
-    # ...)", Exec format error (mtk_tee_gpapi/tkcore).
     dup_exports = {}
     for s in my_exports:
         if s in kernel_exports: dup_exports[s] = "kernel"
-    # MINDONE F2926: symbol providers are ONLY modules that are actually present in the
-    # image (<directory>/modules.load), and only with the same vermagic as the module
-    # being checked. Without this, stray files in the directory (including stock ones
-    # built for 5.10) would satisfy symbols that are not present on the device, and the
-    # gate would give a false "clean" (imgsensor_isp6s / clk-common).
     loadlist = None
     lf = os.path.join(kodir, "modules.load")
     if os.path.exists(lf):
@@ -180,10 +156,6 @@ def main():
             providers.setdefault(s, os.path.basename(other))
         for s in d & my_exports:
             dup_exports.setdefault(s, os.path.basename(other))
-    # MINDONE F724/F3038: versions of symbols taken from MODULES in the set. With
-    # modversions the kernel requires the importer's __versions to have a CRC entry for
-    # every such symbol, and that CRC must match the provider's __crc_<name>; otherwise
-    # "no symbol version for X" / "disagrees about version" -> Unknown symbol.
     ver_bad = []; ver_noentry = []
     prov_crc_cache = {}
     for s, who in providers.items():
@@ -218,10 +190,6 @@ def main():
           + ("" if not dup_exports else " insmod WILL REFUSE (Exec format error)"))
     for s, who in sorted(dup_exports.items())[:10]:
         print(f"     duplicate export: {s} (already owned by {who})")
-    # 30.08 (F3116): the exporter's CRC is taken from the section of the symbol
-    # __crc_<name> (__kcrctab or __kcrctab_gpl, objdump -t) -- false mismatches for
-    # EXPORT_SYMBOL_GPL are gone; a mismatch is still a FAILURE (insmod will give -EINVAL
-    # "disagrees about version of symbol").
     print(f"6. symbol versions from modules in the set: {len(providers)} checked, mismatches -- {len(ver_bad)}")
     for s in ver_bad[:6]:
         print(f"     {s}")

@@ -15,7 +15,6 @@
 
 #ifndef __AW87XXX_DEVICE_H__
 #define __AW87XXX_DEVICE_H__
-#include <linux/version.h>
 #include <linux/kernel.h>
 #include <sound/control.h>
 #include <sound/soc.h>

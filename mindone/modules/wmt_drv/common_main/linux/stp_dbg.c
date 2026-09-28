@@ -141,18 +141,12 @@ static struct genl_ops stp_dbg_gnl_ops_array[] = {
 	{
 		.cmd = STP_DBG_COMMAND_BIND,
 		.flags = 0,
-#if (LINUX_VERSION_CODE < KERNEL_VERSION(5, 2, 0))
-		.policy = stp_dbg_genl_policy,
-#endif
 		.doit = stp_dbg_nl_bind,
 		.dumpit = NULL,
 	},
 	{
 		.cmd = STP_DBG_COMMAND_RESET,
 		.flags = 0,
-#if (LINUX_VERSION_CODE < KERNEL_VERSION(5, 2, 0))
-		.policy = stp_dbg_genl_policy,
-#endif
 		.doit = stp_dbg_nl_reset,
 		.dumpit = NULL,
 	},
@@ -166,9 +160,7 @@ static struct genl_family stp_dbg_gnl_family = {
 	.maxattr = STP_DBG_ATTR_MAX,
 	.ops = stp_dbg_gnl_ops_array,
 	.n_ops = ARRAY_SIZE(stp_dbg_gnl_ops_array),
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 2, 0))
 	.policy = stp_dbg_genl_policy,
-#endif
 };
 /* stp_dbg_core_dump_timeout_handler - handler of coredump timeout
  * @ data - core dump object's pointer

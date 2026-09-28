@@ -46,16 +46,6 @@
 
 #define VBUS_MAX_DROP 1500000
 
-/* PE_INFO_LEVEL, not PE_DEBUG_LEVEL (mind_one, 15.09).
- *
- * At the debug level all 43 pe_dbg() sites print unconditionally through pr_notice, which is a
- * steady stream into dmesg for the whole life of the device - printing is not free, and on a
- * 1960 mAh battery a permanent log stream is a real cost. pe_err() and pe_info() still print, so
- * nothing that reports a fault is lost.
- *
- * Writable at runtime, so a charging problem can be traced without rebuilding the module:
- *     echo 3 > /sys/module/mtk_pe/parameters/pe_dbg_level
- */
 static int pe_dbg_level = PE_INFO_LEVEL;
 module_param(pe_dbg_level, int, 0644);
 MODULE_PARM_DESC(pe_dbg_level, "PE log level: 1=error 2=info 3=debug");
@@ -84,7 +74,7 @@ static int pdpe_get_state(struct mtk_pe *pe)
 	 if (!pe->pdpe_psy) {
         pe->pdpe_psy = power_supply_get_by_name("pdpe-state");
         if (!pe->pdpe_psy) {
-            pr_err("gezi get pe->pdpe_psy failed---%s\n",__func__);
+            pr_err("get pe->pdpe_psy failed---%s\n",__func__);
 			return -ENODEV;
         }
     }
@@ -94,7 +84,7 @@ static int pdpe_get_state(struct mtk_pe *pe)
 		ret = val.intval;
 	}
 	else{
-		pr_err("gezi get POWER_SUPPLY_PROP_ONLINE failed---%s\n",__func__);
+		pr_err("get POWER_SUPPLY_PROP_ONLINE failed---%s\n",__func__);
 		ret = -1;
 	}
 	return ret;
@@ -108,7 +98,7 @@ static int pdpe_get_boot_mode(struct mtk_pe *pe)
 	 if (!pe->pdpe_psy) {
         pe->pdpe_psy = power_supply_get_by_name("pdpe-state");
         if (!pe->pdpe_psy) {
-            pr_err("gezi get pe->pdpe_psy failed---%s\n",__func__);
+            pr_err("get pe->pdpe_psy failed---%s\n",__func__);
 			return -ENODEV;
         }
     }
@@ -118,7 +108,7 @@ static int pdpe_get_boot_mode(struct mtk_pe *pe)
 		ret = val.intval;
 	}
 	else{
-		pr_err("gezi get POWER_SUPPLY_PROP_TEMP failed---%s\n",__func__);
+		pr_err("get POWER_SUPPLY_PROP_TEMP failed---%s\n",__func__);
 		ret = -1;
 	}
 	return ret;
@@ -132,17 +122,17 @@ static int pdpe_set_state(struct mtk_pe *pe,int state)
 	 if (!pe->pdpe_psy) {
         pe->pdpe_psy = power_supply_get_by_name("pdpe-state");
         if (!pe->pdpe_psy) {
-            pr_err("gezi get pe->pdpe_psy failed---%s\n",__func__);
+            pr_err("get pe->pdpe_psy failed---%s\n",__func__);
 			return -ENODEV;
         }
     }
 	val.intval = state;
 	ret = power_supply_set_property(pe->pdpe_psy, POWER_SUPPLY_PROP_ONLINE, &val);
 	if (!ret){
-		pr_err("gezi set POWER_SUPPLY_PROP_ONLINE success---%s\n",__func__);
+		pr_debug("set POWER_SUPPLY_PROP_ONLINE success---%s\n",__func__);
 	}
 	else{
-		pr_err("gezi set POWER_SUPPLY_PROP_ONLINE failed---%s\n",__func__);
+		pr_err("set POWER_SUPPLY_PROP_ONLINE failed---%s\n",__func__);
 	}
 	return ret;
 }
@@ -349,14 +339,14 @@ static int pe_detect_ta(struct chg_alg_device *alg)
 		vchar = pe_hal_get_vbus(alg);
 		
 		if((vchar > pe->ta_vchr_org) && ((vchar - pe->ta_vchr_org) > 1000000)){
-			pr_err("gezi 111---pe->ta_vchr_org = %d,vchar = %d\n",pe->ta_vchr_org,vchar);
+			pr_debug("111---pe->ta_vchr_org = %d,vchar = %d\n",pe->ta_vchr_org,vchar);
 			ret = 0;
 			pdpe_set_state(pe,PDPE_WORK_PE_CHECK_DONE);
 			break;
 		}
 		cnt--;
 		ret = -1;
-		pr_err("gezi 000---pe->ta_vchr_org = %d,vchar = %d\n",pe->ta_vchr_org,vchar);
+		pr_debug("000---pe->ta_vchr_org = %d,vchar = %d\n",pe->ta_vchr_org,vchar);
 	}while(cnt > 0);
 
 
@@ -814,18 +804,18 @@ static int __pe_run(struct chg_alg_device *alg)
 		//prize begin
 			if (abs(chr_volt2 - 9000000) > VBUS_MAX_DROP){
 				tune = true;
-				pe_err("----gezi-000-----%s: vbus:%d chr_volt2:%d ads:%d,tune:%d\n",__func__, chr_volt,chr_volt2,abs(chr_volt2 - 9000000),tune);
+				pe_dbg("000-----%s: vbus:%d chr_volt2:%d ads:%d,tune:%d\n",__func__, chr_volt,chr_volt2,abs(chr_volt2 - 9000000),tune);
 				//msleep(100);
 			}
 			else {
-				pe_err("----gezi-111-----%s: vbus:%d chr_volt2:%d ads:%d,tune:%d\n",__func__, chr_volt,chr_volt2,abs(chr_volt2 - 9000000),tune);
+				pe_dbg("111-----%s: vbus:%d chr_volt2:%d ads:%d,tune:%d\n",__func__, chr_volt,chr_volt2,abs(chr_volt2 - 9000000),tune);
 				pe_err("%s: V drop out of range, skip pe", __func__);
 				ret_value = ALG_TA_NOT_SUPPORT;
 				goto _err;
 			}
 		}
 		else{
-			pe_dbg("----gezi---111---%s: vbus:%d chr_volt2:%d tune:%d\n",__func__, chr_volt,chr_volt2,tune);
+			pe_dbg("111---%s: vbus:%d chr_volt2:%d tune:%d\n",__func__, chr_volt,chr_volt2,tune);
 		}
 		pe_dbg("%s: vbus:%d target:%d 9v:%d 12v:%d tune:%d\n",__func__, chr_volt,9000000, pe->ta_9v_support,pe->ta_12v_support, tune);
 	//prize end
@@ -1101,7 +1091,7 @@ static int mtk_pe_probe(struct platform_device *pdev)
 
 	pr_notice("%s: starts\n", __func__);
 	
-	pr_err("gezi--------%s-----------%d\n",__func__,__LINE__);//prize
+	pr_debug("%s-----------%d\n",__func__,__LINE__);
 
 	pe = devm_kzalloc(&pdev->dev, sizeof(*pe), GFP_KERNEL);
 	if (!pe)
@@ -1117,18 +1107,17 @@ static int mtk_pe_probe(struct platform_device *pdev)
 	pe->ta_vchr_org = 5000000;
 
 	mtk_pe_parse_dt(pe, &pdev->dev);
-	//pe->bat_psy = devm_power_supply_get_by_phandle(&pdev->dev, "gauge");
-	pe->bat_psy = power_supply_get_by_name("bms");//prize
-	
+	pe->bat_psy = devm_power_supply_get_by_phandle(&pdev->dev, "gauge");
+
 	if (IS_ERR_OR_NULL(pe->bat_psy))
-		pe_err("%s: devm power fail to get bms\n", __func__);//prize
+		pe_err("%s: devm power fail to get bat_psy\n", __func__);
 
 	pe->alg = chg_alg_device_register("pe", &pdev->dev,
 					pe, &pe_alg_ops, NULL);
 //prize begin
 	pe->pdpe_psy = power_supply_get_by_name("pdpe-state");
 	if(pe->pdpe_psy == NULL){
-		pr_err("gezi get info->pdpe_psy failed\n");
+		pr_err("get info->pdpe_psy failed\n");
 	}
 //prize end
 

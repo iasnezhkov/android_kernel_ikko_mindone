@@ -6,7 +6,6 @@
 #include "bt.h"
 #include "btmtk_dbg_tp_evt_if.h"
 #include <linux/pm_wakeup.h>
-#include <linux/version.h>
 #include <linux/pm_qos.h>
 #include <linux/notifier.h>
 #include <linux/fb.h>
@@ -283,7 +282,7 @@ static struct notifier_block bt_pm_notifier;
 static int bt_pm_notifier_callback(struct notifier_block *nb,
 		unsigned long event, void *dummy)
 {
-	BT_LOG_PRT_INFO("%s: btonflag[%d], event[%ld]", __func__, btonflag, event);
+	BT_LOG_PRT_DBG("%s: btonflag[%d], event[%ld]", __func__, btonflag, event);
 	switch (event) {
 		case PM_SUSPEND_PREPARE:
 		case PM_POST_SUSPEND:
@@ -399,11 +398,7 @@ static VOID BT_event_cb(VOID)
 			cancel_delayed_work(&qos_ctrl.work);
 
 			if(qos_ctrl.is_hold == FALSE) {
-				#if LINUX_VERSION_CODE < KERNEL_VERSION(5, 7, 0)
-				pm_qos_update_request(&qos_req, 1000);
-				#else
 				cpu_latency_qos_update_request(&qos_req, 1000);
-				#endif
 				qos_ctrl.is_hold = TRUE;
 				BT_LOG_PRT_INFO("[qos] is_hold[%d]\n", qos_ctrl.is_hold);
 			}
@@ -769,11 +764,7 @@ static void pm_qos_set_feature(void)
 
 static void pm_qos_release(struct work_struct *pwork)
 {
-#if LINUX_VERSION_CODE < KERNEL_VERSION(5, 7, 0)
-	pm_qos_update_request(&qos_req, PM_QOS_DEFAULT_VALUE);
-#else
 	cpu_latency_qos_update_request(&qos_req, PM_QOS_DEFAULT_VALUE);
-#endif
 	qos_ctrl.is_hold = FALSE;
 	BT_LOG_PRT_INFO("[qos] is_hold[%d]\n", qos_ctrl.is_hold);
 }
@@ -835,11 +826,7 @@ static int BT_open(struct inode *inode, struct file *file)
 
 	if(pm_qos_support) {
 		down(&qos_ctrl.sem);
-		#if LINUX_VERSION_CODE < KERNEL_VERSION(5, 7, 0)
-		pm_qos_update_request(&qos_req, PM_QOS_DEFAULT_VALUE);
-		#else
 		cpu_latency_qos_update_request(&qos_req, PM_QOS_DEFAULT_VALUE);
-		#endif
 
 		qos_ctrl.is_hold = FALSE;
 		qos_ctrl.task = create_singlethread_workqueue("pm_qos_task");
@@ -887,11 +874,7 @@ static int BT_close(struct inode *inode, struct file *file)
 			qos_ctrl.task = NULL;
 		}
 
-		#if LINUX_VERSION_CODE < KERNEL_VERSION(5, 7, 0)
-		pm_qos_update_request(&qos_req, PM_QOS_DEFAULT_VALUE);
-		#else
 		cpu_latency_qos_update_request(&qos_req, PM_QOS_DEFAULT_VALUE);
-		#endif
 		qos_ctrl.is_hold = FALSE;
 		up(&qos_ctrl.sem);
 	}
@@ -927,12 +910,8 @@ static int BT_init(void)
 	/* Initialize wait queue */
 	init_waitqueue_head(&(inq));
 	/* Initialize wake lock */
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 14, 149)
 	BT_LOG_PRT_INFO("wakeup_source_register() with kernel-4.14.149\n");
 	bt_wakelock = wakeup_source_register(NULL, "bt_drv");
-#else
-	bt_wakelock = wakeup_source_register("bt_drv");
-#endif
 	if(!bt_wakelock) {
 		BT_LOG_PRT_ERR("%s: init bt_wakelock failed!\n", __func__);
 	}
@@ -952,15 +931,7 @@ static int BT_init(void)
 		goto error;
 
 #if CREATE_NODE_DYNAMIC /* mknod replace */
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(6, 4, 0))
 	stpbt_class = class_create("stpbt");
-#else
-#if LINUX_VERSION_CODE < KERNEL_VERSION(6, 4, 0)
-	stpbt_class = class_create(THIS_MODULE, "stpbt");
-#else	/* class_create dropped the owner arg in 6.4 (F3768) */
-	stpbt_class = class_create("stpbt");
-#endif
-#endif
 	if (IS_ERR(stpbt_class))
 		goto error;
 	stpbt_dev = device_create(stpbt_class, NULL, dev, NULL, "stpbt");
@@ -979,11 +950,7 @@ static int BT_init(void)
 
 	pm_qos_set_feature();
 	if(pm_qos_support) {
-		#if LINUX_VERSION_CODE < KERNEL_VERSION(5, 7, 0)
-		pm_qos_add_request(&qos_req, PM_QOS_CPU_DMA_LATENCY, PM_QOS_DEFAULT_VALUE);
-		#else
 		cpu_latency_qos_add_request(&qos_req, PM_QOS_DEFAULT_VALUE);
-		#endif
 		sema_init(&qos_ctrl.sem, 1);
 	}
 
@@ -1014,11 +981,7 @@ static void BT_exit(void)
 	dev_t dev;
 
 	if(pm_qos_support) {
-		#if LINUX_VERSION_CODE < KERNEL_VERSION(5, 7, 0)
-		pm_qos_remove_request(&qos_req);
-		#else
 		cpu_latency_qos_remove_request(&qos_req);
-		#endif
 	}
 
 	bt_dev_dbg_deinit();

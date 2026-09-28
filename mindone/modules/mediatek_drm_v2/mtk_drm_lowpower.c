@@ -29,11 +29,6 @@
 static void mtk_drm_idlemgr_enable_crtc(struct drm_crtc *crtc);
 static void mtk_drm_idlemgr_disable_crtc(struct drm_crtc *crtc);
 
-/* MINDONE-VB: F794 - armed in mtk_drm_idlemgr_kick() EXACTLY at the moment idle exit
- * actually happens. Gate for the ISR markers below: without it, per-frame IRQs
- * (mutex/ovl/rdma/dsi) would log 60 times a second for the whole session, not just
- * the dangerous window right after wakeup.
- */
 int mindone_vb_watch;
 
 #ifdef SHARE_WROT_SRAM
@@ -668,10 +663,6 @@ int mtk_drm_idlemgr_init(struct drm_crtc *crtc, int index)
 	idlemgr_ctx->enterulps = 0;
 	idlemgr_ctx->idlemgr_last_kick_time = ~(0ULL);
 	idlemgr_ctx->cur_lp_cust_mode = 0;
-	/* MINDONE (03.09, F2367): video-mode panel - idle-off blanking freezes the image, and
-	 * the stock 50 ms default fires ~100 ms after boot, before userspace can raise it, so the
-	 * screen came up black. A Magisk script (mindone-drmlog.sh) used to paper over it via
-	 * debugfs; make the safe value the kernel default instead (large = idle-off disabled). */
 	idlemgr_ctx->idle_check_interval = 1000000;
 
 	if (snprintf(name, LEN, "mtk_drm_disp_idlemgr-%d", index) < 0)

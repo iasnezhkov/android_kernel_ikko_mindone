@@ -7,7 +7,6 @@
  */
 
 #include <linux/delay.h>
-#include <mindone/compat-sound.h>
 #include <linux/dma-mapping.h>
 #include <linux/module.h>
 #include <linux/of.h>
@@ -37,36 +36,6 @@
 #include "../audio_scp/mtk-scp-audio-pcm.h"
 #endif
 #include <sound/soc/mediatek/audio_dsp/mtk-dsp-common.h>
-/* MINDONE-AFE-TASKATTR (F3322): not including mtk-dsp-mem-control.h wholesale - it
- * drags in mtk-base-dsp.h -> adsp_helper.h, missing from this module's -I (extra,
- * unrelated ADSP infrastructure). The AUDIO_TASK_... and ADSP_TASK_ATTR_... enums
- * are already visible transitively via mtk-dsp-common.h -> mtk-dsp-common_define.h;
- * only the function prototype is missing. */
-int set_task_attr(int dsp_id, int task_enum, int param);
-
-/* MINDONE-AFE-SCPAUDIO (F3291): risky behavior - opt-in only. */
-static bool mindone_scp_audio;
-module_param(mindone_scp_audio, bool, 0644);
-MODULE_PARM_DESC(mindone_scp_audio,
-	"1 = bind the audio co-processor to AFE (scp_set_audio_afe) at probe; default 0");
-/* MINDONE-AFE-DSPAFE (F3312): audio_set_dsp_afe was never ported from the
- * vendor tree (not a struct mine, class F3284) - so afe_pcm_ipi_to_dsp()
- * always fails on start for DL3/deep_buffer. The function itself is trivial
- * (a pointer assignment), but PRELOADER crashed twice nearby from a similar
- * fix (F3290/F3291) - same cautious pattern: param stays, but defaults on
- * (F3313: live unbind/bind is impossible here, verified via full
- * flash+reboot instead). Detail: MINDONE-MODULES-NOTES-0901. */
-static bool mindone_dsp_afe = true;
-module_param(mindone_dsp_afe, bool, 0644);
-MODULE_PARM_DESC(mindone_dsp_afe,
-	"1 = bind audio DSP IPI to AFE (audio_set_dsp_afe) at probe; on by default (F3313)");
-/* Task attributes for the DSP path (F3322). With them set, afe_pcm_ipi_to_dsp() runs to
- * set_afe_audio_pcmbuf() on the task substream, which is not populated on this port:
- * NULL dereference at the first PCM open (F3460). Opt-in until that side is ported. */
-static bool mindone_dsp_taskattr;
-module_param(mindone_dsp_taskattr, bool, 0644);
-MODULE_PARM_DESC(mindone_dsp_taskattr,
-	"1 = fill ADSP task attributes (PRIMARY/DEEPBUFFER) at probe; default 0 (F3460)");
 /* FORCE_FPGA_ENABLE_IRQ use irq in fpga */
 /* #define FORCE_FPGA_ENABLE_IRQ */
 
@@ -98,7 +67,7 @@ static int mt6789_fe_startup(struct snd_pcm_substream *substream,
 	struct snd_soc_pcm_runtime *rtd = substream->private_data;
 	struct mtk_base_afe *afe = snd_soc_dai_get_drvdata(dai);
 	struct snd_pcm_runtime *runtime = substream->runtime;
-	struct snd_soc_dai *cpu_dai = MINDONE_RTD_TO_CPU(rtd, 0);
+	struct snd_soc_dai *cpu_dai = snd_soc_rtd_to_cpu(rtd, 0);
 	int memif_num = cpu_dai->id;
 	struct mtk_base_afe_memif *memif = &afe->memif[memif_num];
 	const struct snd_pcm_hardware *mtk_afe_hardware = afe->mtk_afe_hardware;
@@ -139,7 +108,7 @@ void mt6789_fe_shutdown(struct snd_pcm_substream *substream,
 	struct snd_soc_pcm_runtime *rtd = substream->private_data;
 	struct mtk_base_afe *afe = snd_soc_dai_get_drvdata(dai);
 	struct mt6789_afe_private *afe_priv = afe->platform_priv;
-	struct snd_soc_dai *cpu_dai = MINDONE_RTD_TO_CPU(rtd, 0);
+	struct snd_soc_dai *cpu_dai = snd_soc_rtd_to_cpu(rtd, 0);
 	int memif_num = cpu_dai->id;
 	struct mtk_base_afe_memif *memif = &afe->memif[memif_num];
 	int irq_id = memif->irq_usage;
@@ -162,7 +131,7 @@ int mt6789_fe_trigger(struct snd_pcm_substream *substream, int cmd,
 	struct snd_pcm_runtime * const runtime = substream->runtime;
 	struct mtk_base_afe *afe = snd_soc_dai_get_drvdata(dai);
 	struct mt6789_afe_private *afe_priv = afe->platform_priv;
-	struct snd_soc_dai *cpu_dai = MINDONE_RTD_TO_CPU(rtd, 0);
+	struct snd_soc_dai *cpu_dai = snd_soc_rtd_to_cpu(rtd, 0);
 	int id = cpu_dai->id;
 	struct mtk_base_afe_memif *memif = &afe->memif[id];
 	int irq_id = memif->irq_usage;
@@ -273,7 +242,7 @@ static int mt6789_memif_fs(struct snd_pcm_substream *substream,
 	struct snd_soc_component *component =
 		snd_soc_rtdcom_lookup(rtd, AFE_PCM_NAME);
 	struct mtk_base_afe *afe = snd_soc_component_get_drvdata(component);
-	struct snd_soc_dai *cpu_dai = MINDONE_RTD_TO_CPU(rtd, 0);
+	struct snd_soc_dai *cpu_dai = snd_soc_rtd_to_cpu(rtd, 0);
 	int id = cpu_dai->id;
 
 	return mt6789_rate_transform(afe->dev, rate, id);
@@ -3262,7 +3231,7 @@ static const struct snd_soc_component_driver mt6789_afe_component = {
 	.pcm_destruct = mtk_afe_pcm_free,
 	.open = mtk_afe_pcm_open,
 	.pointer = mtk_afe_pcm_pointer,
-	MINDONE_SND_COPY_OP(mtk_afe_pcm_copy_user),
+	.copy = mtk_afe_pcm_copy_user,
 };
 
 static ssize_t mt6789_debug_read_reg(char *buffer, int size, struct mtk_base_afe *afe)
@@ -5783,35 +5752,9 @@ static int mt6789_afe_pcm_dev_probe(struct platform_device *pdev)
 	ultra_set_dsp_afe(afe);
 #endif
 #if IS_ENABLED(CONFIG_MTK_SCP_AUDIO)
-	/* 🔴 MINDONE-AFE-SCPAUDIO (F3290/F3291). This call binds the audio co-processor
-	 * to AFE. Enabling it directly on 31.08 CRASHED THE BOOT (device went into
-	 * PRELOADER), even though the whole symbol gate passed: what breaks isn't
-	 * module load but probe. First-stage module, live swap impossible, and the
-	 * `--oneshot` fallback does NOT save this device (slot _b + our region =
-	 * black screen, F3182/F3291). So the call is gated behind a param OFF by
-	 * default: the image is safe, and the experiment is done by writing 1 to
-	 * .../parameters/mindone_scp_audio and re-running probe via unbind/bind. */
-	if (mindone_scp_audio)
-		scp_set_audio_afe(afe);
+	scp_set_audio_afe(afe);
 #endif
-	if (mindone_dsp_afe) {
-		audio_set_dsp_afe(afe);
-		/* MINDONE-AFE-TASKATTR (F3322): audio_set_dsp_afe() only fixes get_afe_base()
-		 * (F3312/F3313/F3314). Separately, DEEPER, get_taskid_by_afe_daiid() silently
-		 * fails for EVERY afe_dai_id - the only code that fills adsp_task_attr[] with
-		 * real afe_memif_dl/ul/ref binds via DT node "mediatek,snd_audio_dsp", absent
-		 * on both this device AND stock (F3316/F3322). Instead of risking a DTB
-		 * patch, we call set_task_attr() directly - the same code probe would run,
-		 * just without the DT middleman. Detail (compiled defaults, disasm/live-test
-		 * confirmation, runtime_enable design): MINDONE-MODULES-NOTES-0901. */
-		if (mindone_dsp_taskattr) {
-			set_task_attr(AUDIO_TASK_PRIMARY_ID, ADSP_TASK_ATTR_MEMDL, MT6789_MEMIF_DL1);
-			set_task_attr(AUDIO_TASK_PRIMARY_ID, ADSP_TASK_ATTR_RUNTIME, 1);
-			set_task_attr(AUDIO_TASK_DEEPBUFFER_ID, ADSP_TASK_ATTR_DEFAULT, 1);
-			set_task_attr(AUDIO_TASK_DEEPBUFFER_ID, ADSP_TASK_ATTR_MEMDL, MT6789_MEMIF_DL3);
-			set_task_attr(AUDIO_TASK_DEEPBUFFER_ID, ADSP_TASK_ATTR_RUNTIME, 1);
-		}
-	}
+	audio_set_dsp_afe(afe);
 	return 0;
 
 err_pm_disable:

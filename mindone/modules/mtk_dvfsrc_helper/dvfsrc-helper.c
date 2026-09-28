@@ -1052,14 +1052,14 @@ static int mtk_dvfsrc_helper_probe(struct platform_device *pdev)
 	}
 
 	dvfsrc->regs = devm_ioremap(&pdev->dev, res->start, resource_size(res));
-	if (IS_ERR(dvfsrc->regs))
-		return PTR_ERR(dvfsrc->regs);
+	if (!dvfsrc->regs)
+		return -ENOMEM;
 
 	res = platform_get_resource_byname(parent_dev,
 			IORESOURCE_MEM, "spm");
 	if (res) {
 		dvfsrc->spm_regs = devm_ioremap(&pdev->dev, res->start, resource_size(res));
-		if (IS_ERR(dvfsrc->spm_regs))
+		if (!dvfsrc->spm_regs)
 			dvfsrc->spm_regs = NULL;
 	}
 

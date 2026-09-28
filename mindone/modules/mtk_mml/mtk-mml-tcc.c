@@ -45,6 +45,8 @@ static s32 tcc_prepare(struct mml_comp *comp, struct mml_task *task,
 	struct tcc_frame_data *tcc_frm;
 
 	tcc_frm = kzalloc(sizeof(*tcc_frm), GFP_KERNEL);
+	if (!tcc_frm)
+		return -ENOMEM;
 	ccfg->data = tcc_frm;
 	/* cache out index for easy use */
 	tcc_frm->out_idx = ccfg->node->out_idx;

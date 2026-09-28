@@ -630,7 +630,7 @@ int lbat_user_modify_thd_ext(struct lbat_user *user, unsigned int *thd_volt_arr,
 {
 	int i, thd_list_size = 0, ret = 0;
 	int hv_thd_cnt = 0, lv_thd_cnt = 0;
-	struct lbat_thd_t *n, *thd, **hv_thd, **lv_thd;
+	struct lbat_thd_t *n, *thd, **hv_thd = NULL, **lv_thd = NULL;
 
 #if LBAT_SERVICE_DBG
 	pr_info("[%s] name=%s\n", __func__, user->name);
@@ -668,6 +668,12 @@ int lbat_user_modify_thd_ext(struct lbat_user *user, unsigned int *thd_volt_arr,
 	}
 	hv_thd = kcalloc(hv_thd_cnt, sizeof(struct lbat_thd_t *), GFP_KERNEL);
 	lv_thd = kcalloc(lv_thd_cnt, sizeof(struct lbat_thd_t *), GFP_KERNEL);
+	if (!hv_thd || !lv_thd) {
+		hv_thd_cnt = 0;
+		lv_thd_cnt = 0;
+		ret = -ENOMEM;
+		goto out;
+	}
 
 	i = 0;
 	list_for_each_entry_safe(thd, n, &lbat_hv_list, list) {

@@ -5378,7 +5378,7 @@ int ccci_dpmaif_suspend_noirq_v1(struct device *dev)
 	if ((!dpmaif_ctrl) || (atomic_read(&dpmaif_ctrl->suspend_flag) < 0))
 		return 0;
 
-	CCCI_NORMAL_LOG(-1, TAG, "[%s] suspend_cnt: %u\n", __func__, g_suspend_cnt);
+	CCCI_REPEAT_LOG(-1, TAG, "[%s] suspend_cnt: %u\n", __func__, g_suspend_cnt);
 
 	atomic_set(&dpmaif_ctrl->suspend_flag, 1);
 
@@ -5400,7 +5400,7 @@ int ccci_dpmaif_resume_noirq_v1(struct device *dev)
 			MD_CLOCK_REQUEST, MD_WAKEUP_AP_SRC,
 			WAKE_SRC_HIF_DPMAIF, 0, 0, 0, 0, &res);
 
-	CCCI_NORMAL_LOG(-1, TAG,
+	CCCI_REPEAT_LOG(-1, TAG,
 		"[%s] resume_cnt: %u; flag_1=0x%lx, flag_2=0x%lx, flag_3=0x%lx, flag_4=0x%lx\n",
 		__func__, g_resume_cnt, res.a0, res.a1, res.a2, res.a3);
 

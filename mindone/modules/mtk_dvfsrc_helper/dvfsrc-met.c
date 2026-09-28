@@ -351,8 +351,8 @@ static int mtk_dvfsrc_met_probe(struct platform_device *pdev)
 	dvfsrc->regs = devm_ioremap(&pdev->dev, res->start,
 		resource_size(res));
 
-	if (IS_ERR(dvfsrc->regs))
-		return PTR_ERR(dvfsrc->regs);
+	if (!dvfsrc->regs)
+		return -ENOMEM;
 
 	dvfsrc->dvfsrc_vcore_power =
 		regulator_get_optional(dvfsrc->dev, "rc-vcore");

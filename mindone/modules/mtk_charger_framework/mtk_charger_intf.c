@@ -72,12 +72,12 @@ int get_uisoc(struct mtk_charger *info)
 	struct power_supply *bms_psy = NULL;
 	bms_psy = power_supply_get_by_name("bms");
 	if (IS_ERR_OR_NULL(bms_psy)) {
-		pr_debug("%s no bms psy (MINDONE-CHG-BMSQUIET, F3088: psy \"bms\" does not exist on this board, standard path is gauge)\n", __func__);
+		pr_debug("%s: no bms psy\n", __func__);
 	}
 	else{
 		ret = power_supply_get_property(bms_psy,POWER_SUPPLY_PROP_CAPACITY, &prop);
 		ret = prop.intval;
-		chr_err("gezi %s:%d\n", __func__,ret);
+		chr_debug("%s:%d\n", __func__,ret);
 		return ret;
 	}
 #endif
@@ -114,12 +114,12 @@ int get_battery_voltage(struct mtk_charger *info)
 	struct power_supply *bms_psy = NULL;
 	bms_psy = power_supply_get_by_name("bms");
 	if (IS_ERR_OR_NULL(bms_psy)) {
-		pr_debug("%s no bms psy (MINDONE-CHG-BMSQUIET, F3088: psy \"bms\" does not exist on this board, standard path is gauge)\n", __func__);
+		pr_debug("%s: no bms psy\n", __func__);
 	}
 	else{
 		ret = power_supply_get_property(bms_psy,POWER_SUPPLY_PROP_VOLTAGE_NOW, &prop);
 		ret = prop.intval / 1000;
-		chr_err("gezi %s:%d\n", __func__,ret);
+		chr_debug("%s:%d\n", __func__,ret);
 		return ret;
 	}
 #endif
@@ -157,13 +157,9 @@ int get_battery_temperature(struct mtk_charger *info)
 	struct power_supply *bms_psy = NULL;
 	bms_psy = power_supply_get_by_name("cw-bat");
 	if (IS_ERR_OR_NULL(bms_psy)) {
-		pr_debug("%s no bms psy (MINDONE-CHG-BMSQUIET, F3088: psy \"bms\" does not exist on this board, standard path is gauge)\n", __func__);
+		pr_debug("%s: no bms psy\n", __func__);
 	}
 	else{
-		/* MINDONE 12.09: the "cw-bat" psy is registered by mtk_charger itself
-		 * (psy_bms_desc), which has no TEMP property -- get_property() returns -EINVAL
-		 * and prop is left uninitialized, hence "T=0" in the charger log line. Only use
-		 * this value on a successful read. */
 		ret = power_supply_get_property(bms_psy,POWER_SUPPLY_PROP_TEMP, &prop);
 		if (!ret) {
 			ret = prop.intval / 10;
@@ -187,7 +183,12 @@ int get_battery_temperature(struct mtk_charger *info)
 	} else {
 		tmp_ret = power_supply_get_property(bat_psy,
 			POWER_SUPPLY_PROP_TEMP, &prop);
-		ret = prop.intval / 10;
+		if (tmp_ret) {
+			chr_err("%s gauge TEMP read failed:%d\n",
+				__func__, tmp_ret);
+			ret = 27;
+		} else
+			ret = prop.intval / 10;
 	}
 
 	chr_debug("%s:%d\n", __func__,
@@ -206,12 +207,12 @@ int get_battery_current(struct mtk_charger *info)
 	struct power_supply *bms_psy = NULL;
 	bms_psy = power_supply_get_by_name("bms");
 	if (IS_ERR_OR_NULL(bms_psy)) {
-		pr_debug("%s no bms psy (MINDONE-CHG-BMSQUIET, F3088: psy \"bms\" does not exist on this board, standard path is gauge)\n", __func__);
+		pr_debug("%s: no bms psy\n", __func__);
 	}
 	else{
 		ret = power_supply_get_property(bms_psy,POWER_SUPPLY_PROP_CURRENT_NOW, &prop);
 		ret = prop.intval / 1000;
-		chr_err("gezi %s:%d\n", __func__,ret);
+		chr_debug("%s:%d\n", __func__,ret);
 		return ret;
 	}
 #endif
@@ -348,10 +349,6 @@ int get_ibus(struct mtk_charger *info)
 		return -EINVAL;
 	ret = charger_dev_get_ibus(info->chg1_dev, &ibus);
 	if (ret < 0) {
-		/* This board cannot measure input current at all: the ETA6965 has no IBUS ADC
-		 * (F3011) and the device tree carries no charger-current IIO channel, so the
-		 * failure is structural, not an event. It used to be logged on every charger
-		 * cycle - 105 lines per boot and 0.2/s afterwards. Say it once. */
 		static bool ibus_unsupported_logged;
 
 		if (!ibus_unsupported_logged) {
@@ -410,11 +407,6 @@ bool is_charger_exist(struct mtk_charger *info)
 
 	if (chg_psy == NULL || IS_ERR(chg_psy)) {
 		pr_notice("%s Couldn't get chg_psy\n", __func__);
-		/* MINDONE 12.09 (F4159): the function is declared bool, and the previous
-		 * "ret = -1" was cast to true -- the absence of a psy was read as "a charger IS
-		 * present". Through usbpsy this produced usb/online=1 forever, and Android never
-		 * saw the cable get disconnected.
-		 * No psy means the charger is not visible, so answer false. */
 		ret = 0;
 	} else {
 		tmp_ret = power_supply_get_property(chg_psy,

@@ -979,9 +979,6 @@ struct EVENT_NIC_CAPABILITY {
 struct EVENT_NIC_CAPABILITY_V2 {
 	uint16_t u2TotalElementNum;
 	uint8_t aucReserved[2];
-	/* Flexible array instead of a zero-length array -- the same reason as in
-	 * ccci_ringbuf.h (F3884): the bounds check treats `[0]` as empty, and
-	 * `aucBuffer + offset` becomes an out-of-bounds access. */
 	uint8_t aucBuffer[];
 };
 
@@ -1395,7 +1392,7 @@ struct CMD_ACCESS_RX_STAT {
 struct EVENT_ACCESS_RX_STAT {
 	uint32_t u4SeqNum;
 	uint32_t u4TotalNum;
-	uint32_t au4Buffer[1];
+	uint32_t au4Buffer[];
 };
 
 #if CFG_SUPPORT_TX_BF
@@ -1732,6 +1729,7 @@ enum ENUM_PWR_LIMIT_TYPE {
 #if (CFG_SUPPORT_WIFI_6G == 1)
 struct CMD_CHANNEL_POWER_LIMIT_6E {
 	uint8_t ucCentralCh;
+	struct_group(rPwrLimit,
 	int8_t cPwrLimitRU26L; /* MCS0~4 */
 	int8_t cPwrLimitRU26H; /* MCS5~9 */
 	int8_t cPwrLimitRU26U; /* MCS10~11 */
@@ -1759,6 +1757,7 @@ struct CMD_CHANNEL_POWER_LIMIT_6E {
 	int8_t cPwrLimitRU1992L; /* MCS0~4 */
 	int8_t cPwrLimitRU1992H; /* MCS5~9 */
 	int8_t cPwrLimitRU1992U; /* MCS10~11 */
+	);
 
 	uint8_t ucFlag;
 	uint8_t ucValid;
@@ -1769,27 +1768,40 @@ struct CMD_CHANNEL_POWER_LIMIT_6E {
 struct CMD_CHANNEL_POWER_LIMIT {
 	uint8_t ucCentralCh;
 #if (CFG_SUPPORT_DYNA_TX_PWR_CTRL_11AC_V2_SETTING == 1)
-	int8_t cPwrLimitCCK_L; /* CCK_L, 1M,2M */
-	int8_t cPwrLimitCCK_H; /* CCK_H, 5.5M,11M */
-	int8_t cPwrLimitOFDM_L; /* OFDM_L,  6M ~ 18M */
-	int8_t cPwrLimitOFDM_H; /* OFDM_H, 24M ~ 54M */
+	struct_group(rPwrLimit,
+	int8_t cPwrLimitCCK_L;
+	int8_t cPwrLimitCCK_H;
+	int8_t cPwrLimitOFDM_L;
+	int8_t cPwrLimitOFDM_H;
+	int8_t cPwrLimit20L;
+	int8_t cPwrLimit20H;
+	int8_t cPwrLimit40L;
+	int8_t cPwrLimit40H;
+	int8_t cPwrLimit80L;
+	int8_t cPwrLimit80H;
+	int8_t cPwrLimit160L;
+	int8_t cPwrLimit160H;
+	);
 #else
+	struct_group(rPwrLimit,
 	int8_t cPwrLimitCCK;
+	int8_t cPwrLimit20L;
+	int8_t cPwrLimit20H;
+	int8_t cPwrLimit40L;
+	int8_t cPwrLimit40H;
+	int8_t cPwrLimit80L;
+	int8_t cPwrLimit80H;
+	int8_t cPwrLimit160L;
+	int8_t cPwrLimit160H;
+	);
 #endif /* CFG_SUPPORT_DYNA_TX_PWR_CTRL_11AC_V2_SETTING */
-	int8_t cPwrLimit20L; /* MCS0~4 */
-	int8_t cPwrLimit20H; /* MCS5~8 */
-	int8_t cPwrLimit40L; /* MCS0~4 */
-	int8_t cPwrLimit40H; /* MCS5~9 */
-	int8_t cPwrLimit80L; /* MCS0~4 */
-	int8_t cPwrLimit80H; /* MCS5~9 */
-	int8_t cPwrLimit160L; /* MCS0~4 */
-	int8_t cPwrLimit160H; /* MCS5~9 */
 
 	uint8_t ucFlag; /*Not used in driver*/
 	uint8_t aucReserved[1];
 };
 struct CMD_CHANNEL_POWER_LIMIT_HE { /*HE SU design*/
 	uint8_t ucCentralCh;
+	struct_group(rPwrLimit,
 	int8_t cPwrLimitRU26L; /* MCS0~4 */
 	int8_t cPwrLimitRU26H; /* MCS5~9 */
 	int8_t cPwrLimitRU26U; /* MCS10~11 */
@@ -1813,6 +1825,7 @@ struct CMD_CHANNEL_POWER_LIMIT_HE { /*HE SU design*/
 	int8_t cPwrLimitRU996L; /* MCS0~4 */
 	int8_t cPwrLimitRU996H; /* MCS5~9 */
 	int8_t cPwrLimitRU996U; /* MCS10~11 */
+	);
 
 	uint8_t ucFlag;
 	uint8_t ucValid;
@@ -1821,6 +1834,7 @@ struct CMD_CHANNEL_POWER_LIMIT_HE { /*HE SU design*/
 
 struct CMD_CHANNEL_POWER_LIMIT_HE_BW160 { /*HE SU design*/
 	uint8_t ucCentralCh;
+	struct_group(rPwrLimit,
 	int8_t cPwrLimitRU26L; /* MCS0~4 */
 	int8_t cPwrLimitRU26H; /* MCS5~9 */
 	int8_t cPwrLimitRU26U; /* MCS10~11 */
@@ -1848,6 +1862,7 @@ struct CMD_CHANNEL_POWER_LIMIT_HE_BW160 { /*HE SU design*/
 	int8_t cPwrLimitRU1992L; /* MCS0~4 */
 	int8_t cPwrLimitRU1992H; /* MCS5~9 */
 	int8_t cPwrLimitRU1992U; /* MCS10~11 */
+	);
 
 	uint8_t ucFlag;
 	uint8_t ucValid;

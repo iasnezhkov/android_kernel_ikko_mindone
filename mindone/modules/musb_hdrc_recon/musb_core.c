@@ -5,22 +5,6 @@
 
 #include <linux/module.h>
 
-/* MINDONE (F2466/F2470): mt_usb_enable() threw away the result of usb_enable_clock() and then
- * read a controller register and set musb->power = true regardless. When the clock is NOT on,
- * that register access never completes on the bus: the CPU stalls with interrupts already
- * disabled, nothing can be printed, and the hardware watchdog resets the chip after 31 s.
- * usb_enable_clock() itself reports failure correctly (-EINVAL) - only the caller ignored it.
- * Honour the result: no clock, no register touch, and musb->power stays false so that
- * musb_pullup() will not touch the block either.
- */
-#include <linux/moduleparam.h>
-int mindone_usbclk_check = 1;
-module_param(mindone_usbclk_check, int, 0644);
-MODULE_PARM_DESC(mindone_usbclk_check, "1 = bail out of mt_usb_enable when the clock did not start");
-unsigned long mindone_usbclk_fail;
-module_param(mindone_usbclk_fail, ulong, 0444);
-MODULE_PARM_DESC(mindone_usbclk_fail, "times usb_enable_clock reported failure");
-
 #include <linux/delay.h>
 #include <linux/kernel.h>
 #include <linux/sched.h>
@@ -34,7 +18,6 @@ MODULE_PARM_DESC(mindone_usbclk_fail, "times usb_enable_clock reported failure")
 #include <linux/idr.h>
 #include <linux/dma-mapping.h>
 #include <linux/time.h>
-#include <linux/version.h>
 
 #include <linux/usb/usb_phy_generic.h>
 #include <linux/mfd/syscon.h>
@@ -120,19 +103,6 @@ module_param(use_mtk_audio, int, 0644);
 
 #include "musb_qmu.h"
 
-/* MINDONE-MUSB-LIMIT: step-by-step limiter, tools/scripts/patch-musb-limit.py.
- * -1 (default) - disabled. N - run steps 1..N and return -ENODEV.
- */
-static int mindone_musb_limit = -1;
-module_param(mindone_musb_limit, int, 0444);
-MODULE_PARM_DESC(mindone_musb_limit, "stop musb_init_controller after step N");
-
-#define MINDONE_MUSB_STOP(n) do { \
-	if (mindone_musb_limit >= 0 && (n) > mindone_musb_limit) { \
-		pr_info("MINDONE-MUSB-LIMIT: stopping before step %d\n", (n)); \
-		return -ENODEV; \
-	} \
-} while (0)
 
 u32 dma_channel_setting, qmu_ioc_setting;
 #endif
@@ -938,6 +908,7 @@ static irqreturn_t musb_stage0_irq(struct musb *musb, u8 int_usb, u8 devctl)
 		case OTG_STATE_B_IDLE:
 			if (!musb->is_active)
 				break;
+			fallthrough;
 		case OTG_STATE_B_PERIPHERAL:
 			musb_g_suspend(musb);
 			musb->is_active = otg->gadget->b_hnp_enable;
@@ -2433,7 +2404,6 @@ int musb_init_controller(struct device *dev, int nIrq, void __iomem *ctrl)
 		musb->mtk_usb_phy_offset = 0x300;
 	DBG(0, "musb->mtk_usb_phy_offset : 0x%x\n", musb->mtk_usb_phy_offset);
 
-	MINDONE_MUSB_STOP(1);
 	mtk_musb = musb;
 	sema_init(&musb->musb_lock, 1);
 	pm_runtime_use_autosuspend(musb->controller);
@@ -2462,27 +2432,22 @@ int musb_init_controller(struct device *dev, int nIrq, void __iomem *ctrl)
 	 * isp1504, non-OTG, etc) mostly hooking up through ULPI.
 	 */
 
-	MINDONE_MUSB_STOP(2);
 	musb_platform_prepare_clk(musb);
 
 	/* resolve CR ALPS01823375 */
 	/* u8 u8_busperf3 = 0; */
-	MINDONE_MUSB_STOP(3);
 	u8_busperf3 = musb_readb(musb->mregs, 0x74);
 	u8_busperf3 &= ~(0x40);
 	u8_busperf3 |= 0x80;
 	musb_writeb(musb->mregs, 0x74, u8_busperf3);
-	MINDONE_MUSB_STOP(4);
 	/* resolve CR ALPS01823375 */
 
 	status = musb_platform_init(musb);
-	MINDONE_MUSB_STOP(5);
 
 #if IS_ENABLED(CONFIG_OF)
 	musb->xceiv->io_priv = ctrlp;
 #endif
 	musb_platform_enable(musb);
-	MINDONE_MUSB_STOP(6);
 #if IS_ENABLED(CONFIG_MTK_MUSB_QMU_SUPPORT)
 	musb_qmu_init(musb);
 #endif
@@ -2500,7 +2465,6 @@ int musb_init_controller(struct device *dev, int nIrq, void __iomem *ctrl)
 		musb->xceiv->io_ops = &musb_ulpi_access;
 	}
 	pm_runtime_get_sync(musb->controller);
-	MINDONE_MUSB_STOP(7);
 
 #ifndef CONFIG_MUSB_PIO_ONLY
 	if (use_dma && dev->dma_mask) {
@@ -2518,7 +2482,6 @@ int musb_init_controller(struct device *dev, int nIrq, void __iomem *ctrl)
 
 	/* be sure interrupts are disabled before connecting ISR */
 	musb_generic_disable(musb);
-	MINDONE_MUSB_STOP(8);
 	/* setup musb parts of the core (especially endpoints) */
 	status = musb_core_init(plat->config->multipoint
 			? MUSB_CONTROLLER_MHDRC : MUSB_CONTROLLER_HDRC, musb);
@@ -2544,12 +2507,6 @@ int musb_init_controller(struct device *dev, int nIrq, void __iomem *ctrl)
 	INIT_WORK(&musb->otg_notifier_work, musb_otg_notifier_work);
 #endif
 	/* attach to the IRQ */
-	/* MINDONE-IRQ-AUTOEN (29.08, F3019): the diagnostic NOAUTOEN patch (F573/F575, from
-	 * the early-abort-on-unclocked-controller-read era) is removed - musb's clocks are
-	 * already enabled by this point (mt_usb_init/mt_usb_enable above), and with
-	 * IRQF_NO_AUTOEN the musb interrupt on 6.1 never got enabled at all: host
-	 * SUSPEND/RESET never reached the kernel, the device never enumerated. Flags match
-	 * MediaTek's published sources (IRQF_ONESHOT). */
 	if (request_threaded_irq(musb->nIrq, NULL, musb->isr
 			, IRQF_ONESHOT, dev_name(dev), musb)) {
 		DBG(0, "request_irq %d failed!\n", musb->nIrq);
@@ -3201,6 +3158,7 @@ EXPORT_SYMBOL(Charger_Detect_Release);
 #ifndef FPGA_PLATFORM
 #include <linux/arm-smccc.h>
 #include <linux/soc/mediatek/mtk_sip_svc.h>
+#define MTK_SIP_KERNEL_USB_CONTROL	MTK_SIP_SMC_CMD(0x527)
 static void usb_dpidle_request(int mode)
 {
 	struct arm_smccc_res res;
@@ -3853,6 +3811,7 @@ static int virt_enable = 0, virt_disable;
 static void mt_usb_enable(struct musb *musb)
 {
 	unsigned long flags;
+	int ret;
 
 	virt_enable++;
 	DBG(0, "begin <%d,%d>,<%d,%d,%d,%d>\n",
@@ -3863,20 +3822,10 @@ static void mt_usb_enable(struct musb *musb)
 		return;
 
 	/* clock already prepare before enter here */
-	if (mindone_usbclk_check) {
-		int mindone_rc = usb_enable_clock(true);
-
-		if (mindone_rc < 0) {
-			mindone_usbclk_fail++;
-			pr_notice("MINDONE-USBCLK: enable failed rc=%d (n=%lu), skipping register access\n",
-				  mindone_rc, mindone_usbclk_fail);
-			/* musb->power intentionally left false: the block is not clocked,
-			 * so nobody may touch its registers - see the note near the top.
-			 */
-			return;
-		}
-	} else {
-		usb_enable_clock(true);
+	ret = usb_enable_clock(true);
+	if (ret < 0) {
+		pr_notice("%s: usb clock did not start (%d), controller left off\n", __func__, ret);
+		return;
 	}
 
 	mdelay(10);
@@ -4088,14 +4037,6 @@ void do_connection_work(struct work_struct *data)
 		}
 		usb_clk_state = ON_TO_OFF;
 	} else {
-		/* MINDONE-USBLOCK (01.09.2026, F3336): on a real cable unplug the
-		 * Android gadget teardown (configfs UDC unbind -> musb_stop, power=0)
-		 * runs BEFORE this DISC work does, so the power&&!usb_on release
-		 * branch above is unreachable and the "USB suspend lock" wakeup
-		 * source stayed held forever -> the kernel made zero suspend
-		 * attempts all night (F3333). When USB is fully down (no target
-		 * state, controller stopped) the lock has no reason to be held;
-		 * a later CONN/CHECK re-takes it in the branch above. */
 		if (!usb_on && !mtk_musb->power && mtk_musb->usb_lock->active) {
 			DBG(0, "unlock (stale, usb fully down)\n");
 			__pm_relax(mtk_musb->usb_lock);
@@ -4678,16 +4619,8 @@ static int musb_probe(struct platform_device *pdev)
 	if (IS_ERR(glue->xceiv)) {
 		ret = PTR_ERR(glue->xceiv);
 		dev_notice(&pdev->dev, " fail to getting usb-phy %d\n", ret);
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 12, 0)
-		/* MINDONE-PHYRACE (6.12 track, F3728): the usb_phy_generic device created above is
-		 * bound synchronously only if phy-generic already registered; nothing enforces that
-		 * order at runtime. Losing the race makes devm_usb_get_phy() return -ENODEV, which
-		 * the driver core never retries ("fail to getting usb-phy -19"). Convert it to
-		 * -EPROBE_DEFER so it self-heals; err_unregister_usb_phy unwinds the device, so a
-		 * retry leaks nothing. Scoped to 6.12; 6.1 boots reliably through this path. */
 		if (ret == -ENODEV)
 			ret = -EPROBE_DEFER;
-#endif
 		goto err_unregister_usb_phy;
 	}
 
@@ -4740,12 +4673,6 @@ static int musb_probe(struct platform_device *pdev)
 
 	platform_set_drvdata(pdev, glue);
 
-	/* MINDONE-MUSB-IRQ (variant B, tools/scripts/patch-musb-irq.sh, MUSB-IRQ-K6 §3):
-	 * manually built resource array, modeled on drivers/usb/musb/omap2430.c:401-444
-	 * (mainline, solves the same problem the same way on real hardware). The parent has
-	 * TWO reg blocks (not one, MUSB-IRQ-K6 §1) - the array bound is explicit, not
-	 * assumed; that's exactly the border-check hypothesis §2.2 says F549/F550 lacked.
-	 */
 	{
 		struct resource musb_res[3];
 		unsigned int mi;
@@ -4753,7 +4680,7 @@ static int musb_probe(struct platform_device *pdev)
 
 		if (pdev->num_resources > 2) {
 			dev_notice(&pdev->dev,
-				"MINDONE-MUSB-IRQ: unexpectedly many parent resources (%u), skipping IRQ fix\n",
+				"unexpectedly many parent resources (%u), skipping IRQ fix\n",
 				pdev->num_resources);
 			goto skip_irq_fix;
 		}
@@ -4767,8 +4694,8 @@ static int musb_probe(struct platform_device *pdev)
 			musb_res[mi].name = "mc";
 			mi++;
 		} else {
-			dev_notice(&pdev->dev,
-				"MINDONE-MUSB-IRQ: platform_get_irq_byname(mc) = %d\n", mirq);
+			dev_dbg(&pdev->dev,
+				"platform_get_irq_byname(mc) = %d\n", mirq);
 		}
 
 		ret = platform_device_add_resources(musb_pdev, musb_res, mi);
@@ -4915,11 +4842,9 @@ skip_irq_fix:
 	DBG(0, "USB probe done!\n");
 
 #if defined(FPGA_PLATFORM) || defined(FOR_BRING_UP)
-	/* MINDONE-NOFORCE: do not force gadget auto-connect (F772) -
-	 * forcing it caused host enumeration and a hard hang at 25-27.5s. */
 	musb_force_on = 0;
 #endif
-	musb_force_on = 0; /* MINDONE-NOFORCE-HARD: guaranteed 0 regardless of #if */
+	musb_force_on = 0;
 
 	return 0;
 

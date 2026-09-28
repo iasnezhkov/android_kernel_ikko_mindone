@@ -359,6 +359,10 @@ struct BSS_INFO {
 	uint8_t ucDTIMPeriod;	/* For Infra/AP Mode */
 	u_int8_t fgTIMPresent;
 
+	u_int8_t fgBssMaxIdlePeriodPresent;
+	uint16_t u2BssMaxIdlePeriod;
+	u_int8_t fgBssMaxIdleProtectedKeepAliveRequired;
+
 	/* For AP Mode, it is the DTIM value we should carried in
 	 * the Beacon of next TBTT.
 	 */
@@ -1135,6 +1139,7 @@ struct WIFI_VAR {
 	uint8_t ucAdvPws; /* enable LP multiple DTIM function, default enable */
 	uint8_t ucWowOnMdtim; /* multiple DTIM if WOW enable, default 1 */
 	uint8_t ucWowOffMdtim; /* multiple DTIM if WOW disable, default 3 */
+	uint8_t ucHostMaxMdtim;
 	uint32_t u4TxHangFullDumpMode;
 
 	uint8_t u4SwTestMode;

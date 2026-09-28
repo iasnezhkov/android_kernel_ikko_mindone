@@ -119,8 +119,7 @@ VARIANT_RE = re.compile(r'\.(c|h|S|dts|dtsi|py|sh|mk)\.[\w.-]+$')
 def backup_files(root: Path):
     """Rule 4: orphan backup copies (.bak/.orig/.OFF/.rej/.old) and kept-aside variants
     (name.c.something) in the tree -- history lives
-    in git, they have no place in the code (AUDIT-TREE-0901: 46 such files in the module tree;
-    kernel: *.orig-restart-probe)."""
+    in git, they have no place in the code."""
     out = []
     for dp, dns, fns in os.walk(root):
         dns[:] = [d for d in dns if d not in SKIP_DIRS]
@@ -206,7 +205,7 @@ def main():
         print(f'  4. orphan backups and kept-aside variants: {len(res["backups"])}')
         print(f'  5. files not in UTF-8 (GBK/cp1252 in comments): {len(res["encoding"])}')
         print(f'  6. CRLF line endings: files {len(res["crlf"])}')
-        print(f'  7. Makefiles with -Wno-error=implicit-function-declaration (hides unresolved imports, F3442; report only, not counted in total): {len(res["implicit"])}')
+        print(f'  7. Makefiles with -Wno-error=implicit-function-declaration (hides unresolved imports; report only, not counted in total): {len(res["implicit"])}')
         # Rule 3 (long MINDONE comments) is a metric, not a violation: a comment that explains
         # why a vendor driver had to change is the point of this tree, and gating on its
         # length would push people to write less of it. Reported, not counted.

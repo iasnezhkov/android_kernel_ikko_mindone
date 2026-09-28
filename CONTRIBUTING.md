@@ -26,9 +26,11 @@ For a module that will not load, `dmesg` around the `insmod` and the output of
 ## Patches
 
 - One change per commit, with a message that says **why**, not what — the diff already says what.
-- Keep the existing comment style: where our code differs from the vendor original, the comment
-  explains what the original did and what evidence made us change it. That is the part that
-  makes a change reviewable by someone without the hardware.
+  Where the code differs from the vendor original, the message says what the original did and
+  what evidence made us change it. That is the part that makes a change reviewable by someone
+  without the hardware.
+- Keep comments in the code itself short and rare. The history is where a change is explained,
+  not a comment block next to it.
 - English only, in code and in commit messages.
 - No binaries, no firmware, no absolute paths from your machine. `mindone/modules/tools/scripts/tree-lint.py`
   and `mindone/modules/tools/scripts/extpathcheck.py` check this; run them before sending.
@@ -43,19 +45,6 @@ python3 mindone/modules/tools/scripts/extpathcheck.py
 If your change touches a module, build it and let `kocheck.py` verify it against the kernel you
 built it for — a module that builds but carries the wrong `module_layout` will silently refuse to
 load on a device, and that is not something a reviewer can see in a diff.
-
-## Markers you will see in comments
-
-Two kinds of reference appear throughout the code:
-
-- `F1234` — an entry in the project's engineering log, where a finding was recorded with the
-  measurement that established it.
-- `SOMETHING-IN-CAPS` — a longer internal note on one subsystem.
-
-Neither is in this repository: the log is a working record, largely of dead ends, and publishing
-it would add volume rather than information. The markers are kept because they make a claim
-traceable if you ask about it, and because the comment next to them is written to stand on its
-own. If a comment ever fails to, that is a defect worth reporting.
 
 ## What this project will not take
 

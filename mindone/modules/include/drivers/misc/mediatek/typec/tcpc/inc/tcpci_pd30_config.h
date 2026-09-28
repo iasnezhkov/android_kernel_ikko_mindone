@@ -25,7 +25,7 @@
 /* PD30 Common Feature */
 
 #define CONFIG_USB_PD_REV30_SRC_CAP_EXT_LOCAL	1
-#define CONFIG_USB_PD_REV30_SRC_CAP_EXT_REMOTE	0 /* MINDONE-PD-NOGETCAPEXT: stop requesting partner Get_Source_Cap_Extended -- our own outgoing DPM_REACTION_GET_SOURCE_CAP_EXT triggers PRL_ERR 3-3-5 -> SNK_SEND_SRESET -> Hard Reset against macOS (F3021) */
+#define CONFIG_USB_PD_REV30_SRC_CAP_EXT_REMOTE	0
 
 #define CONFIG_USB_PD_REV30_BAT_CAP_LOCAL	1
 #define CONFIG_USB_PD_REV30_BAT_CAP_REMOTE	1

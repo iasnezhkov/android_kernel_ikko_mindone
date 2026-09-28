@@ -305,6 +305,7 @@ static void kbase_gpu_release_atom(struct kbase_device *kbdev,
 
 		/* ***FALLTHROUGH: TRANSITION TO LOWER STATE*** */
 
+		fallthrough;
 	case KBASE_ATOM_GPU_RB_READY:
 		/* ***FALLTHROUGH: TRANSITION TO LOWER STATE*** */
 
@@ -368,6 +369,7 @@ static void kbase_gpu_release_atom(struct kbase_device *kbdev,
 
 		/* ***FALLTHROUGH: TRANSITION TO LOWER STATE*** */
 
+		fallthrough;
 	case KBASE_ATOM_GPU_RB_WAITING_PROTECTED_MODE_PREV:
 		/* ***FALLTHROUGH: TRANSITION TO LOWER STATE*** */
 
@@ -565,6 +567,7 @@ static int kbase_jm_enter_protected_mode(struct kbase_device *kbdev,
 
 		/* ***TRANSITION TO HIGHER STATE*** */
 		/* fallthrough */
+		fallthrough;
 	case KBASE_ATOM_ENTER_PROTECTED_HWCNT:
 		/* See if we can get away with disabling hwcnt atomically */
 		kbdev->protected_mode_hwcnt_desired = false;
@@ -608,6 +611,7 @@ static int kbase_jm_enter_protected_mode(struct kbase_device *kbdev,
 
 		/* ***TRANSITION TO HIGHER STATE*** */
 		/* fallthrough */
+		fallthrough;
 	case KBASE_ATOM_ENTER_PROTECTED_IDLE_L2:
 		/* Avoid unnecessary waiting on non-ACE platforms. */
 		if (kbdev->system_coherency == COHERENCY_ACE) {
@@ -639,6 +643,7 @@ static int kbase_jm_enter_protected_mode(struct kbase_device *kbdev,
 
 		/* ***TRANSITION TO HIGHER STATE*** */
 		/* fallthrough */
+		fallthrough;
 	case KBASE_ATOM_ENTER_PROTECTED_SET_COHERENCY:
 		/*
 		 * When entering into protected mode, we must ensure that the
@@ -672,6 +677,7 @@ static int kbase_jm_enter_protected_mode(struct kbase_device *kbdev,
 
 		/* ***TRANSITION TO HIGHER STATE*** */
 		/* fallthrough */
+		fallthrough;
 	case KBASE_ATOM_ENTER_PROTECTED_FINISHED:
 		if (kbase_hw_has_issue(kbdev, BASE_HW_ISSUE_TGOX_R1_1234)) {
 			/*
@@ -743,6 +749,7 @@ static int kbase_jm_exit_protected_mode(struct kbase_device *kbdev,
 
 		/* ***TRANSITION TO HIGHER STATE*** */
 		/* fallthrough */
+		fallthrough;
 	case KBASE_ATOM_EXIT_PROTECTED_IDLE_L2:
 		if (kbdev->pm.backend.l2_state != KBASE_L2_OFF) {
 			/*
@@ -756,6 +763,7 @@ static int kbase_jm_exit_protected_mode(struct kbase_device *kbdev,
 
 		/* ***TRANSITION TO HIGHER STATE*** */
 		/* fallthrough */
+		fallthrough;
 	case KBASE_ATOM_EXIT_PROTECTED_RESET:
 		/* L2 cache has been turned off (which is needed prior to the reset of GPU
 		 * to exit the protected mode), so the override flag can be safely cleared.
@@ -804,6 +812,7 @@ static int kbase_jm_exit_protected_mode(struct kbase_device *kbdev,
 
 		/* ***TRANSITION TO HIGHER STATE*** */
 		/* fallthrough */
+		fallthrough;
 	case KBASE_ATOM_EXIT_PROTECTED_RESET_WAIT:
 		/* A GPU reset is issued when exiting protected mode. Once the
 		 * reset is done all atoms' state will also be reset. For this
@@ -861,6 +870,7 @@ void kbase_backend_slot_update(struct kbase_device *kbdev)
 
 				/* ***TRANSITION TO HIGHER STATE*** */
 				/* fallthrough */
+				fallthrough;
 			case KBASE_ATOM_GPU_RB_WAITING_PROTECTED_MODE_PREV:
 				if (kbase_gpu_check_secure_atoms(kbdev,
 						!kbase_jd_katom_is_protected(
@@ -881,6 +891,7 @@ void kbase_backend_slot_update(struct kbase_device *kbdev)
 
 				/* ***TRANSITION TO HIGHER STATE*** */
 				/* fallthrough */
+				fallthrough;
 			case KBASE_ATOM_GPU_RB_WAITING_PROTECTED_MODE_TRANSITION:
 
 				/*
@@ -916,6 +927,7 @@ void kbase_backend_slot_update(struct kbase_device *kbdev)
 
 				/* ***TRANSITION TO HIGHER STATE*** */
 				/* fallthrough */
+				fallthrough;
 			case KBASE_ATOM_GPU_RB_WAITING_FOR_CORE_AVAILABLE:
 				if (katom[idx]->will_fail_event_code) {
 					kbase_gpu_mark_atom_for_return(kbdev,
@@ -955,6 +967,7 @@ void kbase_backend_slot_update(struct kbase_device *kbdev)
 
 				/* ***TRANSITION TO HIGHER STATE*** */
 				/* fallthrough */
+				fallthrough;
 			case KBASE_ATOM_GPU_RB_READY:
 
 				if (idx == 1) {
@@ -1001,6 +1014,7 @@ void kbase_backend_slot_update(struct kbase_device *kbdev)
 
 				/* ***TRANSITION TO HIGHER STATE*** */
 				/* fallthrough */
+				fallthrough;
 			case KBASE_ATOM_GPU_RB_SUBMITTED:
 
 				/* Inform power management at start/finish of
@@ -1263,7 +1277,7 @@ void kbase_gpu_complete_hw(struct kbase_device *kbdev, int js,
 						(u32)next_katom->kctx->id, 0,
 						next_katom->work_id);
 #if defined(CONFIG_MALI_MTK_GPU_BM_JM)
-            if (kbdev->v1 && js == 0) {	/* MINDONE-GPUBM: the buffer may not be configured */
+            if (kbdev->v1 && js == 0) {
                 kbdev->v1->ctx = (u32)next_katom->kctx->id;
                 kbdev->v1->job = next_katom->work_id;
                 kbdev->v1->freq = js;
@@ -1290,7 +1304,7 @@ void kbase_gpu_complete_hw(struct kbase_device *kbdev, int js,
 
 		if (next_katom && next_katom->gpu_rb_state ==
 						KBASE_ATOM_GPU_RB_SUBMITTED) {
-			if (kbdev->v1 && js == 0) {	/* MINDONE-GPUBM */
+			if (kbdev->v1 && js == 0) {
 				kbdev->v1->ctx = (u32)next_katom->kctx->id;
 				kbdev->v1->job = next_katom->work_id;
 				kbdev->v1->freq = js;

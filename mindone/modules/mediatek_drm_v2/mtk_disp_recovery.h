@@ -32,9 +32,8 @@ struct mtk_drm_esd_ctx {
 
 void mtk_disp_esd_check_switch(struct drm_crtc *crtc, bool enable);
 void mtk_disp_chk_recover_init(struct drm_crtc *crtc);
-/* MINDONE-LK-RECYCLE (12.09): full crtc disable->enable->panel enable cycle; call while
- * holding priv->commit.lock and mtk_crtc->lock, the same way the ESD check thread does. */
 int mtk_drm_esd_recover(struct drm_crtc *crtc);
+bool mtk_dsi_lk_esd_hold(void);
 long disp_dts_gpio_init(struct device *dev, struct mtk_drm_private *private);
 long _set_state(struct drm_crtc *crtc, const char *name);
 

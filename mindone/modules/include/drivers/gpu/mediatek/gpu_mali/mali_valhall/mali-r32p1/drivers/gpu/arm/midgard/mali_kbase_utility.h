@@ -29,12 +29,7 @@
 static inline void kbase_timer_setup(struct timer_list *timer,
 				     void (*callback)(struct timer_list *timer))
 {
-#if KERNEL_VERSION(4, 14, 0) > LINUX_VERSION_CODE
-	setup_timer(timer, (void (*)(unsigned long)) callback,
-			(unsigned long) timer);
-#else
 	timer_setup(timer, callback, 0);
-#endif
 }
 
 #ifndef WRITE_ONCE

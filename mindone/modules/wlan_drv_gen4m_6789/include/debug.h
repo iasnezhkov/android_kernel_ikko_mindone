@@ -106,12 +106,6 @@ extern struct MIB_INFO_STAT g_arMibInfo[ENUM_BAND_NUM];
 #define DBG_CLASS_TEMP          BIT(7)
 #define DBG_CLASS_MASK          BITS(0, 7)
 
-/* MINDONE (02.09.2026): INFO is not part of the default log level. With INFO on,
- * the driver prints a line for every command to the chip (asicFillCmdTxdInfo,
- * "INIT INFO") and pushes the early boot log - the whole display bring-up
- * included - out of the kernel ring. ERROR/WARN/STATE/EVENT stay on; INFO is
- * one write to /proc/net/wlan/dbgLevel away when needed. This replaces the
- * post-boot script that used to lower the level after the driver came up. */
 #define DBG_LOG_LEVEL_DEFAULT \
 	(DBG_CLASS_ERROR | \
 	DBG_CLASS_WARN | \

@@ -33,7 +33,6 @@
 #include <mali_kbase_mem_linux.h>
 #include <tl/mali_kbase_tracepoints.h>
 #include <mali_linux_trace.h>
-#include <linux/version.h>
 #include <linux/ktime.h>
 #include <linux/pfn.h>
 #include <linux/sched.h>
@@ -1025,7 +1024,6 @@ out_cleanup:
 	return ret;
 }
 
-#if KERNEL_VERSION(5, 6, 0) <= LINUX_VERSION_CODE
 static void *dma_buf_kmap_page(struct kbase_mem_phy_alloc *gpu_alloc,
 	unsigned long page_num, struct page **page)
 {
@@ -1053,7 +1051,6 @@ static void *dma_buf_kmap_page(struct kbase_mem_phy_alloc *gpu_alloc,
 
 	return NULL;
 }
-#endif
 
 /**
  * kbase_mem_copy_from_extres() - Copy from external resources.
@@ -1116,40 +1113,26 @@ static int kbase_mem_copy_from_extres(struct kbase_context *kctx,
 		dma_to_copy = min(dma_buf->size,
 			(size_t)(buf_data->nr_extres_pages * PAGE_SIZE));
 		ret = dma_buf_begin_cpu_access(dma_buf,
-#if KERNEL_VERSION(4, 6, 0) > LINUX_VERSION_CODE && !defined(CONFIG_CHROMEOS)
-					       0, dma_to_copy,
-#endif
 					       DMA_FROM_DEVICE);
 		if (ret)
 			goto out_unlock;
 
 		for (i = 0; i < dma_to_copy/PAGE_SIZE &&
 				target_page_nr < buf_data->nr_pages; i++) {
-#if KERNEL_VERSION(5, 6, 0) <= LINUX_VERSION_CODE
 			struct page *pg;
 			void *extres_page = dma_buf_kmap_page(gpu_alloc, i, &pg);
-#else
-			void *extres_page = dma_buf_kmap(dma_buf, i);
-#endif
 			if (extres_page) {
 				ret = kbase_mem_copy_to_pinned_user_pages(
 						pages, extres_page, &to_copy,
 						buf_data->nr_pages,
 						&target_page_nr, offset);
 
-#if KERNEL_VERSION(5, 6, 0) <= LINUX_VERSION_CODE
 				kunmap(pg);
-#else
-				dma_buf_kunmap(dma_buf, i, extres_page);
-#endif
 				if (ret)
 					break;
 			}
 		}
 		dma_buf_end_cpu_access(dma_buf,
-#if KERNEL_VERSION(4, 6, 0) > LINUX_VERSION_CODE && !defined(CONFIG_CHROMEOS)
-				       0, dma_to_copy,
-#endif
 				       DMA_FROM_DEVICE);
 		break;
 	}
@@ -1760,7 +1743,7 @@ static int kbase_ext_res_prepare(struct kbase_jd_atom *katom)
 
 	/* Copy the information for safe access and future storage */
 	copy_size = sizeof(*ext_res);
-	copy_size += sizeof(struct base_external_resource) * (count - 1);
+	copy_size += sizeof(struct base_external_resource) * count;
 	ext_res = memdup_user(user_ext_res, copy_size);
 	if (IS_ERR(ext_res))
 		return PTR_ERR(ext_res);

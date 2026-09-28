@@ -33,9 +33,7 @@
 #include <linux/platform_device.h>
 #include <linux/pm_runtime.h>
 
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(4, 15, 0))
 #include <linux/regmap.h>
-#endif
 
 #define ENABLE MTK_WCN_BOOL_TRUE
 #define DISABLE MTK_WCN_BOOL_FALSE
@@ -470,9 +468,7 @@ extern UINT32 gCoClockFlag;
 extern UINT64 gConEmiSize;
 extern phys_addr_t gConEmiPhyBase;
 
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(4, 15, 0))
 extern struct regmap *g_regmap;
-#endif
 
 
 /*******************************************************************************

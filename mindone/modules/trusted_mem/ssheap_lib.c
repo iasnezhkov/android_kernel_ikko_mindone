@@ -94,7 +94,7 @@ static int hyp_pmm_enable_cma(void)
 
 	ret = (long)smc_res.a0;
 	if (ret <= 0) {
-		pr_err("%s: enable cma failed %llx\n", __func__, smc_res.a0);
+		pr_err("%s: enable cma failed %lx\n", __func__, smc_res.a0);
 		return -EFAULT;
 	}
 
@@ -111,7 +111,7 @@ static int hyp_pmm_disable_cma(void)
 	arm_smccc_smc(HYP_PMM_DISABLE_CMA, cookie, 0, 0, 0, 0, 0, 0, &smc_res);
 
 	if (smc_res.a0 != 0) {
-		pr_err("%s: enable cma failed %llx\n", __func__, smc_res.a0);
+		pr_err("%s: enable cma failed %lx\n", __func__, smc_res.a0);
 		return -EFAULT;
 	}
 
@@ -127,6 +127,7 @@ static void ssmr_zone_offline(void)
 	void *kaddr;
 	unsigned long flags;
 	struct ssheap_page *s_page = NULL;
+	LIST_HEAD(pages);
 	int res = 0;
 
 	if (!ssheap_dev->cma_area) {
@@ -150,7 +151,7 @@ retry:
 	end = sched_clock();
 	duration = end - start;
 	do_div(duration, 1000000);
-	pr_info("%s: duration: %d ns (%d ms)\n", __func__, end - start, duration);
+	pr_info("%s: duration: %llu ns (%llu ms)\n", __func__, end - start, duration);
 
 	if (cma_page == NULL) {
 		pr_warn("%s: cma_alloc failed retry:%d\n", __func__, retry);
@@ -180,19 +181,21 @@ retry:
 	size = (uint64_t)ssheap_phys_size;
 	kaddr = page_address(cma_page);
 
-	spin_lock_irqsave(&cache_lock, flags);
-	/* put into cache page list */
 	do {
 		s_page = kzalloc(sizeof(struct ssheap_page), GFP_KERNEL);
+		if (!s_page)
+			break;
 		s_page->page = virt_to_page(kaddr);
 		s_page->size = SZ_2M;
-		list_add_tail(&s_page->entry, &cache_list);
+		list_add_tail(&s_page->entry, &pages);
 
 		size -= SZ_2M;
 		kaddr += SZ_2M;
 	} while (size);
-	pr_info("%s: ssmr page base enable: %d\n", __func__, res);
+	spin_lock_irqsave(&cache_lock, flags);
+	list_splice_tail(&pages, &cache_list);
 	spin_unlock_irqrestore(&cache_lock, flags);
+	pr_info("%s: ssmr page base enable: %d\n", __func__, res);
 }
 
 static void ssmr_zone_online(void)
@@ -223,10 +226,17 @@ static inline void free_system_mem(struct page *page, u32 size)
 	unsigned long flags;
 	struct ssheap_page *s_page = NULL;
 
-	spin_lock_irqsave(&cache_lock, flags);
 	s_page = kzalloc(sizeof(struct ssheap_page), GFP_KERNEL);
+	if (!s_page) {
+		if (!ssheap_dev->cma_area)
+			__free_pages(page, get_order(size));
+		else
+			cma_release(ssheap_dev->cma_area, page, size >> PAGE_SHIFT);
+		return;
+	}
 	s_page->page = page;
 	s_page->size = size;
+	spin_lock_irqsave(&cache_lock, flags);
 	list_add_tail(&s_page->entry, &cache_list);
 	spin_unlock_irqrestore(&cache_lock, flags);
 #else
@@ -398,7 +408,7 @@ struct ssheap_buf_info *ssheap_alloc_non_contig(u32 req_size, u32 prefer_align,
 	}
 
 	if (req_size == 0) {
-		pr_err("Invalid size, size=0x%lx\n", req_size);
+		pr_err("Invalid size, size=0x%x\n", req_size);
 		return NULL;
 	}
 
@@ -473,7 +483,7 @@ retry:
 		block->block_size = block_size;
 		list_add_tail(&block->entry, &info->block_list);
 
-		pr_debug("dma_addr=%lx size=%lx\n", block->dma_addr,
+		pr_debug("dma_addr=%llx size=%lx\n", block->dma_addr,
 			 block->block_size);
 
 		allocated_size += block_size;
@@ -566,7 +576,7 @@ unsigned long mtee_assign_buffer(struct ssheap_buf_info *info, uint8_t mem_type)
 	pmm_attr = PGLIST_SET_ATTR(paddr, mem_type);
 	arm_smccc_smc(HYP_PMM_ASSIGN_BUFFER, lower_32_bits(pmm_attr),
 		      upper_32_bits(pmm_attr), count, 0, 0, 0, 0, &smc_res);
-	pr_debug("pmm_msg_page paddr=%pa smc_res.a0=%x\n", &paddr, smc_res.a0);
+	pr_debug("pmm_msg_page paddr=%pa smc_res.a0=%lx\n", &paddr, smc_res.a0);
 
 	return smc_res.a0;
 }
@@ -588,7 +598,7 @@ unsigned long mtee_unassign_buffer(struct ssheap_buf_info *info,
 	pr_debug("pmm_msg_page paddr=%pa\n", &paddr);
 	arm_smccc_smc(HYP_PMM_UNASSIGN_BUFFER, lower_32_bits(pmm_attr),
 		      upper_32_bits(pmm_attr), count, 0, 0, 0, 0, &smc_res);
-	pr_debug("smc_res.a0=%x\n", smc_res.a0);
+	pr_debug("smc_res.a0=%lx\n", smc_res.a0);
 	return smc_res.a0;
 }
 
@@ -600,8 +610,9 @@ void ssheap_dump_mem_info(void)
 		&ssheap_phys_size);
 
 	total_allocated_size = atomic64_read(&total_alloced_size);
-	pr_info("%s: total_alloced_size: 0x%x free: 0x%x\n", __func__,
-		total_allocated_size, ssheap_phys_size - total_allocated_size);
+	pr_info("%s: total_alloced_size: 0x%llx free: 0x%llx\n", __func__,
+		(unsigned long long)total_allocated_size,
+		(unsigned long long)(ssheap_phys_size - total_allocated_size));
 }
 
 long long ssheap_get_used_size(void)

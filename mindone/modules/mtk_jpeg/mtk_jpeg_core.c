@@ -8,7 +8,6 @@
 
 #include <linux/clk.h>
 #include <drivers/misc/mediatek/smi/mtk-smi-larb.h>
-#include <mindone/compat.h>
 #include <linux/err.h>
 #include <linux/interrupt.h>
 #include <linux/io.h>
@@ -606,7 +605,7 @@ static void mtk_jpeg_prepare_dvfs(struct mtk_jpeg_dev *jpeg)
 	unsigned long freq = 0;
 	int i = 0;
 
-	pr_info("prepare dvfs +\n", ret);
+	pr_debug("prepare dvfs +\n");
 	ret = dev_pm_opp_of_add_table(jpeg->dev);
 	if (ret < 0) {
 		pr_info("Failed to get opp table (%d)\n", ret);
@@ -622,31 +621,31 @@ static void mtk_jpeg_prepare_dvfs(struct mtk_jpeg_dev *jpeg)
 
 	jpeg->freq_cnt = dev_pm_opp_get_opp_count(jpeg->dev);
 	freq = 0;
-	pr_info("jpeg->freq_cnt %d\n", jpeg->freq_cnt);
+	pr_debug("jpeg->freq_cnt %d\n", jpeg->freq_cnt);
 	while (!IS_ERR(opp =
 		dev_pm_opp_find_freq_ceil(jpeg->dev, &freq))) {
 		jpeg->freqs[i] = freq;
-	pr_info("i %d freq %d\n", i, freq);
+	pr_debug("i %d freq %lu\n", i, freq);
 	freq++;
 		i++;
 		dev_pm_opp_put(opp);
 	}
-	pr_info("prepare dvfs -\n", ret);
+	pr_debug("prepare dvfs -\n");
 
 }
 
 static void mtk_jpeg_prepare_bw_request(struct mtk_jpeg_dev *jpeg)
 {
-	pr_info("prepare bw request +");
+	pr_debug("prepare bw request +");
 	jpeg->path_y_rdma = of_mtk_icc_get(jpeg->dev, "path_jpegenc_y_rdma");
-	pr_info("jpeg->path_y_rdma 0x%x", jpeg->path_y_rdma);
+	pr_debug("jpeg->path_y_rdma %p", jpeg->path_y_rdma);
 	jpeg->path_c_rdma = of_mtk_icc_get(jpeg->dev, "path_jpegenc_c_rmda");
-	pr_info("jpeg->path_c_rdma 0x%x", jpeg->path_c_rdma);
+	pr_debug("jpeg->path_c_rdma %p", jpeg->path_c_rdma);
 	jpeg->path_qtbl = of_mtk_icc_get(jpeg->dev, "path_jpegenc_q_table");
-	pr_info("jpeg->path_qtbl 0x%x", jpeg->path_qtbl);
+	pr_debug("jpeg->path_qtbl %p", jpeg->path_qtbl);
 	jpeg->path_bsdma = of_mtk_icc_get(jpeg->dev, "path_jpegenc_bsdma");
-	pr_info("jpeg->path_bsdma 0x%x", jpeg->path_bsdma);
-	pr_info("prepare bw request -");
+	pr_debug("jpeg->path_bsdma %p", jpeg->path_bsdma);
+	pr_debug("prepare bw request -");
 
 }
 
@@ -663,14 +662,14 @@ static void mtk_jpeg_update_bw_request(struct mtk_jpeg_ctx *ctx)
 	unsigned int picSize = 0;
 	struct mtk_jpeg_dev *jpeg = ctx->jpeg;
 	ret = of_property_read_u32(jpeg->dev->of_node, "interconnect-num", &port_num);
-	pr_info("%s  ret: %d\n", __func__, ret);
+	pr_debug("%s  ret: %d\n", __func__, ret);
 	if (ret >= 0)
-		pr_info("%s  port_num: %u\n", __func__, port_num);
+		pr_debug("%s  port_num: %u\n", __func__, port_num);
 	if (port_num == 1) {
 		picSize = (ctx->out_q.pix_mp.width * ctx->out_q.pix_mp.height) / 1000000;
 		ret = of_property_read_u32(jpeg->dev->of_node, "cshot-spec", &cshot_spec);
 		if (ret >= 0)
-			pr_info("%s  cshot_spec ret: %d, cshot_spec : %d\n",
+			pr_debug("%s  cshot_spec ret: %d, cshot_spec : %d\n",
 		    __func__, ret, cshot_spec);
 		if (ctx->out_q.fmt->fourcc == V4L2_PIX_FMT_YUYV ||
 			ctx->out_q.fmt->fourcc == V4L2_PIX_FMT_YVYU)
@@ -689,13 +688,13 @@ static void mtk_jpeg_update_bw_request(struct mtk_jpeg_ctx *ctx)
 		}
 		emi_bw = emi_bw * 4/3;
 		mtk_icc_set_bw(jpeg->path_bsdma, MBps_to_icc(emi_bw), MBps_to_icc(emi_bw));
-		pr_info("port_num == 1 Width %d Height %d emi_bw %d\n",
+		pr_debug("port_num == 1 Width %d Height %d emi_bw %d\n",
 		ctx->out_q.pix_mp.width, ctx->out_q.pix_mp.height, emi_bw);
 	} else {
 		picSize = (ctx->out_q.pix_mp.width * ctx->out_q.pix_mp.height) / 1000;
 		emi_bw = picSize * target_fps;
 		emi_bw = emi_bw * 4/3;
-		pr_info("Width %d Height %d emi_bw %d\n",
+		pr_debug("Width %d Height %d emi_bw %d\n",
 		ctx->out_q.pix_mp.width, ctx->out_q.pix_mp.height, emi_bw);
 		if (ctx->out_q.fmt->fourcc == V4L2_PIX_FMT_YUYV ||
 			ctx->out_q.fmt->fourcc == V4L2_PIX_FMT_YVYU) {
@@ -745,7 +744,7 @@ static void mtk_jpeg_dvfs_begin(struct mtk_jpeg_ctx *ctx)
 		}
 	}
 
-	pr_info("%s  volt: %d\n", __func__, volt);
+	pr_debug("%s  volt: %d\n", __func__, volt);
 
 }
 
@@ -757,7 +756,7 @@ static void mtk_jpeg_dvfs_end(struct mtk_jpeg_ctx *ctx)
 	unsigned long active_freq = 0;
 	struct mtk_jpeg_dev *jpeg = ctx->jpeg;
 
-	pr_info("%s  ++\n", __func__);
+	pr_debug("%s  ++\n", __func__);
 	active_freq = jpeg->freqs[0];
 
 	if (jpeg->jpegenc_reg != 0) {
@@ -773,7 +772,7 @@ static void mtk_jpeg_dvfs_end(struct mtk_jpeg_ctx *ctx)
 		}
 	}
 
-	pr_info("%s  volt: %d --\n", __func__, volt);
+	pr_debug("%s  volt: %d --\n", __func__, volt);
 
 }
 
@@ -802,7 +801,7 @@ static int mtk_jpeg_qbuf(struct file *file, void *priv, struct v4l2_buffer *buf)
 			return -EINVAL;
 		}
 		ctx->dst_offset = buf->m.planes[0].data_offset;
-		pr_info("%s %d data_offset %d\n", __func__, __LINE__, buf->m.planes[0].data_offset);
+		pr_debug("%s %d data_offset %d\n", __func__, __LINE__, buf->m.planes[0].data_offset);
 	}
 
 	return v4l2_m2m_qbuf(file, fh->m2m_ctx, buf);
@@ -908,13 +907,14 @@ static int mtk_jpeg_buf_prepare(struct vb2_buffer *vb)
 		return -EINVAL;
 
 	for (i = 0; i < q_data->fmt->colplanes; i++) {
+		unsigned long size;
+
 		plane_fmt = q_data->pix_mp.plane_fmt[i];
+		size = plane_fmt.sizeimage;
 		if (ctx->enable_exif &&
 		    q_data->fmt->fourcc == V4L2_PIX_FMT_JPEG)
-			vb2_set_plane_payload(vb, i, plane_fmt.sizeimage +
-					      MTK_JPEG_MAX_EXIF_SIZE);
-		else
-			vb2_set_plane_payload(vb, i,  plane_fmt.sizeimage);
+			size += MTK_JPEG_MAX_EXIF_SIZE;
+		vb2_set_plane_payload(vb, i, min(size, vb2_plane_size(vb, i)));
 	}
 
 	return 0;
@@ -1649,9 +1649,7 @@ static int mtk_jpeg_probe(struct platform_device *pdev)
 		devm_kzalloc(&pdev->dev, sizeof(*pdev->dev.dma_parms), GFP_KERNEL);
 	}
 	if (pdev->dev.dma_parms) {
-		ret = MINDONE_DMA_SET_MAX_SEG_SIZE(&pdev->dev, (unsigned int)DMA_BIT_MASK(34));
-		if (ret)
-			v4l2_err(&jpeg->v4l2_dev, "Failed to set DMA segment size\n");
+		dma_set_max_seg_size(&pdev->dev, (unsigned int)DMA_BIT_MASK(34));
 	}
 	mtk_jpeg_prepare_dvfs(jpeg);
 	mtk_jpeg_prepare_bw_request(jpeg);
@@ -1719,7 +1717,6 @@ static void mtk_jpeg_remove(struct platform_device *pdev)
 	cancel_delayed_work_sync(&jpeg->job_timeout_work);
 	pm_runtime_disable(&pdev->dev);
 	video_unregister_device(jpeg->vdev);
-	video_device_release(jpeg->vdev);
 	v4l2_m2m_release(jpeg->m2m_dev);
 	v4l2_device_unregister(&jpeg->v4l2_dev);
 	mtk_jpeg_clk_release(jpeg);

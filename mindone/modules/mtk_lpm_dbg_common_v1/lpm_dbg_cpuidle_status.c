@@ -8,6 +8,7 @@
 #include <linux/sched/clock.h>
 #include <linux/cpu.h>
 #include <linux/kthread.h>
+#include <linux/mutex.h>
 #include <linux/delay.h>
 #include <linux/pm_qos.h>
 #include <linux/tick.h>
@@ -31,6 +32,41 @@
 #define DUMP_INTERVAL       sec_to_ns(5)
 static u64 last_dump_ns;
 static unsigned long long mtk_lpm_last_cpuidle_dis;
+
+static struct pm_qos_request mtk_cpuidle_dbg_qos_req;
+static DEFINE_MUTEX(mtk_cpuidle_dbg_qos_lock);
+
+void mtk_cpuidle_qos_update(struct cpuidle_driver *drv)
+{
+	int i;
+	s32 min_latency_us = PM_QOS_LATENCY_ANY;
+
+	if (!drv)
+		return;
+
+	mutex_lock(&mtk_cpuidle_dbg_qos_lock);
+	for (i = 0; i < drv->state_count; i++) {
+		if ((drv->states[i].flags & CPUIDLE_FLAG_UNUSABLE) &&
+				(s32)drv->states[i].exit_latency < min_latency_us)
+			min_latency_us = (s32)drv->states[i].exit_latency;
+	}
+
+	if (min_latency_us == PM_QOS_LATENCY_ANY) {
+		if (cpu_latency_qos_request_active(&mtk_cpuidle_dbg_qos_req))
+			cpu_latency_qos_remove_request(&mtk_cpuidle_dbg_qos_req);
+		mutex_unlock(&mtk_cpuidle_dbg_qos_lock);
+		return;
+	}
+
+	if (min_latency_us > 0)
+		min_latency_us -= 1;
+
+	if (!cpu_latency_qos_request_active(&mtk_cpuidle_dbg_qos_req))
+		cpu_latency_qos_add_request(&mtk_cpuidle_dbg_qos_req, min_latency_us);
+	else
+		cpu_latency_qos_update_request(&mtk_cpuidle_dbg_qos_req, min_latency_us);
+	mutex_unlock(&mtk_cpuidle_dbg_qos_lock);
+}
 
 /* stress test */
 static unsigned int timer_interval = 10 * 1000;

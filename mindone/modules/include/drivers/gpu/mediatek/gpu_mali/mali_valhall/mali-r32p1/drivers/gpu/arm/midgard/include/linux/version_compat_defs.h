@@ -21,42 +21,13 @@
 
 #ifndef _VERSION_COMPAT_DEFS_H_
 #define _VERSION_COMPAT_DEFS_H_
-
-#include <linux/version.h>
 #include <linux/highmem.h>
 #include <linux/timer.h>
 
-#if (KERNEL_VERSION(4, 19, 0) <= LINUX_VERSION_CODE)
 #include <linux/bits.h>
-#else
-#include <linux/bitops.h>
-#endif
 
-#if KERNEL_VERSION(4, 16, 0) > LINUX_VERSION_CODE
-typedef unsigned int __poll_t;
-#endif
 
-#if KERNEL_VERSION(4, 9, 78) >= LINUX_VERSION_CODE
 
-#ifndef EPOLLHUP
-#define EPOLLHUP POLLHUP
-#endif
-
-#ifndef EPOLLERR
-#define EPOLLERR POLLERR
-#endif
-
-#ifndef EPOLLIN
-#define EPOLLIN POLLIN
-#endif
-
-#ifndef EPOLLRDNORM
-#define EPOLLRDNORM POLLRDNORM
-#endif
-
-#endif
-
-#if KERNEL_VERSION(6, 1, 0) <= LINUX_VERSION_CODE
 /* This is defined inside kbase for matching the default to kernel's
  * mmap_min_addr, used inside file mali_kbase_mmap.c.
  * Note: the value is set at compile time, matching a kernel's configuration
@@ -82,7 +53,6 @@ typedef unsigned int __poll_t;
 #define kbase_mmap_min_addr (0UL)
 #pragma message "kbase_mmap_min_addr compiled to (0UL), no runtime update!"
 #endif /* CONFIG_MMU */
-#endif /* KERNEL_VERSION(6, 1, 0) <= LINUX_VERSION_CODE */
 /*
 static inline void kbase_timer_setup(struct timer_list *timer,
 				     void (*callback)(struct timer_list *timer))
@@ -108,52 +78,23 @@ static inline void kbase_timer_setup(struct timer_list *timer,
 
 static inline void *kbase_kmap(struct page *p)
 {
-#if KERNEL_VERSION(5, 11, 0) <= LINUX_VERSION_CODE
 	return kmap_local_page(p);
-#else
-	return kmap(p);
-#endif /* KERNEL_VERSION(5, 11, 0) */
 }
 
 static inline void *kbase_kmap_atomic(struct page *p)
 {
-#if KERNEL_VERSION(5, 11, 0) <= LINUX_VERSION_CODE
 	return kmap_local_page(p);
-#else
-	return kmap_atomic(p);
-#endif /* KERNEL_VERSION(5, 11, 0) */
 }
 
 static inline void kbase_kunmap(struct page *p, void *address)
 {
-#if KERNEL_VERSION(5, 11, 0) <= LINUX_VERSION_CODE
 	kunmap_local(address);
-#else
-	kunmap(p);
-#endif /* KERNEL_VERSION(5, 11, 0) */
 }
 
 static inline void kbase_kunmap_atomic(void *address)
 {
-#if KERNEL_VERSION(5, 11, 0) <= LINUX_VERSION_CODE
 	kunmap_local(address);
-#else
-	kunmap_atomic(address);
-#endif /* KERNEL_VERSION(5, 11, 0) */
 }
 
-#if (KERNEL_VERSION(6, 1, 0) > LINUX_VERSION_CODE)
-static inline void vm_flags_set(struct vm_area_struct *vma,
-				vm_flags_t flags)
-{
-	vma->vm_flags |= flags;
-}
-
-static inline void vm_flags_clear(struct vm_area_struct *vma,
-				  vm_flags_t flags)
-{
-	vma->vm_flags &= ~flags;
-}
-#endif
 
 #endif /* _VERSION_COMPAT_DEFS_H_ */

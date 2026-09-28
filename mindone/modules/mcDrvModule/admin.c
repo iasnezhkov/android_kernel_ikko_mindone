@@ -26,7 +26,6 @@
 #include <linux/module.h>
 #include <linux/random.h>
 #include <linux/delay.h>
-#include <linux/version.h>
 #include <linux/sched/signal.h>
 #include <linux/freezer.h>
 

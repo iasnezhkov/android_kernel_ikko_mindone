@@ -3,7 +3,6 @@
 
 #include <linux/syscalls.h>
 #include <linux/gpio.h>
-#include <linux/version.h>
 #include <linux/types.h>
 #include <linux/sched.h>
 #include <linux/dma-mapping.h>
@@ -72,7 +71,7 @@
 #define HYN_INFO3(fmt, args...)  if(hyn_data->log_level > 1)printk(KERN_INFO "[HYN]"fmt"\n", ##args)
 #define HYN_INFO4(fmt, args...)  if(hyn_data->log_level > 2)printk(KERN_INFO "[HYN]"fmt"\n", ##args)
 #define HYN_ERROR(fmt, args...)  printk(KERN_ERR "[HYN][Error]%s:"fmt"\n",__func__,##args)
-#define HYN_ENTER()              printk(KERN_ERR "[HYN][enter]%s\n",__func__)
+#define HYN_ENTER()              pr_debug("[HYN][enter]%s\n",__func__)
 
 // #if HYN_GKI_VER
 //     MODULE_IMPORT_NS(VFS_internal_I_am_really_a_filesystem_and_am_NOT_a_driver);
@@ -168,9 +167,6 @@ struct hyn_plat_data {
     u32 reset_gpio_flags;
     int irq_gpio;
     u32 irq_gpio_flags;
-    /* MINDONE: power rail of the touch controller, driven by a GPIO on
-     * this board (no vdd_ana/vcc_i2c regulators in DT). Stock V2.22 has it;
-     * our V2.8 did not, so the chip stayed unpowered and never ACKed. */
     int vdd_gpio;
     u32 vdd_gpio_flags;
 
@@ -276,6 +272,7 @@ struct hyn_ts_data {
     u8 fw_updata_process;
     u8 host_cmd_save[16];
     wait_queue_head_t wait_irq;
+    wait_queue_head_t wait_resume;
 
     u8 log_level;
     u8 prox_is_enable;
@@ -286,6 +283,7 @@ struct hyn_ts_data {
     
     u8 gesture_is_enable;
     u8 gesture_id;
+    bool suspended;
     const void *hyn_fuc_used;
 #if defined(CONFIG_FB)
     struct notifier_block fb_notif;
@@ -297,7 +295,7 @@ struct hyn_ts_data {
 #elif defined(CONFIG_HAS_EARLYSUSPEND)
     struct early_suspend early_suspend;
 #else
-    struct notifier_block mindone_disp_nb;   /* mtk_disp_notify, see hyn_core.c */
+    struct notifier_block mindone_disp_nb;
 #endif
     struct kobject *sys_node;
 };

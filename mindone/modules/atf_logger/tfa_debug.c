@@ -419,9 +419,8 @@ static int lookup_reserved_memory(void)
 	}
 	/* remap reserved memory as cacheale */
 	info.vaddr = ioremap(info.debug_buf_paddr, info.total_size);
-	if (IS_ERR(info.vaddr)) {
-		pr_notice("Fail to remap debug buf vaddr:%ld\n",
-			PTR_ERR(info.vaddr));
+	if (!info.vaddr) {
+		pr_notice("Fail to remap debug buf\n");
 		return -ENOMEM;
 	}
 	pr_info("debug buf vaddr:0x%llx\n", (uint64_t)info.vaddr);
@@ -491,7 +490,7 @@ static int tfa_time_sync_resume(struct device *dev)
 	u64 time_to_sync = local_clock();
 	struct arm_smccc_res res;
 
-	pr_info("[%s]time_to_sync:0x%llx\n", __func__, time_to_sync);
+	pr_debug("[%s]time_to_sync:0x%llx\n", __func__, time_to_sync);
 	/* Separate time_to_sync into two 32 bits args */
 	arm_smccc_smc(MTK_SIP_KERNEL_TIME_SYNC,
 		(u32)time_to_sync, (u32)(time_to_sync >> 32), 0, 0,

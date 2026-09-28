@@ -11,7 +11,6 @@
 #include <linux/skbuff.h>
 #include <linux/module.h>
 #include <linux/timer.h>
-#include <linux/version.h>
 #include <linux/sockios.h>
 #include "mt-plat/mtk_ccci_common.h"
 #include "ccci_config.h"

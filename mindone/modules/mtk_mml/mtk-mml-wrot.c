@@ -458,6 +458,8 @@ static s32 wrot_prepare(struct mml_comp *comp, struct mml_task *task,
 
 	/* initialize component frame data for current frame config */
 	wrot_frm = kzalloc(sizeof(*wrot_frm), GFP_KERNEL);
+	if (!wrot_frm)
+		return -ENOMEM;
 	ccfg->data = wrot_frm;
 
 	/* cache out index for easy use */
@@ -2271,7 +2273,7 @@ static int probe(struct platform_device *pdev)
 	if (ret)
 		dev_err(dev, "Failed to add component: %d\n", ret);
 
-	mml_log("wrot%d (%u) smi larb con %#lx event eof %hu sync %hu/%hu/%hu",
+	mml_log("wrot%d (%u) smi larb con %#llx event eof %hu sync %hu/%hu/%hu",
 		priv->idx, priv->comp.id, priv->smi_larb_con,
 		priv->event_eof,
 		priv->event_bufa,

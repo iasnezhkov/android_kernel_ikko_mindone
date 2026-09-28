@@ -3,7 +3,6 @@
  * Copyright (C) 2015 MediaTek Inc.
  */
 #include <linux/kernel.h>
-#include <mindone/compat.h>
 #include <linux/delay.h>
 #include <linux/gpio.h>
 #include <linux/irq.h>
@@ -259,8 +258,7 @@ static void swtp_init_delayed_work(struct work_struct *work)
 			swtp_data[md_id].gpiopin[i] =
 				of_get_named_gpio(node, "deb-gpios", 0);
 #endif
-			MINDONE_GPIO_SET_DEBOUNCE(swtp_data[md_id].gpiopin[i],
-				swtp_data[md_id].setdebounce[i]);
+			gpiod_set_debounce(gpio_to_desc(swtp_data[md_id].gpiopin[i]), swtp_data[md_id].setdebounce[i]);
 			swtp_data[md_id].eint_type[i] = ints1[1];
 			swtp_data[md_id].irq[i] = irq_of_parse_and_map(node, 0);
 

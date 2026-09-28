@@ -54,15 +54,17 @@ do {                                                            \
 		get_residency(drv, state) = (unsigned int)val;	\
 		get_residency_ns(drv, state) = __time_ns;	\
 	} else if (param == IDLE_PARAM_EN) {			\
-		if (!!val) {					\
+		if (!!val)						\
 			get_disabled(drv, state) &= ~CPUIDLE_FLAG_UNUSABLE;	\
-			cpuidle_driver_state_disabled(drv, state, false);	\
-		} else {							\
+		else							\
 			get_disabled(drv, state) |= CPUIDLE_FLAG_UNUSABLE;	\
-			cpuidle_driver_state_disabled(drv, state, true);	\
-		}								\
+		mtk_cpuidle_qos_update(drv);				\
 	}							\
 } while (0)
+
+struct cpuidle_driver;
+
+void mtk_cpuidle_qos_update(struct cpuidle_driver *drv);
 
 void mtk_cpuidle_set_stress_test(bool en);
 bool mtk_cpuidle_get_stress_status(void);

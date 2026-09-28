@@ -25,14 +25,6 @@ struct IMGSENSOR_HW_CFG imgsensor_custom_config[] = {
 		{
 			{IMGSENSOR_HW_PIN_MCLK,  IMGSENSOR_HW_ID_MCLK},
 			{IMGSENSOR_HW_PIN_AVDD,  IMGSENSOR_HW_ID_GPIO},
-			/* MINDONE-CAM-IMX766-B: uncommented. IMX766's own
-			 * sensor_power_sequence[] uses AVDD1, but leaving this pin
-			 * commented meant imgsensor_hw_init()'s per-pin loop never
-			 * touched sensor_pwr->id[AVDD1], which kept its BSS
-			 * zero-init value (0 == IMGSENSOR_HW_ID_MCLK) by
-			 * coincidence, silently rerouting AVDD1 through the MCLK
-			 * device (harmless only because mclk_set() ignores its
-			 * `pin` arg, but still wrong to rely on). */
 			{IMGSENSOR_HW_PIN_AVDD1, IMGSENSOR_HW_ID_REGULATOR},
 			{IMGSENSOR_HW_PIN_DOVDD, IMGSENSOR_HW_ID_GPIO},
 			{IMGSENSOR_HW_PIN_DVDD,  IMGSENSOR_HW_ID_GPIO},
@@ -59,7 +51,7 @@ struct IMGSENSOR_HW_CFG imgsensor_custom_config[] = {
 	},
 	{
 		IMGSENSOR_SENSOR_IDX_MAIN2,
-		IMGSENSOR_I2C_DEV_1,
+		IMGSENSOR_I2C_DEV_2,
 		{
 			{IMGSENSOR_HW_PIN_MCLK,  IMGSENSOR_HW_ID_MCLK},
 			{IMGSENSOR_HW_PIN_AVDD,  IMGSENSOR_HW_ID_GPIO},

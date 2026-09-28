@@ -15,7 +15,6 @@
 #include <linux/of_platform.h>
 #include <linux/pm_qos.h>
 #include <linux/slab.h>
-#include <mindone/compat.h>
 
 #define LUT_MAX_ENTRIES			32U
 #define LUT_FREQ			GENMASK(11, 0)
@@ -67,8 +66,6 @@ static int look_up_cpu(struct device *cpu_dev)
 }
 
 
-/* 6.1 em_data_callback::active_power(dev, *power, *freq) — the 5.10 order (*power, *KHz, dev)
- * would write the frequency into the power slot and the power through the device pointer. */
 static int __maybe_unused
 mtk_cpufreq_get_cpu_power(struct device *cpu_dev, unsigned long *power,
 		unsigned long *KHz)
@@ -84,12 +81,6 @@ mtk_cpufreq_get_cpu_power(struct device *cpu_dev, unsigned long *power,
 	i--;
 
 	*KHz = c->table[i].frequency;
-	/* MINDONE 12.09 (F4174): the CSRAM table stores power in MICROwatts, and on 6.12
-	 * the energy model is registered with microwatts=true (as in upstream
-	 * mediatek-cpufreq-hw.c). The division by 1000 was left over from 5.10, where EM took
-	 * milliwatts: power values came out to 10...69 uW, cost collapsed to 1 for every step,
-	 * and the kernel marked all OPPs below the maximum as inefficient -- cpufreq skipped
-	 * them, and the little cluster sat at 2 GHz. */
 	*power = readl_relaxed(c->reg_bases[REG_EM_POWER_TBL] +
 			    i * LUT_ROW_SIZE);
 
@@ -139,7 +130,6 @@ static int mtk_cpufreq_hw_cpu_init(struct cpufreq_policy *policy)
 {
 	struct cpufreq_mtk *c;
 	struct device *cpu_dev;
-	struct em_data_callback em_cb = EM_DATA_CB(mtk_cpufreq_get_cpu_power);
 	struct pm_qos_request *qos_request;
 	int sig, pwr_hw = CPUFREQ_HW_STATUS | SVS_HW_STATUS;
 	unsigned int latency;
@@ -194,28 +184,33 @@ static int mtk_cpufreq_hw_cpu_init(struct cpufreq_policy *policy)
 		pr_info("SVS of CPU%d is not enabled\n", policy->cpu);
 	}
 
-	em_dev_register_perf_domain(cpu_dev, c->nr_opp, &em_cb, policy->cpus,
-			true);
 	cpu_latency_qos_remove_request(qos_request);
 	kfree(qos_request);
 
 	return 0;
 }
 
-static MINDONE_CPUFREQ_EXIT_RETTYPE mtk_cpufreq_hw_cpu_exit(struct cpufreq_policy *policy)
+static void mtk_cpufreq_hw_register_em(struct cpufreq_policy *policy)
+{
+	struct em_data_callback em_cb = EM_DATA_CB(mtk_cpufreq_get_cpu_power);
+	struct cpufreq_mtk *c = policy->driver_data;
+
+	em_dev_register_perf_domain(get_cpu_device(policy->cpu), c->nr_opp,
+				    &em_cb, policy->cpus, true);
+}
+
+static void mtk_cpufreq_hw_cpu_exit(struct cpufreq_policy *policy)
 {
 	struct cpufreq_mtk *c;
 
 	c = mtk_freq_domain_map[policy->cpu];
 	if (!c) {
 		pr_info("No scaling support for CPU%d\n", policy->cpu);
-		MINDONE_CPUFREQ_EXIT_RETURN(-ENODEV);
+		return;
 	}
 
 	/* HW should be in paused state now */
 	writel_relaxed(0x0, c->reg_bases[REG_FREQ_ENABLE]);
-
-	MINDONE_CPUFREQ_EXIT_RETURN(0);
 }
 
 static struct cpufreq_driver cpufreq_mtk_hw_driver = {
@@ -228,6 +223,7 @@ static struct cpufreq_driver cpufreq_mtk_hw_driver = {
 	.init		= mtk_cpufreq_hw_cpu_init,
 	.exit		= mtk_cpufreq_hw_cpu_exit,
 	.fast_switch	= mtk_cpufreq_hw_fast_switch,
+	.register_em	= mtk_cpufreq_hw_register_em,
 	.name		= "mtk-cpufreq-hw",
 	.attr		= cpufreq_generic_attr,
 };

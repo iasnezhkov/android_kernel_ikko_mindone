@@ -8,7 +8,6 @@
 #include <linux/delay.h>
 #include <linux/sched.h>
 #include <linux/jiffies.h>
-#include <linux/version.h>
 
 #include <linux/sched/rt.h>
 #include <uapi/linux/sched/types.h>

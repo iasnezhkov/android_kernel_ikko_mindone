@@ -6,7 +6,6 @@
 
 
 #include <linux/kernel.h>
-#include <mindone/compat.h>
 #include <linux/init.h>
 #include <linux/module.h>
 #include <linux/cdev.h>
@@ -176,7 +175,7 @@ int ccci_util_pin_broadcast_init(void)
 		goto _exit_2;
 	}
 
-	s_ccci_pin_class = MINDONE_CLASS_CREATE("ccci_pin_sta");
+	s_ccci_pin_class = class_create("ccci_pin_sta");
 	device_create(s_ccci_pin_class, NULL, s_pin_status_dev, NULL, "ccci_pin_sta");
 
 	return 0;

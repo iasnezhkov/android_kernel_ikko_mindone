@@ -105,20 +105,6 @@ struct rpmb_dev *rpmb_dev_find_device(const void *data,
 }
 EXPORT_SYMBOL_GPL(rpmb_dev_find_device);
 
-int rpmb_interface_register(struct class_interface *intf)
-{
-	intf->class = &rpmb_class;
-
-	return class_interface_register(intf);
-}
-EXPORT_SYMBOL_GPL(rpmb_interface_register);
-
-void rpmb_interface_unregister(struct class_interface *intf)
-{
-	class_interface_unregister(intf);
-}
-EXPORT_SYMBOL_GPL(rpmb_interface_unregister);
-
 /**
  * rpmb_dev_unregister() - unregister RPMB partition from the RPMB subsystem
  * @rdev: the rpmb device to unregister

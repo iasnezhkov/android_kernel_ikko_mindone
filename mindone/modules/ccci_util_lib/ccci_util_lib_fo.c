@@ -39,7 +39,7 @@
 //mtk099077: #include <memory-amms.h>
 #include "ccci_util_log.h"
 #include "ccci_util_lib_main.h"
-#include <linux/vmalloc.h>	/* vunmap: 6.12 no longer pulls it in implicitly */
+#include <linux/vmalloc.h>
 /*************************************************************************
  **** Local debug option for this file only ******************************
  *************************************************************************
@@ -762,13 +762,6 @@ void __iomem *ccci_map_phy_addr(phys_addr_t phy_addr, unsigned int size)
 	pgprot_t prot;
 
 	phy_addr &= PAGE_MASK;
-	/*
-	 * MINDONE-CCCI-NOMAP (F3490): test "is this address in the kernel memory map", not
-	 * "does a struct page exist". All AP<->MD regions here are no-map in the device tree;
-	 * since 5.15 no-map pages keep struct pages, so pfn_valid() is true and the modem
-	 * shared memory went down the vmap() path (mapping pages that are not ours, F2929).
-	 * pfn_is_map_memory() is what arm64 ioremap() uses and restores the 5.10 behaviour.
-	 */
 	if (!pfn_is_map_memory(__phys_to_pfn(phy_addr))) {
 		map_addr = ioremap_wc(phy_addr, size);
 		CCCI_UTIL_INF_MSG(

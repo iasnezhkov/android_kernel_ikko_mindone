@@ -72,7 +72,6 @@
  *                    E X T E R N A L   R E F E R E N C E S
  *******************************************************************************
  */
-#include <linux/version.h>
 #include <linux/init.h>
 #include <linux/types.h>
 #include <linux/module.h>
@@ -476,13 +475,9 @@ u_int8_t kalCfgDataWrite8(IN struct GLUE_INFO *prGlueInfo,
 static int wlan_netdev_notifier_call(struct notifier_block *nb,
 		unsigned long state, void *ndev)
 {
-#if KERNEL_VERSION(3, 11, 0) <= CFG80211_VERSION_CODE
 	struct netdev_notifier_info *dev_notif_info = ndev;
 	struct net_device *dev = dev_notif_info != NULL ?
 			dev_notif_info->dev : NULL;
-#else
-	struct net_device *dev = ndev;
-#endif
 
 	if (!dev)
 		return NOTIFY_DONE;

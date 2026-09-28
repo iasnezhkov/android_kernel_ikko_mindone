@@ -1,12 +1,4 @@
 // SPDX-License-Identifier: GPL-2.0
-/*
- * ufs_mtk_rpmb -- MINDONE-RPMB-GLUE (F3135): UFS RPMB glue for kernel 6.1. Stock
- * 5.10 keeps this inside ufs-mediatek.c; on 6.1 ufs-mediatek is built-in with no
- * RPMB code, and the rpmb core is an out-of-tree module (rpmb.ko), so this glue
- * lives in a module too: finds the UFS host by DT compatible, looks up the RPMB
- * W-LUN scsi_device, registers an rpmb_dev with stock's ops, and exports
- * ufs_mtk_rpmb_get_raw_dev() for rpmb_mtk.ko.
- */
 #include <linux/module.h>
 #include <linux/moduleparam.h>
 #include <linux/of.h>
@@ -14,7 +6,6 @@
 #include <linux/platform_device.h>
 #include <linux/mutex.h>
 #include <linux/slab.h>
-#include <mindone/compat.h>
 #include <scsi/scsi.h>
 #include <scsi/scsi_device.h>
 #include <scsi/scsi_proto.h>
@@ -24,6 +15,7 @@
 #include <scsi/scsi_dbg.h>
 #include <ufs/ufshcd.h>
 #include <ufs/ufs.h>
+#include <linux/unaligned.h>
 #include "rpmb.h"
 
 #define SEC_PROTOCOL_UFS		0xEC
@@ -63,13 +55,6 @@ MODULE_PARM_DESC(region, "RPMB region for the SECURITY PROTOCOL command (0-3, de
 static unsigned int rw_size = 1;
 module_param(rw_size, uint, 0444);
 MODULE_PARM_DESC(rw_size, "RPMB reliable write count (GEOMETRY bRPMB_ReadWriteSize; 1 = single frame)");
-/*
- * MINDONE-RPMB-CAPACITY (P80/P45, 12.09, B15): was 0 ("unknown") - rpmb_descr.capacity never
- * reached any real value, so our rpmb_dev under-reported its own geometry regardless of the
- * teed "get dev info" outcome. B15's own TEE boot log gives the real number directly: "RPMB
- * SIZE: 0x1000000" (16 MiB) = 128 * 128 KiB, so 128 is a measured default, not a guess. Still
- * overridable via the module param for a different unit's geometry.
- */
 static unsigned int capacity = 128;
 module_param(capacity, uint, 0444);
 MODULE_PARM_DESC(capacity, "RPMB capacity in 128 KiB units (GEOMETRY bRPMB_Size; default 128 = 16 MiB, per B15 TEE bootarg RPMB SIZE: 0x1000000)");
@@ -125,13 +110,6 @@ static int ufs_mtk_rpmb_route_frames(struct device *dev, u8 *req, unsigned int r
 	mutex_lock(&rpmb_lock);
 	scsi_autopm_get_device(sdev);		/* device resumed before RPMB access */
 	ret = ufs_mtk_rpmb_sec(sdev, req, req_len, true);
-	/*
-	 * MINDONE-RPMB-WRITE (12.09, B16c): for JEDEC write requests (0x0001 program
-	 * key, 0x0003 write data) the response is read ONLY after a separate "result read"
-	 * request (0x0005) -- as in mainline's ufshcd_rpmb_route_frames(). Without it,
-	 * SECURITY PROTOCOL IN returns an empty/stale frame. For reads (0x0002/0x0004) the
-	 * response comes back immediately.
-	 */
 	if (!ret && req_len >= 512) {
 		u16 type = get_unaligned_be16(req + 510);
 
@@ -155,13 +133,6 @@ static int ufs_mtk_rpmb_route_frames(struct device *dev, u8 *req, unsigned int r
 	return ret;
 }
 
-/*
- * MINDONE-RPMB-XFER (/12.09): direct frame transport for rpmb_mtk.ko (teed
- * ioctl 10/11/12). Its local "linux/rpmb.h" is the older vendor API (rpmb_cmd_req is a
- * stub when CONFIG_RPMB is absent, F018/B16c: "end" after 27 us, response frame =
- * request frame, TEE: "Unexpected msg_type 0x0002 != 0x0200"), so we carry frames
- * through this export instead, bypassing the incompatible rpmb_dev structures.
- */
 int ufs_mtk_rpmb_xfer(u8 *req, unsigned int req_len, u8 *resp, unsigned int resp_len)
 {
 	return ufs_mtk_rpmb_route_frames(NULL, req, req_len, resp, resp_len);
@@ -179,15 +150,6 @@ struct rpmb_dev *ufs_mtk_rpmb_get_raw_dev(void)
 }
 EXPORT_SYMBOL_GPL(ufs_mtk_rpmb_get_raw_dev);
 
-/*
- * MINDONE-RPMB-GEOMETRY (P80/P45, 12.09, B16): rpmb_mtk.ko's local "linux/rpmb.h" mirrors the
- * the older vendor rpmb_ops/rpmb_cmd_req API, not the real upstream rpmb_descr this module registers
- * against (rpmb.ko/kernel612-common) - the two "struct rpmb_dev" layouts do not agree, so
- * rpmb_mtk.c must not dereference ufs_mtk_rpmb_get_raw_dev()'s pointer's internals directly.
- * This plain-integer accessor sidesteps that: it hands back exactly the two values teed's
- * "get dev info" probe wants (JEDEC RPMB_SIZE_MULT in 128 KiB units, reliable write count),
- * straight from this module's own descriptor.
- */
 void ufs_mtk_rpmb_get_geometry(u16 *out_capacity, u16 *out_reliable_wr_count)
 {
 	if (out_capacity)

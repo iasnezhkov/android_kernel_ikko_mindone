@@ -638,13 +638,6 @@ static s32 mtk_smi_dbg_parse(struct platform_device *pdev,
 		return -EINVAL;
 	node[id].pa = res->start;
 
-	/* MINDONE: plain ioremap instead of devm_ioremap.
-	 * pdev here is SOMEONE ELSE'S device, obtained via of_find_device_by_node.
-	 * devm_ioremap would attach a devres record to it BEFORE its own driver got a
-	 * chance to bind; the next bind attempt then hit the kernel's "Resources present
-	 * before probing" check and got -EBUSY forever. That is how 11 SMI nodes of the
-	 * camera branch dropped out on 6.12 (F4126).
-	 */
 	va = ioremap(res->start, 0x1000);
 	if (!va)
 		return -ENOMEM;
@@ -738,7 +731,6 @@ static s32 mtk_smi_dbg_probe(struct mtk_smi_dbg *smi)
 			return -EINVAL;
 		smi->rsi[id].pa = res->start;
 
-		/* MINDONE: same as in mtk_smi_dbg_parse -- pdev belongs to someone else (F4126) */
 		va = ioremap(res->start, 0x1000);
 		if (!va)
 			return -ENOMEM;

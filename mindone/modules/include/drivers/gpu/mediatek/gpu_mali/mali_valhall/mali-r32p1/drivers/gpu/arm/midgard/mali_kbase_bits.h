@@ -22,10 +22,6 @@
 #ifndef _KBASE_BITS_H_
 #define _KBASE_BITS_H_
 
-#if (KERNEL_VERSION(4, 19, 0) <= LINUX_VERSION_CODE)
 #include <linux/bits.h>
-#else
-#include <linux/bitops.h>
-#endif
 
 #endif /* _KBASE_BITS_H_ */

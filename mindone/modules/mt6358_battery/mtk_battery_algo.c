@@ -78,29 +78,18 @@ void get_hw_info(void)
 	gauge_set_property(GAUGE_PROP_HW_INFO, 0);
 }
 
-int get_charger_exist(void)
+static int get_charger_exist(struct mtk_battery *gm)
 {
-	struct power_supply *psy;
-	union power_supply_propval val;
-	int ret;
+	struct power_supply *chg_psy = gm->bs_data.chg_psy;
+	union power_supply_propval online = { .intval = 0 };
 
-	psy = power_supply_get_by_name("ac");
-	if (psy != NULL) {
-		ret = power_supply_get_property(psy,
-			POWER_SUPPLY_PROP_ONLINE, &val);
-		if (val.intval == true)
-			return true;
-	}
+	if (IS_ERR_OR_NULL(chg_psy))
+		return false;
+	if (power_supply_get_property(chg_psy, POWER_SUPPLY_PROP_ONLINE,
+		&online))
+		return false;
 
-	psy = power_supply_get_by_name("usb");
-	if (psy != NULL) {
-		ret = power_supply_get_property(psy,
-			POWER_SUPPLY_PROP_ONLINE, &val);
-		if (val.intval == true)
-			return true;
-	}
-
-	return false;
+	return online.intval ? true : false;
 }
 
 int get_charger_status(struct mtk_battery *gm)
@@ -116,10 +105,11 @@ int get_charger_status(struct mtk_battery *gm)
 	return charger_status;
 }
 
-int get_imix_r(void)
+static int get_imix_r(struct mtk_battery *gm)
 {
-	/*todo in alps*/
-	return 0;
+	int imix = READ_ONCE(gm->imix);
+
+	return imix > 0 ? imix * UNIT_TRANS_10 : 0;
 }
 
 int fg_adc_reset(struct mtk_battery *gm)
@@ -1190,7 +1180,8 @@ void fgr_update_c_dod(struct mtk_battery *gm)
 	algo->car = gauge_get_int_property(GAUGE_PROP_COULOMB);
 	fgr_update_quse(gm, 1);
 	Set_fg_c_d0_by_ocv(gm, algo->fg_c_d0_ocv);
-	algo->fg_c_dod = algo->fg_c_d0_dod - algo->car * 10000 / algo->quse_tb1;
+	algo->fg_c_dod = algo->fg_c_d0_dod -
+		(algo->car - algo->fg_c_d0_car) * 10000 / algo->quse_tb1;
 	algo->fg_c_soc = 10000 - algo->fg_c_dod;
 
 	bm_debug("[%s] fg_c_dod %d fg_c_d0_dod %d car %d quse_tb1 %d fg_c_soc %d\n",
@@ -1243,6 +1234,7 @@ void fgr_dod_init(struct mtk_battery *gm)
 	algo->fg_c_d0_ocv = SOC_to_OCV_c(gm, algo->fg_c_d0_soc);
 	Set_fg_c_d0_by_ocv(gm, algo->fg_c_d0_ocv);
 	fg_adc_reset(gm);
+	algo->fg_c_d0_car = gauge_get_int_property(GAUGE_PROP_COULOMB);
 
 	if (pdata->d0_sel == 1) {
 		/* reserve for custom c_d0 / custom ui_soc */
@@ -1270,7 +1262,7 @@ void fgr_imix_error_calibration(struct mtk_battery *gm)
 	int imix = 0;
 	int iboot = 0;
 
-	imix = get_imix_r();
+	imix = get_imix_r(gm);
 	iboot = gm->fg_cust_data.shutdown_system_iboot;
 
 	if ((imix < iboot) && (imix > 0))
@@ -1389,6 +1381,9 @@ void fgr_int_end_flow(struct mtk_battery *gm, unsigned int intr_no)
 	case FG_INTR_BAT_INT1_CHECK:
 		sprintf(intr_name, "FG_INTR_COULOMB_C");
 		break;
+	case FG_INTR_KERNEL_CMD:
+		sprintf(intr_name, "FG_INTR_KERNEL_CMD");
+		break;
 	default:
 		sprintf(intr_name, "FG_INTR_UNKNOWN");
 		bm_err("[Intr_Number_to_Name] unknown intr %d\n",
@@ -1465,6 +1460,35 @@ void fgr_update_fg_bat_int1_threshold(struct mtk_battery *gm)
 		pdata->diff_soc_setting, CAR_MIN_GAP);
 }
 
+static int fgr_cycle_capacity(struct mtk_battery *gm)
+{
+	return mtk_battery_get_learned_q_max(gm) * UNIT_TRANS_10;
+}
+
+void fgr_sw_cycle_accu(struct mtk_battery *gm)
+{
+	struct mtk_battery_algo *algo = &gm->algo;
+	int car_now = gauge_get_int_property(GAUGE_PROP_COULOMB);
+	int cap = fgr_cycle_capacity(gm);
+
+	if (!algo->sw_cycle_valid) {
+		algo->sw_cycle_car = car_now;
+		algo->sw_cycle_valid = true;
+		return;
+	}
+
+	if (car_now < algo->sw_cycle_car)
+		algo->sw_cycle_ncar += algo->sw_cycle_car - car_now;
+	algo->sw_cycle_car = car_now;
+
+	while (cap > 0 && algo->sw_cycle_ncar >= cap) {
+		algo->sw_cycle_ncar -= cap;
+		gm->bat_cycle++;
+		bm_err("[%s]bat_cycle %d ncar %d cap %d\n",
+			__func__, gm->bat_cycle, algo->sw_cycle_ncar, cap);
+	}
+}
+
 void fgr_bat_int1_handler(struct mtk_battery *gm)
 {
 	struct mtk_battery_algo *algo;
@@ -1475,6 +1499,7 @@ void fgr_bat_int1_handler(struct mtk_battery *gm)
 	battery_set_property(BAT_PROP_COULOMB_INT_GAP,
 		algo->fg_bat_int1_gap);
 	fgr_set_soc_by_vc_mode(gm);
+	fgr_sw_cycle_accu(gm);
 
 	bm_debug("[%s]soc %d\n",
 		__func__, algo->soc);
@@ -1483,7 +1508,6 @@ void fgr_bat_int1_handler(struct mtk_battery *gm)
 void fgr_bat_int2_h_handler(struct mtk_battery *gm)
 {
 	int ui_gap_ht = 0;
-	/* int is_charger_exist = get_charger_exist(); */
 	int _car;
 	int delta_car_bat0;
 	struct mtk_battery_algo *algo;
@@ -1534,7 +1558,7 @@ void fgr_bat_int2_h_handler(struct mtk_battery *gm)
 void fgr_bat_int2_l_handler(struct mtk_battery *gm)
 {
 	int ui_gap_lt = 0;
-	int is_charger_exist = get_charger_exist();
+	int is_charger_exist = get_charger_exist(gm);
 	int _car;
 	int delta_car_bat0;
 	struct mtk_battery_algo *algo;
@@ -1622,7 +1646,7 @@ void fgr_bat_int2_handler(struct mtk_battery *gm, int source)
 
 void fgr_time_handler(struct mtk_battery *gm)
 {
-	int is_charger_exist = get_charger_exist();
+	int is_charger_exist = get_charger_exist(gm);
 	struct mtk_battery_algo *algo;
 	struct fuel_gauge_table_custom_data *ptable;
 	struct fuel_gauge_custom_data *pdata;
@@ -1699,9 +1723,223 @@ void fgr_vbat2_l_int_handler(struct mtk_battery *gm)
 		pdata->vbat2_det_voltage3);
 }
 
-void do_fg_algo(struct mtk_battery *gm, unsigned int intr_num)
+void fgr_learn_aging_factor(struct mtk_battery *gm, int car_now, int soc_now)
+{
+	struct mtk_battery_algo *algo = &gm->algo;
+	int d_car, d_soc, sample_qmax, sample_aging;
+
+	if (!algo->zcv_learn_valid)
+		goto save;
+
+	d_car = abs(car_now - algo->zcv_learn_car);
+	d_soc = abs(soc_now - algo->zcv_learn_soc);
+
+	if (d_soc < 2000 || algo->qmax_t_0ma_tb1 <= 0)
+		goto save;
+
+	sample_qmax = d_car * 10000 / d_soc;
+	sample_aging = sample_qmax * 10000 / algo->qmax_t_0ma_tb1;
+
+	if (sample_aging < FGR_AGING_MIN_BP || sample_aging > 10000) {
+		bm_err("[%s]reject sample_aging %d qmax %d d_car %d d_soc %d\n",
+			__func__, sample_aging, sample_qmax, d_car, d_soc);
+		goto save;
+	}
+
+	algo->aging_factor = (algo->aging_factor * 7 + sample_aging) / 8;
+	bm_err("[%s]aging_factor %d sample %d d_car %d d_soc %d\n",
+		__func__, algo->aging_factor, sample_aging, d_car, d_soc);
+
+save:
+	algo->zcv_learn_car = car_now;
+	algo->zcv_learn_soc = soc_now;
+	algo->zcv_learn_valid = true;
+}
+
+void fgr_zcv_recal_handler(struct mtk_battery *gm)
+{
+	struct mtk_battery_algo *algo = &gm->algo;
+	int zcv = gauge_get_int_property(GAUGE_PROP_ZCV);
+	int zcv_curr = gauge_get_int_property(GAUGE_PROP_ZCV_CURRENT);
+	int car_now;
+
+	if (zcv <= 0 || abs(zcv_curr) >= gm->fg_cust_data.sleep_current_avg) {
+		bm_err("[%s]skip zcv %d curr %d limit %d\n",
+			__func__, zcv, zcv_curr,
+			gm->fg_cust_data.sleep_current_avg);
+		return;
+	}
+
+	car_now = gauge_get_int_property(GAUGE_PROP_COULOMB);
+	Set_fg_c_d0_by_ocv(gm, zcv);
+	algo->fg_c_d0_car = car_now;
+	fgr_learn_aging_factor(gm, car_now, algo->fg_c_d0_soc);
+	fgr_update_c_dod(gm);
+	fgr_set_soc_by_vc_mode(gm);
+
+	bm_err("[%s]zcv %d soc %d car %d aging %d\n",
+		__func__, zcv, algo->fg_c_d0_soc, car_now, algo->aging_factor);
+}
+
+void fgr_chr_full_int_handler(struct mtk_battery *gm)
+{
+	struct mtk_battery_algo *algo = &gm->algo;
+	int car_now = gauge_get_int_property(GAUGE_PROP_COULOMB);
+
+	fgr_learn_aging_factor(gm, car_now, 10000);
+
+	bm_err("[%s]car %d aging %d\n",
+		__func__, car_now, algo->aging_factor);
+}
+
+void fgr_reset_nvram_int_handler(struct mtk_battery *gm)
+{
+	struct mtk_battery_algo *algo = &gm->algo;
+
+	algo->aging_factor = 10000;
+	algo->zcv_learn_valid = false;
+	algo->sw_cycle_valid = false;
+	algo->sw_cycle_ncar = 0;
+	gm->bat_cycle = 0;
+
+	bm_err("[%s]learned aging_factor/bat_cycle reset to defaults\n",
+		__func__);
+}
+
+void fgr_iavg_int_handler(struct mtk_battery *gm)
+{
+	enable_gauge_irq(gm->gauge, FG_IAVG_H_IRQ);
+	enable_gauge_irq(gm->gauge, FG_IAVG_L_IRQ);
+}
+
+static void fgr_apply_aging_factor(struct mtk_battery *gm, int aging)
+{
+	gm->algo.aging_factor = aging;
+	fgr_bat_int1_handler(gm);
+}
+
+static bool fgr_kernel_cmd_handler(struct mtk_battery *gm, int cmd, int para1)
+{
+	switch (cmd) {
+	case FG_KERNEL_CMD_RESET_AGING_FACTOR:
+		gm->is_reset_aging_factor = false;
+		fgr_apply_aging_factor(gm, 10000);
+		return true;
+	case FG_KERNEL_CMD_REQ_CHANGE_AGING_DATA:
+		if (para1 < FGR_AGING_MIN_BP || para1 > 10000)
+			return false;
+		fgr_apply_aging_factor(gm, para1);
+		return true;
+	default:
+		return false;
+	}
+}
+
+static void fgr_bat_cycle_handler(struct mtk_battery *gm)
+{
+	if (!gm->is_reset_battery_cycle)
+		return;
+
+	gm->is_reset_battery_cycle = false;
+	gm->bat_cycle = 0;
+	gm->algo.sw_cycle_ncar = 0;
+	bm_err("[%s]bat_cycle reset\n", __func__);
+}
+
+int fgr_learned_aging_get(struct mtk_battery *gm, int *aging_bp)
+{
+	int ret = 0;
+
+	mutex_lock(&gm->algo_lock);
+	if (gm->algo.active)
+		*aging_bp = gm->algo.aging_factor;
+	else
+		ret = -ENODATA;
+	mutex_unlock(&gm->algo_lock);
+
+	return ret;
+}
+
+int fgr_learned_aging_set(struct mtk_battery *gm, int aging_bp)
+{
+	int ret = 0;
+
+	if (aging_bp < FGR_AGING_MIN_BP || aging_bp > 10000)
+		return -EINVAL;
+
+	mutex_lock(&gm->algo_lock);
+	if (gm->algo.active) {
+		fgr_apply_aging_factor(gm, aging_bp);
+		fgr_int_end_flow(gm, FG_INTR_KERNEL_CMD);
+	} else
+		ret = -ENODATA;
+	mutex_unlock(&gm->algo_lock);
+
+	return ret;
+}
+
+int fgr_learned_cycles_get(struct mtk_battery *gm, int *cycles_x100)
+{
+	int cap, ret = 0;
+
+	mutex_lock(&gm->algo_lock);
+	cap = fgr_cycle_capacity(gm);
+	if (gm->algo.active && cap > 0)
+		*cycles_x100 = gm->bat_cycle * 100 +
+			gm->algo.sw_cycle_ncar * 100 / cap;
+	else
+		ret = -ENODATA;
+	mutex_unlock(&gm->algo_lock);
+
+	return ret;
+}
+
+int fgr_learned_cycles_set(struct mtk_battery *gm, int cycles_x100)
+{
+	int cap, ret = 0;
+
+	if (cycles_x100 < 0)
+		return -EINVAL;
+
+	mutex_lock(&gm->algo_lock);
+	cap = fgr_cycle_capacity(gm);
+	if (gm->algo.active && cap > 0) {
+		gm->bat_cycle = cycles_x100 / 100;
+		gm->algo.sw_cycle_ncar = cycles_x100 % 100 * cap / 100;
+	} else
+		ret = -ENODATA;
+	mutex_unlock(&gm->algo_lock);
+
+	return ret;
+}
+
+void do_fg_algo(struct mtk_battery *gm, unsigned int intr_num,
+	int cmd, int para1)
 {
 	switch (intr_num) {
+	case FG_INTR_KERNEL_CMD:
+		if (fgr_kernel_cmd_handler(gm, cmd, para1))
+			fgr_int_end_flow(gm, FG_INTR_KERNEL_CMD);
+		break;
+	case FG_INTR_BAT_CYCLE:
+		fgr_bat_cycle_handler(gm);
+		break;
+	case FG_INTR_FG_ZCV:
+		fgr_zcv_recal_handler(gm);
+		fgr_int_end_flow(gm, FG_INTR_FG_ZCV);
+		break;
+	case FG_INTR_CHR_FULL:
+		fgr_chr_full_int_handler(gm);
+		fgr_int_end_flow(gm, FG_INTR_CHR_FULL);
+		break;
+	case FG_INTR_RESET_NVRAM:
+		fgr_reset_nvram_int_handler(gm);
+		fgr_int_end_flow(gm, FG_INTR_RESET_NVRAM);
+		break;
+	case FG_INTR_IAVG:
+		fgr_iavg_int_handler(gm);
+		fgr_int_end_flow(gm, FG_INTR_IAVG);
+		break;
 	case FG_INTR_BAT_TMP_C_HT:
 		fgr_temp_c_int_handler(gm);
 		fgr_int_end_flow(gm, FG_INTR_BAT_TMP_HT);
@@ -1816,7 +2054,9 @@ void battery_algo_init(struct mtk_battery *gm)
 	ptable = &gm->fg_table_cust_data;
 	algo = &gm->algo;
 	algo->fg_bat_tmp_c_gap = 1;
+
 	algo->aging_factor = 10000;
+
 	algo->DC_ratio = 100;
 	gauge_get_property(GAUGE_PROP_BATTERY_EXIST, &is_bat_exist);
 	bm_err("MTK Battery algo init bat_exist:%d\n",

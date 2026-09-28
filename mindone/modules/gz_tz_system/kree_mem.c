@@ -275,6 +275,8 @@ static TZ_RESULT kree_register_cont_shm(union MTEEC_PARAM *p,
 
 	tmpAry = kmalloc((MAX_MARY_SIZE)
 			 * sizeof(struct KREE_SHM_RUNLENGTH_ENTRY), GFP_KERNEL);
+	if (!tmpAry)
+		return TZ_RESULT_ERROR_OUT_OF_MEMORY;
 	tmpAry[0].high = (uint32_t) ((uint64_t) start >> 32);
 	tmpAry[0].low = (uint32_t) ((uint64_t) start & (0x00000000ffffffff));
 	tmpAry[0].size = numOfPA;

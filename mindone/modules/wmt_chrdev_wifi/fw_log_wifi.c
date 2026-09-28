@@ -15,7 +15,6 @@
 #ifdef CONFIG_MTK_CONNSYS_DEDICATED_LOG_PATH
 
 #include <linux/init.h>
-#include <mindone/compat.h>
 #include <linux/module.h>
 #include <linux/types.h>
 #include <linux/kernel.h>
@@ -383,7 +382,7 @@ int fw_log_wifi_init(void)
 	if (result < 0)
 		return result;
 
-	fw_log_wifi_dev->driver_class = MINDONE_CLASS_CREATE(FW_LOG_WIFI_DRIVER_NAME);
+	fw_log_wifi_dev->driver_class = class_create(FW_LOG_WIFI_DRIVER_NAME);
 
 	if (IS_ERR(fw_log_wifi_dev->driver_class)) {
 		result = -ENOMEM;

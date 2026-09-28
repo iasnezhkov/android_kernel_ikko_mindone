@@ -66,6 +66,7 @@ static ssize_t scp_hw_voter_dbg_proc_write(
 	unsigned int len = 0;
 	int ret = 0;
 	int n;
+	int type = 0, op = 0, clk_category = 0, clk_id = 0, val = 0;
 	struct hwvoter_ipi_test_t ipi_data;
 
 	len = (count < (sizeof(desc) - 1)) ? count : (sizeof(desc) - 1);
@@ -76,15 +77,17 @@ static ssize_t scp_hw_voter_dbg_proc_write(
 	pr_notice("%s: %s\n", __func__, desc);
 
 	n = sscanf(desc, "%d %d %d %d %d",
-			&ipi_data.type,
-			&ipi_data.op,
-			&ipi_data.clk_category,
-			&ipi_data.clk_id,
-			&ipi_data.val);
+			&type, &op, &clk_category, &clk_id, &val);
 	if (n != 4 && n != 5) {
 		pr_notice("invalid cmd length %d\n", n);
 		return count;
 	}
+
+	ipi_data.type = type;
+	ipi_data.op = op;
+	ipi_data.clk_category = clk_category;
+	ipi_data.clk_id = clk_id;
+	ipi_data.val = (n == 5) ? val : 0;
 
 	ipi_data.cmd = HW_VOTER_DBG_CMD_TEST;
 

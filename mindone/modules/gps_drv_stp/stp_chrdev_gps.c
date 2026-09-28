@@ -3,7 +3,6 @@
  * Copyright (c) 2020 MediaTek Inc.
  */
 #include <linux/init.h>
-#include <mindone/compat.h>
 #include <linux/module.h>
 #include <linux/types.h>
 #include <linux/kernel.h>
@@ -37,7 +36,6 @@
 #include <helio-dvfsrc.h>
 
 #endif
-#include <linux/version.h>
 
 #ifdef MTK_GENERIC_HAL
 #include "gps_lna_drv.h"
@@ -1285,7 +1283,7 @@ static int GPS_init(void)
 		goto error;
 #if WMT_CREATE_NODE_DYNAMIC || REMOVE_MK_NODE
 
-	stpgps_class = MINDONE_CLASS_CREATE("stpgps");
+	stpgps_class = class_create("stpgps");
 	if (IS_ERR(stpgps_class))
 		goto error;
 	stpgps_dev = device_create(stpgps_class, NULL, dev, NULL, "stpgps");
@@ -1308,7 +1306,7 @@ static int GPS_init(void)
 		goto error;
 #if WMT_CREATE_NODE_DYNAMIC || REMOVE_MK_NODE
 
-	stpgps2_class = MINDONE_CLASS_CREATE("stpgps2");
+	stpgps2_class = class_create("stpgps2");
 	if (IS_ERR(stpgps2_class))
 		goto error;
 	stpgps2_dev = device_create(stpgps2_class, NULL, dev2, NULL, "stpgps2");
@@ -1332,7 +1330,7 @@ static int GPS_init(void)
 		goto error;
 #if WMT_CREATE_NODE_DYNAMIC || REMOVE_MK_NODE
 
-	stpgps2_class = MINDONE_CLASS_CREATE("stpgps2");
+	stpgps2_class = class_create("stpgps2");
 	if (IS_ERR(stpgps2_class))
 		goto error;
 	stpgps2_dev = device_create(stpgps2_class, NULL, dev2, NULL, "stpgps2");
@@ -1343,11 +1341,7 @@ static int GPS_init(void)
 #endif
 	pr_info("%s driver(major %d) installed.\n", GPS_DRIVER_NAME, GPS_major);
 
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 14, 149)
 	gps_wake_lock_ptr = wakeup_source_register(NULL, gps_wake_lock_name);
-#else
-	gps_wake_lock_ptr = wakeup_source_register(gps_wake_lock_name);
-#endif
 	if (!gps_wake_lock_ptr) {
 		pr_info("%s %d: init gps wakeup source fail!", __func__, __LINE__);
 		goto error;
@@ -1363,11 +1357,7 @@ static int GPS_init(void)
 	sema_init(&rd_mtx, 1);
 
 #ifdef MTK_GENERIC_HAL
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 14, 149)
 	gps2_wake_lock_ptr = wakeup_source_register(NULL, gps2_wake_lock_name);
-#else
-	gps2_wake_lock_ptr = wakeup_source_register(gps2_wake_lock_name);
-#endif
 
 	sema_init(&status_mtx2, 1);
 	/* init_MUTEX(&wr_mtx); */
@@ -1382,11 +1372,7 @@ static int GPS_init(void)
 	}
 #else
 #ifdef CONFIG_GPSL5_SUPPORT
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 14, 149)
 	gps2_wake_lock_ptr = wakeup_source_register(NULL, gps2_wake_lock_name);
-#else
-	gps2_wake_lock_ptr = wakeup_source_register(gps2_wake_lock_name);
-#endif
 
 	sema_init(&status_mtx2, 1);
 	/* init_MUTEX(&wr_mtx); */

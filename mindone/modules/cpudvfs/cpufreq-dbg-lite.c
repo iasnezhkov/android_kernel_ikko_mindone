@@ -156,7 +156,6 @@ static int create_cpufreq_debug_fs(void)
 
 static int mtk_cpudvfs_init(void)
 {
-	int ret = 0;
 	struct device_node *dvfs_node;
 	struct platform_device *pdev;
 

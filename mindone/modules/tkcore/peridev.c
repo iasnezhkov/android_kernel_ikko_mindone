@@ -64,48 +64,6 @@ static const char * const clkid[] = {
 static LIST_HEAD(clk_list);
 static DEFINE_MUTEX(clk_list_lock);
 
-#if 0
-static struct clkmgr_handle *try_spi_clk(uint32_t token)
-{
-	struct clk *clk;
-	struct spi_controller *master;
-	struct clkmgr_handle *h;
-
-	uint32_t busnum = TEE_CLKMGR_TOKEN_ID(token);
-
-	h = kmalloc(sizeof(struct clkmgr_handle), GFP_KERNEL);
-	if (h == NULL) {
-		return NULL;
-	}
-
-	memset(h, 0, sizeof(*h));
-	h->token = token;
-
-	master = spi_busnum_to_master(busnum);
-	if (master == NULL) {
-		pr_warn("tkcoredrv: spi%u not found\n",
-			busnum);
-		return h;
-	}
-
-	clk = devm_clk_get(master->dev.parent, "spi-clk");
-	put_device(&master->dev);
-
-	if (IS_ERR(clk)) {
-		pr_warn("tkcoredrv: failed to get spi-clk: %d\n",
-			PTR_ERR(clk));
-		return h;
-	}
-
-	h->token = token;
-	h->e = (void *) &clk_prepare_enable;
-	h->d = (void *) &clk_disable_unprepare;
-	h->p0 = (const void *) clk;
-	h->argnum = 1;
-
-	return h;
-}
-#endif
 
 /* called inside list_lock */
 static struct clkmgr_handle *get_clkmgr_handle(uint32_t token)
@@ -117,27 +75,10 @@ static struct clkmgr_handle *get_clkmgr_handle(uint32_t token)
 			return h;
 	}
 
-    return NULL;
-#if 0
-	h = NULL;
-
-	if (TEE_CLKMGR_TOKEN_TYPE(token) == TEE_CLKMGR_TYPE_SPI) {
-		h = try_spi_clk(token);
-		if (h == NULL)
-			return NULL;
-
-		list_add((&h->le), &clk_list);
-	}
-
-	return h;
-#endif
+	return NULL;
 }
 
-#ifndef __nocfi
-#define __nocfi
-#endif
-
-int __nocfi tee_clkmgr_handle(uint32_t token, uint32_t op)
+int tee_clkmgr_handle(uint32_t token, uint32_t op)
 {
 	struct clkmgr_handle *ph, h;
 	void *fn;

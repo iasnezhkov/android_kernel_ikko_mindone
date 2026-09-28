@@ -4,7 +4,6 @@
  */
 
 #include <linux/fs.h>
-#include <mindone/compat.h>
 #include <linux/miscdevice.h>
 #include <linux/module.h>
 #include <linux/printk.h>
@@ -51,7 +50,7 @@ static ssize_t aed_rs_write(struct file *filp, const char __user *buf,
 	return 0;
 }
 
-MINDONE_DEFINE_SEMAPHORE(aed_rs_sem);
+DEFINE_SEMAPHORE(aed_rs_sem, 1);
 static long aedrs_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 {
 	int ret = 0;

@@ -429,19 +429,19 @@ void *mtk_drm_buffer_map_kernel(struct drm_framebuffer *fb)
 	int ret;
 
 	if (!fb) {
-		DDPINFO("[MMP]fb is null\n", __func__);
+		DDPINFO("%s: [MMP]fb is null\n", __func__);
 		return 0;
 	}
 
 	gem_obj = mtk_fb_get_gem_obj(fb);
 	if (!gem_obj) {
-		DDPINFO("[MMP]gem is null\n", __func__);
+		DDPINFO("%s: [MMP]gem is null\n", __func__);
 		return 0;
 	}
 
 	dmabuf = gem_obj->import_attach->dmabuf;
 	if (!dmabuf) {
-		DDPINFO("[MMP]dmabuf is null\n", __func__);
+		DDPINFO("%s: [MMP]dmabuf is null\n", __func__);
 		return 0;
 	}
 
@@ -578,7 +578,7 @@ int mtk_drm_mmp_ovl_layer(struct mtk_plane_state *state,
 
 		dma_va = mtk_drm_buffer_map_kernel(state->base.fb);
 		if (!dma_va) {
-			DDPINFO("[MMP]dma_va is null\n", __func__);
+			DDPINFO("%s: [MMP]dma_va is null\n", __func__);
 			goto end;
 		}
 		bitmap.p_data = dma_va;
@@ -647,7 +647,7 @@ int mtk_drm_mmp_wdma_buffer(struct drm_crtc *crtc,
 	CRTC_MMP_EVENT_START(crtc_idx, wbBmpDump, 0, 0);
 	dma_va = mtk_drm_buffer_map_kernel(wb_fb);
 	if (!dma_va) {
-		DDPINFO("[MMP]dma_va is null\n", __func__);
+		DDPINFO("%s: [MMP]dma_va is null\n", __func__);
 		goto end;
 	}
 	bitmap.p_data = dma_va;

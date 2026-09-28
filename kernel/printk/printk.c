@@ -590,14 +590,12 @@ char *log_buf_addr_get(void)
 {
 	return log_buf;
 }
-EXPORT_SYMBOL_GPL(log_buf_addr_get);	/* MINDONE: log_store needs it, as on our 6.1 tree */
 
 /* Return log buffer size */
 u32 log_buf_len_get(void)
 {
 	return log_buf_len;
 }
-EXPORT_SYMBOL_GPL(log_buf_len_get);	/* MINDONE: log_store needs it, as on our 6.1 tree */
 
 /*
  * Define how much of the log buffer we could take at maximum. The value
@@ -3101,10 +3099,13 @@ static bool console_emit_next_record(struct console *con, bool *handover, int co
 		.pbufs = &printk_shared_pbufs,
 	};
 	unsigned long flags;
+	bool may_suppress = true;
 
 	*handover = false;
 
-	if (!printk_get_next_message(&pmsg, con->seq, is_extended, true))
+	trace_android_vh_printk_console_emit_next_record(con, &may_suppress);
+
+	if (!printk_get_next_message(&pmsg, con->seq, is_extended, may_suppress))
 		return false;
 
 	con->dropped += pmsg.dropped;

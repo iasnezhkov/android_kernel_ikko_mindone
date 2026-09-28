@@ -579,10 +579,6 @@ static const struct proc_ops musb_speed_fops = {
 	.proc_release = single_release,
 };
 
-/* /proc/mtk_usb is normally created first by phy_mtk_tphy (usb-phy0 lives under it) and
- * proc_mkdir() of an existing name WARNs (fs/proc/generic.c:399, F3570). The file names are
- * path-form ("mtk_usb/<file>"), so create the directory only when a file cannot be created
- * for want of it. */
 static struct proc_dir_entry *mindone_proc_dir;
 static struct proc_dir_entry *mindone_proc_file(const char *path, umode_t mode,
 		const struct proc_ops *ops, void *data)

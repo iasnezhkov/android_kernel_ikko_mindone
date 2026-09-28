@@ -3,7 +3,6 @@
  * Copyright (c) 2020 MediaTek Inc.
  */
 #include <dt-bindings/iio/mt635x-auxadc.h>
-#include <mindone/compat.h>
 #include <linux/bits.h>
 #include <linux/delay.h>
 #include <linux/iio/consumer.h>
@@ -18,7 +17,7 @@
 #include <linux/slab.h>
 #include <linux/thermal.h>
 #include <linux/types.h>
-#include <linux/of_platform.h>	/* of_find_device_by_node: 6.12 no longer pulls it in implicitly */
+#include <linux/of_platform.h>
 /*=============================================================
  *Local variable definition
  *=============================================================
@@ -108,7 +107,7 @@ static int pmic_get_temp(struct thermal_zone_device *tz, int *temp)
 {
 	int val = 0;
 	int ret;
-	struct pmic_temp_tz *pmic_tz = (struct pmic_temp_tz *)MINDONE_TZ_DEVDATA(tz);
+	struct pmic_temp_tz *pmic_tz = (struct pmic_temp_tz *)thermal_zone_device_priv(tz);
 	struct pmic_temp_info *temp_info = pmic_tz->pmic_tz_info;
 	struct pmic_tz_data *tz_data = temp_info->efuse_data;
 	struct pmic_tz_cali_data *cali_data = tz_data->cali_data;
@@ -224,13 +223,6 @@ static int mt6357_get_cali_data(struct device *dev, struct pmic_tz_data *tz_data
 	struct pmic_tz_cali_data *cali_data = tz_data->cali_data;
 
 	cell_1 = devm_nvmem_cell_get(dev, "e_data1");
-	/* MINDONE-PMICTEMP-DEFER (F3266): was dev_info("Error: Failed to get
-	 * nvmem cell") with no error code. The failure here is almost always
-	 * -EPROBE_DEFER: the mt6358-efuse supplier registers AFTER this probe.
-	 * The kernel retries and succeeds ~3ms later, but by then 14 lines with
-	 * the word Error had already hit the log, which led to PMIC calibration
-	 * being mistakenly declared broken. dev_err_probe logs a deferred probe
-	 * as debug and a real failure as an error, and ALWAYS shows the code. */
 	if (IS_ERR(cell_1))
 		return dev_err_probe(dev, PTR_ERR(cell_1),
 			"Failed to get nvmem cell %s\n", "e_data1");
@@ -287,13 +279,6 @@ static int mt6359_get_cali_data(struct device *dev, struct pmic_tz_data *tz_data
 	struct pmic_tz_cali_data *cali_data = tz_data->cali_data;
 
 	cell_1 = devm_nvmem_cell_get(dev, "e_data1");
-	/* MINDONE-PMICTEMP-DEFER (F3266): was dev_info("Error: Failed to get
-	 * nvmem cell") with no error code. The failure here is almost always
-	 * -EPROBE_DEFER: the mt6358-efuse supplier registers AFTER this probe.
-	 * The kernel retries and succeeds ~3ms later, but by then 14 lines with
-	 * the word Error had already hit the log, which led to PMIC calibration
-	 * being mistakenly declared broken. dev_err_probe logs a deferred probe
-	 * as debug and a real failure as an error, and ALWAYS shows the code. */
 	if (IS_ERR(cell_1))
 		return dev_err_probe(dev, PTR_ERR(cell_1),
 			"Failed to get nvmem cell %s\n", "e_data1");
@@ -344,13 +329,6 @@ static int mt6363_get_cali_data(struct device *dev, struct pmic_tz_data *tz_data
 	struct pmic_tz_cali_data *cali_data = tz_data->cali_data;
 
 	cell_1 = devm_nvmem_cell_get(dev, "mt6363_e_data");
-	/* MINDONE-PMICTEMP-DEFER (F3266): was dev_info("Error: Failed to get
-	 * nvmem cell") with no error code. The failure here is almost always
-	 * -EPROBE_DEFER: the mt6358-efuse supplier registers AFTER this probe.
-	 * The kernel retries and succeeds ~3ms later, but by then 14 lines with
-	 * the word Error had already hit the log, which led to PMIC calibration
-	 * being mistakenly declared broken. dev_err_probe logs a deferred probe
-	 * as debug and a real failure as an error, and ALWAYS shows the code. */
 	if (IS_ERR(cell_1))
 		return dev_err_probe(dev, PTR_ERR(cell_1),
 			"Failed to get nvmem cell %s\n", "mt6363_e_data");
@@ -402,13 +380,6 @@ static int mt6366_get_cali_data(struct device *dev, struct pmic_tz_data *tz_data
 	struct pmic_tz_cali_data *cali_data = tz_data->cali_data;
 
 	cell_1 = devm_nvmem_cell_get(dev, "mt6366_e_data");
-	/* MINDONE-PMICTEMP-DEFER (F3266): was dev_info("Error: Failed to get
-	 * nvmem cell") with no error code. The failure here is almost always
-	 * -EPROBE_DEFER: the mt6358-efuse supplier registers AFTER this probe.
-	 * The kernel retries and succeeds ~3ms later, but by then 14 lines with
-	 * the word Error had already hit the log, which led to PMIC calibration
-	 * being mistakenly declared broken. dev_err_probe logs a deferred probe
-	 * as debug and a real failure as an error, and ALWAYS shows the code. */
 	if (IS_ERR(cell_1))
 		return dev_err_probe(dev, PTR_ERR(cell_1),
 			"Failed to get nvmem cell %s\n", "mt6366_e_data");
@@ -464,13 +435,6 @@ static int mt6368_get_cali_data(struct device *dev, struct pmic_tz_data *tz_data
 	struct pmic_tz_cali_data *cali_data = tz_data->cali_data;
 
 	cell_1 = devm_nvmem_cell_get(dev, "mt6368_e_data");
-	/* MINDONE-PMICTEMP-DEFER (F3266): was dev_info("Error: Failed to get
-	 * nvmem cell") with no error code. The failure here is almost always
-	 * -EPROBE_DEFER: the mt6358-efuse supplier registers AFTER this probe.
-	 * The kernel retries and succeeds ~3ms later, but by then 14 lines with
-	 * the word Error had already hit the log, which led to PMIC calibration
-	 * being mistakenly declared broken. dev_err_probe logs a deferred probe
-	 * as debug and a real failure as an error, and ALWAYS shows the code. */
 	if (IS_ERR(cell_1))
 		return dev_err_probe(dev, PTR_ERR(cell_1),
 			"Failed to get nvmem cell %s\n", "mt6368_e_data");
@@ -524,13 +488,6 @@ static int mt6369_get_cali_data(struct device *dev, struct pmic_tz_data *tz_data
 	struct pmic_tz_cali_data *cali_data = tz_data->cali_data;
 
 	cell_1 = devm_nvmem_cell_get(dev, "mt6369_e_data");
-	/* MINDONE-PMICTEMP-DEFER (F3266): was dev_info("Error: Failed to get
-	 * nvmem cell") with no error code. The failure here is almost always
-	 * -EPROBE_DEFER: the mt6358-efuse supplier registers AFTER this probe.
-	 * The kernel retries and succeeds ~3ms later, but by then 14 lines with
-	 * the word Error had already hit the log, which led to PMIC calibration
-	 * being mistakenly declared broken. dev_err_probe logs a deferred probe
-	 * as debug and a real failure as an error, and ALWAYS shows the code. */
 	if (IS_ERR(cell_1))
 		return dev_err_probe(dev, PTR_ERR(cell_1),
 			"Failed to get nvmem cell %s\n", "mt6369_e_data");

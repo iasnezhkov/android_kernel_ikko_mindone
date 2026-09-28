@@ -460,15 +460,14 @@ static int ccif_scp_clk_init(struct device *dev)
 	int idx = 0;
 
 	for (idx = 0; idx < ARRAY_SIZE(scp_clk_table); idx++) {
-		scp_clk_table[idx].clk_ref = devm_clk_get(dev,
-			scp_clk_table[idx].clk_name);
-		if (IS_ERR(scp_clk_table[idx].clk_ref)) {
-			CCCI_ERROR_LOG(-1, FSM,
-				"%s:scp get %s failed\n",
-				__func__, scp_clk_table[idx].clk_name);
+		struct clk *clk = devm_clk_get(dev, scp_clk_table[idx].clk_name);
+
+		if (IS_ERR(clk)) {
 			scp_clk_table[idx].clk_ref = NULL;
-			return -1;
+			return dev_err_probe(dev, PTR_ERR(clk), "get %s failed\n",
+				scp_clk_table[idx].clk_name);
 		}
+		scp_clk_table[idx].clk_ref = clk;
 	}
 
 	return 0;
@@ -476,17 +475,25 @@ static int ccif_scp_clk_init(struct device *dev)
 #endif
 
 
+static void __iomem *fsm_scp_map(struct device *dev, int index)
+{
+	struct resource res;
+
+	if (of_address_to_resource(dev->of_node, index, &res))
+		return NULL;
+	return devm_ioremap(dev, res.start, resource_size(&res));
+}
+
 static int fsm_scp_hw_init(struct ccci_fsm_scp *scp_ctl, struct device *dev)
 {
-	scp_ctl->ccif2_ap_base = of_iomap(dev->of_node, 0);
-	scp_ctl->ccif2_md_base = of_iomap(dev->of_node, 1);
+	void __iomem *ap = fsm_scp_map(dev, 0);
+	void __iomem *md = fsm_scp_map(dev, 1);
 
-	if (!scp_ctl->ccif2_ap_base || !scp_ctl->ccif2_md_base) {
-		CCCI_ERROR_LOG(-1, FSM,
-			"ccif2_ap_base=NULL or ccif2_md_base=NULL\n");
-		return -1;
-	}
+	if (!ap || !md)
+		return dev_err_probe(dev, -ENOMEM, "ccif2 registers not mapped\n");
 
+	scp_ctl->ccif2_ap_base = ap;
+	scp_ctl->ccif2_md_base = md;
 	return 0;
 }
 
@@ -495,18 +502,13 @@ int fsm_scp_init(struct ccci_fsm_scp *scp_ctl, struct device *dev)
 	int ret = 0;
 
 	ret = fsm_scp_hw_init(scp_ctl, dev);
-	if (ret < 0) {
-		CCCI_ERROR_LOG(-1, FSM, "ccci scp hw init fail\n");
+	if (ret < 0)
 		return ret;
-	}
 #ifdef FEATURE_SCP_CCCI_SUPPORT
 	ret = ccif_scp_clk_init(dev);
-#endif
-
-	if (ret < 0) {
-		CCCI_ERROR_LOG(-1, FSM, "ccif scp clk init fail\n");
+	if (ret < 0)
 		return ret;
-	}
+#endif
 
 #ifdef FEATURE_SCP_CCCI_SUPPORT
 	scp_A_register_notify(&apsync_notifier);
@@ -531,10 +533,8 @@ int ccci_scp_probe(struct platform_device *pdev)
 	int ret;
 
 	ret = fsm_scp_init(&ccci_scp_ctl, &pdev->dev);
-	if (ret < 0) {
-		CCCI_ERROR_LOG(-1, FSM, "ccci get scp info fail");
+	if (ret < 0)
 		return ret;
-	}
 
 	ccci_fsm_scp_register(0, &ccci_scp_ctl);
 

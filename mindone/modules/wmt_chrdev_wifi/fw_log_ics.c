@@ -8,7 +8,6 @@
 
 #include <linux/init.h>
 #include <linux/vmalloc.h>
-#include <mindone/compat.h>
 #include <linux/module.h>
 #include <linux/types.h>
 #include <linux/kernel.h>
@@ -392,7 +391,7 @@ int fw_log_ics_init(void)
 	if (result < 0)
 		return result;
 
-	gIcsDev->driver_class = MINDONE_CLASS_CREATE(FW_LOG_ICS_DRIVER_NAME);
+	gIcsDev->driver_class = class_create(FW_LOG_ICS_DRIVER_NAME);
 
 	if (IS_ERR(gIcsDev->driver_class)) {
 		result = -ENOMEM;

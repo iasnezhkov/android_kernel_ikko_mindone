@@ -437,12 +437,6 @@ unsigned int seninf_clk_get_meter(struct SENINF_CLK *pclk, unsigned int clk)
  *		}
  *	}
  */
-/* MINDONE-SENINF-CKGEN (camera audit): mt_get_ckgen_freq() only ships unfinished for
- * kernel 6.1's clk_common (does not build, see the file header). The only caller
- * (seninf.c:362) sits behind #if SENINF_CLK_CONTROL and serves two diagnostic
- * ioctl reads of the CKGEN frequency -- not the probe()/open() path. Return 0
- * without touching the missing symbol; not required for the sensor to load or work.
- */
 	(void)pclk;
 	return 0;
 }

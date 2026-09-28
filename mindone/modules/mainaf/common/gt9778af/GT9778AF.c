@@ -310,7 +310,7 @@ int GT9778AF_Release(struct inode *a_pstInode, struct file *a_pstFile)
 		while(g_u4LastPosition>50){
 			g_u4LastPosition -= 50;
 			s4AF_WriteReg(g_u4LastPosition);
-			mdelay(5);
+			usleep_range(5000, 6000);
 		}
 		s4AF_WriteReg(0);
 		//prize-camera  add for remove motor crash noise by zhuzhengjiang 20191101-end

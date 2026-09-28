@@ -1,12 +1,4 @@
 // SPDX-License-Identifier: GPL-2.0
-/*
- * mtk_chg_det.c -- MTK Charger Type Detection Driver. Reconstructed from
- * disassembly of the prebuilt mtk_chg_det.ko (vermagic 5.10.233, no public
- * source), generalized from MediaTek's mt6357-charger-type.c reference
- * driver. Full trace and confirmed differences: re510-modules and
- * modules/charger-mtk-chg-det/RECONSTRUCTION.md. MINDONE (CHRDET-2908)
- * ported for kernel 6.1.175, one deviation in mtk_chr_det_probe() -- CHRDET-2908.
- */
 
 #include <linux/delay.h>
 #include <linux/device.h>
@@ -306,14 +298,6 @@ static int mtk_chr_det_probe(struct platform_device *pdev)
 	}
 
 	info->bc12_psy = devm_power_supply_get_by_phandle(dev, "bc12");
-	/*
-	 * MINDONE (CHRDET-2908): the ONE deliberate deviation from byte-for-byte
-	 * fidelity here. The shipped binary does `return PTR_ERR(info->bc12_psy)`
-	 * without distinguishing NULL from IS_ERR; since PTR_ERR(NULL)==0, a
-	 * not-yet-registered "bc12" phandle psy would look like a "successful"
-	 * probe with a dangling NULL pointer, dereferenced on the first
-	 * do_charger_detect() call. Return -EPROBE_DEFER; see CHRDET-2908.
-	 */
 	if (!info->bc12_psy) {
 		pr_notice("%s: bc12_psy not ready yet, deferring\n", __func__);
 		return -EPROBE_DEFER;

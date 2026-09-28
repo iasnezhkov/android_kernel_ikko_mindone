@@ -1,38 +1,10 @@
 // SPDX-License-Identifier: GPL-2.0
-/*
- * mtk_boot_common — minimal /sys/class/BOOT/BOOT/boot/boot_mode node.
- *
- * mind_one HAL PQ on this device tries to open
- * /sys/class/BOOT/BOOT/boot/boot_mode at startup and prints
- * "fail to open" when the node is missing. On stock MediaTek trees this
- * node is created by a proprietary "get bootmode" driver that is not part
- * of any vendor source tree we have searched (this repository and
- * kernel612-common included — none contain it).
- * This is a from-scratch minimal replacement: same class/device/attribute
- * layout, small enough to review at a glance.
- *
- * Value source: LK is known to inject extra "atag,*" properties under
- * /chosen at runtime that are not present in the statically compiled DTS
- * (see the fact log — DRAM parameters arrive the same way, and the
- * stock DTS decompile at device/dts/vendor_boot_b-platform.dts:37-43 shows
- * several "atag,videolfb-*" properties with no static counterpart in the
- * source .dts). If LK also injects an "atag,boot_mode" (or a "boot"
- * sub-node with a "boot_mode" property) this driver picks it up; if not,
- * it falls back to a hardcoded BOOT_MODE_NORMAL(0). Either way the sysfs
- * node exists, which is the actual HAL PQ complaint — a wrong-but-present
- * "normal" is what every real boot of this device needs anyway.
- *
- * NOT verified against real /chosen content on this device (device is
- * off-limits for this task — logs only). Documented as best-effort in
- * the project issue registry .
- */
 
 #include <linux/module.h>
 #include <linux/init.h>
 #include <linux/device.h>
 #include <linux/of.h>
 #include <linux/err.h>
-#include <mindone/compat.h>
 
 /* Common MediaTek boot-mode encoding (subset actually distinguishable
  * without vendor headers; anything unrecognised reports NORMAL).
@@ -57,11 +29,6 @@ static u32 mtk_boot_mode_from_dt(void)
 	if (!chosen)
 		return BOOT_MODE_NORMAL;
 
-	/* Verified on the device on 12.09 (F4193): LK puts an "atag,boot" tag into /chosen =
-	 * struct tag_bootmode { u32 size; u32 tag; u32 bootmode; u32 boottype; } in
-	 * little-endian (bytes 10000000 02080041 00000000 02000000: size=0x10,
-	 * tag=0x41000802, bootmode=0 NORMAL, boottype=2). The value is the third word.
-	 */
 	tag = of_get_property(chosen, "atag,boot", &len);
 	if (tag && len >= 12) {
 		val = le32_to_cpup((const __le32 *)(tag + 8));
@@ -115,7 +82,7 @@ static const struct attribute_group *boot_attr_groups[] = {
 
 static int __init mtk_boot_common_init(void)
 {
-	boot_class = MINDONE_CLASS_CREATE("BOOT");
+	boot_class = class_create("BOOT");
 	if (IS_ERR(boot_class)) {
 		pr_notice("mtk_boot_common: class_create failed, errno=%ld\n",
 			  PTR_ERR(boot_class));

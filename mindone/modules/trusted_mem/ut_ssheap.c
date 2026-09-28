@@ -26,6 +26,7 @@
 #include <linux/slab.h>
 #include <linux/arm-smccc.h>
 #include <linux/parser.h>
+#include <linux/kstrtox.h>
 
 #include <public/trusted_mem_api.h>
 #include <private/ssheap_priv.h>
@@ -82,6 +83,22 @@ static void dump_buf_info(struct ssheap_buf_info *info)
 	}
 }
 
+static int ssheap_ut_match_hex(const substring_t *s, int *result)
+{
+	char buf[32];
+	size_t len = s->to - s->from;
+	u32 val;
+
+	if (len == 0 || len >= sizeof(buf))
+		return -EINVAL;
+	memcpy(buf, s->from, len);
+	buf[len] = '\0';
+	if (kstrtou32(buf, 16, &val))
+		return -EINVAL;
+	*result = val;
+	return 0;
+}
+
 static void ssheap_ut(const char *buf)
 {
 	struct ssheap_buf_info *info;
@@ -109,17 +126,17 @@ static void ssheap_ut(const char *buf)
 			ut_cmd = token;
 			break;
 		case UT_OPT_SIZE:
-			if (match_hex(args, &token))
+			if (ssheap_ut_match_hex(args, &token))
 				break;
 			ut_size = token;
 			break;
 		case UT_OPT_ALIGN:
-			if (match_hex(args, &token))
+			if (ssheap_ut_match_hex(args, &token))
 				break;
 			ut_align = token;
 			break;
 		case UT_OPT_DUMP:
-			if (match_hex(args, &token))
+			if (ssheap_ut_match_hex(args, &token))
 				break;
 			ut_dump = token;
 			break;
@@ -135,10 +152,10 @@ static void ssheap_ut(const char *buf)
 			pr_info("cmd=%d FAILED\n", ut_cmd);
 		} else {
 			smc_ret = mtee_assign_buffer(info, 0x9);
-			pr_debug("secure buffer ret:%d (0x%x)\n", smc_ret,
+			pr_debug("secure buffer ret:%lu (0x%lx)\n", smc_ret,
 				 smc_ret);
 			smc_ret = mtee_unassign_buffer(info, 0x9);
-			pr_debug("unsecure buffer ret:%d (0x%x)\n", smc_ret,
+			pr_debug("unsecure buffer ret:%lu (0x%lx)\n", smc_ret,
 				 smc_ret);
 			if (ut_dump)
 				dump_buf_info(info);
@@ -157,7 +174,7 @@ static void ssheap_ut(const char *buf)
 			pr_info("cmd=%d FAILED\n", ut_cmd);
 		} else {
 			smc_ret = mtee_assign_buffer(last_info, 0xff);
-			pr_info("secure buffer ret:%d (0x%x)\n", smc_ret,
+			pr_info("secure buffer ret:%lu (0x%lx)\n", smc_ret,
 				smc_ret);
 			if (ut_dump)
 				dump_buf_info(last_info);
@@ -171,7 +188,7 @@ static void ssheap_ut(const char *buf)
 			goto out;
 		}
 		smc_ret = mtee_unassign_buffer(last_info, 0xff);
-		pr_info("unsecure buffer ret:%d (0x%x)\n", smc_ret, smc_ret);
+		pr_info("unsecure buffer ret:%lu (0x%lx)\n", smc_ret, smc_ret);
 
 		ssheap_free_non_contig(last_info);
 		last_info = NULL;
@@ -190,9 +207,12 @@ static ssize_t ssheap_write(struct file *file, const char __user *buffer,
 {
 	char desc[128];
 
+	if (count == 0 || count >= sizeof(desc))
+		return -EINVAL;
 	if (copy_from_user(desc, buffer, count))
-		return 0;
-	pr_info("write count:%d\n", count);
+		return -EFAULT;
+	desc[count] = '\0';
+	pr_info("write count:%zu\n", count);
 	ssheap_ut(desc);
 	return count;
 }

@@ -1,4 +1,3 @@
-#include <linux/version.h>
 /*******************************************************************************
  *
  * This file is provided under a dual license.  When you use or
@@ -133,7 +132,6 @@ struct WLANDEV_INFO {
 
 MODULE_AUTHOR(NIC_AUTHOR);
 MODULE_DESCRIPTION(NIC_DESC);
-/* MODULE_SUPPORTED_DEVICE(NIC_NAME); removed upstream, ACK 6.1 does not define this macro */
 
 /* MODULE_LICENSE("MTK Propietary"); */
 MODULE_LICENSE("Dual BSD/GPL");
@@ -224,7 +222,6 @@ int CFG80211_Resume(struct wiphy *wiphy)
  *******************************************************************************
  */
 
-#if KERNEL_VERSION(5, 4, 0) <= CFG80211_VERSION_CODE
 	#define CHAN2G(_channel, _freq, _flags)		\
 	{						\
 		.band               = KAL_BAND_2GHZ,	\
@@ -235,17 +232,6 @@ int CFG80211_Resume(struct wiphy *wiphy)
 		.max_antenna_gain   = 0,		\
 		.max_power          = 30,		\
 	}
-#else
-	#define CHAN2G(_channel, _freq, _flags)		\
-	{						\
-		.band               = KAL_BAND_2GHZ,	\
-		.center_freq        = (_freq),		\
-		.hw_value           = (_channel),	\
-		.flags              = (_flags),		\
-		.max_antenna_gain   = 0,		\
-		.max_power          = 30,		\
-	}
-#endif
 
 static struct ieee80211_channel mtk_2ghz_channels[] = {
 	CHAN2G(1, 2412, 0),
@@ -264,7 +250,6 @@ static struct ieee80211_channel mtk_2ghz_channels[] = {
 	CHAN2G(14, 2484, 0),
 };
 
-#if KERNEL_VERSION(5, 4, 0) <= CFG80211_VERSION_CODE
 	#define CHAN5G(_channel, _flags)			\
 	{							\
 		.band              = KAL_BAND_5GHZ,		\
@@ -277,22 +262,8 @@ static struct ieee80211_channel mtk_2ghz_channels[] = {
 		.max_antenna_gain  = 0,				\
 		.max_power         = 30,			\
 	}
-#else
-	#define CHAN5G(_channel, _flags)			\
-	{							\
-		.band              = KAL_BAND_5GHZ,		\
-		.center_freq       =				\
-			(((_channel >= 182) && (_channel <= 196)) ? \
-			(4000 + (5 * (_channel))) : (5000 + (5 * (_channel)))),\
-		.hw_value          = (_channel),		\
-		.flags             = (_flags),			\
-		.max_antenna_gain  = 0,				\
-		.max_power         = 30,			\
-	}
-#endif
 
 #if (CFG_SUPPORT_WIFI_6G == 1)
-#if KERNEL_VERSION(5, 8, 0) <= CFG80211_VERSION_CODE
 	#define CHAN6G(_channel, _flags)				\
 	{								\
 		.band               = KAL_BAND_6GHZ,			\
@@ -304,18 +275,6 @@ static struct ieee80211_channel mtk_2ghz_channels[] = {
 		.max_antenna_gain   = 0,				\
 		.max_power          = 30,				\
 	}
-#else
-	#define CHAN6G(_channel, _flags)				\
-	{								\
-		.band               = KAL_BAND_6GHZ,			\
-		.center_freq        =	\
-			((_channel == 2) ? (5935) : (5950 + (5 * (_channel)))),\
-		.hw_value           = (_channel),			\
-		.flags              = (_flags),				\
-		.max_antenna_gain   = 0,				\
-		.max_power          = 30,				\
-	}
-#endif
 #endif
 
 static struct ieee80211_channel mtk_5ghz_channels[] = {
@@ -505,7 +464,6 @@ static struct ieee80211_rate mtk_rates[] = {
 	.vht_mcs        = WLAN_VHT_MCS_INFO,				\
 }
 
-#if KERNEL_VERSION(4, 19, 0) <= CFG80211_VERSION_CODE
 #if (CFG_SUPPORT_802_11AX == 1)
 
 #define WLAN_HE_CAP_ELEM_INFO					\
@@ -553,18 +511,12 @@ static struct ieee80211_sband_iftype_data mtk_he_cap[] = {
 	{
 		.types_mask =
 			BIT(NL80211_IFTYPE_STATION) | BIT(NL80211_IFTYPE_AP),
-#if KERNEL_VERSION(5, 4, 0) <= CFG80211_VERSION_CODE
 		.he_cap = WLAN_HE_CAP_160_INFO,
-#else
-		.he_cap = WLAN_HE_CAP_INFO,
-#endif
 	},
 };
 
 #endif
-#endif
 
-#if KERNEL_VERSION(5, 4, 0) <= CFG80211_VERSION_CODE
 #if (CFG_SUPPORT_802_11AX == 1) && (CFG_SUPPORT_WIFI_6G == 1)
 
 #define HE_6GHZ_MIN_MPDU_START_SPACE		0
@@ -605,7 +557,6 @@ static struct ieee80211_sband_iftype_data mtk_he_cap_6g[] = {
 };
 
 #endif /* (CFG_SUPPORT_802_11AX == 1) && (CFG_SUPPORT_WIFI_6G == 1) */
-#endif
 
 /* public for both Legacy Wi-Fi / P2P access */
 struct ieee80211_supported_band mtk_band_2ghz = {
@@ -615,11 +566,9 @@ struct ieee80211_supported_band mtk_band_2ghz = {
 	.bitrates = mtk_g_rates,
 	.n_bitrates = mtk_g_rates_size,
 	.ht_cap = WLAN_HT_CAP,
-#if KERNEL_VERSION(4, 19, 0) <= CFG80211_VERSION_CODE
 #if (CFG_SUPPORT_802_11AX == 1)
 	.n_iftype_data = 1,
 	.iftype_data = mtk_he_cap,
-#endif
 #endif
 };
 
@@ -631,16 +580,10 @@ struct ieee80211_supported_band mtk_band_5ghz = {
 	.bitrates = mtk_a_rates,
 	.n_bitrates = mtk_a_rates_size,
 	.ht_cap = WLAN_HT_CAP,
-#if KERNEL_VERSION(5, 4, 0) <= CFG80211_VERSION_CODE
 	.vht_cap = WLAN_VHT_CAP_160,
-#else
-	.vht_cap = WLAN_VHT_CAP,
-#endif
-#if KERNEL_VERSION(4, 19, 0) <= CFG80211_VERSION_CODE
 #if (CFG_SUPPORT_802_11AX == 1)
 	.n_iftype_data = 1,
 	.iftype_data = mtk_he_cap,
-#endif
 #endif
 };
 
@@ -652,11 +595,9 @@ struct ieee80211_supported_band mtk_band_6ghz = {
 	.n_channels = ARRAY_SIZE(mtk_6ghz_channels),
 	.bitrates = mtk_a_rates,
 	.n_bitrates = mtk_a_rates_size,
-#if KERNEL_VERSION(5, 4, 0) <= CFG80211_VERSION_CODE
 #if (CFG_SUPPORT_802_11AX == 1)
 	.n_iftype_data = 1,
 	.iftype_data = mtk_he_cap_6g,
-#endif
 #endif
 };
 #endif
@@ -694,9 +635,7 @@ static struct cfg80211_ops mtk_wlan_ops = {
 	.del_station = mtk_cfg80211_del_station,
 #endif
 	.scan = mtk_cfg80211_scan,
-#if KERNEL_VERSION(4, 5, 0) <= CFG80211_VERSION_CODE
 	.abort_scan = mtk_cfg80211_abort_scan,
-#endif
 	.connect = mtk_cfg80211_connect,
 	.disconnect = mtk_cfg80211_disconnect,
 	.join_ibss = mtk_cfg80211_join_ibss,
@@ -715,12 +654,7 @@ static struct cfg80211_ops mtk_wlan_ops = {
 	.cancel_remain_on_channel = mtk_cfg80211_cancel_remain_on_channel,
 	.mgmt_tx = mtk_cfg80211_mgmt_tx,
 	/* .mgmt_tx_cancel_wait        = mtk_cfg80211_mgmt_tx_cancel_wait, */
-#if KERNEL_VERSION(5, 8, 0) > CFG80211_VERSION_CODE
-	.mgmt_frame_register = mtk_cfg80211_mgmt_frame_register,
-#endif
-#if KERNEL_VERSION(5, 8, 0) <= CFG80211_VERSION_CODE
 	.update_mgmt_frame_registrations = mtk_cfg_mgmt_frame_update,
-#endif
 
 #ifdef CONFIG_NL80211_TESTMODE
 	.testmode_cmd = mtk_cfg80211_testmode_cmd,
@@ -760,9 +694,7 @@ static struct cfg80211_ops mtk_cfg_ops = {
 #endif
 	.del_station = mtk_cfg_del_station,	/* AP/P2P use this function */
 	.scan = mtk_cfg_scan,
-#if KERNEL_VERSION(4, 5, 0) <= CFG80211_VERSION_CODE
 	.abort_scan = mtk_cfg_abort_scan,
-#endif
 #if CFG_SUPPORT_SCHED_SCAN
 	.sched_scan_start = mtk_cfg_sched_scan_start,
 	.sched_scan_stop = mtk_cfg_sched_scan_stop,
@@ -790,12 +722,7 @@ static struct cfg80211_ops mtk_cfg_ops = {
 	.cancel_remain_on_channel = mtk_cfg_cancel_remain_on_channel,
 	.mgmt_tx = mtk_cfg_mgmt_tx,
 	/* .mgmt_tx_cancel_wait        = mtk_cfg80211_mgmt_tx_cancel_wait, */
-#if KERNEL_VERSION(5, 8, 0) > CFG80211_VERSION_CODE
-	.mgmt_frame_register = mtk_cfg_mgmt_frame_register,
-#endif
-#if KERNEL_VERSION(5, 8, 0) <= CFG80211_VERSION_CODE
 	.update_mgmt_frame_registrations = mtk_cfg_mgmt_frame_update,
-#endif
 
 #ifdef CONFIG_NL80211_TESTMODE
 	.testmode_cmd = mtk_cfg_testmode_cmd,
@@ -803,9 +730,7 @@ static struct cfg80211_ops mtk_cfg_ops = {
 
 #if (CFG_SUPPORT_DFS_MASTER == 1)
 	.start_radar_detection = mtk_cfg_start_radar_detection,
-#if KERNEL_VERSION(3, 13, 0) <= CFG80211_VERSION_CODE
 	.channel_switch = mtk_cfg_channel_switch,
-#endif
 #endif
 
 #if (CFG_ENABLE_WIFI_DIRECT_CFG_80211 != 0)
@@ -831,7 +756,6 @@ static struct cfg80211_ops mtk_cfg_ops = {
 };
 #endif	/* CFG_ENABLE_UNIFY_WIPHY */
 
-#if KERNEL_VERSION(3, 18, 0) <= CFG80211_VERSION_CODE
 
 static const struct wiphy_vendor_command
 	mtk_wlan_vendor_ops[] = {
@@ -843,11 +767,9 @@ static const struct wiphy_vendor_command
 		.flags = WIPHY_VENDOR_CMD_NEED_WDEV |
 			 WIPHY_VENDOR_CMD_NEED_NETDEV,
 		.doit = mtk_cfg80211_vendor_get_channel_list
-#if KERNEL_VERSION(5, 4, 0) <= LINUX_VERSION_CODE
 		,
 		.policy = nla_parse_wifi_attribute,
 		.maxattr = WIFI_ATTRIBUTE_MAX
-#endif
 	},
 	{
 		{
@@ -857,11 +779,9 @@ static const struct wiphy_vendor_command
 		.flags = WIPHY_VENDOR_CMD_NEED_WDEV |
 			 WIPHY_VENDOR_CMD_NEED_NETDEV,
 		.doit = mtk_cfg80211_vendor_set_country_code
-#if KERNEL_VERSION(5, 4, 0) <= LINUX_VERSION_CODE
 		,
 		.policy = nla_parse_wifi_attribute,
 		.maxattr = WIFI_ATTRIBUTE_MAX
-#endif
 	},
 	{
 		{
@@ -872,11 +792,9 @@ static const struct wiphy_vendor_command
 			| WIPHY_VENDOR_CMD_NEED_NETDEV
 			| WIPHY_VENDOR_CMD_NEED_RUNNING,
 		.doit = mtk_cfg80211_vendor_set_scan_mac_oui
-#if KERNEL_VERSION(5, 4, 0) <= LINUX_VERSION_CODE
 		,
 		.policy = nla_parse_wifi_attribute,
 		.maxattr = WIFI_ATTRIBUTE_MAX
-#endif
 	},
 	{
 		{
@@ -886,11 +804,9 @@ static const struct wiphy_vendor_command
 		.flags = WIPHY_VENDOR_CMD_NEED_WDEV |
 			 WIPHY_VENDOR_CMD_NEED_NETDEV,
 		.doit = mtk_cfg80211_vendor_set_band
-#if KERNEL_VERSION(5, 4, 0) <= LINUX_VERSION_CODE
 		,
 		.policy = qca_wlan_vendor_attr_policy,
 		.maxattr = QCA_WLAN_VENDOR_ATTR_MAX
-#endif
 	},
 #if CFG_SUPPORT_MBO
 	{
@@ -901,11 +817,9 @@ static const struct wiphy_vendor_command
 		.flags = WIPHY_VENDOR_CMD_NEED_WDEV |
 			 WIPHY_VENDOR_CMD_NEED_NETDEV,
 		.doit = mtk_cfg80211_vendor_set_roaming_param
-#if KERNEL_VERSION(5, 4, 0) <= LINUX_VERSION_CODE
 		,
 		.policy = qca_roaming_param_policy,
 		.maxattr = QCA_ATTR_ROAMING_PARAM_MAX
-#endif
 
 	},
 #endif
@@ -917,11 +831,9 @@ static const struct wiphy_vendor_command
 		.flags = WIPHY_VENDOR_CMD_NEED_WDEV |
 			 WIPHY_VENDOR_CMD_NEED_NETDEV,
 		.doit = mtk_cfg80211_vendor_set_roaming_policy
-#if KERNEL_VERSION(5, 4, 0) <= LINUX_VERSION_CODE
 		,
 		.policy = qca_wlan_vendor_attr_policy,
 		.maxattr = QCA_WLAN_VENDOR_ATTR_MAX
-#endif
 	},
 	{
 		{
@@ -931,10 +843,8 @@ static const struct wiphy_vendor_command
 		.flags = WIPHY_VENDOR_CMD_NEED_WDEV |
 			 WIPHY_VENDOR_CMD_NEED_NETDEV,
 		.doit = mtk_cfg80211_vendor_get_roaming_capabilities
-#if KERNEL_VERSION(5, 4, 0) <= LINUX_VERSION_CODE
 		,
 		.policy = VENDOR_CMD_RAW_DATA
-#endif
 	},
 	{
 		{
@@ -944,11 +854,9 @@ static const struct wiphy_vendor_command
 		.flags = WIPHY_VENDOR_CMD_NEED_WDEV |
 			 WIPHY_VENDOR_CMD_NEED_NETDEV,
 		.doit = mtk_cfg80211_vendor_config_roaming
-#if KERNEL_VERSION(5, 4, 0) <= LINUX_VERSION_CODE
 		,
 		.policy = nla_parse_wifi_attribute,
 		.maxattr = WIFI_ATTRIBUTE_MAX
-#endif
 	},
 	{
 		{
@@ -958,11 +866,9 @@ static const struct wiphy_vendor_command
 		.flags = WIPHY_VENDOR_CMD_NEED_WDEV |
 			 WIPHY_VENDOR_CMD_NEED_NETDEV,
 		.doit = mtk_cfg80211_vendor_enable_roaming
-#if KERNEL_VERSION(5, 4, 0) <= LINUX_VERSION_CODE
 		,
 		.policy = nla_parse_wifi_attribute,
 		.maxattr = WIFI_ATTRIBUTE_MAX
-#endif
 	},
 	/* RTT */
 	{
@@ -973,10 +879,8 @@ static const struct wiphy_vendor_command
 		.flags = WIPHY_VENDOR_CMD_NEED_WDEV |
 		WIPHY_VENDOR_CMD_NEED_NETDEV,
 		.doit = mtk_cfg80211_vendor_get_rtt_capabilities
-#if KERNEL_VERSION(5, 4, 0) <= LINUX_VERSION_CODE
 		,
 		.policy = VENDOR_CMD_RAW_DATA
-#endif
 	},
 	/* Link Layer Statistics */
 	{
@@ -987,10 +891,8 @@ static const struct wiphy_vendor_command
 		.flags = WIPHY_VENDOR_CMD_NEED_WDEV |
 		WIPHY_VENDOR_CMD_NEED_NETDEV,
 		.doit = mtk_cfg80211_vendor_llstats_get_info
-#if KERNEL_VERSION(5, 4, 0) <= LINUX_VERSION_CODE
 		,
 		.policy = VENDOR_CMD_RAW_DATA
-#endif
 	},
 	/* RSSI Monitoring */
 	{
@@ -1001,11 +903,9 @@ static const struct wiphy_vendor_command
 		.flags = WIPHY_VENDOR_CMD_NEED_WDEV |
 		WIPHY_VENDOR_CMD_NEED_NETDEV,
 		.doit = mtk_cfg80211_vendor_set_rssi_monitoring
-#if KERNEL_VERSION(5, 4, 0) <= LINUX_VERSION_CODE
 		,
 		.policy = nla_parse_wifi_rssi_monitor,
 		.maxattr = WIFI_ATTRIBUTE_RSSI_MONITOR_ATTRIBUTE_MAX
-#endif
 	},
 	/* Packet Keep Alive */
 	{
@@ -1016,11 +916,9 @@ static const struct wiphy_vendor_command
 		.flags = WIPHY_VENDOR_CMD_NEED_WDEV |
 		WIPHY_VENDOR_CMD_NEED_NETDEV,
 		.doit = mtk_cfg80211_vendor_packet_keep_alive_start
-#if KERNEL_VERSION(5, 4, 0) <= LINUX_VERSION_CODE
 		,
 		.policy = nla_parse_offloading_policy,
 		.maxattr = MKEEP_ALIVE_ATTRIBUTE_MAX
-#endif
 	},
 	{
 		{
@@ -1030,11 +928,9 @@ static const struct wiphy_vendor_command
 		.flags = WIPHY_VENDOR_CMD_NEED_WDEV |
 		WIPHY_VENDOR_CMD_NEED_NETDEV,
 		.doit = mtk_cfg80211_vendor_packet_keep_alive_stop
-#if KERNEL_VERSION(5, 4, 0) <= LINUX_VERSION_CODE
 		,
 		.policy = nla_parse_offloading_policy,
 		.maxattr = MKEEP_ALIVE_ATTRIBUTE_MAX
-#endif
 	},
 	/* Get Driver Version or Firmware Version */
 	{
@@ -1045,11 +941,9 @@ static const struct wiphy_vendor_command
 		.flags = WIPHY_VENDOR_CMD_NEED_WDEV |
 				WIPHY_VENDOR_CMD_NEED_NETDEV,
 		.doit = mtk_cfg80211_vendor_get_version
-#if KERNEL_VERSION(5, 4, 0) <= LINUX_VERSION_CODE
 		,
 		.policy = nla_get_version_policy,
 		.maxattr = LOGGER_ATTRIBUTE_MAX
-#endif
 	},
 	/* Get Supported Feature Set */
 	{
@@ -1060,10 +954,8 @@ static const struct wiphy_vendor_command
 		.flags = WIPHY_VENDOR_CMD_NEED_WDEV |
 				WIPHY_VENDOR_CMD_NEED_NETDEV,
 		.doit = mtk_cfg80211_vendor_get_supported_feature_set
-#if KERNEL_VERSION(5, 4, 0) <= LINUX_VERSION_CODE
 		,
 		.policy = VENDOR_CMD_RAW_DATA
-#endif
 
 	},
 	/* Set dual STA use cases */
@@ -1075,11 +967,9 @@ static const struct wiphy_vendor_command
 		.flags = WIPHY_VENDOR_CMD_NEED_WDEV |
 				WIPHY_VENDOR_CMD_NEED_NETDEV,
 		.doit = mtk_cfg80211_vendor_set_multista_use_case
-#if KERNEL_VERSION(5, 4, 0) <= CFG80211_VERSION_CODE
 		,
 		.policy = nla_parse_wifi_multista,
 		.maxattr = WIFI_ATTRIBUTE_MAX
-#endif
 	},
 	/* Select primary connection */
 	{
@@ -1090,11 +980,9 @@ static const struct wiphy_vendor_command
 		.flags = WIPHY_VENDOR_CMD_NEED_WDEV |
 				WIPHY_VENDOR_CMD_NEED_NETDEV,
 		.doit = mtk_cfg80211_vendor_set_multista_primary_connection
-#if KERNEL_VERSION(5, 4, 0) <= CFG80211_VERSION_CODE
 		,
 		.policy = nla_parse_wifi_multista,
 		.maxattr = WIFI_ATTRIBUTE_MAX
-#endif
 	},
 	/* Set Tx Power Scenario */
 	{
@@ -1105,11 +993,9 @@ static const struct wiphy_vendor_command
 		.flags = WIPHY_VENDOR_CMD_NEED_WDEV |
 				WIPHY_VENDOR_CMD_NEED_NETDEV,
 		.doit = mtk_cfg80211_vendor_set_tx_power_scenario
-#if KERNEL_VERSION(5, 4, 0) <= LINUX_VERSION_CODE
 		,
 		.policy = nla_parse_wifi_attribute,
 		.maxattr = WIFI_ATTRIBUTE_MAX
-#endif
 	},
 #if CFG_SUPPORT_P2P_PREFERRED_FREQ_LIST
 	/* P2P get preferred freq list */
@@ -1122,11 +1008,9 @@ static const struct wiphy_vendor_command
 				| WIPHY_VENDOR_CMD_NEED_NETDEV
 				| WIPHY_VENDOR_CMD_NEED_RUNNING,
 		.doit = mtk_cfg80211_vendor_get_preferred_freq_list
-#if KERNEL_VERSION(5, 4, 0) <= LINUX_VERSION_CODE
 		,
 		.policy = nla_get_preferred_freq_list_policy,
 		.maxattr = WIFI_VENDOR_ATTR_PREFERRED_FREQ_LIST_MAX
-#endif
 	},
 #endif /* CFG_SUPPORT_P2P_PREFERRED_FREQ_LIST */
 #if CFG_AUTO_CHANNEL_SEL_SUPPORT
@@ -1139,11 +1023,9 @@ static const struct wiphy_vendor_command
 				| WIPHY_VENDOR_CMD_NEED_NETDEV
 				| WIPHY_VENDOR_CMD_NEED_RUNNING,
 		.doit = mtk_cfg80211_vendor_acs
-#if KERNEL_VERSION(5, 4, 0) <= LINUX_VERSION_CODE
 		,
 		.policy = nla_get_acs_policy,
 		.maxattr = WIFI_VENDOR_ATTR_ACS_MAX
-#endif
 	},
 #endif
 #if CFG_SUPPORT_DFS_MASTER
@@ -1155,10 +1037,8 @@ static const struct wiphy_vendor_command
 		.flags = WIPHY_VENDOR_CMD_NEED_WDEV
 				| WIPHY_VENDOR_CMD_NEED_NETDEV,
 		.doit = mtk_cfg80211_vendor_dfs_capability
-#if KERNEL_VERSION(5, 4, 0) <= CFG80211_VERSION_CODE
 		,
 		.policy = VENDOR_CMD_RAW_DATA
-#endif
 	},
 #endif
 	{
@@ -1169,10 +1049,8 @@ static const struct wiphy_vendor_command
 		.flags = WIPHY_VENDOR_CMD_NEED_WDEV
 				| WIPHY_VENDOR_CMD_NEED_NETDEV,
 		.doit = mtk_cfg80211_vendor_get_features
-#if KERNEL_VERSION(5, 4, 0) <= LINUX_VERSION_CODE
 		,
 		.policy = VENDOR_CMD_RAW_DATA
-#endif
 
 	},
 	{
@@ -1183,11 +1061,9 @@ static const struct wiphy_vendor_command
 			.flags = WIPHY_VENDOR_CMD_NEED_WDEV |
 				 WIPHY_VENDOR_CMD_NEED_NETDEV,
 			.doit = mtk_cfg80211_vendor_get_apf_capabilities
-#if KERNEL_VERSION(5, 4, 0) <= LINUX_VERSION_CODE
 			,
 			.policy = nla_get_apf_policy,
 			.maxattr = APF_ATTRIBUTE_MAX
-#endif
 	},
 #if (CFG_SUPPORT_APF == 1)
 	{
@@ -1198,11 +1074,9 @@ static const struct wiphy_vendor_command
 			.flags = WIPHY_VENDOR_CMD_NEED_WDEV |
 				 WIPHY_VENDOR_CMD_NEED_NETDEV,
 			.doit = mtk_cfg80211_vendor_set_packet_filter
-#if KERNEL_VERSION(5, 4, 0) <= LINUX_VERSION_CODE
 			,
 			.policy = nla_get_apf_policy,
 			.maxattr = APF_ATTRIBUTE_MAX
-#endif
 	},
 	{
 		{
@@ -1212,11 +1086,9 @@ static const struct wiphy_vendor_command
 			.flags = WIPHY_VENDOR_CMD_NEED_WDEV |
 				WIPHY_VENDOR_CMD_NEED_NETDEV,
 			.doit = mtk_cfg80211_vendor_read_packet_filter
-#if KERNEL_VERSION(5, 4, 0) <= LINUX_VERSION_CODE
 		,
 		.policy = nla_get_apf_policy,
 		.maxattr = APF_ATTRIBUTE_MAX
-#endif
 	},
 #endif /* CFG_SUPPORT_APF */
 	/* Get Driver Memory Dump */
@@ -1228,10 +1100,8 @@ static const struct wiphy_vendor_command
 		.flags = WIPHY_VENDOR_CMD_NEED_WDEV |
 				WIPHY_VENDOR_CMD_NEED_NETDEV,
 		.doit = mtk_cfg80211_vendor_driver_memory_dump
-#if KERNEL_VERSION(5, 4, 0) <= LINUX_VERSION_CODE
 		,
 		.policy = VENDOR_CMD_RAW_DATA
-#endif
 	},
 	{
 		{
@@ -1242,11 +1112,9 @@ static const struct wiphy_vendor_command
 			| WIPHY_VENDOR_CMD_NEED_NETDEV
 			| WIPHY_VENDOR_CMD_NEED_RUNNING,
 		.doit = mtk_cfg80211_vendor_set_scan_param
-#if KERNEL_VERSION(5, 4, 0) <= LINUX_VERSION_CODE
 		,
 		.policy = mtk_scan_param_policy,
 		.maxattr = WIFI_ATTR_SCAN_MAX
-#endif
 	},
 #if CFG_SUPPORT_NAN
 	{
@@ -1258,10 +1126,8 @@ static const struct wiphy_vendor_command
 				WIPHY_VENDOR_CMD_NEED_NETDEV |
 				WIPHY_VENDOR_CMD_NEED_RUNNING,
 		.doit = mtk_cfg80211_vendor_nan
-#if KERNEL_VERSION(5, 4, 0) <= CFG80211_VERSION_CODE
 		,
 		.policy = VENDOR_CMD_RAW_DATA
-#endif
 	},
 	{
 		{
@@ -1272,11 +1138,9 @@ static const struct wiphy_vendor_command
 				WIPHY_VENDOR_CMD_NEED_NETDEV |
 				WIPHY_VENDOR_CMD_NEED_RUNNING,
 		.doit = mtk_cfg80211_vendor_ndp
-#if KERNEL_VERSION(5, 4, 0) <= CFG80211_VERSION_CODE
 		,
 		.policy = mtk_wlan_vendor_ndp_policy,
 		.maxattr = MTK_WLAN_VENDOR_ATTR_NDP_PARAMS_MAX
-#endif
 	},
 #endif
 	/* Get Trx Stats */
@@ -1288,10 +1152,8 @@ static const struct wiphy_vendor_command
 		.flags = WIPHY_VENDOR_CMD_NEED_WDEV |
 				WIPHY_VENDOR_CMD_NEED_NETDEV,
 		.doit = mtk_cfg80211_vendor_get_trx_stats
-#if KERNEL_VERSION(5, 4, 0) <= LINUX_VERSION_CODE
 		,
 		.policy = VENDOR_CMD_RAW_DATA
-#endif
 	},
 	/* Get Wifi Reset */
 	{
@@ -1302,10 +1164,8 @@ static const struct wiphy_vendor_command
 		.flags = WIPHY_VENDOR_CMD_NEED_WDEV |
 				WIPHY_VENDOR_CMD_NEED_NETDEV,
 		.doit = mtk_cfg80211_vendor_trigger_reset
-#if KERNEL_VERSION(5, 4, 0) <= LINUX_VERSION_CODE
 		,
 		.policy = VENDOR_CMD_RAW_DATA
-#endif
 	},
 };
 
@@ -1412,7 +1272,6 @@ static const struct nl80211_vendor_cmd_info
 		.subcmd = NL80211_VENDOR_SUBCMD_NDP
 	}
 };
-#endif
 
 /* There isn't a lot of sense in it, but you can transmit anything you like */
 static const struct ieee80211_txrx_stypes
@@ -1481,10 +1340,6 @@ static const struct wiphy_wowlan_support mtk_wlan_wowlan_support = {
 /* NL80211_FEATURE_DS_PARAM_SET_IE_IN_PROBES & NL80211_FEATURE_QUIET
  * support in linux kernet version => 3.18
  */
-#if KERNEL_VERSION(3, 18, 0) > CFG80211_VERSION_CODE
-#define NL80211_FEATURE_DS_PARAM_SET_IE_IN_PROBES BIT(19)
-#define NL80211_FEATURE_QUIET BIT(21)
-#endif
 #endif
 
 /*******************************************************************************
@@ -1534,41 +1389,12 @@ unsigned int _cfg80211_classify8021d(struct sk_buff *skb)
 }
 #endif
 
-#if KERNEL_VERSION(5, 4, 0) <= LINUX_VERSION_CODE
 u16 wlanSelectQueue(struct net_device *dev,
 		    struct sk_buff *skb,
 		    struct net_device *sb_dev)
 {
 	return mtk_wlan_ndev_select_queue(dev, skb);
 }
-#elif KERNEL_VERSION(4, 19, 0) <= LINUX_VERSION_CODE
-u16 wlanSelectQueue(struct net_device *dev,
-		    struct sk_buff *skb,
-		    struct net_device *sb_dev, select_queue_fallback_t fallback)
-{
-	return mtk_wlan_ndev_select_queue(dev, skb);
-}
-#elif KERNEL_VERSION(3, 14, 0) <= LINUX_VERSION_CODE
-u16 wlanSelectQueue(struct net_device *dev,
-		    struct sk_buff *skb,
-		    void *accel_priv, select_queue_fallback_t fallback)
-{
-	return mtk_wlan_ndev_select_queue(dev, skb);
-}
-#elif KERNEL_VERSION(3, 13, 0) <= LINUX_VERSION_CODE
-u16 wlanSelectQueue(struct net_device *dev,
-		    struct sk_buff *skb,
-		    void *accel_priv)
-{
-	return mtk_wlan_ndev_select_queue(dev, skb);
-}
-#else
-u16 wlanSelectQueue(struct net_device *dev,
-		    struct sk_buff *skb)
-{
-	return mtk_wlan_ndev_select_queue(dev, skb);
-}
-#endif
 
 /*----------------------------------------------------------------------------*/
 /*!
@@ -1998,11 +1824,7 @@ void wlanSchedScanStoppedWorkQueue(struct work_struct *work)
 	/* 20150205 change cfg80211_sched_scan_stopped to work queue due to
 	 * sched_scan_mtx dead lock issue
 	 */
-#if KERNEL_VERSION(4, 12, 0) <= CFG80211_VERSION_CODE
 	cfg80211_sched_scan_stopped(wlanGetWiphy(), 0);
-#else
-	cfg80211_sched_scan_stopped(wlanGetWiphy());
-#endif
 	DBGLOG(SCN, INFO,
 	       "cfg80211_sched_scan_stopped event send done WorkQueue thread return from wlanSchedScanStoppedWorkQueue\n");
 	return;
@@ -2282,7 +2104,7 @@ static int wlanSetMacAddress(struct net_device *ndev, void *addr)
 		wlanGetBssIdx(ndev));
 
 	COPY_MAC_ADDR(prAisBssInfo->aucOwnMacAddr, sa->sa_data);
-	dev_addr_set(ndev, sa->sa_data); /* MINDONE-DEVADDR 30.08 (F3118) */
+	dev_addr_set(ndev, sa->sa_data);
 	DBGLOG(INIT, INFO,
 		"[wlan%d] Set connect random macaddr to " MACSTR ".\n",
 		prAisBssInfo->ucBssIndex,
@@ -2772,17 +2594,11 @@ static void wlanNetUnregister(struct wireless_dev *prWdev)
 #endif
 }				/* end of wlanNetUnregister() */
 
-/* MINDONE 12.09: since kernel 5.15, private ioctls SIOCDEVPRIVATE..+15 (sent by
- * wpa_supplicant: SETSUSPENDMODE, BTCOEXMODE, COUNTRY, RXFILTER-*) are dispatched by the
- * kernel to ndo_siocdevprivate, not ndo_do_ioctl; without it dev_ifsioc() returns
- * EOPNOTSUPP and the handlers are never reached. */
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 15, 0)
 static int wlan_siocdevprivate(struct net_device *dev, struct ifreq *ifr,
 				  void __user *data, int cmd)
 {
 	return wlanDoIOCTL(dev, ifr, cmd);
 }
-#endif
 
 static const struct net_device_ops wlan_netdev_ops = {
 	.ndo_open = wlanOpen,
@@ -2790,9 +2606,7 @@ static const struct net_device_ops wlan_netdev_ops = {
 	.ndo_set_rx_mode = wlanSetMulticastList,
 	.ndo_get_stats = wlanGetStats,
 	.ndo_do_ioctl = wlanDoIOCTL,
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 15, 0)
 	.ndo_siocdevprivate = wlan_siocdevprivate,
-#endif
 	.ndo_start_xmit = wlanHardStartXmit,
 	.ndo_init = wlanInit,
 	.ndo_uninit = wlanUninit,
@@ -2955,15 +2769,10 @@ static void wlanCreateWirelessDevice(void)
 	prWiphy->max_match_sets           =
 		CFG_SCAN_SSID_MATCH_MAX_NUM;
 	prWiphy->max_sched_scan_ie_len    = CFG_CFG80211_IE_BUF_LEN;
-#if KERNEL_VERSION(4, 12, 0) <= CFG80211_VERSION_CODE
 	/* In kernel 4.12 or newer,
 	 * this is obsoletes - WIPHY_FLAG_SUPPORTS_SCHED_SCAN
 	 */
 	prWiphy->max_sched_scan_reqs = 1;
-#else
-	u4SupportSchedScanFlag            =
-		WIPHY_FLAG_SUPPORTS_SCHED_SCAN;
-#endif
 #endif /* CFG_SUPPORT_SCHED_SCAN */
 	prWiphy->interface_modes = BIT(NL80211_IFTYPE_STATION) |
 				   BIT(NL80211_IFTYPE_ADHOC);
@@ -2986,21 +2795,13 @@ static void wlanCreateWirelessDevice(void)
 	prWiphy->flags |= WIPHY_FLAG_SUPPORTS_FW_ROAM;
 #endif /* CFG_SUPPORT_ROAMING */
 
-#if KERNEL_VERSION(3, 14, 0) > CFG80211_VERSION_CODE
-	prWiphy->flags |= WIPHY_FLAG_CUSTOM_REGULATORY;
-#else
 	prWiphy->regulatory_flags |= REGULATORY_CUSTOM_REG;
 #if (CFG_SUPPORT_DFS_MASTER == 1)
 	prWiphy->flags |= WIPHY_FLAG_HAS_CHANNEL_SWITCH;
-#if KERNEL_VERSION(3, 16, 0) <= CFG80211_VERSION_CODE
 	prWiphy->max_num_csa_counters = 2;
-#endif
 #endif /* CFG_SUPPORT_DFS_MASTER */
-#endif
 
-#if KERNEL_VERSION(3, 14, 0) < CFG80211_VERSION_CODE
 	prWiphy->max_ap_assoc_sta = P2P_MAXIMUM_CLIENT_COUNT;
-#endif
 
 	cfg80211_regd_set_wiphy(prWiphy);
 
@@ -3010,13 +2811,11 @@ static void wlanCreateWirelessDevice(void)
 	prWiphy->max_remain_on_channel_duration = 5000;
 	prWiphy->mgmt_stypes = mtk_cfg80211_ais_default_mgmt_stypes;
 
-#if (CFG_SUPPORT_SCAN_RANDOM_MAC && \
-	(KERNEL_VERSION(3, 19, 0) <= CFG80211_VERSION_CODE))
+#if CFG_SUPPORT_SCAN_RANDOM_MAC
 	prWiphy->features |= NL80211_FEATURE_SCAN_RANDOM_MAC_ADDR;
 	prWiphy->features |= NL80211_FEATURE_SCHED_SCAN_RANDOM_MAC_ADDR;
 #endif
 
-#if KERNEL_VERSION(4, 10, 0) < CFG80211_VERSION_CODE
 	wiphy_ext_feature_set(prWiphy, NL80211_EXT_FEATURE_LOW_SPAN_SCAN);
 	wiphy_ext_feature_set(prWiphy,
 		NL80211_EXT_FEATURE_FILS_MAX_CHANNEL_TIME);
@@ -3026,28 +2825,20 @@ static void wlanCreateWirelessDevice(void)
 		NL80211_EXT_FEATURE_OCE_PROBE_REQ_HIGH_TX_RATE);
 	wiphy_ext_feature_set(prWiphy,
 		NL80211_EXT_FEATURE_OCE_PROBE_REQ_DEFERRAL_SUPPRESSION);
-#endif
 	prWiphy->features |= NL80211_FEATURE_INACTIVITY_TIMER;
 
 #if CFG_SUPPORT_WPA3
 	prWiphy->features |= NL80211_FEATURE_SAE;
 #endif
-#if KERNEL_VERSION(3, 18, 0) <= CFG80211_VERSION_CODE
 	prWiphy->vendor_commands = mtk_wlan_vendor_ops;
 	prWiphy->n_vendor_commands = sizeof(mtk_wlan_vendor_ops) /
 				     sizeof(struct wiphy_vendor_command);
 	prWiphy->vendor_events = mtk_wlan_vendor_events;
 	prWiphy->n_vendor_events = ARRAY_SIZE(
 					   mtk_wlan_vendor_events);
-#endif
 	/* 4 <1.4> wowlan support */
 #ifdef CONFIG_PM
-#if KERNEL_VERSION(3, 11, 0) <= CFG80211_VERSION_CODE
 	prWiphy->wowlan = &mtk_wlan_wowlan_support;
-#else
-	kalMemCopy(&prWiphy->wowlan, &mtk_wlan_wowlan_support,
-		   sizeof(struct wiphy_wowlan_support));
-#endif
 #endif
 
 #ifdef CONFIG_CFG80211_WEXT
@@ -3371,9 +3162,7 @@ struct wireless_dev *wlanNetCreate(void *pvData,
 			prDevHandler = alloc_netdev_mq(
 				sizeof(struct NETDEV_PRIVATE_GLUE_INFO),
 				prInfName,
-#if KERNEL_VERSION(3, 18, 0) <= CFG80211_VERSION_CODE
 				NET_NAME_PREDICTABLE,
-#endif
 				ether_setup,
 				CFG_MAX_TXQ_NUM);
 			gprNetdev[i] = prDevHandler;
@@ -3383,9 +3172,7 @@ struct wireless_dev *wlanNetCreate(void *pvData,
 		prDevHandler = alloc_netdev_mq(
 			sizeof(struct NETDEV_PRIVATE_GLUE_INFO),
 			prInfName,
-#if KERNEL_VERSION(3, 18, 0) <= CFG80211_VERSION_CODE
 			NET_NAME_PREDICTABLE,
-#endif
 			ether_setup,
 			CFG_MAX_TXQ_NUM);
 #endif /* end of CFG_SUPPORT_PERSIST_NETDEV */
@@ -3682,6 +3469,7 @@ void wlanSetSuspendMode(struct GLUE_INFO *prGlueInfo,
 #endif
 		kalSetNetAddressFromInterface(prGlueInfo, prDev, fgEnable);
 		wlanNotifyFwSuspend(prGlueInfo, prDev, fgEnable);
+		kalSetWfcKeepAlive(prGlueInfo, prDev, fgEnable);
 	}
 }
 
@@ -4881,24 +4669,10 @@ void wlanOnPostAdapterStart(struct ADAPTER *prAdapter,
 		if (!prAdapter->fgTxDirectInited) {
 			skb_queue_head_init(
 					&prAdapter->rTxDirectSkbQueue);
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(4, 15, 0))
 			timer_setup(&prAdapter->rTxDirectSkbTimer,
 					nicTxDirectTimerCheckSkbQ, 0);
 			timer_setup(&prAdapter->rTxDirectHifTimer,
 					nicTxDirectTimerCheckHifQ, 0);
-#else
-			init_timer(&prAdapter->rTxDirectSkbTimer);
-			prAdapter->rTxDirectSkbTimer.data =
-					(unsigned long)prGlueInfo;
-			prAdapter->rTxDirectSkbTimer.function =
-					nicTxDirectTimerCheckSkbQ;
-
-			init_timer(&prAdapter->rTxDirectHifTimer);
-			prAdapter->rTxDirectHifTimer.data =
-					(unsigned long)prGlueInfo;
-			prAdapter->rTxDirectHifTimer.function =
-				nicTxDirectTimerCheckHifQ;
-#endif
 			prAdapter->fgTxDirectInited = TRUE;
 		}
 	}
@@ -4944,23 +4718,6 @@ static int32_t wlanOnPreNetRegister(struct GLUE_INFO *prGlueInfo,
 	 * the scheduling method
 	 */
 	if (prGlueInfo->prAdapter->rWifiVar.ucThreadPriority > 0) {
-#if KERNEL_VERSION(4, 19, 0) >= LINUX_VERSION_CODE
-		struct sched_param param = {
-			.sched_priority = prGlueInfo->prAdapter
-			->rWifiVar.ucThreadPriority
-		};
-		sched_setscheduler(prGlueInfo->main_thread,
-				   prGlueInfo->prAdapter->rWifiVar
-				   .ucThreadScheduling, &param);
-#if CFG_SUPPORT_MULTITHREAD
-		sched_setscheduler(prGlueInfo->hif_thread,
-					prGlueInfo->prAdapter->rWifiVar
-					.ucThreadScheduling, &param);
-		sched_setscheduler(prGlueInfo->rx_thread,
-					prGlueInfo->prAdapter->rWifiVar
-					.ucThreadScheduling, &param);
-#endif
-#endif
 		DBGLOG(INIT, INFO,
 		       "Set pri = %d, sched = %d\n",
 		       prGlueInfo->prAdapter->rWifiVar.ucThreadPriority,
@@ -5010,10 +4767,6 @@ static int32_t wlanOnPreNetRegister(struct GLUE_INFO *prGlueInfo,
 			DBGLOG(INIT, WARN, "set MAC addr fail 0x%x\n",
 							rStatus);
 		} else {
-			/* On kernel 6.1, writing dev_addr directly is NOT ALLOWED: the
-			 * kernel catches it via dev_addr_check() (net/core/dev_addr_lists.c)
-			 * and the address list drifts from the real one. The standard way
-			 * is dev_addr_set(). */
 			dev_addr_set(prGlueInfo->prDevHandler,
 					(const u8 *)&MacAddr.sa_data);
 			kalMemCopy(prGlueInfo->prDevHandler->perm_addr,
@@ -5927,10 +5680,12 @@ static int32_t wlanProbe(void *pvData, void *pvDriverData)
 		case FAIL_BY_RESET:
 		case FAIL_MET_INIT_PROCFS:
 			kalMetRemoveProcfs();
+			fallthrough;
 		case PROC_INIT_FAIL:
 			wlanNetUnregister(prWdev);
 			/* Unregister notifier callback */
 			wlanUnregisterInetAddrNotifier();
+			fallthrough;
 		case NET_REGISTER_FAIL:
 			set_bit(GLUE_FLAG_HALT_BIT, &prGlueInfo->ulFlag);
 #if CFG_SUPPORT_MULTITHREAD
@@ -5947,7 +5702,7 @@ static int32_t wlanProbe(void *pvData, void *pvDriverData)
 			wait_for_completion_interruptible(
 							&prGlueInfo->rHaltComp);
 			wlanAdapterStop(prAdapter, FALSE);
-		/* fallthrough */
+			fallthrough;
 		case ADAPTER_START_FAIL:
 			/*reset NVRAM State to ready for the next wifi-no*/
 			if (g_NvramFsm == NVRAM_STATE_SEND_TO_FW)
@@ -5955,7 +5710,7 @@ static int32_t wlanProbe(void *pvData, void *pvDriverData)
 			glBusFreeIrq(prWdev->netdev,
 				*((struct GLUE_INFO **)
 						netdev_priv(prWdev->netdev)));
-		/* fallthrough */
+			fallthrough;
 		case BUS_SET_IRQ_FAIL:
 			wlanWakeLockUninit(prGlueInfo);
 			wlanNetDestroy(prWdev);
@@ -5992,15 +5747,9 @@ wlanOffNotifyCfg80211Disconnect(IN struct GLUE_INFO *prGlueInfo)
 				wlanGetNetDev(prGlueInfo, u4Idx);
 			if (!prDevHandler)
 				continue;
-#if CFG_WPS_DISCONNECT || (KERNEL_VERSION(4, 2, 0) <= CFG80211_VERSION_CODE)
 			cfg80211_disconnected(
 				prDevHandler, 0, NULL, 0,
 				TRUE, GFP_KERNEL);
-#else
-			cfg80211_disconnected(
-				prDevHandler, 0, NULL, 0,
-				GFP_KERNEL);
-#endif
 			bNotify = TRUE;
 		}
 	}
@@ -6288,12 +6037,6 @@ static void wlanRemove(void)
  */
 /*----------------------------------------------------------------------------*/
 /* 1 Module Entry Point */
-/* MINDONE 01.09.2026 (F3391 reconcile): gl_mindone excised from the build
- * (early no-framework Wi-Fi crutch, now obsolete — wpa_supplicant connects).
- * Stubs keep initWlan/exitWlan unchanged without pulling the file in. */
-static inline void mindone_net_start(void) { }
-static inline void mindone_net_stop(void) { }
-
 static int initWlan(void)
 {
 	int ret = 0;
@@ -6407,9 +6150,6 @@ static int initWlan(void)
 	g_u4WlanInitFlag = 1;
 	DBGLOG(INIT, INFO, "initWlan::End\n");
 
-	/* MINDONE: connecting to the access point entirely from the kernel */
-	mindone_net_start();
-
 	return ret;
 }				/* end of initWlan() */
 
@@ -6425,12 +6165,19 @@ static int initWlan(void)
 /* 1 Module Leave Point */
 static void exitWlan(void)
 {
-	mindone_net_stop();	/* MINDONE: cancel the delayed work before teardown */
 #if CFG_SUPPORT_PERSIST_NETDEV
 	uint32_t u4Idx = 0;
 	struct GLUE_INFO *prGlueInfo = NULL;
 	struct wiphy *wiphy = NULL;
+#endif
 
+#if CFG_CHIP_RESET_SUPPORT
+	glResetUninit();
+#endif
+
+	glUnregisterBus(wlanRemove);
+
+#if CFG_SUPPORT_PERSIST_NETDEV
 	wiphy = wlanGetWiphy();
 	WIPHY_PRIV(wiphy, prGlueInfo);
 
@@ -6442,28 +6189,19 @@ static void exitWlan(void)
 			unregister_netdev(gprWdev[u4Idx]->netdev);
 			DBGLOG(INIT, INFO, "Unregister wlan%d netdev end.\n",
 					u4Idx);
+			free_netdev(gprWdev[u4Idx]->netdev);
 			gprWdev[u4Idx]->netdev = gprNetdev[u4Idx] = NULL;
 		}
 	}
 
 	prGlueInfo->fgIsRegistered = FALSE;
-
-	DBGLOG(INIT, INFO, "Free wlan device..\n");
-	wlanFreeNetDev();
 #endif
 	kalFbNotifierUnReg();
 	wlanUnregisterNetdevNotifier();
 
-	/* printk("remove %p\n", wlanRemove); */
 #if CFG_MODIFY_TX_POWER_BY_BAT_VOLT
 	kalBatNotifierUnReg();
 #endif
-
-#if CFG_CHIP_RESET_SUPPORT
-	glResetUninit();
-#endif
-
-	glUnregisterBus(wlanRemove);
 
 	/* free pre-allocated memory */
 	kalUninitIOBuffer();

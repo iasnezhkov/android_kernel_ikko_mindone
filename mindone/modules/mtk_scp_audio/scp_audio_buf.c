@@ -5,7 +5,6 @@
 /* linux include path*/
 #if defined(__linux__)
 #include <linux/uaccess.h>
-#include <mindone/compat-sound.h>
 #include <sound/pcm.h>
 #include <sound/core.h>
 
@@ -558,7 +557,7 @@ int set_audiobuffer_attribute(struct audio_hw_buffer *audio_hwbuf,
 	return ret;
 }
 
-void RingBuf_copyFromUserLinear(struct RingBuf *RingBuf1, mindone_snd_buf_t buf,
+void RingBuf_copyFromUserLinear(struct RingBuf *RingBuf1, struct iov_iter *buf,
 				unsigned int count)
 {
 	int spaceIHave, ret;
@@ -577,7 +576,7 @@ void RingBuf_copyFromUserLinear(struct RingBuf *RingBuf1, mindone_snd_buf_t buf,
 		int w2e = end - RingBuf1->pWrite;
 
 		if (count <= w2e) {
-			ret = MINDONE_SND_COPY_FROM_USER(RingBuf1->pWrite, buf, count);
+			ret = (copy_from_iter(RingBuf1->pWrite, count, buf) != count);
 			if (ret)
 				AUD_LOG_D("%s copy_from_user fail line %d\n",
 					  __func__, __LINE__);
@@ -585,18 +584,18 @@ void RingBuf_copyFromUserLinear(struct RingBuf *RingBuf1, mindone_snd_buf_t buf,
 			if (RingBuf1->pWrite >= end)
 				RingBuf1->pWrite -= RingBuf1->bufLen;
 		} else {
-			ret = MINDONE_SND_COPY_FROM_USER(RingBuf1->pWrite, buf, w2e);
+			ret = (copy_from_iter(RingBuf1->pWrite, w2e, buf) != w2e);
 			if (ret)
 				AUD_LOG_D("%s copy_from_user fail line %d\n",
 					  __func__, __LINE__);
-			ret = MINDONE_SND_COPY_FROM_USER(RingBuf1->pBufBase, MINDONE_SND_BUF_AT(buf, w2e), count - w2e);
+			ret = (copy_from_iter(RingBuf1->pBufBase, count - w2e, buf) != (count - w2e));
 			if (ret)
 				AUD_LOG_D("%s copy_from_user fail line %d\n",
 					  __func__, __LINE__);
 			RingBuf1->pWrite = RingBuf1->pBufBase + count - w2e;
 		}
 	} else {
-		ret = MINDONE_SND_COPY_FROM_USER(RingBuf1->pWrite, buf, count);
+		ret = (copy_from_iter(RingBuf1->pWrite, count, buf) != count);
 		if (ret)
 			AUD_LOG_D("%s copy_from_user fail line %d\n",
 				  __func__, __LINE__);
@@ -607,7 +606,7 @@ void RingBuf_copyFromUserLinear(struct RingBuf *RingBuf1, mindone_snd_buf_t buf,
 	RingBuf1->datacount += count;
 }
 
-void ringbuf_copyto_user_linear(mindone_snd_buf_t buf, struct RingBuf *RingBuf1,
+void ringbuf_copyto_user_linear(struct iov_iter *buf, struct RingBuf *RingBuf1,
 			  unsigned int count)
 {
 	int ret = 0;
@@ -622,7 +621,7 @@ void ringbuf_copyto_user_linear(mindone_snd_buf_t buf, struct RingBuf *RingBuf1,
 	}
 
 	if (RingBuf1->pRead <= RingBuf1->pWrite) {
-		ret = MINDONE_SND_COPY_TO_USER(buf, RingBuf1->pRead, count);
+		ret = (copy_to_iter(RingBuf1->pRead, count, buf) != count);
 		if (ret)
 			AUD_LOG_D("%s copy_to_user fail line %d\n",
 				  __func__, __LINE__);
@@ -633,7 +632,7 @@ void ringbuf_copyto_user_linear(mindone_snd_buf_t buf, struct RingBuf *RingBuf1,
 		unsigned int r2e = RingBuf1->pBufEnd - RingBuf1->pRead;
 
 		if (count <= r2e) {
-			ret = MINDONE_SND_COPY_TO_USER(buf, RingBuf1->pRead, count);
+			ret = (copy_to_iter(RingBuf1->pRead, count, buf) != count);
 			if (ret)
 				AUD_LOG_D("%s copy_to_user fail line %d\n",
 					  __func__, __LINE__);
@@ -641,11 +640,11 @@ void ringbuf_copyto_user_linear(mindone_snd_buf_t buf, struct RingBuf *RingBuf1,
 			if (RingBuf1->pRead >= RingBuf1->pBufEnd)
 				RingBuf1->pRead -= RingBuf1->bufLen;
 		} else {
-			ret = MINDONE_SND_COPY_TO_USER(buf, RingBuf1->pRead, r2e);
+			ret = (copy_to_iter(RingBuf1->pRead, r2e, buf) != r2e);
 			if (ret)
 				AUD_LOG_D("%s copy_to_user fail line %d\n",
 					  __func__, __LINE__);
-			ret = MINDONE_SND_COPY_TO_USER(MINDONE_SND_BUF_AT(buf, r2e), RingBuf1->pBufBase, count - r2e);
+			ret = (copy_to_iter(RingBuf1->pBufBase, count - r2e, buf) != (count - r2e));
 			if (ret)
 				AUD_LOG_D("%s copy_to_user fail line %d\n",
 					  __func__, __LINE__);

@@ -1,12 +1,5 @@
 // SPDX-License-Identifier: GPL-2.0
-/*
- * mindone_thermal - CPU thermal throttling for the MT6789 on 6.1.
- *
- * The device tree leaves the LVTS zones without cooling maps or #cooling-cells, so the
- * thermal core cannot throttle at all; the vendor left that to a userspace daemon this
- * kernel does not have. One zone per cluster (max of its LVTS zones) with a passive trip,
- * bound to cpufreq cooling. Trips are live-tunable parameters. Why: F3573 in the fact log.
- */
+
 #include <linux/cpu_cooling.h>
 #include <linux/cpufreq.h>
 #include <linux/err.h>
@@ -15,26 +8,6 @@
 #include <linux/thermal.h>
 #include <linux/workqueue.h>
 
-#include <linux/version.h>
-
-/* MINDONE: since 6.4 the thermal zone struct is opaque and private data comes from an
- * accessor; on 6.1 the fields are still reachable directly, so keep the old path. */
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 4, 0)
-#define MINDONE_TZ_PRIV(tz)	thermal_zone_device_priv(tz)
-#else
-#define MINDONE_TZ_PRIV(tz)	((tz)->devdata)
-#endif
-
-/* MINDONE: since 6.8 the set-trip op receives a pointer to the trip itself instead of its
- * index. We have one zone with one trip, so there is nothing to validate on the new
- * kernel: the core only calls the op for an existing trip. */
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 8, 0)
-#define MINDONE_SET_TRIP_ARGS	struct thermal_zone_device *tz, const struct thermal_trip *trip, int temp
-#define MINDONE_TRIP_BAD	(0)
-#else
-#define MINDONE_SET_TRIP_ARGS	struct thermal_zone_device *tz, int trip, int temp
-#define MINDONE_TRIP_BAD	(trip != 0)
-#endif
 
 
 static int little_trip = 85000;
@@ -46,11 +19,6 @@ MODULE_PARM_DESC(big_trip, "passive trip for the big cluster, millidegrees C");
 static int hyst = 5000;
 module_param(hyst, int, 0644);
 MODULE_PARM_DESC(hyst, "trip hysteresis, millidegrees C");
-/* MINDONE (12.09 night, 6.18 review C4): thermal governor for the CPU cluster zones. Default keeps
- * step_wise; "power_allocator" (IPA, compiled in) distributes a power budget over the cpufreq
- * cooler through a PID loop instead of stepping states - the cpufreq cooler exposes the EM-based
- * power ops IPA needs. The GPU zone stays step_wise: its cooler has no power ops. Opt-in until a
- * sustained-load rig confirms the tuning (sustainable_power_mw=0 lets IPA estimate it). */
 static char *governor = "step_wise";
 module_param(governor, charp, 0444);
 MODULE_PARM_DESC(governor, "thermal governor for the CPU zones: step_wise (default) or power_allocator");
@@ -67,8 +35,8 @@ struct mindone_cluster {
 	int *trip_param;
 	struct thermal_zone_device *sources[NSENS];
 	struct thermal_zone_device *tz;
-	struct thermal_cooling_device *cdev;	/* < 6.11 only: our own cpufreq cooler */
-	char cdev_type[16];			/* >= 6.11: type of the kernel's cooler to bind */
+	struct thermal_cooling_device *cdev;
+	char cdev_type[16];
 	struct cpufreq_policy *policy;
 	struct thermal_trip trips[1];
 };
@@ -90,7 +58,7 @@ static struct mindone_cluster clusters[] = {
 
 static int mindone_get_temp(struct thermal_zone_device *tz, int *temp)
 {
-	struct mindone_cluster *c = MINDONE_TZ_PRIV(tz);
+	struct mindone_cluster *c = thermal_zone_device_priv(tz);
 	int i, t, max = INT_MIN, ret = -ENODEV;
 
 	for (i = 0; i < NSENS; i++) {
@@ -107,78 +75,23 @@ static int mindone_get_temp(struct thermal_zone_device *tz, int *temp)
 	return ret;
 }
 
-/* 6.1 still insists on the trip callbacks even when the trips array is passed. */
-#if LINUX_VERSION_CODE < KERNEL_VERSION(6, 8, 0)
-/* MINDONE: since 6.8 these ops are gone from the interface; the core reads the trips
- * from the thermal_trip array we pass at zone registration. */
-static int mindone_get_trip_type(struct thermal_zone_device *tz, int trip,
-				 enum thermal_trip_type *type)
+static int mindone_set_trip_temp(struct thermal_zone_device *tz,
+				 const struct thermal_trip *trip, int temp)
 {
-	struct mindone_cluster *c = MINDONE_TZ_PRIV(tz);
+	struct mindone_cluster *c = thermal_zone_device_priv(tz);
 
-	if (MINDONE_TRIP_BAD)
-		return -EINVAL;
-	*type = c->trips[0].type;
-	return 0;
-}
-#endif
-
-#if LINUX_VERSION_CODE < KERNEL_VERSION(6, 8, 0)
-/* MINDONE: since 6.8 these ops are gone from the interface; the core reads the trips
- * from the thermal_trip array we pass at zone registration. */
-static int mindone_get_trip_temp(struct thermal_zone_device *tz, int trip, int *temp)
-{
-	struct mindone_cluster *c = MINDONE_TZ_PRIV(tz);
-
-	if (MINDONE_TRIP_BAD)
-		return -EINVAL;
-	*temp = c->trips[0].temperature;
-	return 0;
-}
-#endif
-
-#if LINUX_VERSION_CODE < KERNEL_VERSION(6, 8, 0)
-static int mindone_get_trip_hyst(struct thermal_zone_device *tz, int trip, int *h)
-{
-	struct mindone_cluster *c = MINDONE_TZ_PRIV(tz);
-
-	if (MINDONE_TRIP_BAD)
-		return -EINVAL;
-	*h = c->trips[0].hysteresis;
-	return 0;
-}
-#endif
-
-static int mindone_set_trip_temp(MINDONE_SET_TRIP_ARGS)
-{
-	struct mindone_cluster *c = MINDONE_TZ_PRIV(tz);
-
-	if (MINDONE_TRIP_BAD)
-		return -EINVAL;
 	c->trips[0].temperature = temp;
 	*c->trip_param = temp;
 	return 0;
 }
 
-/*
- * MINDONE (12.09 night): since 6.11 a driver binds a cooling device to a trip through the
- * .should_bind() zone callback - the core calls it for every (zone, trip, cdev) pair when
- * the zone or the cdev is registered. The earlier "ret = 0 on >= 6.8" left BOTH the CPU and
- * the GPU zones unbound, so the passive trips never throttled (rig: mindone_cpu_big at 56-60 C
- * with the trip lowered to 50 C kept cpufreq-cpu6 at state 0/15 and 2.2 GHz for 90 s). The
- * cdev is therefore registered BEFORE the zone, so it is known when the core asks.
- */
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 11, 0)
 static bool mindone_should_bind(struct thermal_zone_device *tz,
 				const struct thermal_trip *trip,
 				struct thermal_cooling_device *cdev,
 				struct cooling_spec *spec)
 {
-	struct mindone_cluster *c = MINDONE_TZ_PRIV(tz);
+	struct mindone_cluster *c = thermal_zone_device_priv(tz);
 
-	/* Bind the cpufreq cooler the kernel already registered for this policy from DT
-	 * (#cooling-cells -> "cpufreq-cpuN"); registering a second one made two identical
-	 * coolers per cluster (F4264). */
 	if (!c || !cdev || strcmp(cdev->type, c->cdev_type))
 		return false;
 	spec->upper = THERMAL_NO_LIMIT;
@@ -186,40 +99,16 @@ static bool mindone_should_bind(struct thermal_zone_device *tz,
 	spec->weight = THERMAL_WEIGHT_DEFAULT;
 	return true;
 }
-#endif
 
 static struct thermal_zone_device_ops mindone_tz_ops = {
 	.get_temp = mindone_get_temp,
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 11, 0)
 	.should_bind = mindone_should_bind,
-#endif
-#if LINUX_VERSION_CODE < KERNEL_VERSION(6, 8, 0)
-/* MINDONE: since 6.8 these ops are gone from the interface; the core reads the trips
- * from the thermal_trip array we pass at zone registration. */
-	.get_trip_type = mindone_get_trip_type,
-#endif
-#if LINUX_VERSION_CODE < KERNEL_VERSION(6, 8, 0)
-/* MINDONE: since 6.8 these ops are gone from the interface; the core reads the trips
- * from the thermal_trip array we pass at zone registration. */
-	.get_trip_temp = mindone_get_trip_temp,
-#endif
-#if LINUX_VERSION_CODE < KERNEL_VERSION(6, 8, 0)
-	.get_trip_hyst = mindone_get_trip_hyst,
-#endif
 	.set_trip_temp = mindone_set_trip_temp,
 };
 
 static void mindone_cluster_teardown(struct mindone_cluster *c)
 {
 	if (c->tz && c->cdev)
-#if LINUX_VERSION_CODE < KERNEL_VERSION(6, 8, 0)
-		thermal_zone_unbind_cooling_device(c->tz, 0, c->cdev);
-#else
-	/* MINDONE: since 6.8 binding a cooling device to a trip is done by the device tree
-	 * (cooling-maps); there is no driver API for it. The zone registers and reports
-	 * temperature; automatic cooling on 6.12 needs the binding described in the DT
-	 * (separate task). */
-#endif
 	if (!IS_ERR_OR_NULL(c->tz))
 		thermal_zone_device_unregister(c->tz);
 	c->tz = NULL;
@@ -243,7 +132,7 @@ static int mindone_cluster_setup(struct mindone_cluster *c)
 		pr_warn("mindone_thermal: unknown governor '%s', using step_wise\n", governor);
 		governor = "step_wise";
 	}
-	tzp.governor_name = governor;	/* const char * in struct thermal_zone_params */
+	tzp.governor_name = governor;
 
 	for (i = 0; i < NSENS; i++) {
 		struct thermal_zone_device *s =
@@ -273,45 +162,17 @@ static int mindone_cluster_setup(struct mindone_cluster *c)
 	c->trips[0].flags = THERMAL_TRIP_FLAG_RW;
 
 	snprintf(c->cdev_type, sizeof(c->cdev_type), "cpufreq-cpu%d", c->first_cpu);
-#if LINUX_VERSION_CODE < KERNEL_VERSION(6, 11, 0)
-	c->cdev = cpufreq_cooling_register(c->policy);
-	if (IS_ERR(c->cdev)) {
-		ret = PTR_ERR(c->cdev);
-		pr_err("mindone_thermal: cooling device for cpu%d: %d\n", c->first_cpu, ret);
-		c->cdev = NULL;
-		goto err;
-	}
-#else
-	/* >= 6.11: the cpufreq driver already registered "cpufreq-cpuN" from DT #cooling-cells;
-	 * .should_bind() binds our trip to it at zone registration - no duplicate cooler. */
 	c->cdev = NULL;
-#endif
 
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 8, 0)
-	/* MINDONE: since 6.8 the trip mask is gone from the signature: eight args, not nine */
 	c->tz = thermal_zone_device_register_with_trips(c->name, c->trips, 1,
 							c, &mindone_tz_ops, &tzp,
 							250, 1000);
-#else
-	c->tz = thermal_zone_device_register_with_trips(c->name, c->trips, 1, 0,
-							c, &mindone_tz_ops, &tzp,
-							250, 1000);
-#endif
 	if (IS_ERR(c->tz)) {
 		ret = PTR_ERR(c->tz);
 		pr_err("mindone_thermal: zone %s: %d\n", c->name, ret);
 		c->tz = NULL;
 		goto err;
 	}
-
-#if LINUX_VERSION_CODE < KERNEL_VERSION(6, 8, 0)
-	ret = thermal_zone_bind_cooling_device(c->tz, 0, c->cdev, THERMAL_NO_LIMIT,
-					       THERMAL_NO_LIMIT, THERMAL_WEIGHT_DEFAULT);
-	if (ret) {
-		pr_err("mindone_thermal: bind %s: %d\n", c->name, ret);
-		goto err;
-	}
-#endif	/* >= 6.11: bound by the core via .should_bind() above */
 
 	ret = thermal_zone_device_enable(c->tz);
 	if (ret) {
@@ -327,12 +188,6 @@ err:
 	return ret;
 }
 
-/*
- * GPU: the LVTS gpu1/gpu2 zones have no cooling map either, and the GPU DVFS (gpufreq/GED) only
- * throttles through its "limiter" API, which the vendor drove from userspace. A cooling device
- * with GPU_STATES steps maps state s to an OPP ceiling index (0 = 1.1 GHz ... 44 = 390 MHz) via
- * gpufreq_set_limit(TARGET_GPU, LIMIT_THERMAL_AP, ceiling_khz, keep-floor); state 0 resets the limit.
- */
 #include <gpufreq_v2.h>
 
 static int gpu_trip = 85000;
@@ -354,7 +209,7 @@ static struct mindone_gpu gpu;
 
 static int mindone_gpu_get_temp(struct thermal_zone_device *tz, int *temp)
 {
-	struct mindone_gpu *g = MINDONE_TZ_PRIV(tz);
+	struct mindone_gpu *g = thermal_zone_device_priv(tz);
 	int i, t, max = INT_MIN, ret = -ENODEV;
 
 	for (i = 0; i < ARRAY_SIZE(g->sources); i++) {
@@ -369,63 +224,22 @@ static int mindone_gpu_get_temp(struct thermal_zone_device *tz, int *temp)
 	return ret;
 }
 
-#if LINUX_VERSION_CODE < KERNEL_VERSION(6, 8, 0)
-/* MINDONE: since 6.8 these ops are gone from the interface; the core reads the trips
- * from the thermal_trip array we pass at zone registration. */
-static int mindone_gpu_get_trip_type(struct thermal_zone_device *tz, int trip,
-				     enum thermal_trip_type *type)
+static int mindone_gpu_set_trip_temp(struct thermal_zone_device *tz,
+				 const struct thermal_trip *trip, int temp)
 {
-	if (MINDONE_TRIP_BAD)
-		return -EINVAL;
-	*type = THERMAL_TRIP_PASSIVE;
-	return 0;
-}
-#endif
+	struct mindone_gpu *g = thermal_zone_device_priv(tz);
 
-#if LINUX_VERSION_CODE < KERNEL_VERSION(6, 8, 0)
-/* MINDONE: since 6.8 these ops are gone from the interface; the core reads the trips
- * from the thermal_trip array we pass at zone registration. */
-static int mindone_gpu_get_trip_temp(struct thermal_zone_device *tz, int trip, int *temp)
-{
-	struct mindone_gpu *g = MINDONE_TZ_PRIV(tz);
-
-	if (MINDONE_TRIP_BAD)
-		return -EINVAL;
-	*temp = g->trips[0].temperature;
-	return 0;
-}
-#endif
-
-#if LINUX_VERSION_CODE < KERNEL_VERSION(6, 8, 0)
-static int mindone_gpu_get_trip_hyst(struct thermal_zone_device *tz, int trip, int *h)
-{
-	struct mindone_gpu *g = MINDONE_TZ_PRIV(tz);
-
-	if (MINDONE_TRIP_BAD)
-		return -EINVAL;
-	*h = g->trips[0].hysteresis;
-	return 0;
-}
-#endif
-
-static int mindone_gpu_set_trip_temp(MINDONE_SET_TRIP_ARGS)
-{
-	struct mindone_gpu *g = MINDONE_TZ_PRIV(tz);
-
-	if (MINDONE_TRIP_BAD)
-		return -EINVAL;
 	g->trips[0].temperature = temp;
 	gpu_trip = temp;
 	return 0;
 }
 
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 11, 0)
 static bool mindone_gpu_should_bind(struct thermal_zone_device *tz,
 				    const struct thermal_trip *trip,
 				    struct thermal_cooling_device *cdev,
 				    struct cooling_spec *spec)
 {
-	struct mindone_gpu *g = MINDONE_TZ_PRIV(tz);
+	struct mindone_gpu *g = thermal_zone_device_priv(tz);
 
 	if (!g || cdev != g->cdev)
 		return false;
@@ -434,26 +248,10 @@ static bool mindone_gpu_should_bind(struct thermal_zone_device *tz,
 	spec->weight = THERMAL_WEIGHT_DEFAULT;
 	return true;
 }
-#endif
 
 static struct thermal_zone_device_ops mindone_gpu_tz_ops = {
 	.get_temp = mindone_gpu_get_temp,
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 11, 0)
 	.should_bind = mindone_gpu_should_bind,
-#endif
-#if LINUX_VERSION_CODE < KERNEL_VERSION(6, 8, 0)
-/* MINDONE: since 6.8 these ops are gone from the interface; the core reads the trips
- * from the thermal_trip array we pass at zone registration. */
-	.get_trip_type = mindone_gpu_get_trip_type,
-#endif
-#if LINUX_VERSION_CODE < KERNEL_VERSION(6, 8, 0)
-/* MINDONE: since 6.8 these ops are gone from the interface; the core reads the trips
- * from the thermal_trip array we pass at zone registration. */
-	.get_trip_temp = mindone_gpu_get_trip_temp,
-#endif
-#if LINUX_VERSION_CODE < KERNEL_VERSION(6, 8, 0)
-	.get_trip_hyst = mindone_gpu_get_trip_hyst,
-#endif
 	.set_trip_temp = mindone_gpu_set_trip_temp,
 };
 
@@ -480,10 +278,6 @@ static int mindone_gpu_cdev_set_cur(struct thermal_cooling_device *cdev, unsigne
 		return -EINVAL;
 	if (st == g->state)
 		return 0;
-	/*
-	 * state s -> ceiling OPP index s * (opp_num - 1) / GPU_STATES; LIMIT_THERMAL_AP takes the
-	 * ceiling as a FREQUENCY in kHz (gpuppm.c __gpuppm_convert_limit_to_idx), <= 0 resets.
-	 */
 	ceiling = st ? gpufreq_get_freq_by_idx(TARGET_GPU, (int)(st * (g->opp_num - 1) / GPU_STATES)) : 0;
 	ret = gpufreq_set_limit(TARGET_GPU, LIMIT_THERMAL_AP, ceiling, GPUPPM_KEEP_IDX);
 	if (ret) {
@@ -503,14 +297,6 @@ static const struct thermal_cooling_device_ops mindone_gpu_cdev_ops = {
 static void mindone_gpu_teardown(struct mindone_gpu *g)
 {
 	if (g->tz && g->cdev)
-#if LINUX_VERSION_CODE < KERNEL_VERSION(6, 8, 0)
-		thermal_zone_unbind_cooling_device(g->tz, 0, g->cdev);
-#else
-	/* MINDONE: since 6.8 binding a cooling device to a trip is done by the device tree
-	 * (cooling-maps); there is no driver API for it. The zone registers and reports
-	 * temperature; automatic cooling on 6.12 needs the binding described in the DT
-	 * (separate task). */
-#endif
 	if (!IS_ERR_OR_NULL(g->tz))
 		thermal_zone_device_unregister(g->tz);
 	g->tz = NULL;
@@ -556,35 +342,20 @@ static int mindone_gpu_setup(struct mindone_gpu *g)
 	g->trips[0].type = THERMAL_TRIP_PASSIVE;
 	g->trips[0].flags = THERMAL_TRIP_FLAG_RW;
 
-	/* cdev first: on >= 6.11 the core binds through .should_bind() at zone registration. */
 	g->cdev = thermal_cooling_device_register("mindone-gpufreq", g, &mindone_gpu_cdev_ops);
 	if (IS_ERR(g->cdev)) {
 		ret = PTR_ERR(g->cdev);
 		g->cdev = NULL;
 		goto err;
 	}
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 8, 0)
 	g->tz = thermal_zone_device_register_with_trips("mindone_gpu", g->trips, 1, g,
 							&mindone_gpu_tz_ops, &tzp, 250, 1000);
-#else
-	g->tz = thermal_zone_device_register_with_trips("mindone_gpu", g->trips, 1, 0, g,
-							&mindone_gpu_tz_ops, &tzp, 250, 1000);
-#endif
 	if (IS_ERR(g->tz)) {
 		ret = PTR_ERR(g->tz);
 		g->tz = NULL;
 		goto err;
 	}
-#if LINUX_VERSION_CODE < KERNEL_VERSION(6, 8, 0)
-	ret = thermal_zone_bind_cooling_device(g->tz, 0, g->cdev, THERMAL_NO_LIMIT,
-					       THERMAL_NO_LIMIT, THERMAL_WEIGHT_DEFAULT);
-#else
-	/* MINDONE: since 6.8 binding a cooling device to a trip is done by the device tree
-	 * (cooling-maps); there is no driver API for it. The zone registers and reports
-	 * temperature; automatic cooling on 6.12 needs the binding described in the DT
-	 * (separate task). */
 	ret = 0;
-#endif
 	if (ret)
 		goto err;
 	ret = thermal_zone_device_enable(g->tz);
@@ -599,17 +370,120 @@ err:
 	return ret;
 }
 
-/*
- * MINDONE (F: B27 panic 12.09): module_init MUST NOT fail. Android init treats any
- * modules.load insmod failure as fatal ("Failed to load kernel modules" -> panic,
- * exitcode 0x7f00). The CPU coolers depend on cpufreq policies and the LVTS sensor
- * zones, neither guaranteed up when this module loads (B27 died with "no cpufreq
- * policy for cpu0" -> -EPROBE_DEFER(517) -> insmod fail -> init panic). So init always
- * returns 0 and does all setup from a retrying delayed work: register whatever is
- * ready, retry the rest (cpufreq policy / sensor zones / gpufreq) until they appear or
- * a cap is hit. An already-set-up cluster/GPU (tz != NULL) is skipped -> no
- * double-register.
- */
+static int skin_trip = 46000;
+module_param(skin_trip, int, 0644);
+MODULE_PARM_DESC(skin_trip, "passive trip for the skin (ap_ntc) proxy zone, millidegrees C");
+static int skin_hyst = 1000;
+module_param(skin_hyst, int, 0644);
+MODULE_PARM_DESC(skin_hyst, "skin trip hysteresis, millidegrees C");
+
+static const char * const mindone_skin_cdev_types[] = {
+	"cpufreq-cpu0", "cpufreq-cpu6", "mindone-gpufreq",
+};
+
+struct mindone_skin {
+	struct thermal_zone_device *source;
+	struct thermal_zone_device *tz;
+	struct thermal_trip trips[1];
+};
+
+static struct mindone_skin skin;
+
+static int mindone_skin_get_temp(struct thermal_zone_device *tz, int *temp)
+{
+	struct mindone_skin *s = thermal_zone_device_priv(tz);
+
+	if (!s->source)
+		return -ENODEV;
+	return thermal_zone_get_temp(s->source, temp);
+}
+
+static int mindone_skin_set_trip_temp(struct thermal_zone_device *tz,
+				      const struct thermal_trip *trip, int temp)
+{
+	struct mindone_skin *s = thermal_zone_device_priv(tz);
+
+	s->trips[0].temperature = temp;
+	skin_trip = temp;
+	return 0;
+}
+
+static bool mindone_skin_should_bind(struct thermal_zone_device *tz,
+				     const struct thermal_trip *trip,
+				     struct thermal_cooling_device *cdev,
+				     struct cooling_spec *spec)
+{
+	int i;
+
+	if (!cdev)
+		return false;
+	for (i = 0; i < ARRAY_SIZE(mindone_skin_cdev_types); i++)
+		if (!strcmp(cdev->type, mindone_skin_cdev_types[i]))
+			break;
+	if (i == ARRAY_SIZE(mindone_skin_cdev_types))
+		return false;
+	spec->upper = THERMAL_NO_LIMIT;
+	spec->lower = 0;
+	spec->weight = THERMAL_WEIGHT_DEFAULT;
+	return true;
+}
+
+static struct thermal_zone_device_ops mindone_skin_tz_ops = {
+	.get_temp = mindone_skin_get_temp,
+	.should_bind = mindone_skin_should_bind,
+	.set_trip_temp = mindone_skin_set_trip_temp,
+};
+
+static void mindone_skin_teardown(struct mindone_skin *s)
+{
+	if (!IS_ERR_OR_NULL(s->tz))
+		thermal_zone_device_unregister(s->tz);
+	s->tz = NULL;
+	s->source = NULL;
+}
+
+static int mindone_skin_setup(struct mindone_skin *s)
+{
+	struct thermal_zone_params tzp = {
+		.no_hwmon = true,
+		.governor_name = "step_wise",
+	};
+	int ret;
+
+	s->source = thermal_zone_get_zone_by_name("ap_ntc");
+	if (IS_ERR(s->source)) {
+		ret = PTR_ERR(s->source);
+		s->source = NULL;
+		return ret;
+	}
+
+	s->trips[0].temperature = skin_trip;
+	s->trips[0].hysteresis = skin_hyst;
+	s->trips[0].type = THERMAL_TRIP_PASSIVE;
+	s->trips[0].flags = THERMAL_TRIP_FLAG_RW;
+
+	s->tz = thermal_zone_device_register_with_trips("mindone_skin", s->trips, 1,
+							s, &mindone_skin_tz_ops, &tzp,
+							250, 1000);
+	if (IS_ERR(s->tz)) {
+		ret = PTR_ERR(s->tz);
+		s->tz = NULL;
+		goto err;
+	}
+
+	ret = thermal_zone_device_enable(s->tz);
+	if (ret)
+		goto err;
+
+	pr_info("mindone_thermal: mindone_skin: ap_ntc proxy, passive trip %d mC, cpufreq-cpu0/cpu6+mindone-gpufreq\n",
+		s->trips[0].temperature);
+	return 0;
+err:
+	pr_err("mindone_thermal: mindone_skin: %d\n", ret);
+	mindone_skin_teardown(s);
+	return ret;
+}
+
 #define MINDONE_SETUP_MAX_TRIES 20
 static struct delayed_work mindone_setup_work;
 static int mindone_setup_tries;
@@ -619,11 +493,11 @@ static void mindone_setup_work_fn(struct work_struct *w)
 	int i, ret, pending = 0;
 
 	for (i = 0; i < ARRAY_SIZE(clusters); i++) {
-		if (clusters[i].tz)		/* already registered */
+		if (clusters[i].tz)
 			continue;
 		ret = mindone_cluster_setup(&clusters[i]);
 		if (ret == -EPROBE_DEFER || ret == -ENODEV)
-			pending++;		/* cpufreq/sensors not ready yet */
+			pending++;
 		else if (ret)
 			pr_warn("mindone_thermal: %s setup failed (%d), disabled\n",
 				clusters[i].name, ret);
@@ -631,9 +505,16 @@ static void mindone_setup_work_fn(struct work_struct *w)
 	if (!gpu.tz) {
 		ret = mindone_gpu_setup(&gpu);
 		if (ret == -EPROBE_DEFER || ret == -ENODEV)
-			pending++;		/* gpufreq/gpu sensors not ready yet */
+			pending++;
 		else if (ret)
 			pr_warn("mindone_thermal: GPU zone not registered (%d)\n", ret);
+	}
+	if (!skin.tz) {
+		ret = mindone_skin_setup(&skin);
+		if (ret == -EPROBE_DEFER || ret == -ENODEV)
+			pending++;
+		else if (ret)
+			pr_warn("mindone_thermal: skin zone not registered (%d)\n", ret);
 	}
 	if (pending && ++mindone_setup_tries < MINDONE_SETUP_MAX_TRIES)
 		schedule_delayed_work(&mindone_setup_work, msecs_to_jiffies(2000));
@@ -654,6 +535,7 @@ static void __exit mindone_thermal_exit(void)
 	int i;
 
 	cancel_delayed_work_sync(&mindone_setup_work);
+	mindone_skin_teardown(&skin);
 	mindone_gpu_teardown(&gpu);
 	for (i = ARRAY_SIZE(clusters) - 1; i >= 0; i--)
 		mindone_cluster_teardown(&clusters[i]);
@@ -663,4 +545,4 @@ module_init(mindone_thermal_init);
 module_exit(mindone_thermal_exit);
 
 MODULE_LICENSE("GPL");
-MODULE_DESCRIPTION("iKKO MindOne: CPU cluster thermal zones with cpufreq cooling");
+MODULE_DESCRIPTION("iKKO MindOne: CPU/GPU/skin thermal zones sharing cpufreq and gpufreq cooling");

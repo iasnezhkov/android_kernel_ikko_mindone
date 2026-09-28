@@ -73,9 +73,9 @@
  *******************************************************************************
  */
 #include "gl_os.h"
-#include <mindone/compat-cfg80211.h>
-#include <mindone/compat-net.h>
 #include <linux/sched/clock.h>
+#include <net/netdev_rx_queue.h>
+#include <net/rps.h>
 #include "gl_kal.h"
 #include "gl_wext.h"
 #include "precomp.h"
@@ -96,9 +96,12 @@
 /* for rps */
 #include <linux/netdevice.h>
 #include <linux/ip.h>
+#include <linux/in.h>
+#include <linux/udp.h>
 #include <linux/tcp.h>
 #include <linux/ipv6.h>
 #include <net/ipv6.h>
+#include <net/checksum.h>
 #include <net/sch_generic.h>
 #include <linux/skbuff.h>
 #include <linux/module.h>
@@ -251,14 +254,8 @@ static void kalDumpMsduReportStats(IN struct ADAPTER *prAdapter);
  */
 #if CFG_ENABLE_FW_DOWNLOAD
 
-#if (defined(CONFIG_UIDGID_STRICT_TYPE_CHECKS) || \
-	(KERNEL_VERSION(3, 14, 0) <= LINUX_VERSION_CODE))
 #define  KUIDT_VALUE(v) (v.val)
 #define  KGIDT_VALUE(v) (v.val)
-#else
-#define  KUIDT_VALUE(v) v
-#define  KGIDT_VALUE(v) v
-#endif
 
 const struct firmware *fw_entry;
 
@@ -1106,19 +1103,11 @@ uint32_t kalRxIndicatePkts(IN struct GLUE_INFO *prGlueInfo,
 }
 
 #if CFG_SUPPORT_RX_GRO
-#if KERNEL_VERSION(4, 15, 0) <= CFG80211_VERSION_CODE
 void kalGROTimerFunc(struct timer_list *timer)
-#else
-void kalGROTimerFunc(unsigned long data)
-#endif
 {
-#if KERNEL_VERSION(4, 15, 0) <= CFG80211_VERSION_CODE
 	struct ADAPTER *prAdapter =
 		from_timer(prAdapter, timer, rRxGROTimer);
 	struct GLUE_INFO *prGlueInfo = prAdapter->prGlueInfo;
-#else
-	struct GLUE_INFO *prGlueInfo = (struct GLUE_INFO *)data;
-#endif
 	kalSetGROEvent2Rx(prGlueInfo);
 }
 
@@ -1137,17 +1126,9 @@ static inline void kalGROTimerStop(struct ADAPTER *prAdapter)
 
 void kalGROTimerInit(struct ADAPTER *prAdapter)
 {
-#if KERNEL_VERSION(4, 15, 0) <= CFG80211_VERSION_CODE
 	timer_setup(&prAdapter->rRxGROTimer,
 			kalGROTimerFunc,
 			0);
-#else
-	init_timer(&prAdapter->rRxGROTimer);
-	prAdapter->rRxGROTimer.data =
-			(unsigned long)prAdapter->prGlueInfo;
-	prAdapter->rRxGROTimer.function =
-			kalGROTimerFunc;
-#endif
 }
 
 void kalGROTimerUninit(struct ADAPTER *prAdapter)
@@ -1192,13 +1173,11 @@ uint32_t kal_is_udp_enable_gro(struct ADAPTER *prAdapter, uint8_t ucBssIdx)
 static inline void napi_gro_flush_list(struct napi_struct *napi)
 {
 	napi_gro_flush(napi, false);
-#if KERNEL_VERSION(5, 4, 0) <= CFG80211_VERSION_CODE
 	if (napi->rx_count) {
 		netif_receive_skb_list(&napi->rx_list);
 		INIT_LIST_HEAD(&napi->rx_list);
 		napi->rx_count = 0;
 	}
-#endif
 }
 
 static inline void kal_gro_flush_queue(IN struct GLUE_INFO *prGlueInfo)
@@ -1292,16 +1271,6 @@ uint32_t kalRxIndicateOnePkt(IN struct GLUE_INFO
 	prWifiVar = &prGlueInfo->prAdapter->rWifiVar;
 	ucBssIdx = GLUE_GET_PKT_BSS_IDX(prSkb);
 	RX_INC_CNT(&prGlueInfo->prAdapter->rRxCtrl, RX_DATA_INDICATION_COUNT);
-#if DBG && 0
-	do {
-		uint8_t *pu4Head = (uint8_t *) &prSkb->cb[0];
-		uint32_t u4HeadValue = 0;
-
-		kalMemCopy(&u4HeadValue, pu4Head, sizeof(u4HeadValue));
-		DBGLOG(RX, TRACE, "prSkb->head = 0x%p, prSkb->cb = 0x%lx\n",
-		       pu4Head, u4HeadValue);
-	} while (0);
-#endif
 
 #if 1
 
@@ -1374,11 +1343,7 @@ uint32_t kalRxIndicateOnePkt(IN struct GLUE_INFO
 	StatsEnvRxTime2Host(prGlueInfo->prAdapter, prSkb, prNetDev);
 #endif
 
-#if KERNEL_VERSION(4, 11, 0) <= CFG80211_VERSION_CODE
 	/* ToDo jiffies assignment */
-#else
-	prNetDev->last_rx = jiffies;
-#endif
 
 #ifdef CFG_SUPPORT_SNIFFER_RADIOTAP
 	if (prGlueInfo->fgIsEnableMon) {
@@ -1445,14 +1410,6 @@ uint32_t kalRxIndicateOnePkt(IN struct GLUE_INFO
 
 #if CFG_SUPPORT_RX_GRO
 /* Disable UDP GRO for kernel [4.19,5.10) due to kernel bug */
-#if KERNEL_VERSION(4, 19, 0) <= CFG80211_VERSION_CODE
-#if KERNEL_VERSION(5, 10, 0) > CFG80211_VERSION_CODE
-	if (GLUE_TEST_PKT_FLAG(prSkb, ENUM_PKT_UDP)
-		&& ucBssIdx < MAX_BSSID_NUM
-		&& !kal_is_udp_enable_gro(prGlueInfo->prAdapter, ucBssIdx))
-		goto skip_gro;
-#endif
-#endif
 
 	if (ucBssIdx < MAX_BSSID_NUM &&
 		kal_is_skb_gro(prGlueInfo->prAdapter, ucBssIdx)) {
@@ -1473,11 +1430,6 @@ uint32_t kalRxIndicateOnePkt(IN struct GLUE_INFO
 #endif
 
 /* Disable UDP GRO for kernel [4.19,5.10) due to kernel bug */
-#if KERNEL_VERSION(4, 19, 0) <= CFG80211_VERSION_CODE
-#if KERNEL_VERSION(5, 10, 0) > CFG80211_VERSION_CODE
-skip_gro:
-#endif
-#endif
 	if (!in_interrupt())
 		netif_rx(prSkb);
 	else
@@ -1610,9 +1562,7 @@ kalIndicateStatusAndComplete(IN struct GLUE_INFO
 	struct FT_IES *prFtIEs;
 	enum ENUM_BAND eBand;
 
-#if KERNEL_VERSION(4, 12, 0) <= CFG80211_VERSION_CODE
 	struct cfg80211_roam_info rRoamInfo = { 0 };
-#endif
 
 	GLUE_SPIN_LOCK_DECLARATION();
 
@@ -1717,21 +1667,12 @@ kalIndicateStatusAndComplete(IN struct GLUE_INFO
 				       ucChannelNum);
 
 			/* ensure BSS exists */
-#if KERNEL_VERSION(4, 1, 0) <= CFG80211_VERSION_CODE
 			bss = cfg80211_get_bss(
 				wlanGetWiphy(),
 				prChannel, arBssid,
 				ssid.aucSsid, ssid.u4SsidLen,
 				IEEE80211_BSS_TYPE_ESS,
 				IEEE80211_PRIVACY_ANY);
-#else
-			bss = cfg80211_get_bss(
-				wlanGetWiphy(),
-				prChannel, arBssid,
-				ssid.aucSsid, ssid.u4SsidLen,
-				WLAN_CAPABILITY_ESS,
-				WLAN_CAPABILITY_ESS);
-#endif
 			if (bss == NULL) {
 				/* create BSS on-the-fly */
 				prBssDesc =
@@ -1739,7 +1680,6 @@ kalIndicateStatusAndComplete(IN struct GLUE_INFO
 					ucBssIndex);
 
 				if (prBssDesc != NULL && prChannel != NULL) {
-#if KERNEL_VERSION(3, 18, 0) <= CFG80211_VERSION_CODE
 					bss = cfg80211_inform_bss(
 			wlanGetWiphy(),
 			prChannel,
@@ -1752,19 +1692,6 @@ kalIndicateStatusAndComplete(IN struct GLUE_INFO
 			prBssDesc->u2IELength, /* IE Length */
 			RCPI_TO_dBm(prBssDesc->ucRCPI) * 100, /* MBM */
 			GFP_KERNEL);
-#else
-					bss = cfg80211_inform_bss(
-			wlanGetWiphy(),
-			prChannel,
-			arBssid,
-			0, /* TSF */
-			prBssDesc->u2CapInfo,
-			prBssDesc->u2BeaconInterval, /* beacon interval */
-			prBssDesc->pucIeBuf, /* IE */
-			prBssDesc->u2IELength, /* IE Length */
-			RCPI_TO_dBm(prBssDesc->ucRCPI) * 100, /* MBM */
-			GFP_KERNEL);
-#endif
 				}
 			}
 
@@ -1777,21 +1704,12 @@ kalIndicateStatusAndComplete(IN struct GLUE_INFO
 			 * connected even if AP has change channel from A to B
 			 */
 			while (ucLoopCnt--) {
-#if KERNEL_VERSION(4, 1, 0) <= CFG80211_VERSION_CODE
 				bss_others = cfg80211_get_bss(
 						wlanGetWiphy(),
 						NULL, arBssid, ssid.aucSsid,
 						ssid.u4SsidLen,
 						IEEE80211_BSS_TYPE_ESS,
 						IEEE80211_PRIVACY_ANY);
-#else
-				bss_others = cfg80211_get_bss(
-						wlanGetWiphy(),
-						NULL, arBssid, ssid.aucSsid,
-						ssid.u4SsidLen,
-						WLAN_CAPABILITY_ESS,
-						WLAN_CAPABILITY_ESS);
-#endif
 				if (bss && bss_others && bss_others != bss) {
 					DBGLOG(SCN, INFO,
 					       "remove BSSes that only channel different\n");
@@ -1809,7 +1727,6 @@ kalIndicateStatusAndComplete(IN struct GLUE_INFO
 			prConnSettings =
 				aisGetConnSettings(prAdapter, ucBssIndex);
 			if (eStatus == WLAN_STATUS_ROAM_OUT_FIND_BEST) {
-#if KERNEL_VERSION(4, 12, 0) <= CFG80211_VERSION_CODE
 				uint8_t ucAuthorized = pvBuf ?
 					*(uint8_t *) pvBuf : FALSE;
 
@@ -1820,26 +1737,11 @@ kalIndicateStatusAndComplete(IN struct GLUE_INFO
 				rRoamInfo.resp_ie = prConnSettings->aucRspIe;
 				rRoamInfo.resp_ie_len =
 					prConnSettings->u4RspIeLength;
-#if KERNEL_VERSION(4, 15, 0) > CFG80211_VERSION_CODE
-				rRoamInfo.authorized = ucAuthorized;
-#endif
 				cfg80211_roamed(prDevHandler,
 					&rRoamInfo, GFP_KERNEL);
-#if KERNEL_VERSION(4, 15, 0) <= CFG80211_VERSION_CODE
 				if (ucAuthorized)
 					cfg80211_port_authorized(prDevHandler,
 						arBssid, NULL, 0, GFP_KERNEL);
-#endif
-#else
-				cfg80211_roamed_bss(
-					prDevHandler,
-					bss,
-					prConnSettings->aucReqIe,
-					prConnSettings->u4ReqIeLength,
-					prConnSettings->aucRspIe,
-					prConnSettings->u4RspIeLength,
-					GFP_KERNEL);
-#endif
 			} else {
 				cfg80211_connect_result(
 					prDevHandler,
@@ -1902,7 +1804,6 @@ kalIndicateStatusAndComplete(IN struct GLUE_INFO
 			struct BSS_INFO *prBssInfo =
 				aisGetAisBssInfo(prAdapter, ucBssIndex);
 			uint16_t u2DeauthReason = 0;
-#if CFG_WPS_DISCONNECT || (KERNEL_VERSION(4, 4, 0) <= CFG80211_VERSION_CODE)
 
 			if (prBssInfo)
 				u2DeauthReason = prBssInfo->u2DeauthReason;
@@ -2002,33 +1903,6 @@ kalIndicateStatusAndComplete(IN struct GLUE_INFO
 			    eStatus == WLAN_STATUS_MEDIA_DISCONNECT_LOCALLY,
 			    GFP_KERNEL);
 
-#else
-
-#ifdef CONFIG_ANDROID
-#if KERNEL_VERSION(3, 10, 0) == LINUX_VERSION_CODE
-			/* Don't indicate disconnection to upper layer for
-			 * ANDROID kernel 3.10
-			 */
-			/* since cfg80211 will indicate disconnection to
-			 * wpa_supplicant for this kernel
-			 */
-			if (eStatus == WLAN_STATUS_MEDIA_DISCONNECT)
-#endif
-#endif
-			{
-
-
-				if (prBssInfo)
-					u2DeauthReason =
-						prBssInfo->u2DeauthReason;
-				/* CFG80211 Indication */
-				cfg80211_disconnected(prDevHandler,
-						      u2DeauthReason, NULL, 0,
-						      GFP_KERNEL);
-			}
-
-
-#endif
 		}
 		prConnSettings = aisGetConnSettings(prAdapter, ucBssIndex);
 		if (prConnSettings && prConnSettings->assocIeLen > 0) {
@@ -3402,38 +3276,6 @@ void kalGetLocalTime(unsigned long long *sec, unsigned long *nsec)
 static int32_t kalThreadSchedRetrieve(struct task_struct *pThread,
 					struct KAL_THREAD_SCHEDSTATS *pSched)
 {
-/*
- * mind_one/6.1 note: struct sched_entity.statistics (wait_sum/iowait_sum)
- * was removed outright from this ACK 6.1 GKI tree's struct sched_entity
- * (include/linux/sched.h) -- not gated by an #ifdef, the field is simply
- * gone, and the struct now carries ANDROID_KABI_RESERVE padding in its
- * place. This is a deliberate GKI KMI freeze: per-task scheduler internals
- * are no longer reachable from an external vendor module on this kernel,
- * with no replacement accessor exported. This function already had a
- * documented graceful-degradation contract ("-1: Kernel's schedstats
- * feature not enabled") for exactly this situation on older kernels
- * without CONFIG_SCHEDSTATS -- so the fix is to always take that already-
- * handled path here rather than dereference a field that no longer
- * exists. Original CONFIG_SCHEDSTATS body preserved below as a comment
- * for provenance; it compiled and worked on 5.10 but cannot on 6.1.
- *
- *	struct sched_entity se;
- *	unsigned long long sec;
- *	unsigned long usec;
- *
- *	if (!pSched)
- *		return -2;
- *	memset(pSched, 0, sizeof(struct KAL_THREAD_SCHEDSTATS));
- *	if (!pThread || kalIsResetting())
- *		return -2;
- *	memcpy(&se, &pThread->se, sizeof(struct sched_entity));
- *	kalGetLocalTime(&sec, &usec);
- *	pSched->time = sec*1000 + usec/1000;
- *	pSched->exec = se.sum_exec_runtime;
- *	pSched->runnable = se.statistics.wait_sum;
- *	pSched->iowait = se.statistics.iowait_sum;
- *	return 0;
- */
 
 	/* always clear sched to simplify error handling at caller side */
 	if (pSched)
@@ -5463,13 +5305,7 @@ void kalOsTimerInitialize(IN struct GLUE_INFO *prGlueInfo,
 
 	ASSERT(prGlueInfo);
 
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(4, 15, 0))
 	timer_setup(&(prGlueInfo->tickfn), prTimerHandler, 0);
-#else
-	init_timer(&(prGlueInfo->tickfn));
-	prGlueInfo->tickfn.function = prTimerHandler;
-	prGlueInfo->tickfn.data = (unsigned long)prGlueInfo;
-#endif
 }
 
 /* Todo */
@@ -5631,18 +5467,10 @@ uint32_t kalRandomNumber(void)
  * \retval (none)
  */
 /*----------------------------------------------------------------------------*/
-#if KERNEL_VERSION(4, 15, 0) <= LINUX_VERSION_CODE
 void kalTimeoutHandler(struct timer_list *timer)
-#else
-void kalTimeoutHandler(unsigned long arg)
-#endif
 {
-#if KERNEL_VERSION(4, 15, 0) <= LINUX_VERSION_CODE
 	struct GLUE_INFO *prGlueInfo =
 		from_timer(prGlueInfo, timer, tickfn);
-#else
-	struct GLUE_INFO *prGlueInfo = (struct GLUE_INFO *)arg;
-#endif
 
 	ASSERT(prGlueInfo);
 
@@ -6512,7 +6340,6 @@ void kalIndicateRxMgmtFrame(IN struct ADAPTER *prAdapter,
 		prDevHandler =
 			wlanGetNetDev(prGlueInfo, ucBssIndex);
 
-#if (KERNEL_VERSION(3, 18, 0) <= CFG80211_VERSION_CODE)
 		cfg80211_rx_mgmt(prDevHandler->ieee80211_ptr,
 			i4Freq,	/* in MHz */
 			RCPI_TO_dBm((uint8_t) nicRxGetRcpiValueFromRxv(
@@ -6521,24 +6348,6 @@ void kalIndicateRxMgmtFrame(IN struct ADAPTER *prAdapter,
 			prSwRfb->pvHeader, prSwRfb->u2PacketLen,
 			NL80211_RXMGMT_FLAG_ANSWERED);
 
-#elif (KERNEL_VERSION(3, 12, 0) <= CFG80211_VERSION_CODE)
-		cfg80211_rx_mgmt(prDevHandler->ieee80211_ptr,
-			i4Freq,	/* in MHz */
-			RCPI_TO_dBm((uint8_t)
-			nicRxGetRcpiValueFromRxv(
-				prGlueInfo->prAdapter, RCPI_MODE_WF0, prSwRfb)),
-			prSwRfb->pvHeader, prSwRfb->u2PacketLen,
-			NL80211_RXMGMT_FLAG_ANSWERED,
-			GFP_ATOMIC);
-#else
-		cfg80211_rx_mgmt(prDevHandler->ieee80211_ptr,
-			i4Freq,	/* in MHz */
-			RCPI_TO_dBm((uint8_t)
-			nicRxGetRcpiValueFromRxv(
-				prGlueInfo->prAdapter, RCPI_MODE_WF0, prSwRfb)),
-			prSwRfb->pvHeader, prSwRfb->u2PacketLen,
-			GFP_ATOMIC);
-#endif
 
 	} while (FALSE);
 
@@ -6630,11 +6439,7 @@ void kalSchedScanResults(IN struct GLUE_INFO *prGlueInfo)
 			       BSS_TYPE_INFRASTRUCTURE, NULL);
 
 	scanlog_dbg(LOG_SCHED_SCAN_DONE_D2K, INFO, "Call cfg80211_sched_scan_results\n");
-#if KERNEL_VERSION(4, 12, 0) <= CFG80211_VERSION_CODE
 	cfg80211_sched_scan_results(wlanGetWiphy(), 0);
-#else
-	cfg80211_sched_scan_results(wlanGetWiphy());
-#endif
 }
 
 /*----------------------------------------------------------------------------*/
@@ -6925,6 +6730,108 @@ void kalSetNetAddressFromInterface(IN struct GLUE_INFO
 			 pucIPv4Addr, u4NumIPv4, pucIPv6Addr, u4NumIPv6);
 }
 
+#define WLAN_KEEP_ALIVE_INDEX 15
+#define WLAN_KEEP_ALIVE_PERIOD_MSEC_DEFAULT 90000
+#define WLAN_KEEP_ALIVE_PERIOD_MSEC_MIN 30000
+#define WLAN_KEEP_ALIVE_PERIOD_MSEC_MAX 120000
+#define WLAN_KEEP_ALIVE_UDP_PORT 9
+#define WLAN_KEEP_ALIVE_BSS_NONE 0xff
+
+static uint8_t ucWfcKeepAliveBssIdx = WLAN_KEEP_ALIVE_BSS_NONE;
+
+void kalSetWfcKeepAlive(IN struct GLUE_INFO *prGlueInfo,
+			 IN struct net_device *prDev,
+			 IN u_int8_t fgSuspend)
+{
+	struct NETDEV_PRIVATE_GLUE_INFO *prNetDevPrivate;
+	struct BSS_INFO *prBssInfo;
+	struct PARAM_PACKET_KEEPALIVE_T rKeepAlive;
+	uint32_t u4SetInfoLen = 0;
+	uint32_t u4NumIPv4 = 0;
+	uint8_t aucIPv4Addr[IPV4_ADDR_LEN * 2];
+	uint32_t u4PeriodMsec = WLAN_KEEP_ALIVE_PERIOD_MSEC_DEFAULT;
+	uint8_t aucPkt[sizeof(struct iphdr) + sizeof(struct udphdr)];
+	struct iphdr *prIpHdr;
+	struct udphdr *prUdpHdr;
+
+	prNetDevPrivate = (struct NETDEV_PRIVATE_GLUE_INFO *)
+			  netdev_priv(prDev);
+	prBssInfo = GET_BSS_INFO_BY_INDEX(prGlueInfo->prAdapter,
+					  prNetDevPrivate->ucBssIdx);
+
+	kalMemZero(&rKeepAlive, sizeof(rKeepAlive));
+	rKeepAlive.index = WLAN_KEEP_ALIVE_INDEX;
+
+	if (!fgSuspend || !prBssInfo ||
+	    prBssInfo->eCurrentOPMode != OP_MODE_INFRASTRUCTURE ||
+	    prBssInfo->eConnectionState != MEDIA_STATE_CONNECTED ||
+	    !kalGetIPv4Address(prDev, 1, aucIPv4Addr, &u4NumIPv4) ||
+	    !u4NumIPv4) {
+		if (ucWfcKeepAliveBssIdx != prNetDevPrivate->ucBssIdx)
+			return;
+		ucWfcKeepAliveBssIdx = WLAN_KEEP_ALIVE_BSS_NONE;
+		rKeepAlive.enable = FALSE;
+		if (kalIoctl(prGlueInfo, wlanoidPacketKeepAlive, &rKeepAlive,
+			     sizeof(rKeepAlive), FALSE, FALSE, TRUE,
+			     &u4SetInfoLen) != WLAN_STATUS_SUCCESS)
+			DBGLOG(REQ, TRACE, "WFC keep-alive disable failed\n");
+		return;
+	}
+
+	if (prBssInfo->fgBssMaxIdlePeriodPresent) {
+		uint32_t u4MaxIdleMsec =
+			(uint32_t) prBssInfo->u2BssMaxIdlePeriod * 1024;
+
+		u4PeriodMsec = u4MaxIdleMsec / 2;
+		if (u4PeriodMsec < WLAN_KEEP_ALIVE_PERIOD_MSEC_MIN)
+			u4PeriodMsec = WLAN_KEEP_ALIVE_PERIOD_MSEC_MIN;
+		if (u4PeriodMsec > WLAN_KEEP_ALIVE_PERIOD_MSEC_MAX)
+			u4PeriodMsec = WLAN_KEEP_ALIVE_PERIOD_MSEC_MAX;
+	}
+
+	kalMemZero(aucPkt, sizeof(aucPkt));
+	prIpHdr = (struct iphdr *) aucPkt;
+	prUdpHdr = (struct udphdr *) (aucPkt + sizeof(struct iphdr));
+
+	prIpHdr->version = 4;
+	prIpHdr->ihl = sizeof(struct iphdr) / 4;
+	prIpHdr->tos = 0;
+	prIpHdr->tot_len = htons(sizeof(aucPkt));
+	prIpHdr->id = 0;
+	prIpHdr->frag_off = 0;
+	prIpHdr->ttl = 64;
+	prIpHdr->protocol = IPPROTO_UDP;
+	prIpHdr->check = 0;
+	kalMemCopy(&prIpHdr->saddr, aucIPv4Addr, IPV4_ADDR_LEN);
+	prIpHdr->daddr = htonl(INADDR_BROADCAST);
+	prIpHdr->check = ip_fast_csum((uint8_t *) prIpHdr, prIpHdr->ihl);
+
+	prUdpHdr->source = htons(WLAN_KEEP_ALIVE_UDP_PORT);
+	prUdpHdr->dest = htons(WLAN_KEEP_ALIVE_UDP_PORT);
+	prUdpHdr->len = htons(sizeof(struct udphdr));
+	prUdpHdr->check = 0;
+
+	rKeepAlive.enable = TRUE;
+	rKeepAlive.u2IpPktLen = sizeof(aucPkt);
+	kalMemCopy(rKeepAlive.pIpPkt, aucPkt, sizeof(aucPkt));
+	kalMemCopy(rKeepAlive.ucSrcMacAddr, prBssInfo->aucOwnMacAddr,
+		   MAC_ADDR_LEN);
+	kalMemCopy(rKeepAlive.ucDstMacAddr, prBssInfo->aucBSSID,
+		   MAC_ADDR_LEN);
+	rKeepAlive.u4PeriodMsec = u4PeriodMsec;
+
+	DBGLOG(REQ, INFO,
+	       "WFC keep-alive armed, period %u ms, dst " MACSTR "\n",
+	       u4PeriodMsec, MAC2STR(prBssInfo->aucBSSID));
+
+	if (kalIoctl(prGlueInfo, wlanoidPacketKeepAlive, &rKeepAlive,
+		     sizeof(rKeepAlive), FALSE, FALSE, TRUE,
+		     &u4SetInfoLen) != WLAN_STATUS_SUCCESS)
+		DBGLOG(REQ, WARN, "WFC keep-alive enable failed\n");
+	else
+		ucWfcKeepAliveBssIdx = prNetDevPrivate->ucBssIdx;
+}
+
 #if CFG_MET_PACKET_TRACE_SUPPORT
 
 u_int8_t kalMetCheckProfilingPacket(IN struct GLUE_INFO
@@ -7201,7 +7108,6 @@ const struct file_operations rMetProcFops = {
 	.write = kalMetWriteProcfs
 };
 #endif
-#if KERNEL_VERSION(5, 6, 0) <= CFG80211_VERSION_CODE
 const struct proc_ops rMetProcCtrlFops = {
 	.proc_write = kalMetCtrlWriteProcfs
 };
@@ -7209,15 +7115,6 @@ const struct proc_ops rMetProcCtrlFops = {
 const struct proc_ops rMetProcPortFops = {
 	.proc_write = kalMetPortWriteProcfs
 };
-#else
-const struct file_operations rMetProcCtrlFops = {
-	.write = kalMetCtrlWriteProcfs
-};
-
-const struct file_operations rMetProcPortFops = {
-	.write = kalMetPortWriteProcfs
-};
-#endif
 
 int kalMetInitProcfs(IN struct GLUE_INFO *prGlueInfo)
 {
@@ -7450,9 +7347,7 @@ int8_t kalIndicateOpModeChange(struct ADAPTER *prAdapter,
 		return -EINVAL;
 
 	skb = cfg80211_vendor_event_alloc(wiphy,
-#if KERNEL_VERSION(4, 4, 0) <= CFG80211_VERSION_CODE
 		wdev,
-#endif
 		dataLen, WIFI_EVENT_OP_MODE_CHANGE, GFP_KERNEL);
 	if (!skb) {
 		DBGLOG(REQ, ERROR, "%s allocate skb failed\n", __func__);
@@ -7514,20 +7409,10 @@ nla_put_failure:
 
 uint64_t kalGetBootTime(void)
 {
-#if KERNEL_VERSION(5, 4, 0) <= LINUX_VERSION_CODE
 	struct timespec64 ts;
-#else
-	struct timespec ts;
-#endif
 	uint64_t bootTime = 0;
 
-#if KERNEL_VERSION(5, 4, 0) <= LINUX_VERSION_CODE
 	ktime_get_boottime_ts64(&ts);
-#elif KERNEL_VERSION(2, 6, 39) <= LINUX_VERSION_CODE
-	get_monotonic_boottime(&ts);
-#else
-	ts = ktime_to_timespec(ktime_get());
-#endif
 
 	bootTime = ts.tv_sec;
 	bootTime *= USEC_PER_SEC;
@@ -8230,17 +8115,6 @@ static uint32_t kalPerMonUpdate(IN struct ADAPTER *prAdapter)
 		perf->ulRxPacketsDiffLastSec[i] = rxDiffPkts[i];
 
 		if (txDiffBytes[i] < 0 || rxDiffBytes[i] < 0) {
-			/* mind_one not an overflow — ndev->stats resets to a
-			 * small value when the netdev for this BSS index is torn
-			 * down and recreated (ap0/p2p0 churn), while perf->ulLast*
-			 * above still holds the previous incarnation's counters.
-			 * The baseline for THIS bss was already resynced two
-			 * lines up (perf->ulLast{Tx,Rx}Bytes[i] = current*Bytes),
-			 * so treat only this cycle's delta as zero instead of
-			 * aborting the whole per-monitor update (old code did
-			 * `goto fail`, which threw away tx/rx throughput for
-			 * every other BSS index this period too).
-			 */
 			DBGLOG(SW4, WARN,
 				"[%d]wrong bytes: tx[%lu][%lu][%ld], rx[%lu][%lu][%ld], netdev counter reset - baseline resynced\n",
 				i, currentTxBytes, lastTxBytes, txDiffBytes[i],
@@ -8713,7 +8587,6 @@ int32_t __weak kalCheckVcoreBoost(IN struct ADAPTER *prAdapter,
 /* mimic store_rps_map as net-sysfs.c does */
 int wlan_set_rps_map(struct netdev_rx_queue *queue, unsigned long rps_value)
 {
-#if KERNEL_VERSION(4, 14, 0) <= CFG80211_VERSION_CODE
 	struct rps_map *old_map, *map;
 	cpumask_var_t mask;
 	int cpu, i;
@@ -8747,17 +8620,9 @@ int wlan_set_rps_map(struct netdev_rx_queue *queue, unsigned long rps_value)
 				mutex_is_locked(&rps_map_mutex));
 	rcu_assign_pointer(queue->rps_map, map);
 	if (map)
-#if KERNEL_VERSION(5, 4, 0) <= LINUX_VERSION_CODE
 		static_branch_inc(&rps_needed);
-#else
-		static_key_slow_inc(&rps_needed);
-#endif
 	if (old_map)
-#if KERNEL_VERSION(5, 4, 0) <= LINUX_VERSION_CODE
 		static_branch_dec(&rps_needed);
-#else
-		static_key_slow_dec(&rps_needed);
-#endif
 	mutex_unlock(&rps_map_mutex);
 
 	if (old_map)
@@ -8765,9 +8630,6 @@ int wlan_set_rps_map(struct netdev_rx_queue *queue, unsigned long rps_value)
 	free_cpumask_var(mask);
 
 	return 0;
-#else
-	return 0;
-#endif
 }
 
 void kalSetRpsMap(IN struct GLUE_INFO *glue, IN unsigned long value)
@@ -8804,22 +8666,14 @@ int32_t kalPerMonSetForceEnableFlag(uint8_t uFlag)
 static int wlan_fb_notifier_callback(struct notifier_block
 				     *self, unsigned long event, void *data)
 {
-#if KERNEL_VERSION(5, 4, 0) <= CFG80211_VERSION_CODE
 	int32_t *pData = (int32_t *)data;
-#else
-	struct fb_event *evdata = data;
-#endif
 	int32_t blank = 0;
 	struct GLUE_INFO *prGlueInfo = (struct GLUE_INFO *)
 				       wlan_fb_notifier_priv_data;
 
 	/* If we aren't interested in this event, skip it immediately */
 	if ((event !=
-#if KERNEL_VERSION(5, 4, 0) <= CFG80211_VERSION_CODE
 		MTK_DISP_EARLY_EVENT_BLANK
-#else
-		FB_EVENT_BLANK
-#endif
 		) || !prGlueInfo)
 		goto end;
 
@@ -8829,11 +8683,7 @@ static int wlan_fb_notifier_callback(struct notifier_block
 	}
 
 
-#if KERNEL_VERSION(5, 4, 0) <= CFG80211_VERSION_CODE
 	blank = *pData;
-#else
-	blank = *(int32_t *)evdata->data;
-#endif
 
 	DBGLOG(SW4, INFO, "%s: event[%ld], blank[%d]\n", __func__,
 			event, blank);
@@ -8847,33 +8697,15 @@ static int wlan_fb_notifier_callback(struct notifier_block
 	}
 
 	switch (blank) {
-#if KERNEL_VERSION(5, 4, 0) <= CFG80211_VERSION_CODE
 	case MTK_DISP_BLANK_UNBLANK:
-#else
-	case FB_BLANK_UNBLANK:
-#endif
 		kalSetPerMonEnable(prGlueInfo);
 		wlan_fb_power_down = FALSE;
-		/* MINDONE-WIFI-SUSPFILTER (01.09.2026, F3391): leave the Wi-Fi
-		 * suspend packet-filter mode on screen-on. See POWERDOWN. */
 		wlanSetSuspendMode(prGlueInfo, FALSE);
 		break;
-#if KERNEL_VERSION(5, 4, 0) <= CFG80211_VERSION_CODE
 	case MTK_DISP_BLANK_POWERDOWN:
-#else
-	case FB_BLANK_POWERDOWN:
-#endif
 		wlan_fb_power_down = TRUE;
 		if (!wlan_perf_monitor_force_enable)
 			kalSetPerMonDisable(prGlueInfo);
-		/* MINDONE-WIFI-SUSPFILTER (F3391): enter the Wi-Fi suspend
-		 * packet-filter mode on screen-off. wlanSetSuspendMode() was only
-		 * ever wired to the legacy early_suspend framework and to WoW
-		 * (off by default); on this GKI/A12 kernel early_suspend is gone,
-		 * so the filter never applied -- every beacon/broadcast woke the
-		 * AP, thrashing s2idle ~2.5x/s (F3390) and degrading the PMIC
-		 * (F3389). Only the packet filter is applied (no GPIO wake-path):
-		 * unicast still wakes the phone, only network noise is dropped. */
 		wlanSetSuspendMode(prGlueInfo, TRUE);
 		break;
 	default:
@@ -8886,11 +8718,6 @@ end:
 	return 0;
 }
 
-/* MINDONE-WIFI-PMSUSP (F3393/F3394): put the chip into its own suspend mode
- * on a GUARANTEED hook. The earlier fb-notifier attempt did not reduce the
- * s2idle wakeup storm (wlan0 IRQ 340 kept waking the AP ~1/s, F3393). A PM
- * notifier on PM_SUSPEND_PREPARE fires on EVERY s2idle entry instead;
- * PM_POST_SUSPEND restores. Bench-verifiable via forced suspend. */
 static uint32_t mindone_wifi_os_filter;
 static bool mindone_wifi_os_filter_saved;
 
@@ -8902,13 +8729,7 @@ static int mindone_wifi_pm_event(struct notifier_block *nb,
 	if (!prGlueInfo || !wlanIsDriverReady(prGlueInfo))
 		return NOTIFY_DONE;
 	if (event == PM_SUSPEND_PREPARE) {
-		/* MINDONE-WIFI-UCASTONLY (F3395): wlanSetSuspendMode alone did NOT
-		 * stop wlan0 waking the AP (~1/s). If those wakes are broadcast/
-		 * multicast LAN noise (ARP/mDNS/SSDP), set a unicast-only packet
-		 * filter in suspend so the FW drops them but still wakes on
-		 * unicast (push notifications preserved — no WoW GPIO risk).
-		 * Bench-verified via forced suspend before trusting. */
-		uint32_t f = PARAM_PACKET_FILTER_DIRECTED, len = 0;
+		uint32_t f = PARAM_PACKET_FILTER_DIRECTED, len = 0, i;
 
 		mindone_wifi_os_filter = prGlueInfo->prAdapter->u4OsPacketFilter &
 					 PARAM_PACKET_FILTER_SUPPORTED;
@@ -8916,7 +8737,11 @@ static int mindone_wifi_pm_event(struct notifier_block *nb,
 		wlanSetSuspendMode(prGlueInfo, TRUE);
 		kalIoctl(prGlueInfo, wlanoidSetCurrentPacketFilter, &f,
 			 sizeof(f), FALSE, FALSE, TRUE, &len);
-		pr_info("MINDONE-WIFI-PMSUSP: suspend -> unicast-only filter (0x%x), OS filter 0x%x saved\n",
+		for (i = 0; i < 20 && !READ_ONCE(prGlueInfo->prAdapter->fgIsFwOwn); i++)
+			usleep_range(5000, 6000);
+		if (!READ_ONCE(prGlueInfo->prAdapter->fgIsFwOwn))
+			pr_info("wlan pm: suspend with driver own held\n");
+		pr_debug("wlan pm: suspend -> unicast-only filter (0x%x), OS filter 0x%x saved\n",
 			f, mindone_wifi_os_filter);
 	} else if (event == PM_POST_SUSPEND) {
 		uint32_t f = prGlueInfo->prAdapter->u4OsPacketFilter &
@@ -8928,7 +8753,7 @@ static int mindone_wifi_pm_event(struct notifier_block *nb,
 		kalIoctl(prGlueInfo, wlanoidSetCurrentPacketFilter, &f,
 			 sizeof(f), FALSE, FALSE, TRUE, &len);
 		wlanSetSuspendMode(prGlueInfo, FALSE);
-		pr_info("MINDONE-WIFI-PMSUSP: resume -> restore filter (0x%x)\n", f);
+		pr_debug("wlan pm: resume -> restore filter (0x%x)\n", f);
 	}
 	return NOTIFY_DONE;
 }
@@ -8943,16 +8768,10 @@ int32_t kalFbNotifierReg(IN struct GLUE_INFO *prGlueInfo)
 
 	wlan_fb_notifier_priv_data = prGlueInfo;
 
-	/* MINDONE-WIFI-PMSUSP: guaranteed suspend hook (see note above). */
 	register_pm_notifier(&mindone_wifi_pm_nb);
-	pr_info("MINDONE-WIFI-PMSUSP: pm_notifier armed\n");
 
-#if KERNEL_VERSION(5, 4, 0) <= CFG80211_VERSION_CODE
 	i4Ret = mtk_disp_notifier_register("wlan_fb_notifier",
 			&wlan_fb_notifier);
-#else
-	i4Ret = fb_register_client(&wlan_fb_notifier);
-#endif
 	if (i4Ret)
 		DBGLOG(SW4, WARN, "Register wlan_fb_notifier failed:%d\n",
 		       i4Ret);
@@ -8964,15 +8783,32 @@ int32_t kalFbNotifierReg(IN struct GLUE_INFO *prGlueInfo)
 void kalFbNotifierUnReg(void)
 {
 	unregister_pm_notifier(&mindone_wifi_pm_nb);
-#if KERNEL_VERSION(5, 4, 0) <= CFG80211_VERSION_CODE
 	mtk_disp_notifier_unregister(&wlan_fb_notifier);
-#else
-	fb_unregister_client(&wlan_fb_notifier);
-#endif
 	wlan_fb_notifier_priv_data = NULL;
 }
 
 #if CFG_SUPPORT_DFS
+struct KAL_CSA_NOTIFY_WORK {
+	struct wiphy_work rWork;
+	struct net_device *prDev;
+	struct cfg80211_chan_def rChandef;
+};
+
+static void kalCsaNotifyWorkHandler(struct wiphy *wiphy,
+				     struct wiphy_work *prWork)
+{
+	struct KAL_CSA_NOTIFY_WORK *prCsaWork = container_of(prWork,
+		struct KAL_CSA_NOTIFY_WORK, rWork);
+
+	if (prCsaWork->prDev->reg_state == NETREG_REGISTERED &&
+	    prCsaWork->prDev->ieee80211_ptr)
+		cfg80211_ch_switch_notify(prCsaWork->prDev,
+			&prCsaWork->rChandef, 0);
+
+	dev_put(prCsaWork->prDev);
+	kfree(prCsaWork);
+}
+
 void kalIndicateChannelSwitch(IN struct GLUE_INFO *prGlueInfo,
 				IN enum ENUM_CHNL_EXT eSco,
 				IN uint8_t ucChannelNum,
@@ -8981,6 +8817,7 @@ void kalIndicateChannelSwitch(IN struct GLUE_INFO *prGlueInfo,
 	struct cfg80211_chan_def chandef;
 	struct ieee80211_channel *prChannel = NULL;
 	enum nl80211_channel_type rChannelType;
+	struct KAL_CSA_NOTIFY_WORK *prCsaWork;
 
 #if (CFG_SUPPORT_WIFI_6G == 1)
 	if (eBand == BAND_6G) {
@@ -9030,7 +8867,18 @@ void kalIndicateChannelSwitch(IN struct GLUE_INFO *prGlueInfo,
 	DBGLOG(REQ, STATE, "DFS channel switch to %d\n", ucChannelNum);
 
 	cfg80211_chandef_create(&chandef, prChannel, rChannelType);
-	MINDONE_CH_SWITCH_NOTIFY(prGlueInfo->prDevHandler, &chandef, 0);
+
+	prCsaWork = kzalloc(sizeof(*prCsaWork), GFP_KERNEL);
+	if (!prCsaWork) {
+		DBGLOG(REQ, ERROR, "csa notify work alloc fail\n");
+		return;
+	}
+
+	wiphy_work_init(&prCsaWork->rWork, kalCsaNotifyWorkHandler);
+	dev_hold(prGlueInfo->prDevHandler);
+	prCsaWork->prDev = prGlueInfo->prDevHandler;
+	prCsaWork->rChandef = chandef;
+	wiphy_work_queue(wlanGetWiphy(), &prCsaWork->rWork);
 }
 #endif
 
@@ -9059,7 +8907,6 @@ u_int8_t kalIsValidMacAddr(const uint8_t *addr)
 	return (addr != NULL) && is_valid_ether_addr(addr);
 }
 
-#if (KERNEL_VERSION(3, 19, 0) <= CFG80211_VERSION_CODE)
 u_int8_t kalParseRandomMac(const struct net_device *ndev,
 		uint8_t *pucMacAddr, uint8_t *pucMacAddrMask,
 		uint8_t *pucRandomMac)
@@ -9119,7 +8966,6 @@ u_int8_t kalScanParseRandomMac(const struct net_device *ndev,
 		log_dbg(SCN, TRACE, "Scan random mac is not set\n");
 		return FALSE;
 	}
-#if KERNEL_VERSION(4, 10, 0) <= CFG80211_VERSION_CODE
 	{
 		if (kalIsValidMacAddr(request->bssid)) {
 			COPY_MAC_ADDR(pucRandomMac, request->bssid);
@@ -9128,7 +8974,6 @@ u_int8_t kalScanParseRandomMac(const struct net_device *ndev,
 			return TRUE;
 		}
 	}
-#endif
 	COPY_MAC_ADDR(ucMacAddr, request->mac_addr);
 	COPY_MAC_ADDR(ucMacAddrMask, request->mac_addr_mask);
 
@@ -9155,20 +9000,6 @@ u_int8_t kalSchedScanParseRandomMac(const struct net_device *ndev,
 	return kalParseRandomMac(ndev, ucMacAddr,
 		pucRandomMacMask, pucRandomMac);
 }
-#else /* if (KERNEL_VERSION(3, 19, 0) <= CFG80211_VERSION_CODE) */
-u_int8_t kalScanParseRandomMac(const struct net_device *ndev,
-	const struct cfg80211_scan_request *request, uint8_t *pucRandomMac)
-{
-	return FALSE;
-}
-
-u_int8_t kalSchedScanParseRandomMac(const struct net_device *ndev,
-	const struct cfg80211_sched_scan_request *request,
-	uint8_t *pucRandomMac, uint8_t *pucRandomMacMask)
-{
-	return FALSE;
-}
-#endif
 
 void kalScanReqLog(struct cfg80211_scan_request *request)
 {
@@ -9219,16 +9050,11 @@ void kalScanReqLog(struct cfg80211_scan_request *request)
 	if (cnum < request->n_channels)
 		pos += kalSnprintf(pos, end - pos, "%s", " ...");
 
-#if (KERNEL_VERSION(3, 19, 0) <= CFG80211_VERSION_CODE)
 	scanlog_dbg(LOG_SCAN_REQ_K2D, INFO, "Scan flags=0x%x [mac]addr="
 		MACSTR " mask=" MACSTR " %s\n",
 		request->flags,
 		MAC2STR(request->mac_addr),
 		MAC2STR(request->mac_addr_mask), strbuf);
-#else
-	scanlog_dbg(LOG_SCAN_REQ_K2D, INFO, "Scan flags=0x%x %s\n",
-		request->flags, strbuf);
-#endif
 
 	kalMemFree(strbuf, VIR_MEM_TYPE, slen);
 }
@@ -9404,7 +9230,6 @@ void kalRemoveBss(struct GLUE_INFO *prGlueInfo,
 		);
 	}
 
-#if (KERNEL_VERSION(4, 1, 0) <= CFG80211_VERSION_CODE)
 	bss = cfg80211_get_bss(wlanGetWiphy(),
 			prChannel, /* channel */
 			aucBSSID,
@@ -9412,15 +9237,6 @@ void kalRemoveBss(struct GLUE_INFO *prGlueInfo,
 			0, /* ssid length */
 			IEEE80211_BSS_TYPE_ESS,
 			IEEE80211_PRIVACY_ANY);
-#else
-	bss = cfg80211_get_bss(wlanGetWiphy(),
-			prChannel, /* channel */
-			aucBSSID,
-			NULL, /* ssid */
-			0, /* ssid length */
-			WLAN_CAPABILITY_ESS,
-			WLAN_CAPABILITY_ESS);
-#endif
 
 	if (bss != NULL) {
 		cfg80211_unlink_bss(wlanGetWiphy(), bss);
@@ -10615,24 +10431,14 @@ static void kal_bat_volt_notifier_callback(unsigned int volt)
 int32_t kalBatNotifierReg(IN struct GLUE_INFO *prGlueInfo)
 {
 	int32_t i4Ret = 0;
-#if (KERNEL_VERSION(4, 19, 0) <= LINUX_VERSION_CODE)
 	static struct lbat_user *lbat_pt;
-#else
-	static struct lbat_user rWifiBatVolt;
-#endif
 	wlan_bat_volt_notifier_priv_data = prGlueInfo;
 	wlan_bat_volt = 0;
-#if (KERNEL_VERSION(4, 19, 0) <= LINUX_VERSION_CODE)
 	lbat_pt = lbat_user_register("WiFi Get Battery Voltage", RESTORE_VOLT,
 				BACKOFF_VOLT, 2000,
 				kal_bat_volt_notifier_callback);
 	if (IS_ERR(lbat_pt))
 		i4Ret = PTR_ERR(lbat_pt);
-#else
-	i4Ret = lbat_user_register(&rWifiBatVolt, "WiFi Get Battery Voltage",
-				RESTORE_VOLT, BACKOFF_VOLT, 2000,
-			kal_bat_volt_notifier_callback);
-#endif
 
 	if (i4Ret)
 		DBGLOG(SW4, ERROR, "Register rWifiBatVolt failed:%d\n", i4Ret);
@@ -10649,6 +10455,4 @@ void kalBatNotifierUnReg(void)
 
 #endif
 
-#if KERNEL_VERSION(5, 4, 0) <= CFG80211_VERSION_CODE
 MODULE_IMPORT_NS(VFS_internal_I_am_really_a_filesystem_and_am_NOT_a_driver);
-#endif

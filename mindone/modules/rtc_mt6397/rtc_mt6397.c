@@ -43,7 +43,7 @@
 
 /*debug information*/
 static int rtc_show_time;
-static int rtc_show_alarm = 1;
+static int rtc_show_alarm;
 static struct regmap *rtc_regmap;
 module_param(rtc_show_time, int, 0644);
 module_param(rtc_show_alarm, int, 0644);
@@ -332,7 +332,7 @@ bool mtk_rtc_is_pwron_alarm(struct mt6397_rtc *rtc,
 	if (ret < 0)
 		goto exit;
 
-	dev_notice(rtc->rtc_dev->dev.parent, "pdn1 = 0x%x\n", pdn1);
+	dev_dbg(rtc->rtc_dev->dev.parent, "pdn1 = 0x%x\n", pdn1);
 
 	if (pdn1 & RTC_PDN1_PWRON_TIME) {/* power-on time is available */
 
@@ -487,7 +487,7 @@ static void mtk_rtc_reset_bbpu_alarm_status(struct mt6397_rtc *rtc)
 			return;
 	}
 #endif
-	pr_info("[RTC] %s, alarm_sta_clr_bit = %u\n", __func__, rtc->data->alarm_sta_clr_bit);
+	pr_debug("[RTC] %s, alarm_sta_clr_bit = %u\n", __func__, rtc->data->alarm_sta_clr_bit);
 	bbpu = RTC_BBPU_KEY | RTC_BBPU_PWREN | rtc->data->alarm_sta_clr_bit;
 	ret = regmap_write(rtc->regmap, rtc->addr_base + RTC_BBPU, bbpu);
 	if (ret < 0)
@@ -584,7 +584,7 @@ static irqreturn_t mtk_rtc_irq_handler_thread(int irq, void *data)
 
 	status = mtk_rtc_is_alarm_irq(rtc);
 
-	dev_notice(rtc->rtc_dev->dev.parent, "%s:%d\n", __func__, status);
+	dev_dbg(rtc->rtc_dev->dev.parent, "%s:%d\n", __func__, status);
 
 	if (status == RTC_NONE) {
 		mutex_unlock(&rtc->lock);
@@ -885,7 +885,7 @@ static int mtk_rtc_set_alarm(struct device *dev, struct rtc_wkalrm *alm)
 	tm->tm_year -= RTC_MIN_YEAR_OFFSET;
 	tm->tm_mon++;
 
-	dev_notice(rtc->rtc_dev->dev.parent,
+	dev_dbg(rtc->rtc_dev->dev.parent,
 		"set al time = %04d/%02d/%02d %02d:%02d:%02d (%d)\n",
 		  tm->tm_year + RTC_MIN_YEAR, tm->tm_mon, tm->tm_mday,
 		  tm->tm_hour, tm->tm_min, tm->tm_sec, alm->enabled);

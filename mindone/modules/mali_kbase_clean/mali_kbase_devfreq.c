@@ -29,8 +29,6 @@
 #if IS_ENABLED(CONFIG_DEVFREQ_THERMAL)
 #include <linux/devfreq_cooling.h>
 #endif
-
-#include <linux/version.h>
 #include <linux/pm_opp.h>
 #if IS_ENABLED(CONFIG_MALI_MTK_DEVFREQ)
 #include <platform/mtk_platform_common/mtk_gpu_devfreq_governor.h>
@@ -55,9 +53,6 @@ static unsigned long get_voltage(struct kbase_device *kbdev, unsigned long freq)
 	struct dev_pm_opp *opp;
 	unsigned long voltage = 0;
 
-#if KERNEL_VERSION(4, 11, 0) > LINUX_VERSION_CODE
-	rcu_read_lock();
-#endif
 
 	opp = dev_pm_opp_find_freq_exact(kbdev->dev, freq, true);
 
@@ -65,14 +60,9 @@ static unsigned long get_voltage(struct kbase_device *kbdev, unsigned long freq)
 		dev_err(kbdev->dev, "Failed to get opp (%ld)\n", PTR_ERR(opp));
 	else {
 		voltage = dev_pm_opp_get_voltage(opp);
-#if KERNEL_VERSION(4, 11, 0) <= LINUX_VERSION_CODE
 		dev_pm_opp_put(opp);
-#endif
 	}
 
-#if KERNEL_VERSION(4, 11, 0) > LINUX_VERSION_CODE
-	rcu_read_unlock();
-#endif
 
 	/* Return the voltage in milli volts */
 	return voltage / 1000;
@@ -127,20 +117,12 @@ kbase_devfreq_target(struct device *dev, unsigned long *target_freq, u32 flags)
 
 	nominal_freq = *target_freq;
 
-#if KERNEL_VERSION(4, 11, 0) > LINUX_VERSION_CODE
-	rcu_read_lock();
-#endif
 	opp = devfreq_recommended_opp(dev, &nominal_freq, flags);
-#if KERNEL_VERSION(4, 11, 0) > LINUX_VERSION_CODE
-	rcu_read_unlock();
-#endif
 	if (IS_ERR_OR_NULL(opp)) {
 		dev_err(dev, "Failed to get opp (%ld)\n", PTR_ERR(opp));
 		return PTR_ERR(opp);
 	}
-#if KERNEL_VERSION(4, 11, 0) <= LINUX_VERSION_CODE
 	dev_pm_opp_put(opp);
-#endif
 
 	/*
 	 * Only update if there is a change of frequency
@@ -288,13 +270,7 @@ static int kbase_devfreq_init_freq_table(struct kbase_device *kbdev,
 	unsigned long freq;
 	struct dev_pm_opp *opp;
 
-#if KERNEL_VERSION(4, 11, 0) > LINUX_VERSION_CODE
-	rcu_read_lock();
-#endif
 	count = dev_pm_opp_get_opp_count(kbdev->dev);
-#if KERNEL_VERSION(4, 11, 0) > LINUX_VERSION_CODE
-	rcu_read_unlock();
-#endif
 	if (count < 0)
 		return count;
 
@@ -303,22 +279,14 @@ static int kbase_devfreq_init_freq_table(struct kbase_device *kbdev,
 	if (!dp->freq_table)
 		return -ENOMEM;
 
-#if KERNEL_VERSION(4, 11, 0) > LINUX_VERSION_CODE
-	rcu_read_lock();
-#endif
 	for (i = 0, freq = ULONG_MAX; i < count; i++, freq--) {
 		opp = dev_pm_opp_find_freq_floor(kbdev->dev, &freq);
 		if (IS_ERR(opp))
 			break;
-#if KERNEL_VERSION(4, 11, 0) <= LINUX_VERSION_CODE
 		dev_pm_opp_put(opp);
-#endif /* KERNEL_VERSION(4, 11, 0) <= LINUX_VERSION_CODE */
 
 		dp->freq_table[i] = freq;
 	}
-#if KERNEL_VERSION(4, 11, 0) > LINUX_VERSION_CODE
-	rcu_read_unlock();
-#endif
 
 	if (count != i)
 		dev_warn(kbdev->dev, "Unable to enumerate all OPPs (%d!=%d\n",

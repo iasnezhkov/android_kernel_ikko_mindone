@@ -427,7 +427,7 @@ struct P2P_ATTRI_NOA {
 	uint16_t u2Length;	/* Length */
 	uint8_t ucIndex;		/* Index */
 	uint8_t ucCTWOppPSParam;	/* CTWindow and OppPS Parameters */
-	uint8_t aucNoADesc[1];	/* NoA Descriptor */
+	uint8_t aucNoADesc[];	/* NoA Descriptor */
 } __KAL_ATTRIB_PACKED__;
 
 struct NOA_DESCRIPTOR {

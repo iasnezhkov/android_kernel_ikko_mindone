@@ -16,12 +16,6 @@
 #include <asm/sections.h>
 #include <linux/uaccess.h>
 
-/* MINDONE: on 6.12, mrdump pulls _text via inline kernel functions; this wasn't the case on
- * 6.1, where the module obtained the address through a kallsyms helper. Export the linker
- * symbol. */
-extern char _text[];
-EXPORT_SYMBOL_GPL(_text);
-
 /*
  * mutex protecting text section modification (dynamic code patching).
  * some users need to sleep (allocating memory...) while they hold this lock.

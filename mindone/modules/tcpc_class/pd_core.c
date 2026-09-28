@@ -165,6 +165,8 @@ static inline int pd_parse_pdata_country(
 
 	temp_u32 = devm_kzalloc(&pd_port->tcpc->dev,
 		sizeof(u32)*country_info->len, GFP_KERNEL);
+	if (!temp_u32)
+		return -ENOMEM;
 
 	ret = of_property_read_u32_array(sub, "pd,country_data",
 		temp_u32,

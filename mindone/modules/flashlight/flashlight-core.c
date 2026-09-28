@@ -6,7 +6,6 @@
 #define pr_fmt(fmt) KBUILD_MODNAME ": %s: " fmt, __func__
 
 #include <linux/types.h>
-#include <mindone/compat.h>
 #include <linux/init.h>
 #include <linux/module.h>
 #include <linux/fs.h>
@@ -1764,7 +1763,7 @@ static int flashlight_probe(struct platform_device *dev)
 	}
 
 	/* create class */
-	flashlight_class = MINDONE_CLASS_CREATE(FLASHLIGHT_CORE);
+	flashlight_class = class_create(FLASHLIGHT_CORE);
 	if (IS_ERR(flashlight_class)) {
 		pr_info("Failed to create class (%d)\n",
 				(int)PTR_ERR(flashlight_class));

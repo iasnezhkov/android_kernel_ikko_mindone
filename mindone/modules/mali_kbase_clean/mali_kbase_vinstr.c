@@ -140,9 +140,6 @@ static int kbasep_vinstr_hwcnt_reader_release(
 
 /* Vinstr client file operations */
 static const struct file_operations vinstr_client_fops = {
-	/* MINDONE: .owner deliberately unset - this fops is used with anon_inode_getfd(),
-	 * and alloc_file() takes NO module reference while __fput() always releases one.
-	 * Kernel reference: drivers/dma-buf/sync_file.c sync_file_fops has no .owner. */
 	.poll           = kbasep_vinstr_hwcnt_reader_poll,
 	.unlocked_ioctl = kbasep_vinstr_hwcnt_reader_ioctl,
 	.compat_ioctl   = kbasep_vinstr_hwcnt_reader_ioctl,

@@ -753,6 +753,32 @@ s32 cmdq_dev_get_event(struct device *dev, const char *name)
 }
 EXPORT_SYMBOL(cmdq_dev_get_event);
 
+s32 cmdq_dev_get_event_optional(struct device *dev, const char *name)
+{
+	s32 index;
+	struct of_phandle_args spec = {0};
+	s32 result;
+
+	if (!dev || !dev->of_node)
+		return -EINVAL;
+
+	index = of_property_match_string(dev->of_node, "gce-event-names", name);
+	if (index < 0)
+		return -ENOENT;
+
+	if (of_parse_phandle_with_args(dev->of_node, "gce-events",
+		"#gce-event-cells", index, &spec)) {
+		cmdq_err("can't parse gce-events property for %s", name);
+		return -ENODEV;
+	}
+
+	result = spec.args[0];
+	of_node_put(spec.np);
+
+	return result;
+}
+EXPORT_SYMBOL(cmdq_dev_get_event_optional);
+
 struct cmdq_pkt_buffer *cmdq_pkt_alloc_buf(struct cmdq_pkt *pkt)
 {
 	struct cmdq_client *cl = (struct cmdq_client *)pkt->cl;

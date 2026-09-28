@@ -11,7 +11,6 @@
 
 
 #include <linux/atomic.h>
-#include <mindone/compat.h>
 #include <linux/cdev.h>
 #include <linux/delay.h>
 #include <linux/fs.h>
@@ -526,7 +525,7 @@ static inline int Register_AF_CharDrv(void)
 		return -EAGAIN;
 	}
 
-	actuator_class = MINDONE_CLASS_CREATE(AF_DRIVER_CLASS_NAME);
+	actuator_class = class_create(AF_DRIVER_CLASS_NAME);
 	if (IS_ERR(actuator_class)) {
 		int ret = PTR_ERR(actuator_class);
 
@@ -575,7 +574,7 @@ static const struct of_device_id SUBAF_of_match[] = {
 #endif
 
 static struct i2c_driver AF_i2c_driver = {
-	MINDONE_I2C_PROBE(AF_i2c_probe),
+	.probe = AF_i2c_probe,
 	.remove = AF_i2c_remove,
 	.driver.name = AF_DRVNAME,
 #if I2C_CONFIG_SETTING == 2
@@ -616,9 +615,6 @@ static int AF_i2c_probe(struct i2c_client *client)
 	return 0;
 }
 
-/* MINDONE-AF-ONCE 30.08 (F3126): the platform driver probes twice (our own platform_device
- * + the DT node mediatek,camera_af_lens) and each probe called i2c_add_driver() with the same
- * name -> "Error: Driver XXAF is already registered, aborting...". Register once. */
 static bool mindone_af_i2c_added;
 static int AF_probe(struct platform_device *pdev)
 {

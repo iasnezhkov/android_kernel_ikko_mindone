@@ -4,8 +4,6 @@
  */
 
 #include <linux/device.h>
-#include <mindone/compat-icc.h>
-#include <mindone/compat.h>
 #include <linux/interconnect-provider.h>
 #include <linux/module.h>
 #include <linux/of_device.h>
@@ -14,6 +12,7 @@
 #include <linux/soc/mediatek/mtk_dvfsrc.h>
 #include <dt-bindings/interconnect/mtk,mt8183-emi.h>
 #include <dt-bindings/interconnect/mtk,mt6873-emi.h>
+#include <linux/of.h>
 
 #if IS_ENABLED(CONFIG_MTK_DVFSRC)
 #include "internal.h"
@@ -307,7 +306,6 @@ static int emi_icc_probe(struct platform_device *pdev)
 	struct icc_onecell_data *data;
 	struct icc_provider *provider;
 	struct mtk_icc_node **mnodes;
-	struct icc_node *tmp;
 	size_t num_nodes, i, j;
 	int ret;
 
@@ -339,14 +337,10 @@ static int emi_icc_probe(struct platform_device *pdev)
 	provider->data = data;
 	provider->get_bw = emi_icc_get_bw;
 
-	/* MINDONE (03.09.2026, first 6.12 boot): 6.12 annotates this flexible array as
-	 * `struct icc_node *nodes[] __counted_by(num_nodes)`, so the bounds sanitizer checks
-	 * every data->nodes[i] against data->num_nodes - which devm_kzalloc left at 0. Filling
-	 * the array before announcing its length trapped on the very first element and panicked
-	 * the boot. Publish the count first; the storage for it is already allocated above. */
 	data->num_nodes = num_nodes;
 
-	ret = MINDONE_ICC_PROVIDER_ADD(provider);
+	icc_provider_init(provider);
+	ret = icc_provider_register(provider);
 	if (ret) {
 		dev_err(dev, "error adding interconnect provider\n");
 		return ret;
@@ -364,11 +358,6 @@ static int emi_icc_probe(struct platform_device *pdev)
 		icc_node_add(node, provider);
 
 		/* populate links */
-		/* MINDONE (03.09.2026, first 6.12 boot): links[] is MT8183_MAX_LINKS long, but
-		 * num_links comes from ARRAY_SIZE of the DEFINE_MNODE varargs, and for the nodes
-		 * declared with no links at all that expression is not reliably zero. Reading past
-		 * links[] went unnoticed on 6.1; 6.12 turns on CONFIG_UBSAN_LOCAL_BOUNDS, which
-		 * trapped it and panicked the boot inside this probe. Clamp to the real array. */
 		for (j = 0; j < mnodes[i]->num_links && j < MT8183_MAX_LINKS; j++)
 			icc_link_create(node, mnodes[i]->links[j]);
 
@@ -379,26 +368,17 @@ static int emi_icc_probe(struct platform_device *pdev)
 
 	return 0;
 err:
-	list_for_each_entry_safe(node, tmp, &provider->nodes, node_list) {
-		icc_node_del(node);
-		icc_node_destroy(node->id);
-	}
-
-	MINDONE_ICC_PROVIDER_DEL(provider);
+	icc_nodes_remove(provider);
+	icc_provider_deregister(provider);
 	return ret;
 }
 
 static void emi_icc_remove(struct platform_device *pdev)
 {
 	struct icc_provider *provider = platform_get_drvdata(pdev);
-	struct icc_node *n, *tmp;
 
-	list_for_each_entry_safe(n, tmp, &provider->nodes, node_list) {
-		icc_node_del(n);
-		icc_node_destroy(n->id);
-	}
-
-	MINDONE_ICC_PROVIDER_DEL(provider);
+	icc_nodes_remove(provider);
+	icc_provider_deregister(provider);
 
 	return;
 }

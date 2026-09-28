@@ -40,7 +40,7 @@
 	};
 
 	chosen: chosen {
-		bootargs = "console=tty0 root=/dev/ram \t\t\t    \t\t\t    8250.nr_uarts=4 \t\t\t    androidboot.hardware=mt6789 \t\t\t    transparent_hugepage=always \t\t\t    vmalloc=400M swiotlb=noforce \t\t\t    firmware_class.path=/vendor/firmware pelt=8\t\t\t    loop.max_part=7";
+		bootargs = "8250.nr_uarts=4 androidboot.hardware=mt6789 swiotlb=noforce firmware_class.path=/vendor/firmware loop.max_part=7";
 		atag,videolfb-fb_base_l = "~`P";
 		atag,videolfb-fb_base_h = <0x00>;
 		atag,videolfb-islcmfound = <0x01>;

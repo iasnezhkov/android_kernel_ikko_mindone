@@ -5,7 +5,6 @@
  */
 
 #include <asm/cacheflush.h>
-#include <mindone/compat.h>
 #include <linux/cdev.h>
 #include <linux/delay.h>
 #include <linux/dma-mapping.h>
@@ -460,7 +459,7 @@ static void remove_all_iova_node(struct mtk_vcu *vcu)
 		dma_buf_unmap_attachment(curr_node->buf_att, curr_node->sgt, DMA_TO_DEVICE);
 		dma_buf_detach(display_dma_buf, curr_node->buf_att);
 
-		vcu_dbg_log("[VCU] free node with mapped_iova:x%lx wdma_dma_buf_addr:0x%lx",
+		vcu_dbg_log("[VCU] free node with mapped_iova:x%llx wdma_dma_buf_addr:0x%lx",
 			curr_node->mapped_iova, curr_node->wdma_dma_buf_addr);
 		kfree(curr_node);
 	}
@@ -483,7 +482,7 @@ static void add_new_iova_node(
 
 	mutex_lock(&iova_node_list.node_iova_lock);
 
-	vcu_dbg_log("%s wdma_dam_buf_addr:0x%lx", __func__, in_wdma_dam_buf_addr);
+	vcu_dbg_log("%s wdma_dam_buf_addr:0x%llx", __func__, in_wdma_dam_buf_addr);
 
 	curr_node->mapped_iova = in_mapped_iova;
 	curr_node->wdma_dma_buf_addr = in_wdma_dam_buf_addr;
@@ -526,7 +525,7 @@ static dma_addr_t find_iova_node_by_dam_buf(uintptr_t in_wdma_dma_buf_addr)
 	{
 		if (curr_node->wdma_dma_buf_addr == in_wdma_dma_buf_addr)
 		{
-			vcu_dbg_log("This dma_buf 0x%lx has been mapped, iova is 0x%lx",
+			vcu_dbg_log("This dma_buf 0x%lx has been mapped, iova is 0x%llx",
 				in_wdma_dma_buf_addr, curr_node->mapped_iova);
 			ret = curr_node->mapped_iova;
 			break;
@@ -1686,7 +1685,7 @@ static long vcu_get_disp_mapped_iova(struct mtk_vcu *vcu, unsigned long arg)
 	sgt = dma_buf_map_attachment(buf_att, DMA_FROM_DEVICE);
 	vcu_dbg_log("%s %d", __func__, __LINE__);
 	mapped_iova= sg_dma_address(sgt->sgl);
-	vcu_dbg_log("[VCU] mapped_iova=0x%lx", mapped_iova);
+	vcu_dbg_log("[VCU] mapped_iova=0x%llx", mapped_iova);
 
 	// add this mapped iova in list
 	add_new_iova_node(wdma_dma_buf_addr, mapped_iova, buf_att, sgt);
@@ -2286,7 +2285,7 @@ static int mtk_vcu_mmap(struct file *file, struct vm_area_struct *vma)
 		ret = mtk_vcu_set_buffer(vcu_queue, &mem_buff_data,
 			src_vb, dst_vb);
 		if (!IS_ERR_OR_NULL(ret)) {
-			vcu_dbg_log("[VCU] mtk_vcu_buf_vm_mmap mem_priv %lx iova %llx\n",
+			vcu_dbg_log("[VCU] mtk_vcu_buf_vm_mmap mem_priv %lx iova %lx\n",
 				 (unsigned long)ret, pa_start);
 
 			vma->vm_ops = &mtk_vcu_buf_vm_ops;
@@ -2369,7 +2368,7 @@ static int mtk_vcu_mmap(struct file *file, struct vm_area_struct *vma)
 		ret = mtk_vcu_set_buffer(vcu_queue, &mem_buff_data,
 			src_vb, dst_vb);
 		if (!IS_ERR_OR_NULL(ret)) {
-			vcu_dbg_log("[VCU] mtk_vcu_buf_vm_mmap mem_priv %lx iova %llx\n",
+			vcu_dbg_log("[VCU] mtk_vcu_buf_vm_mmap mem_priv %lx iova %lx\n",
 				 (unsigned long)ret, pa_start);
 
 			vma->vm_ops = &mtk_vcu_buf_vm_ops;
@@ -2424,32 +2423,6 @@ valid_map:
 	return 0;
 }
 
-/*
- * mtk_vcu_mem_ioctl_kernel() - shared implementation of the mem_obj-based
- * ioctls (VCU_*_ALLOCATION, VCU_*_FREE, VCU_CACHE_FLUSH_BUFF,
- * VCU_CACHE_INVALIDATE_BUFF).
- *
- * Works purely on a kernel-resident struct mem_obj (*kobj), never on a user
- * pointer, so the same implementation can be shared by the native ioctl path
- * (mtk_vcu_unlocked_ioctl(), which already has mem_obj copied into kernel
- * memory) and the 32-bit compat path (mtk_vcu_unlocked_compat_ioctl(), which
- * translates struct compat_mem_obj <-> struct mem_obj around this call).
- *
- * This replaces the old compat_alloc_user_space()-based indirection that
- * stopped building once compat_alloc_user_space() was removed from the
- * kernel (gone since 5.15; see the fact log F3062) -- that helper used to
- * hand the *native* unlocked_ioctl a scratch __user pointer standing in for
- * the 32-bit caller's buffer. The ioctl.rst-documented replacement is to
- * never fabricate a user pointer at all: copy into a kernel struct, run the
- * shared logic against that struct, copy back out.
- *
- * *out_copy_back tells the caller whether *kobj should be written back to
- * the calling process. It is true on every success, and also on a
- * VCU_*_ALLOCATION failure -- matching the original driver, which reported
- * the -1/-1/-1 marker back to userspace even though the allocation itself
- * failed. VCU_*_FREE / VCU_CACHE_* failures never touch the caller's buffer,
- * again matching the original driver exactly.
- */
 static long mtk_vcu_mem_ioctl_kernel(struct file *file, unsigned int cmd,
 				      struct mem_obj *kobj, bool *out_copy_back)
 {
@@ -2583,11 +2556,11 @@ static long mtk_vcu_mem_ioctl_kernel(struct file *file, unsigned int cmd,
 			return -EINVAL;
 		}
 
-		pr_info("VCU_SECURE_BUFFER_FREE sec iova 0x%lx\n", kobj->iova);
+		pr_info("VCU_SECURE_BUFFER_FREE sec iova 0x%llx\n", kobj->iova);
 		ret = mtk_vcu_free_sec_buffer(vcu_queue, kobj);
 
 		if (ret != 0L) {
-			pr_info("[VCU] VCU_SECURE_HANDLE_FREE failed sec_buffer  %lx, len %d\n",
+			pr_info("[VCU] VCU_SECURE_HANDLE_FREE failed sec_buffer  %llx, len %d\n",
 				kobj->iova, kobj->len);
 			return -EINVAL;
 		}
@@ -3090,13 +3063,13 @@ static int mtk_vcu_suspend(struct device *pDev)
 		pr_info("[VCU] %s fail due to videocodec activity\n", __func__);
 		return -EBUSY;
 	}
-	pr_info("[VCU] %s done\n", __func__);
+	pr_debug("[VCU] %s done\n", __func__);
 	return 0;
 }
 
 static int mtk_vcu_resume(struct device *pDev)
 {
-	pr_info("[VCU] %s done\n", __func__);
+	pr_debug("[VCU] %s done\n", __func__);
 	return 0;
 }
 
@@ -3225,9 +3198,7 @@ static int mtk_vcu_probe(struct platform_device *pdev)
 			devm_kzalloc(&pdev->dev, sizeof(*pdev->dev.dma_parms), GFP_KERNEL);
 	}
 	if (pdev->dev.dma_parms) {
-		ret = MINDONE_DMA_SET_MAX_SEG_SIZE(&pdev->dev, (unsigned int)DMA_BIT_MASK(34));
-		if (ret)
-			dev_info(&pdev->dev, "Failed to set DMA segment size\n");
+		dma_set_max_seg_size(&pdev->dev, (unsigned int)DMA_BIT_MASK(34));
 	}
 #endif
 
@@ -3331,7 +3302,7 @@ static int mtk_vcu_probe(struct platform_device *pdev)
 		goto err_add;
 	}
 
-	vcu_mtkdev[vcuid]->vcu_class = MINDONE_CLASS_CREATE(vcu_mtkdev[vcuid]->vcuname);
+	vcu_mtkdev[vcuid]->vcu_class = class_create(vcu_mtkdev[vcuid]->vcuname);
 	if (IS_ERR_OR_NULL(vcu_mtkdev[vcuid]->vcu_class) == true) {
 		ret = (int)PTR_ERR(vcu_mtkdev[vcuid]->vcu_class);
 		dev_info(dev, "[VCU] class create fail (ret=%d)", ret);
@@ -3598,9 +3569,7 @@ static int mtk_vcu_io_probe(struct platform_device *pdev)
 			devm_kzalloc(&pdev->dev, sizeof(*pdev->dev.dma_parms), GFP_KERNEL);
 	}
 	if (pdev->dev.dma_parms) {
-		ret = MINDONE_DMA_SET_MAX_SEG_SIZE(&pdev->dev, (unsigned int)DMA_BIT_MASK(34));
-		if (ret)
-			dev_info(&pdev->dev, "Failed to set DMA segment size\n");
+		dma_set_max_seg_size(&pdev->dev, (unsigned int)DMA_BIT_MASK(34));
 	}
 #endif
 

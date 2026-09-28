@@ -108,17 +108,24 @@
 		clock-names = "apb", "smi", "gals0", "gals1";
 	};
 
-	imgsys_config: imgsys_config@15020000 {
+	imgsys-config-bus {
+		compatible = "simple-bus";
 		#address-cells = <2>;
 		#size-cells = <2>;
-		compatible = "mediatek,imgsys", "syscon";
-		reg = <0x00 0x15020000 0x00 0x1000>;
+		ranges;
 		dma-ranges = <0x02 0x00 0x02 0x00 0x01 0x00>;
-		power-domains = <&scpsys MT6789_POWER_DOMAIN_ISP>;
-		mediatek,larb = <&smi_larb9>;
-		iommus = <&disp_iommu 0x20120 &disp_iommu 0x20121 &disp_iommu 0x20122 &disp_iommu 0x20123 &disp_iommu 0x20124 &disp_iommu 0x20125 &disp_iommu 0x20126 &disp_iommu 0x20127 &disp_iommu 0x20128 &disp_iommu 0x20129 &disp_iommu 0x2012a &disp_iommu 0x2012b &disp_iommu 0x2012c &disp_iommu 0x2012d &disp_iommu 0x2012e>;
-		clocks = <&imgsys1_clk CLK_IMGSYS1_LARB9 &imgsys1_clk CLK_IMGSYS1_DIP>;
-		clock-names = "DIP_CG_IMG_LARB9", "DIP_CG_IMG_DIP";
+
+		imgsys_config: imgsys_config@15020000 {
+			#address-cells = <2>;
+			#size-cells = <2>;
+			compatible = "mediatek,imgsys", "syscon";
+			reg = <0x00 0x15020000 0x00 0x1000>;
+			power-domains = <&scpsys MT6789_POWER_DOMAIN_ISP>;
+			mediatek,larb = <&smi_larb9>;
+			iommus = <&disp_iommu 0x20120 &disp_iommu 0x20121 &disp_iommu 0x20122 &disp_iommu 0x20123 &disp_iommu 0x20124 &disp_iommu 0x20125 &disp_iommu 0x20126 &disp_iommu 0x20127 &disp_iommu 0x20128 &disp_iommu 0x20129 &disp_iommu 0x2012a &disp_iommu 0x2012b &disp_iommu 0x2012c &disp_iommu 0x2012d &disp_iommu 0x2012e>;
+			clocks = <&imgsys1_clk CLK_IMGSYS1_LARB9 &imgsys1_clk CLK_IMGSYS1_DIP>;
+			clock-names = "DIP_CG_IMG_LARB9", "DIP_CG_IMG_DIP";
+		};
 	};
 
 	dip_a0@15021000 {
@@ -280,20 +287,27 @@
 		reg = <0x00 0x1b000000 0x00 0x1000>;
 	};
 
-	aie@1b001000 {
+	aie-bus {
+		compatible = "simple-bus";
 		#address-cells = <2>;
 		#size-cells = <2>;
-		compatible = "mediatek,mt6789-aie", "mediatek,aie-hw2.0";
-		reg = <0x00 0x1b001000 0x00 0x1000>;
-		interrupts = <GIC_SPI 391 IRQ_TYPE_LEVEL_HIGH 0>;
-		power-domains = <&scpsys MT6789_POWER_DOMAIN_IPE>;
+		ranges;
 		dma-ranges = <0x02 0x00 0x02 0x00 0x01 0x00>;
-		clocks = <&ipesys_clk CLK_IPE_FD &ipesys_clk CLK_IPE_LARB20>;
-		clock-names = "aie", "FDVT_CLK_IPE_LARB20";
-		mboxes = <&gce 0x14 0x00 0x01 &gce_sec 0xb 0x00 0x01>;
-		iommus = <&disp_iommu 0x20280 &disp_iommu 0x20281 &disp_iommu 0x20282 &disp_iommu 0x20283>;
-		fdvt_frame_done = <0xb1>;
-		mediatek,larb = <&smi_larb20>;
+
+		aie@1b001000 {
+			#address-cells = <2>;
+			#size-cells = <2>;
+			compatible = "mediatek,mt6789-aie", "mediatek,aie-hw2.0";
+			reg = <0x00 0x1b001000 0x00 0x1000>;
+			interrupts = <GIC_SPI 391 IRQ_TYPE_LEVEL_HIGH 0>;
+			power-domains = <&scpsys MT6789_POWER_DOMAIN_IPE>;
+			clocks = <&ipesys_clk CLK_IPE_FD &ipesys_clk CLK_IPE_LARB20>;
+			clock-names = "aie", "FDVT_CLK_IPE_LARB20";
+			mboxes = <&gce 0x14 0x00 0x01 &gce_sec 0xb 0x00 0x01>;
+			iommus = <&disp_iommu 0x20280 &disp_iommu 0x20281 &disp_iommu 0x20282 &disp_iommu 0x20283>;
+			fdvt_frame_done = <0xb1>;
+			mediatek,larb = <&smi_larb20>;
+		};
 	};
 
 	fe@1b002000 {
@@ -302,21 +316,28 @@
 		interrupts = <GIC_SPI 393 IRQ_TYPE_LEVEL_HIGH 0>;
 	};
 
-	rsc@1b003000 {
+	rsc-bus {
+		compatible = "simple-bus";
 		#address-cells = <2>;
 		#size-cells = <2>;
-		compatible = "mediatek,rsc";
-		mediatek,larb = <&smi_larb20>;
+		ranges;
 		dma-ranges = <0x02 0x00 0x02 0x00 0x01 0x00>;
-		power-domains = <&scpsys MT6789_POWER_DOMAIN_IPE>;
-		iommus = <&disp_iommu 0x20284 &disp_iommu 0x20285>;
-		reg = <0x00 0x1b003000 0x00 0x1000>;
-		interrupts = <GIC_SPI 392 IRQ_TYPE_LEVEL_HIGH 0>;
-		mboxes = <&gce 0x15 0x00 0x01>;
-		gce-event-names = "rsc_eof";
-		gce-events = <&gce 0xb3>;
-		clocks = <&ipesys_clk CLK_IPE_RSC &ipesys_clk CLK_IPE_LARB20>;
-		clock-names = "RSC_CLK_IPE_RSC", "RSC_CLK_IPE_LARB20";
+
+		rsc@1b003000 {
+			#address-cells = <2>;
+			#size-cells = <2>;
+			compatible = "mediatek,rsc";
+			mediatek,larb = <&smi_larb20>;
+			power-domains = <&scpsys MT6789_POWER_DOMAIN_IPE>;
+			iommus = <&disp_iommu 0x20284 &disp_iommu 0x20285>;
+			reg = <0x00 0x1b003000 0x00 0x1000>;
+			interrupts = <GIC_SPI 392 IRQ_TYPE_LEVEL_HIGH 0>;
+			mboxes = <&gce 0x15 0x00 0x01>;
+			gce-event-names = "rsc_eof";
+			gce-events = <&gce 0xb3>;
+			clocks = <&ipesys_clk CLK_IPE_RSC &ipesys_clk CLK_IPE_LARB20>;
+			clock-names = "RSC_CLK_IPE_RSC", "RSC_CLK_IPE_LARB20";
+		};
 	};
 
 	depth@1b100000 {

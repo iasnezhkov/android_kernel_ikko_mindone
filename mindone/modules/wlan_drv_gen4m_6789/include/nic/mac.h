@@ -2552,6 +2552,15 @@ struct IE_TIMEOUT_INTERVAL {
 	uint32_t u4Value;
 } __KAL_ATTRIB_PACKED__;
 
+struct IE_BSS_MAX_IDLE_PERIOD {
+	uint8_t ucId;
+	uint8_t ucLength;
+	uint16_t u2MaxIdlePeriod;
+	uint8_t ucIdleOptions;
+} __KAL_ATTRIB_PACKED__;
+
+#define BSS_MAX_IDLE_PERIOD_OPTION_PROTECTED_KEEP_ALIVE_REQUIRED BIT(0)
+
 /* 7.3.2.20 Channel Switch Announcement element */
 struct IE_CHNL_SWITCH {
 	uint8_t ucId;
@@ -2627,14 +2636,6 @@ struct ACTION_NEIGHBOR_REPORT_FRAME {
 struct SUB_ELEMENT {
 	uint8_t ucSubID;
 	uint8_t ucLength;
-	/* mind_one (tail): true flexible array member, was [1] -- FORTIFY's
-	 * __builtin_object_size saw a fixed 1-byte field and flagged every
-	 * memcpy into it longer than 1 byte as a "field-spanning write"
-	 * (ais_fsm.c:6955, aisSendNeighborRequest). Matches the two other
-	 * aucOptInfo[] members already in this header (ACTION_BSS_MGT_*_FRAME
-	 * above). SUB_ELEMENT is only ever the last field of the enclosing
-	 * SUB_ELEMENT_LIST, so this is a safe FAM placement.
-	 */
 	uint8_t aucOptInfo[];
 } __KAL_ATTRIB_PACKED__;
 

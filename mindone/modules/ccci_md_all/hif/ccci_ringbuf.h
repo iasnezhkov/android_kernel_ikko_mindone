@@ -21,15 +21,6 @@ struct ccci_ringbuf {
 		unsigned int write;
 		unsigned int length;
 	} rx_control, tx_control;
-	/* MINDONE: C99 flexible array, not `buffer[0]` (07.09, F3884). A zero-length array
-	 * is an old GCC extension, and the bounds sanitizer treats it as having EXACTLY ZERO
-	 * elements: any `buffer + N` becomes an out-of-bounds access. On 6.12 this is a trap
-	 * that kills the CPU core with no explanation (`Internal error: UBSAN`); on 6.1 it
-	 * stays silent only because local bounds checking is not enabled there. A flexible
-	 * array describes the same memory layout but makes no bounds promise, and the check
-	 * does not touch it -- this is exactly how upstream fixes it.
-	 * sizeof(struct) does not change: both variants give zero.
-	 */
 	unsigned char buffer[];
 };
 #define CCCI_RINGBUF_CTL_LEN (8+sizeof(struct ccci_ringbuf)+8)

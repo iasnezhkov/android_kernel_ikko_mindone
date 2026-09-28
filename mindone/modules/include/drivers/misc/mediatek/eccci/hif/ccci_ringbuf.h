@@ -21,12 +21,6 @@ struct ccci_ringbuf {
 		unsigned int write;
 		unsigned int length;
 	} rx_control, tx_control;
-	/* MINDONE: C99 flexible array instead of a zero-length array (F3884). A copy of this
-	 * header also lives in ccci_md_all/hif/ -- edits are needed in BOTH: the ccci_ccif
-	 * module includes exactly this one, via -I.../eccci/hif, and editing only the sibling
-	 * copy changes nothing (verified by a run on the device on 07.09: the UBSAN report
-	 * stayed on the same line).
-	 */
 	unsigned char buffer[];
 };
 #define CCCI_RINGBUF_CTL_LEN (8+sizeof(struct ccci_ringbuf)+8)

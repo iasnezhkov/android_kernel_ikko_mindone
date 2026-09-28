@@ -764,7 +764,6 @@ static INT32 wmt_dbg_set_bt_link_status(INT32 par1, INT32 par2, INT32 par3)
 
 static int wmt_dbg_clk_reg_read(INT32 par1, INT32 par2, INT32 par3)
 {
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(4, 15, 0))
 	int value = 0;
 	struct regmap *map = (struct regmap *)wmt_lib_consys_clock_get_regmap();
 
@@ -775,14 +774,12 @@ static int wmt_dbg_clk_reg_read(INT32 par1, INT32 par2, INT32 par3)
 	}
 	regmap_read(map, par2, &value);
 	pr_info("%s clock ic register read, reg address:0x%x, value:0x%x\n", __func__, par2, value);
-#endif
 
 	return 0;
 }
 
 static int wmt_dbg_clk_reg_write(INT32 par1, INT32 par2, INT32 par3)
 {
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(4, 15, 0))
 	int value = 0;
 	struct regmap *map = (struct regmap *)wmt_lib_consys_clock_get_regmap();
 
@@ -795,7 +792,6 @@ static int wmt_dbg_clk_reg_write(INT32 par1, INT32 par2, INT32 par3)
 	regmap_write(map, par2, par3);
 	regmap_read(map, par2, &value);
 	pr_info("%s clock ic register write done, value after write:0x%x\n", __func__, value);
-#endif
 
 	return 0;
 }
@@ -1585,18 +1581,10 @@ ssize_t wmt_dbg_write(struct file *filp, const char __user *buffer, size_t count
 
 INT32 wmt_dev_dbg_setup(VOID)
 {
-#if (LINUX_VERSION_CODE <= KERNEL_VERSION(5, 6, 0))
-	static const struct file_operations wmt_dbg_fops = {
-		.owner = THIS_MODULE,
-		.read = wmt_dbg_read,
-		.write = wmt_dbg_write,
-	};
-#else
 	static const struct proc_ops wmt_dbg_fops = {
 		.proc_read = wmt_dbg_read,
 		.proc_write = wmt_dbg_write,
 	};
-#endif
 	INT32 i_ret = 0;
 
 	gWmtDbgEntry = proc_create(WMT_DBG_PROCNAME, 0664, NULL, &wmt_dbg_fops);

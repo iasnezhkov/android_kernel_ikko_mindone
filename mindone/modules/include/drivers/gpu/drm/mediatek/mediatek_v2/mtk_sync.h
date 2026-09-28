@@ -16,8 +16,6 @@
  */
 
 #ifdef __KERNEL__
-
-#include <linux/version.h>
 #include <linux/dma-fence.h>
 
 /**

@@ -27,9 +27,6 @@
 #include "mali_kbase_ipa.h"
 #include "mali_kbase_ipa_debugfs.h"
 
-#if (KERNEL_VERSION(4, 7, 0) > LINUX_VERSION_CODE)
-#define DEFINE_DEBUGFS_ATTRIBUTE DEFINE_SIMPLE_ATTRIBUTE
-#endif
 
 struct kbase_ipa_model_param {
 	char *name;

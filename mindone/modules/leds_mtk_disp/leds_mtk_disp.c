@@ -5,7 +5,7 @@
  */
 
 #include <linux/err.h>
-#include <linux/of.h>	/* of_device_get_match_data: 6.12 no longer pulls it in implicitly */
+#include <linux/of.h>
 #include <linux/property.h>
 #include <linux/kernel.h>
 #include <linux/module.h>
@@ -15,8 +15,7 @@
 #include <leds-mtk.h>
 #include "../drivers/gpu/drm/mediatek/mediatek_v2/mtk_panel_ext.h"
 
-#include <linux/of_device.h>	/* of_device_get_match_data: 6.12 no longer pulls it in implicitly */
-extern int __attribute__ ((weak)) mtk_drm_gateic_set_backlight(unsigned int level, char func);
+#include <linux/of_device.h>
 extern int __attribute__ ((weak)) _gate_ic_backlight_set(unsigned int brightness);
 
 #undef pr_fmt
@@ -140,9 +139,10 @@ static int __maybe_unused led_i2c_set(struct mt_led_data *mdev,
 	int version = mtk_drm_get_lcm_version();
 
 	pr_debug("set brightness %d, version:%d", brightness, version);
-	if (version == MTK_COMMON_LCM_DRV)
-		return mtk_drm_gateic_set_backlight(brightness, 2);
-	else if (version == MTK_LEGACY_LCM_DRV)
+	if (version == MTK_COMMON_LCM_DRV) {
+		pr_notice("%s,no gate ic backlight provider in this build\n", __func__);
+		return -ENODEV;
+	} else if (version == MTK_LEGACY_LCM_DRV)
 		return _gate_ic_backlight_set(brightness);
 
 	pr_notice("%s,gate ic is not ready yet\n", __func__);

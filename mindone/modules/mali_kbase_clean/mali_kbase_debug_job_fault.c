@@ -87,21 +87,8 @@ static bool kbase_ctx_has_no_event_pending(struct kbase_context *kctx)
 
 static int wait_for_job_fault(struct kbase_device *kbdev)
 {
-#if KERNEL_VERSION(4, 7, 0) <= LINUX_VERSION_CODE && \
-	KERNEL_VERSION(4, 15, 0) > LINUX_VERSION_CODE
-	int ret = wait_event_interruptible_timeout(kbdev->job_fault_wq,
-			kbase_is_job_fault_event_pending(kbdev),
-			msecs_to_jiffies(2000));
-	if (ret == 0)
-		return -EAGAIN;
-	else if (ret > 0)
-		return 0;
-	else
-		return ret;
-#else
 	return wait_event_interruptible(kbdev->job_fault_wq,
 			kbase_is_job_fault_event_pending(kbdev));
-#endif
 }
 
 /* wait until the fault happen and copy the event */

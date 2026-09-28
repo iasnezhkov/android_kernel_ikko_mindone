@@ -5,8 +5,6 @@
 
 #ifndef __MTK_BTIF_H_
 #define __MTK_BTIF_H_
-
-#include <linux/version.h>
 #include <linux/module.h>
 #include <linux/types.h>
 #include <linux/mutex.h>
@@ -66,7 +64,7 @@ enum _ENUM_BTIF_STATE_ {
 	B_S_MAX,
 };
 
-#if BTIF_DBG_SUPPORT
+#if defined(BTIF_DBG_SUPPORT) && BTIF_DBG_SUPPORT
 enum _ENUM_BTIF_TEST_CASE_ {
 	BTIF_TEST_RX_THREAD_BLOCK = 0,
 	BTIF_TEST_RX_IRQ_BLOCK = 1,
@@ -235,7 +233,7 @@ struct _mtk_btif_ {
 	struct list_head user_list;
 /* get btif dev pointer*/
 	void *private_data;
-#if BTIF_DBG_SUPPORT
+#if defined(BTIF_DBG_SUPPORT) && BTIF_DBG_SUPPORT
 /* Test btif thread */
 	struct delayed_work btif_rx_test_work;
 	enum _ENUM_BTIF_TEST_CASE_ test_case;

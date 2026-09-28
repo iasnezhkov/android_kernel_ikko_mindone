@@ -9,7 +9,6 @@
 #include <linux/workqueue.h>
 #include <linux/atomic.h>
 #include <linux/module.h>
-#include <linux/version.h>
 #include <linux/sched.h>
 #include <linux/proc_fs.h>
 #include <linux/seq_file.h>
@@ -61,7 +60,7 @@ static struct hrtimer g_HT_fdvfs_debug;
 static DEFINE_SPINLOCK(counter_info_lock);
 static int mfg_is_power_on;
 
-#define FDVFS_IPI_ATTR "ipi_dev:%p, ch:%d, DATA_LEN: %d, TIMEOUT: %d(ms)"
+#define FDVFS_IPI_ATTR "ipi_dev:%p, ch:%d, DATA_LEN: %zu, TIMEOUT: %d(ms)"
 
 static struct workqueue_struct *g_psEBWorkQueue;
 
@@ -223,7 +222,7 @@ void mtk_gpueb_dvfs_commit(unsigned long ulNewFreqID,
 {
 	int ret = 0;
 
-	struct fdvfs_ipi_data ipi_data;
+	struct fdvfs_ipi_data __maybe_unused ipi_data;
 	static unsigned long ulPreFreqID = -1;
 
 	if (ulNewFreqID != ulPreFreqID) {
@@ -261,7 +260,7 @@ void mtk_gpueb_dvfs_dcs_commit(unsigned int platform_freq_idx,
 		GED_DVFS_COMMIT_TYPE eCommitType,
 		unsigned int virtual_freq_in_MHz)
 {
-	struct fdvfs_ipi_data ipi_data;
+	struct fdvfs_ipi_data __maybe_unused ipi_data;
 	static unsigned int pre_platform_freq_idx = -1;
 	static unsigned int pre_virtual_freq_in_MHz = -1;
 
@@ -365,7 +364,7 @@ int mtk_gpueb_dvfs_set_taget_frame_time(unsigned int target_frame_time,
 	unsigned int target_margin)
 {
 	int ret = 0;
-	struct fdvfs_ipi_data ipi_data;
+	struct fdvfs_ipi_data __maybe_unused ipi_data;
 	static unsigned int pre_target_frame_time;
 	static unsigned int pre_target_margin;
 
@@ -888,7 +887,7 @@ void fdvfs_init(void)
 		}
 	}
 
-	GPUFDVFS_LOGI("succeed to register channel: (%d)(%d), ipi_size: %u\n",
+	GPUFDVFS_LOGI("succeed to register channel: (%d)(%d), ipi_size: %zu\n",
 		g_fast_dvfs_ipi_channel,
 		g_fdvfs_event_ipi_channel,
 		FDVFS_IPI_DATA_LEN);

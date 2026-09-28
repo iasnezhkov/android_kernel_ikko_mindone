@@ -12,7 +12,6 @@
 
 //#include <linux/interconnect.h>
 #include "mtk-interconnect.h"
-#include <mindone/compat.h>
 #include <linux/tracepoint.h>
 
 TRACE_EVENT(mtk_icc_set_bw,
@@ -33,9 +32,9 @@ TRACE_EVENT(mtk_icc_set_bw,
 	),
 
 	TP_fast_assign(
-		MINDONE_ASSIGN_STR(path_name, p->name);
-		MINDONE_ASSIGN_STR(dev, dev_name(p->reqs[i].dev));
-		MINDONE_ASSIGN_STR(node_name, n->name);
+		__assign_str(path_name);
+		__assign_str(dev);
+		__assign_str(node_name);
 		__entry->avg_bw = avg_bw;
 		__entry->peak_bw = peak_bw;
 		__entry->node_avg_bw = n->avg_bw;
@@ -65,8 +64,8 @@ TRACE_EVENT(mtk_icc_set_bw_end,
 	),
 
 	TP_fast_assign(
-		MINDONE_ASSIGN_STR(path_name, p->name);
-		MINDONE_ASSIGN_STR(dev, dev_name(p->reqs[0].dev));
+		__assign_str(path_name);
+		__assign_str(dev);
 		__entry->ret = ret;
 	),
 

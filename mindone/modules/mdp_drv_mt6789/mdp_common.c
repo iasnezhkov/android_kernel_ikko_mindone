@@ -1930,7 +1930,7 @@ s32 cmdq_mdp_flush(struct cmdqCommandStruct *desc, bool user_space)
 static void cmdq_mdp_pool_create(void)
 {
 	if (unlikely(mdp_pool.pool)) {
-		cmdq_msg("mdp buffer pool already created");
+		cmdq_log("mdp buffer pool already created");
 		return;
 	}
 
@@ -2740,7 +2740,7 @@ static void cmdq_mdp_begin_task_virtual(struct cmdqRecStruct *handle,
 		curr_time.tv_nsec > mdp_curr_pmqos->tv_usec * 1000);
 
 	CMDQ_LOG_PMQOS(
-		"%s%s handle:%p engine:%#llx thread:%d cur:%lu.%lu end:%lu.%lu list size:%u, is_mdp %d\n",
+		"%s%s handle:%p engine:%#llx thread:%d cur:%lld.%lu end:%llu.%llu list size:%u, is_mdp %d\n",
 		__func__, expired ? " expired" : "",
 		handle, handle->engineFlag, handle->thread,
 		curr_time.tv_sec, curr_time.tv_nsec,
@@ -3017,7 +3017,7 @@ static void cmdq_mdp_end_task_virtual(struct cmdqRecStruct *handle,
 		(curr_time.tv_sec == mdp_curr_pmqos->tv_sec &&
 		curr_time.tv_nsec > mdp_curr_pmqos->tv_usec * 1000);
 	CMDQ_LOG_PMQOS(
-		"%s%s handle:%p engine:%#llx thread:%d cur:%lu.%lu end:%lu.%lu list size:%u mdp:%u isp:%u\n",
+		"%s%s handle:%p engine:%#llx thread:%d cur:%lld.%lu end:%llu.%llu list size:%u mdp:%u isp:%u\n",
 		__func__, expired ? " expired" : "",
 		handle, handle->engineFlag, handle->thread,
 		curr_time.tv_sec, curr_time.tv_nsec * 1000,

@@ -309,12 +309,12 @@ struct PRIV_CONFIG_ENTRY {
 };
 
 struct GLUE_INFO;
+struct ADAPTER;
 
-/*
- * Table handlers: GLUE entries are called through this type with the glue pointer,
- * DRIVER_CORE entries are cast back to PFN_OID_HANDLER_FUNC (struct ADAPTER *) by
- * kalIoctl() — so the type here follows the glue handlers (kCFI-exact on 6.12).
- */
+typedef uint32_t(*PFN_OID_HANDLER_FUNC) (IN struct ADAPTER *prAdapter,
+					 IN void *pvBuf, IN uint32_t u4BufLen,
+					 OUT uint32_t *pu4OutInfoLen);
+
 typedef uint32_t(*PFN_OID_HANDLER_FUNC_REQ) (
 	IN struct GLUE_INFO *prGlueInfo,
 	IN OUT void *pvBuf, IN uint32_t u4BufLen,
@@ -334,8 +334,10 @@ struct WLAN_REQ_ENTRY {
 	u_int8_t fgSetBufLenChecking;
 	enum ENUM_OID_METHOD eOidMethod;
 	uint32_t u4InfoBufLen;
-	PFN_OID_HANDLER_FUNC_REQ pfOidQueryHandler; /* PFN_OID_HANDLER_FUNC */
-	PFN_OID_HANDLER_FUNC_REQ pfOidSetHandler; /* PFN_OID_HANDLER_FUNC */
+	PFN_OID_HANDLER_FUNC pfOidQueryHandler;
+	PFN_OID_HANDLER_FUNC pfOidSetHandler;
+	PFN_OID_HANDLER_FUNC_REQ pfOidQueryGlue;
+	PFN_OID_HANDLER_FUNC_REQ pfOidSetGlue;
 };
 
 struct NDIS_TRANSPORT_STRUCT {

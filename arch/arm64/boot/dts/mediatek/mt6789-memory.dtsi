@@ -158,6 +158,7 @@
 	smi-test {
 		compatible = "mediatek,smi-testcase";
 		mediatek,larbs = <&smi_larb2>;
+		status = "disabled";
 	};
 
 	smi_larb2: smi_larb2@1f002000 {
@@ -313,6 +314,7 @@
 	iommu_test {
 		compatible = "mediatek,ktf-iommu-test";
 		iommus = <&disp_iommu 0x00>;
+		status = "disabled";
 	};
 
 	mtk_iommu_debug {
@@ -332,30 +334,55 @@
 	mtk_iommu_test_dmaheap_normal {
 		compatible = "mediatek,dmaheap-normal";
 		iommus = <&disp_iommu 0x00>;
+		status = "disabled";
 	};
 
-	mtk_iommu_test0 {
+	iommu-test0-bus {
+		compatible = "simple-bus";
 		#address-cells = <2>;
 		#size-cells = <2>;
-		compatible = "mediatek,iommu-test-dom0";
+		ranges;
 		dma-ranges = <0x00 0x00 0x00 0x00 0x04 0x00>;
-		iommus = <&disp_iommu 0x00>;
+
+		mtk_iommu_test0 {
+			#address-cells = <2>;
+			#size-cells = <2>;
+			compatible = "mediatek,iommu-test-dom0";
+			iommus = <&disp_iommu 0x00>;
+			status = "disabled";
+		};
 	};
 
-	mtk_iommu_test1 {
+	iommu-test1-bus {
+		compatible = "simple-bus";
 		#address-cells = <2>;
 		#size-cells = <2>;
-		compatible = "mediatek,iommu-test-dom1";
+		ranges;
 		dma-ranges = <0x00 0x00 0x00 0x00 0x04 0x00>;
-		iommus = <&disp_iommu 0x10080>;
+
+		mtk_iommu_test1 {
+			#address-cells = <2>;
+			#size-cells = <2>;
+			compatible = "mediatek,iommu-test-dom1";
+			iommus = <&disp_iommu 0x10080>;
+			status = "disabled";
+		};
 	};
 
-	mtk_iommu_test2 {
+	iommu-test2-bus {
+		compatible = "simple-bus";
 		#address-cells = <2>;
 		#size-cells = <2>;
-		compatible = "mediatek,iommu-test-dom2";
+		ranges;
 		dma-ranges = <0x00 0x00 0x00 0x00 0x04 0x00>;
-		iommus = <&disp_iommu 0x20040>;
+
+		mtk_iommu_test2 {
+			#address-cells = <2>;
+			#size-cells = <2>;
+			compatible = "mediatek,iommu-test-dom2";
+			iommus = <&disp_iommu 0x20040>;
+			status = "disabled";
+		};
 	};
 
 	reserved@1401d000 {

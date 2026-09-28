@@ -17,7 +17,7 @@
 #include <linux/slab.h>
 #include <linux/string.h>
 #include <leds-mtk.h>
-#include "mtk_disp_notify.h"	/* MINDONE-BL-RESEND (F3811/K8): LK_PANEL_ON subscriber */
+#include "mtk_disp_notify.h"
 
 
 /****************************************************************************
@@ -31,14 +31,6 @@ static int mtk_set_brightness(struct led_classdev *led_cdev,
 
 struct mt_leds_desp_info {
 	int lens;
-	/* Proper C99 flexible array member. It used to be declared as leds[0], the old
-	 * zero-length GCC extension: for the bounds sanitizer such an array has ZERO
-	 * elements, so every index is out of bounds - even index 0. The allocation below
-	 * is a krealloc() sized for lens+1 pointers, so the access itself was always fine;
-	 * only the declaration lied. On 6.12 (UBSAN_LOCAL_BOUNDS) this was fatal:
-	 * "UBSAN: array index out of bounds" in mt_leds_parse_dt during led_disp_probe.
-	 * On 6.1 the same code was merely silent - the kernel is converting [0] to []
-	 * across the tree for exactly this reason. */
 	struct led_desp *leds[];
 };
 
@@ -222,7 +214,7 @@ static void led_debug_log(struct mt_led_data *s_led,
 
 	if (level == 0 || s_led->debug.count >= 5 ||
 		(s_led->debug.current_t - s_led->debug.last_t) > 1000000000) {
-		pr_info("%s", s_led->debug.buffer);
+		pr_debug("%s", s_led->debug.buffer);
 		s_led->debug.count = 0;
 		s_led->debug.buffer[strlen("[Light] Set directly ") +
 			strlen(s_led->conf.cdev.name)] = '\0';
@@ -305,10 +297,6 @@ int mtk_leds_brightness_set(char *name, int level)
 }
 EXPORT_SYMBOL(mtk_leds_brightness_set);
 
-/* MINDONE-BL-RESEND (F3811): re-push the last hardware brightness of a LED (e.g. "lcd-backlight")
- * through the same hw path. Needed after the panel is re-initialised (DCS 0x11/0x29 after the
- * LK takeover, MINDONE-LK-PANELON): a brightness written before display-on is lost in the panel,
- * and without a framework re-write (system_server not up yet) the AMOLED stays dark. */
 static int mtk_leds_brightness_resend(const char *name)
 {
 	struct mt_led_data *led_dat;
@@ -323,15 +311,10 @@ static int mtk_leds_brightness_resend(const char *name)
 	if (level > 0)
 		mtk_set_hw_brightness(led_dat, level);
 	mutex_unlock(&led_dat->led_access);
-	pr_info("MINDONE-BL-RESEND: %s level=%d", name, level);
+	pr_debug("backlight resend: %s level=%d\n", name, level);
 	return level;
 }
 
-/* MINDONE-BL-RESEND (F3811/K8): after the LK takeover the deferred panel display-on
- * (MINDONE-LK-PANELON, mtk_dsi.c) resets the AMOLED brightness register; the level the
- * lights HAL wrote earlier (led_dat->hw_brightness) must be re-sent once the panel is
- * really lit. Subscribe to the display notifier instead of being called through
- * symbol_get() from the DRM module. */
 static int mindone_bl_resend_notify(struct notifier_block *nb, unsigned long event, void *data)
 {
 	if (event != MTK_DISP_EVENT_LK_PANEL_ON)
@@ -599,7 +582,7 @@ static int __init mtk_leds_init(void)
 		goto err;
 	}
 
-	mtk_disp_notifier_register("leds_mtk", &mindone_bl_resend_nb);	/* MINDONE-BL-RESEND */
+	mtk_disp_notifier_register("leds_mtk", &mindone_bl_resend_nb);
 
 	pr_info("init end ---");
 	return 0;
@@ -612,7 +595,7 @@ static int __init mtk_leds_init(void)
 
 static void __exit mtk_leds_exit(void)
 {
-	mtk_disp_notifier_unregister(&mindone_bl_resend_nb);	/* MINDONE-BL-RESEND */
+	mtk_disp_notifier_unregister(&mindone_bl_resend_nb);
 	kfree(leds_info);
 	leds_info = NULL;
 }

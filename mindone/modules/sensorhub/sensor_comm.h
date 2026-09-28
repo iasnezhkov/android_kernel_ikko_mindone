@@ -63,13 +63,6 @@ struct sensor_comm_ctrl {
 	uint8_t command;
 	uint8_t length;
 	uint8_t crc8;
-	/* MINDONE: kzalloc(sizeof(*ctrl)+length) + memcpy(ctrl->data, ...) are both
-	 * in transceiver_comm_with(), but the compiler can't statically bound this old-style
-	 * zero-length array, so CONFIG_FORTIFY_SOURCE's runtime memcpy check sees a
-	 * declared size of 0 and flags every legitimate copy as "field-spanning write"
-	 * (transceiver.c:580). __counted_by(length) gives it the real bound (length is
-	 * set right before the copy); data[0]->data[] is the modern flexible-array form,
-	 * same zero-byte layout contribution, no ABI change. */
 	uint8_t data[] __counted_by(length) __aligned(4);
 } __packed __aligned(4);
 

@@ -799,13 +799,11 @@ int mt_get_pwm_clk_src(struct platform_device *pdev)
 	int i = 0;
 
 	for (i = PWM1_CLK; i < PWM_CLK_NUM; i++) {
-		pwm_clk[i] = devm_clk_get(&pdev->dev, pwm_clk_name[i]);
+		pwm_clk[i] = devm_clk_get_optional(&pdev->dev, pwm_clk_name[i]);
 		if (IS_ERR(pwm_clk[i])) {
+			pr_info("cannot get %s clock: %ld\n", pwm_clk_name[i],
+				PTR_ERR(pwm_clk[i]));
 			pwm_clk[i] = NULL;
-			pr_info("cannot get %s clock\n", pwm_clk_name[i]);
-		} else {
-			pr_info("[PWM] get %s clock, %p\n",
-				pwm_clk_name[i], pwm_clk[i]);
 		}
 	}
 	return 0;

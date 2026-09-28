@@ -71,14 +71,14 @@ void mtk_jpeg_set_enc_src(struct mtk_jpeg_ctx *ctx,  void __iomem *base,
 		dma_addr = vb2_dma_contig_plane_dma_addr(src_buf, i) +
 			   src_buf->planes[i].data_offset;
 		if (!i) {
-			pr_info("%s %d dma_addr %llx", __func__, __LINE__, dma_addr);
+			pr_debug("%s %d dma_addr %llx", __func__, __LINE__, dma_addr);
 			writel(dma_addr, base + JPEG_ENC_SRC_LUMA_ADDR);
 #ifdef CONFIG_ARCH_DMA_ADDR_T_64BIT
 			if (support_34bit)
 				writel(dma_addr >> 32, base + JPEG_ENC_SRC_LUMA_ADDR_EXT);
 #endif
 		} else {
-			pr_info("%s %d dma_addr %llx", __func__, __LINE__, dma_addr);
+			pr_debug("%s %d dma_addr %llx", __func__, __LINE__, dma_addr);
 			writel(dma_addr, base + JPEG_ENC_SRC_CHROMA_ADDR);
 #ifdef CONFIG_ARCH_DMA_ADDR_T_64BIT
 			if (support_34bit)
@@ -97,12 +97,18 @@ void mtk_jpeg_set_enc_dst(struct mtk_jpeg_ctx *ctx, void __iomem *base,
 	u32 dma_addr_offsetmask;
 
 	dma_addr = vb2_dma_contig_plane_dma_addr(dst_buf, 0);
+	size = vb2_plane_size(dst_buf, 0);
+	if (ctx->dst_offset >= size) {
+		pr_err("%s: data_offset %u beyond the %zu-byte buffer\n",
+		       __func__, ctx->dst_offset, size);
+		ctx->dst_offset = 0;
+	}
 	dma_addr += ctx->dst_offset;
+	size -= ctx->dst_offset;
 	dma_addr_offset = 0;
 	dma_addr_offsetmask = dma_addr & JPEG_ENC_DST_ADDR_OFFSET_MASK;
-	size = vb2_plane_size(dst_buf, 0);
 
-	pr_info("%s output size %lu dma_addr %llx", __func__, size, (dma_addr - ctx->dst_offset));
+	pr_debug("%s output size %lu dma_addr %llx", __func__, size, (dma_addr - ctx->dst_offset));
 
 	writel(dma_addr_offset & ~0xf, base + JPEG_ENC_OFFSET_ADDR);
 	writel(dma_addr_offsetmask & 0xf, base + JPEG_ENC_BYTE_OFFSET_MASK);
@@ -186,7 +192,7 @@ void mtk_jpeg_set_enc_params(struct mtk_jpeg_ctx *ctx,  void __iomem *base)
 	writel(ctx->restart_interval, base + JPEG_ENC_RST_MCU_NUM);
 
 
-	pr_info("fmt %d, w,h %d,%d, enable_exif %d, enc_quality %d, restart_interval %d,img_stride %d, mem_stride %d\n",
+	pr_debug("fmt %d, w,h %d,%d, enable_exif %d, enc_quality %d, restart_interval %d,img_stride %d, mem_stride %d\n",
 		enc_format, width, height,
 		ctx->enable_exif, enc_quality, ctx->restart_interval,
 		img_stride, mem_stride);

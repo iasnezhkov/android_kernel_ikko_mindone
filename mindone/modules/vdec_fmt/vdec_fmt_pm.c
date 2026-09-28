@@ -150,7 +150,7 @@ void fmt_start_dvfs_emi_bw(struct mtk_vdec_fmt *fmt, struct fmt_pmqos pmqos_para
 			pmqos_param.wdma_datasize);
 
 	ktime_get_real_ts64(&curr_time);
-	fmt_debug(1, "curr time tv_sec %ld tv_nsec %ld", curr_time.tv_sec, curr_time.tv_nsec);
+	fmt_debug(1, "curr time tv_sec %lld tv_nsec %ld", curr_time.tv_sec, curr_time.tv_nsec);
 
 	FMT_TIMER_GET_DURATION_IN_MS(curr_time, pmqos_param, duration);
 	request_freq64 = (u64)pmqos_param.pixel_size * 1000 / duration;
@@ -177,7 +177,7 @@ void fmt_start_dvfs_emi_bw(struct mtk_vdec_fmt *fmt, struct fmt_pmqos pmqos_para
 			volt);
 		}
 	}
-	fmt_debug(1, "rdma cal MMqos (%d, %d, %d)",
+	fmt_debug(1, "rdma cal MMqos (%d, %d, %lu)",
 			pmqos_param.rdma_datasize,
 			pmqos_param.pixel_size,
 			request_freq);
@@ -189,7 +189,7 @@ void fmt_start_dvfs_emi_bw(struct mtk_vdec_fmt *fmt, struct fmt_pmqos pmqos_para
 			MBps_to_icc(bandwidth), 0);
 		}
 		fmt_debug(1, "rdma bandwidth %d", bandwidth);
-		fmt_debug(1, "wdma cal MMqos (%d, %d, %d)",
+		fmt_debug(1, "wdma cal MMqos (%d, %d, %lu)",
 			pmqos_param.wdma_datasize,
 			pmqos_param.pixel_size,
 			request_freq);

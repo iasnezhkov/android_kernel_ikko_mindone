@@ -5,7 +5,6 @@
 
 #include <linux/module.h>       /* needed by all modules */
 #include <drivers/misc/mediatek/smi/mtk-smi-dbg.h>
-#include <mindone/compat.h>
 #include <linux/init.h>         /* needed by module macros */
 #include <linux/fs.h>           /* needed by file_operations* */
 #include <linux/miscdevice.h>   /* needed by miscdevice* */
@@ -695,7 +694,7 @@ uint32_t vcp_wait_ready_sync(enum feature_id id)
 			vcp_dump_last_regs(1);
 			for (j = 0; j < NUM_FEATURE_ID; j++)
 				if (feature_table[j].enable)
-					pr_info("[VCP] Active feature id %d cnt\n",
+					pr_info("[VCP] Active feature id %d cnt %d\n",
 						j, feature_table[j].enable);
 			mtk_smi_dbg_hang_detect("VCP");
 			if (vcp_ee_enable)
@@ -804,7 +803,7 @@ void vcp_disable_pm_clk(enum feature_id id)
 		del_timer(&vcp_ready_timer[VCP_A_ID].tl);
 #endif
 		vcp_wait_core_stop_timeout(1);
-		pr_info("[VCP][Debug] bus_dbg_out[0x%x]: 0x%x, waitCnt=%u\n", VCP_BUS_DEBUG_OUT,
+		pr_info("[VCP][Debug] bus_dbg_out[%p]: 0x%x, waitCnt=%u\n", VCP_BUS_DEBUG_OUT,
 			readl(VCP_BUS_DEBUG_OUT), waitCnt);
 
 		vcp_disable_dapc();
@@ -1655,9 +1654,7 @@ static int vcp_reserve_memory_ioremap(struct platform_device *pdev)
 			devm_kzalloc(&pdev->dev, sizeof(*pdev->dev.dma_parms), GFP_KERNEL);
 	}
 	if (pdev->dev.dma_parms) {
-		ret = MINDONE_DMA_SET_MAX_SEG_SIZE(&pdev->dev, (unsigned int)DMA_BIT_MASK(64));
-		if (ret)
-			dev_info(&pdev->dev, "Failed to set DMA segment size\n");
+		dma_set_max_seg_size(&pdev->dev, (unsigned int)DMA_BIT_MASK(64));
 	}
 
 	for (id = 0; id < NUMS_MEM_ID; id++) {
@@ -2188,9 +2185,7 @@ static int vcp_io_device_probe(struct platform_device *pdev)
 			devm_kzalloc(&pdev->dev, sizeof(*pdev->dev.dma_parms), GFP_KERNEL);
 	}
 	if (pdev->dev.dma_parms) {
-		ret = MINDONE_DMA_SET_MAX_SEG_SIZE(&pdev->dev, (unsigned int)DMA_BIT_MASK(64));
-		if (ret)
-			dev_info(&pdev->dev, "Failed to set DMA segment size\n");
+		dma_set_max_seg_size(&pdev->dev, (unsigned int)DMA_BIT_MASK(64));
 	}
 
 	// VCP iommu devices
@@ -2432,13 +2427,13 @@ static int vcp_device_probe(struct platform_device *pdev)
 		vcp_mbox_info[i].mbdev = &vcp_mboxdev;
 		ret = mtk_mbox_probe(pdev, vcp_mbox_info[i].mbdev, i);
 		if (ret < 0 || vcp_mboxdev.info_table[i].irq_num < 0) {
-			pr_notice("[VCP] mbox%d probe fail\n", i, ret);
+			pr_notice("[VCP] mbox%d probe fail %d\n", i, ret);
 			continue;
 		}
 
 		ret = enable_irq_wake(vcp_mboxdev.info_table[i].irq_num);
 		if (ret < 0) {
-			pr_notice("[VCP]mbox%d enable irq fail\n", i, ret);
+			pr_notice("[VCP]mbox%d enable irq fail %d\n", i, ret);
 			continue;
 		}
 		mbox_setup_pin_table(i);

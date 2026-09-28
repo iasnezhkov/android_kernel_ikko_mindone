@@ -19,7 +19,6 @@
 #include <linux/device.h>
 #include <linux/firmware.h>
 #include <linux/slab.h>
-#include <linux/version.h>
 #include <linux/interrupt.h>
 #include <linux/debugfs.h>
 #include <linux/miscdevice.h>
@@ -172,7 +171,7 @@ static void aw8624x_play_stop(struct aw_haptic *aw_haptic)
 	uint8_t val = 0;
 	int cnt = 40;
 
-	aw_info("enter");
+	aw_dbg("enter");
 	aw_haptic->play_mode = AW_STANDBY_MODE;
 	val = AW8624X_BIT_PLAYCFG4_STOP_ON;
 	haptic_nv_i2c_writes(aw_haptic, AW8624X_REG_PLAYCFG4, &val, AW_I2C_BYTE_ONE);

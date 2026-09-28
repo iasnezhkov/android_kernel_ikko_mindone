@@ -569,7 +569,6 @@ void put_task_stack(struct task_struct *tsk)
 	if (refcount_dec_and_test(&tsk->stack_refcount))
 		release_task_stack(tsk);
 }
-EXPORT_SYMBOL_GPL(put_task_stack);	/* MINDONE: aee_aed needs it, as on our 6.1 tree */
 #endif
 
 void free_task(struct task_struct *tsk)

@@ -37,7 +37,7 @@ GED_ERROR ged_gpufreq_init(void)
 {
 	int i, j = 0;
 	int min_freq, freq_scale = 0;
-	unsigned int core_num = 0;
+	unsigned int __maybe_unused core_num = 0;
 	const struct gpufreq_opp_info *opp_table;
 	struct gpufreq_core_mask_info *core_mask_table;
 
@@ -92,7 +92,7 @@ GED_ERROR ged_gpufreq_init(void)
 		*(g_mask_table + i) = *(core_mask_table + i);
 
 	if (!core_mask_table || !g_mask_table) {
-		GED_LOGE("%s: Failed to init core mask table", __func__);
+		GED_LOGI("%s: Failed to init core mask table", __func__);
 		return GED_OK;
 	}
 

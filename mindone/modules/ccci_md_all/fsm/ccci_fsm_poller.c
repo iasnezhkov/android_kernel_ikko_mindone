@@ -79,6 +79,7 @@ static int fsm_poll_main(void *data)
 		struct ccci_fsm_ctl, poller_ctl);
 	int ret, assert_md_type, count;
 	enum MD_STATE md_state;
+	unsigned long idle;
 
 	while (1) {
 		md_state = ccci_fsm_get_md_state(poller_ctl->md_id);
@@ -140,7 +141,9 @@ static int fsm_poll_main(void *data)
 			}
 		}
 next:
-		msleep(POLLING_INTERVAL_TIME);
+		idle = msecs_to_jiffies(POLLING_INTERVAL_TIME);
+		while (idle)
+			idle = schedule_timeout_idle(idle);
 	}
 	return 0;
 }

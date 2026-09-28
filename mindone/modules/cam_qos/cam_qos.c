@@ -812,13 +812,6 @@ void mtk_pmqos_clr(enum ISP_IRQ_TYPE_ENUM module)
 }
 
 
-/* MINDONE (F2500): dev_pm_opp_find_freq_ceil_by_volt() is absent from this kernel, so the
- * module could not be loaded at all. Express it through the OPP calls that ARE exported here:
- * walk the operating points upwards and keep the highest frequency whose voltage still fits
- * into the given one. Returns a reference-held opp, exactly like the original, so the caller
- * keeps its dev_pm_opp_put(). Semantics reconstructed from the call site, not copied from the
- * kernel: opp_table internals are not reachable from a module.
- */
 static struct dev_pm_opp *mindone_opp_by_volt(struct device *dev, long u_volt)
 {
 	struct dev_pm_opp *opp;

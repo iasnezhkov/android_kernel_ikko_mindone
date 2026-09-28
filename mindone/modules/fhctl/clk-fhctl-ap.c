@@ -256,6 +256,11 @@ static int ap_init_v1(struct pll_dts *array, struct match *match)
 
 	priv_data = kzalloc(sizeof(*priv_data), GFP_KERNEL);
 	hdlr = kzalloc(sizeof(*hdlr), GFP_KERNEL);
+	if (!priv_data || !hdlr) {
+		kfree(priv_data);
+		kfree(hdlr);
+		return -ENOMEM;
+	}
 	init_fh_domain(array->domain,
 			array->comp,
 			array->fhctl_base,
@@ -328,7 +333,7 @@ static int get_hw_sem(void)
 
 		udelay(10);
 	}
-	FHDBG("ap_sema_reg<%x>, i<%d>\n",
+	FHDBG("ap_sema_reg<%p>, i<%d>\n",
 			ap_sema_reg, i);
 	return -1;
 }
@@ -654,13 +659,18 @@ static int ap_init_v2(struct pll_dts *array, struct match *match)
 	struct fh_pll_data *data;
 	int mask = BIT(fh_id);
 
-	FHDBG("array<%x>,%s %s\n",
+	FHDBG("array<%p>,%s %s\n",
 			array,
 			array->pll_name,
 			array->domain);
 
 	priv_data = kzalloc(sizeof(*priv_data), GFP_KERNEL);
 	hdlr = kzalloc(sizeof(*hdlr), GFP_KERNEL);
+	if (!priv_data || !hdlr) {
+		kfree(priv_data);
+		kfree(hdlr);
+		return -ENOMEM;
+	}
 	init_fh_domain(array->domain,
 			array->comp,
 			array->fhctl_base,

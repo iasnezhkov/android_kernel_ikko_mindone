@@ -13,7 +13,6 @@
 */
 
 #include <linux/init.h>
-#include <mindone/compat.h>
 #include <linux/module.h>
 #include <linux/types.h>
 #include <linux/kernel.h>
@@ -791,114 +790,6 @@ const struct file_operations WIFI_fops = {
 	.write = WIFI_write,
 };
 
-
-/* ============ MINDONE: turn on Wi-Fi without userspace ============
- * Why: on kernel 6 the framework does not start (F882), so nobody writes 1
- * and S to /dev/wmtWifi. This module issues those two commands to itself via
- * delayed work, calling the SAME functions as WIFI_write() -- no /dev node,
- * ueventd, init, SELinux, or Magisk needed. The standard WIFI_write() path is
- * UNCHANGED: a later real write is short-circuited by the powered/wlan_mode
- * checks. Log messages are ASCII-only (parsed back out of the logo partition).
- */
-static int mindone_wifi_auto = 1;
-module_param(mindone_wifi_auto, int, 0644);
-MODULE_PARM_DESC(mindone_wifi_auto, "MINDONE: turn wifi on from module (0 = stock behaviour)");
-
-static int mindone_wifi_delay_ms = 12000;
-module_param(mindone_wifi_delay_ms, int, 0644);
-MODULE_PARM_DESC(mindone_wifi_delay_ms, "MINDONE: delay before first attempt, ms");
-
-static int mindone_wifi_retry_ms = 3000;
-module_param(mindone_wifi_retry_ms, int, 0644);
-MODULE_PARM_DESC(mindone_wifi_retry_ms, "MINDONE: pause between retries, ms");
-
-static int mindone_wifi_max_tries = 20;
-module_param(mindone_wifi_max_tries, int, 0644);
-MODULE_PARM_DESC(mindone_wifi_max_tries, "MINDONE: how many attempts in total");
-
-static int mindone_wifi_tries;
-static struct delayed_work mindone_wifi_dwork;
-
-#define MINDONE_LOG(fmt, arg...) pr_info("MINDONE-WIFI: " fmt, ##arg)
-
-static void mindone_wifi_worker(struct work_struct *work)
-{
-	struct net_device *netdev = NULL;
-	struct PARAM_CUSTOM_P2P_SET_STRUCT p2pmode;
-	int wait_cnt = 0;
-	int done = 0;
-
-	mindone_wifi_tries++;
-	MINDONE_LOG("tick %d/%d powered=%d mode=%d handler=%p iface=%s\n",
-		    mindone_wifi_tries, mindone_wifi_max_tries,
-		    powered, wlan_mode, pf_set_p2p_mode, ifname);
-
-	down(&wr_mtx);
-
-	/* --- equivalent of writing '1' to /dev/wmtWifi: chip power --- */
-	if (powered == 0) {
-#if (CFG_ANDORID_CONNINFRA_SUPPORT == 1)
-		if (mtk_wcn_wlan_func_ctrl(WLAN_OPID_FUNC_ON) == MTK_WCN_BOOL_FALSE) {
-#else
-		if (mtk_wcn_wmt_func_on(WMTDRV_TYPE_WIFI) == MTK_WCN_BOOL_FALSE) {
-#endif
-			MINDONE_LOG("step1: func_on FAILED\n");
-			goto out;
-		}
-		powered = 1;
-		wlan_mode = WLAN_MODE_HALT;
-		MINDONE_LOG("step1: chip powered on\n");
-	} else {
-		MINDONE_LOG("step1: already powered\n");
-	}
-
-	/* --- equivalent of writing 'S': station mode --- */
-	if (pf_set_p2p_mode == NULL) {
-		MINDONE_LOG("stepS: p2p handler not registered yet\n");
-		goto out;
-	}
-
-	netdev = dev_get_by_name(&init_net, ifname);
-	while (netdev == NULL && wait_cnt < 10) {
-		msleep(300);
-		wait_cnt++;
-		netdev = dev_get_by_name(&init_net, ifname);
-	}
-	if (netdev == NULL) {
-		MINDONE_LOG("stepS: iface %s did not appear in 3s\n", ifname);
-		goto out;
-	}
-
-	if (wlan_mode == WLAN_MODE_STA_P2P) {
-		MINDONE_LOG("stepS: already in STA mode\n");
-		done = 1;
-	} else {
-		p2pmode.u4Enable = 1;
-		p2pmode.u4Mode = 0;
-		if (pf_set_p2p_mode(netdev, p2pmode) != 0) {
-			MINDONE_LOG("stepS: set_p2p_mode FAILED\n");
-		} else {
-			wlan_mode = WLAN_MODE_STA_P2P;
-			done = 1;
-			MINDONE_LOG("stepS: STA mode set, %s is up\n", ifname);
-		}
-	}
-	dev_put(netdev);
-
-out:
-	up(&wr_mtx);
-	if (done) {
-		MINDONE_LOG("DONE after %d tries\n", mindone_wifi_tries);
-		return;
-	}
-	if (mindone_wifi_tries < mindone_wifi_max_tries)
-		schedule_delayed_work(&mindone_wifi_dwork,
-				      msecs_to_jiffies(mindone_wifi_retry_ms));
-	else
-		MINDONE_LOG("GIVING UP after %d tries\n", mindone_wifi_tries);
-}
-/* ============ end of MINDONE insert ============ */
-
 static int WIFI_init(void)
 {
 	int32_t alloc_ret = 0;
@@ -935,7 +826,7 @@ static int WIFI_init(void)
 		goto error;
 
 #if CREATE_NODE_DYNAMIC	/* mknod replace */
-	wmtwifi_class = MINDONE_CLASS_CREATE("wmtWifi");
+	wmtwifi_class = class_create("wmtWifi");
 	if (IS_ERR(wmtwifi_class))
 		goto error;
 	wmtwifi_dev = device_create(wmtwifi_class, NULL, wifi_devno, NULL,
@@ -957,18 +848,6 @@ static int WIFI_init(void)
 		goto error;
 	}
 #endif
-	/* MINDONE: scheduled LAST, once wr_mtx is already initialized
-	 * (sema_init at the start of WIFI_init) and the char device is created. */
-	if (mindone_wifi_auto) {
-		INIT_DELAYED_WORK(&mindone_wifi_dwork, mindone_wifi_worker);
-		MINDONE_LOG("armed: first attempt in %d ms, up to %d tries\n",
-			    mindone_wifi_delay_ms, mindone_wifi_max_tries);
-		schedule_delayed_work(&mindone_wifi_dwork,
-				      msecs_to_jiffies(mindone_wifi_delay_ms));
-	} else {
-		MINDONE_LOG("disabled by module param\n");
-	}
-
 	return 0;
 
 error:
@@ -993,9 +872,6 @@ error:
 
 static void WIFI_exit(void)
 {
-	if (mindone_wifi_auto)
-		cancel_delayed_work_sync(&mindone_wifi_dwork);
-
 #if CREATE_NODE_DYNAMIC
 	if (wmtwifi_dev && !IS_ERR(wmtwifi_dev)) {
 		device_destroy(wmtwifi_class, wifi_devno);

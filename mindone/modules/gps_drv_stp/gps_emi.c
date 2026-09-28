@@ -9,7 +9,6 @@
 *******************************************************************************/
 #ifdef CONFIG_MTK_GPS_EMI
 #include <linux/kernel.h>
-#include <mindone/compat.h>
 #include <linux/module.h>
 #include <linux/init.h>
 #include <linux/types.h>
@@ -22,12 +21,7 @@
 #include <linux/io.h>
 #include <linux/uaccess.h>
 #include <linux/printk.h>
-#include <linux/version.h>
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 4, 0)
 #include <asm/mmu.h>
-#else
-#include <asm/memblock.h>
-#endif
 #include "gps.h"
 
 #ifdef pr_fmt
@@ -45,9 +39,7 @@
 #define IOCTL_MNL_NVRAM_MEM_TO_FILE  3
 #define IOCTL_ADC_CAPTURE_ADDR_GET   4
 
-#if defined(CONFIG_MACH_MT6765) || defined(CONFIG_MACH_MT6761) || defined(CONFIG_MACH_MT6768)\
-|| (defined(CONFIG_MACH_MT6779) && (LINUX_VERSION_CODE < KERNEL_VERSION(4, 19, 0)))\
-|| defined(CONFIG_MACH_MT6771) || defined(CONFIG_MACH_MT6775) || defined(CONFIG_MACH_MT6758)
+#if defined(CONFIG_MACH_MT6765) || defined(CONFIG_MACH_MT6761) || defined(CONFIG_MACH_MT6768) || defined(CONFIG_MACH_MT6771) || defined(CONFIG_MACH_MT6775) || defined(CONFIG_MACH_MT6758)
 int gps_emi_mpu_region = -1;
 int gps_emi_base_addr_offset = -1;
 int gps_emi_mpu_size = -1;
@@ -57,9 +49,7 @@ int gps_emi_mpu_size = -1;
 #endif
 #endif
 
-#if defined(CONFIG_MACH_MT6873) || defined(CONFIG_MACH_MT6853) || defined(CONFIG_MACH_MT6893)\
-|| defined(CONFIG_MACH_MT6833) || defined(CONFIG_MACH_MT6781)\
-|| (defined(CONFIG_MACH_MT6779) && (LINUX_VERSION_CODE >= KERNEL_VERSION(4, 19, 0)))
+#if defined(CONFIG_MACH_MT6873) || defined(CONFIG_MACH_MT6853) || defined(CONFIG_MACH_MT6893) || defined(CONFIG_MACH_MT6833) || defined(CONFIG_MACH_MT6781) || defined(CONFIG_MACH_MT6779)
 #define GPS_EMI_NEW_API
 int gps_emi_mpu_region = -1;
 int gps_emi_base_addr_offset = -1;
@@ -158,11 +148,6 @@ int gps_emi_get_reserved_memory(struct device *dev)
 	gps_emi_base_addr_offset = (2*SZ_1M + SZ_1M/2 + 0x1000);
 	gps_emi_mpu_size = (SZ_1M + SZ_1M/2 - 0x2000);
 #endif
-#if defined(CONFIG_MACH_MT6779) && (LINUX_VERSION_CODE < KERNEL_VERSION(4, 19, 0))
-	gps_emi_mpu_region = 29;
-	gps_emi_base_addr_offset = (3*SZ_1M + 0x10000);
-	gps_emi_mpu_size = (0xF0000);
-#endif
 #if defined(CONFIG_MACH_MT6771) || defined(CONFIG_MACH_MT6775) || defined(CONFIG_MACH_MT6758)
 	gps_emi_mpu_region = 30;
 	gps_emi_base_addr_offset = (SZ_1M);
@@ -182,7 +167,7 @@ int gps_emi_get_reserved_memory(struct device *dev)
 	gps_emi_mpu_domain_ap = 0;
 	gps_emi_mpu_domain_conn = 2;
 #endif
-#if defined(CONFIG_MACH_MT6779) && (LINUX_VERSION_CODE >= KERNEL_VERSION(4, 19, 0))
+#if defined(CONFIG_MACH_MT6779)
 	gps_emi_mpu_region = 29;
 	gps_emi_base_addr_offset = (3*SZ_1M + 0x10000);
 	gps_emi_mpu_size = (0xF0000);
@@ -516,7 +501,7 @@ static int gps_emi_mod_init(void)
 		GPS_ERR("cdev_add fail: %d\n", err);
 		goto err_out;
 	}
-	devobj->cls = MINDONE_CLASS_CREATE("gpsemi");
+	devobj->cls = class_create("gpsemi");
 	if (IS_ERR(devobj->cls)) {
 		GPS_ERR("Unable to create class, err = %d\n", (int)PTR_ERR(devobj->cls));
 	goto err_out;

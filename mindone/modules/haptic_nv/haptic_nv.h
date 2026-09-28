@@ -67,7 +67,7 @@
 #define AW_DRV_WIDTH_MIN			(0)
 #define AW_DRV_WIDTH_MAX			(255)
 #define AW_BULLET_NR_DEF_VAL			(0)
-#define CPU_LATENCY_QOC_VALUE			(0)
+#define CPU_LATENCY_QOC_VALUE			(400)
 #define AW_SEQUENCER_LOOP_SIZE			(4)
 #define AW_RAMDATA_SHOW_COLUMN			(16)
 #define AW_READ_CHIPID_RETRIES			(5)
@@ -224,17 +224,10 @@ enum {
 };
 #endif
 
-#if KERNEL_VERSION(4, 4, 1) >= LINUX_VERSION_CODE
-#define TIMED_OUTPUT
-#endif
 
-#if KERNEL_VERSION(5, 10, 0) <= LINUX_VERSION_CODE
 #define KERNEL_OVER_5_10
-#endif
 
-#if KERNEL_VERSION(6, 1, 0) <= LINUX_VERSION_CODE
 #define KERNEL_OVER_6_1
-#endif
 
 #ifdef TIMED_OUTPUT
 #include <../../../drivers/staging/android/timed_output.h>
@@ -477,6 +470,7 @@ struct aw_i2c_info {
 struct aw_haptic_audio {
 	int delay_val;
 	int timer_val;
+	bool suspended_active;
 	struct mutex lock;
 	struct hrtimer timer;
 	struct list_head list;
@@ -621,6 +615,7 @@ struct aw_haptic {
 	struct aw_haptic_audio haptic_audio;
 	struct workqueue_struct *work_queue;
 	struct pm_qos_request aw_pm_qos_req_vb;
+	struct mutex qos_lock;
 };
 
 struct aw_haptic_container {

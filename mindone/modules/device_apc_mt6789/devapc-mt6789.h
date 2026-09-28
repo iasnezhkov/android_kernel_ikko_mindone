@@ -13,8 +13,8 @@
  ******************************************************************************/
 /* dbg status default setting */
 #define PLAT_DBG_UT_DEFAULT		false
-#define PLAT_DBG_KE_DEFAULT		false /* MINDONE F2943: violation = log+AEE, not BUG */
-#define PLAT_DBG_AEE_DEFAULT		false /* MINDONE F2943: WARN only, no AEE reboot */
+#define PLAT_DBG_KE_DEFAULT		false
+#define PLAT_DBG_AEE_DEFAULT		false
 #define PLAT_DBG_WARN_DEFAULT		true
 #define PLAT_DBG_DAPC_DEFAULT		false
 

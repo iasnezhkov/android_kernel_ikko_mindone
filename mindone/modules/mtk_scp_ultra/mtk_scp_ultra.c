@@ -3,7 +3,6 @@
 // Copyright (c) 2018 MediaTek Inc.
 
 #include <linux/module.h>
-#include <mindone/compat-sound.h>
 #include "mtk-base-afe.h"
 #include "mtk-sram-manager.h"
 
@@ -45,7 +44,7 @@ int mtk_scp_ultra_allocate_mem(struct snd_pcm_substream *substream,
 {
 	struct snd_dma_buffer *dma_buf = &substream->dma_buffer;
 	struct snd_soc_pcm_runtime *rtd = substream->private_data;
-	int id = MINDONE_RTD_TO_CPU(rtd, 0)->id;
+	int id = snd_soc_rtd_to_cpu(rtd, 0)->id;
 	struct mtk_base_scp_ultra *scp_ultra = get_scp_ultra_base();
 	struct audio_ultra_dram *ultra_resv_mem = &scp_ultra->ultra_reserve_dram;
 	int buf_offset;
@@ -78,10 +77,10 @@ int mtk_scp_ultra_allocate_mem(struct snd_pcm_substream *substream,
 #endif
 
 	dev_info(scp_ultra->dev,
-		"%s(), ultra VA:0x%p,PA:0x%lx,size:%d,using_sram=0\n",
+		"%s(), ultra VA:0x%p,PA:0x%llx,size:%zu,using_sram=0\n",
 		__func__,
 		dma_buf->area,
-		dma_buf->addr,
+		(unsigned long long)dma_buf->addr,
 		dma_buf->bytes);
 	return 0;
 }

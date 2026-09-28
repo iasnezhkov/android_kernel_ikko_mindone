@@ -23,15 +23,7 @@
 #include <mtk_gpu_power_sspm_ipi.h>
 #endif
 
-extern void mindone_mali_mark(int step);
 DEFINE_MUTEX(g_mfg_lock);
-/* MINDONE-SAFEOPP: cold boot requested the MAXIMUM OPP (index 0, BSS init), which sent
- * the very first frequency commit into a PROVEN crashing voltage-raise path
- * (F664/F670/F671). 44 is the measured minimum index (390 MHz) of THIS table
- * (F664: opp_num=45, indices 0..44); matches what our own gpufreq probe already
- * commits safely (F667). First-stage workaround - revisit once the hang's root
- * cause is found (see tools/scripts/patch-mali-safe-init-oppidx.py).
- */
 static int g_cur_opp_idx = 44;
 
 enum gpu_dvfs_status_step {
@@ -99,32 +91,26 @@ static int pm_callback_power_on_nolock(struct kbase_device *kbdev)
 	}
 #endif /* CONFIG_MTK_GPUFREQ_V2 */
 
-	mindone_mali_mark(500);
 	gpu_dvfs_status_footprint(GPU_DVFS_STATUS_STEP_2);
 
 #if defined(CONFIG_MTK_GPUFREQ_V2)
-	mindone_mali_mark(501);
 	gpufreq_set_timestamp();
 #endif /* CONFIG_MTK_GPUFREQ_V2 */
 
-	mindone_mali_mark(502);
 	/* set a flag to enable GPU DVFS */
 	mtk_common_pm_mfg_active();
 
 	gpu_dvfs_status_footprint(GPU_DVFS_STATUS_STEP_3);
 
-	mindone_mali_mark(503);
 	/* resume frequency */
 	mtk_common_gpufreq_commit(g_cur_opp_idx);
 
-	mindone_mali_mark(520);
 	gpu_dvfs_status_footprint(GPU_DVFS_STATUS_STEP_4);
 
 #if IS_ENABLED(CONFIG_MALI_MIDGARD_DVFS) && IS_ENABLED(CONFIG_MALI_MTK_DVFS_POLICY)
 	ged_dvfs_gpu_clock_switch_notify(1);
 #endif
 
-	mindone_mali_mark(521);
 	gpu_dvfs_status_footprint(GPU_DVFS_STATUS_STEP_5);
 
 	return 0;
@@ -132,7 +118,6 @@ static int pm_callback_power_on_nolock(struct kbase_device *kbdev)
 
 static void pm_callback_power_off_nolock(struct kbase_device *kbdev)
 {
-	mindone_mali_mark(600);
 #if defined(CONFIG_MTK_GPUFREQ_V2)
 	if (mtk_common_gpufreq_bringup())
 		return;
@@ -141,10 +126,8 @@ static void pm_callback_power_off_nolock(struct kbase_device *kbdev)
 		return;
 #endif /* CONFIG_MTK_GPUFREQ_V2 */
 
-	mindone_mali_mark(601);
 	if (!mtk_common_pm_is_mfg_active())
 		return;
-	mindone_mali_mark(602);
 
 	dev_dbg(kbdev->dev, "GPU PM Callback - Idle");
 
@@ -156,10 +139,8 @@ static void pm_callback_power_off_nolock(struct kbase_device *kbdev)
 
 	gpu_dvfs_status_footprint(GPU_DVFS_STATUS_STEP_7);
 
-	mindone_mali_mark(603);
 	/* set a flag to disable GPU DVFS */
 	mtk_common_pm_mfg_idle();
-	mindone_mali_mark(604);
 
 	gpu_dvfs_status_footprint(GPU_DVFS_STATUS_STEP_8);
 
@@ -168,25 +149,21 @@ static void pm_callback_power_off_nolock(struct kbase_device *kbdev)
 
 	gpu_dvfs_status_footprint(GPU_DVFS_STATUS_STEP_9);
 
-	mindone_mali_mark(605);
 	/* check MFG bus if idle */
 #if defined(CONFIG_MTK_GPUFREQ_V2)
 	gpufreq_check_bus_idle();
 #endif
-	mindone_mali_mark(606); /* CONFIG_MTK_GPUFREQ_V2 */
 
 	gpu_dvfs_status_footprint(GPU_DVFS_STATUS_STEP_A);
 
 	/* on,off/ SWCG(BG3D)/ MTCMOS/ BUCK */
 #if defined(CONFIG_MTK_GPUFREQ_V2)
-	mindone_mali_mark(607);
 	if (gpufreq_power_control(POWER_OFF) < 0) {
 		dev_info(kbdev->dev, "GPU PM Callback - Power Off Failed");
 		return;
 	}
 #endif /* CONFIG_MTK_GPUFREQ_V2 */
 
-	mindone_mali_mark(608);
 	gpu_dvfs_status_footprint(GPU_DVFS_STATUS_STEP_B);
 }
 
@@ -218,7 +195,7 @@ static void pm_callback_power_suspend(struct kbase_device *kbdev)
 {
 	mutex_lock(&g_mfg_lock);
 
-	dev_info(kbdev->dev, "GPU PM Callback - Suspend");
+	dev_dbg(kbdev->dev, "GPU PM Callback - Suspend");
 
 	gpu_dvfs_status_footprint(GPU_DVFS_STATUS_STEP_E);
 
@@ -229,7 +206,7 @@ static void pm_callback_power_resume(struct kbase_device *kbdev)
 {
 	mutex_lock(&g_mfg_lock);
 
-	dev_info(kbdev->dev, "GPU PM Callback - Resume");
+	dev_dbg(kbdev->dev, "GPU PM Callback - Resume");
 
 	gpu_dvfs_status_footprint(GPU_DVFS_STATUS_STEP_F);
 

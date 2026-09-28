@@ -101,21 +101,25 @@ enum ENUM_INTRESET_PROTOCOL {
 
 struct MSCS_FIVE_TUPLE_T {
 	struct LINK_ENTRY rLinkEntry;
+	struct_group(rTuple,
 	uint32_t u4SrcIp;
 	uint32_t u4DestIp;
 	uint16_t u2SrcPort;
 	uint16_t u2DestPort;
 	uint8_t  ucProtocol;
+	);
 };
 
 struct MSCS_TCP_INFO_T {
 	struct LINK_ENTRY rLinkEntry;
+	struct_group(rTuple,
 	uint32_t u4SrcIp;
 	uint32_t u4DestIp;
 	uint16_t u2SrcPort;
 	uint16_t u2DestPort;
 	uint32_t u4Seq;
 	uint8_t  ucFlag;
+	);
 };
 
 struct MSCS_CAP_FAST_PATH {

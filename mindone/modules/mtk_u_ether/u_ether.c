@@ -1263,9 +1263,14 @@ struct eth_dev *mtk_gether_setup_name(struct usb_gadget *g,
 	if (get_ether_addr(host_addr, dev->host_mac))
 		dev_info(&g->dev, "using random %s ethernet address\n", "host");
 #else
-	if (get_ether_addr(dev_addr, net->dev_addr))
-		dev_info(&g->dev,
-			"using random %s ethernet address\n", "self");
+	{
+		u8 self_addr[ETH_ALEN];
+
+		if (get_ether_addr(dev_addr, self_addr))
+			dev_info(&g->dev,
+				"using random %s ethernet address\n", "self");
+		eth_hw_addr_set(net, self_addr);
+	}
 
 	ether_addr_copy(dev->host_mac, a);
 	pr_debug("%s, rndis: %x:%x:%x:%x:%x:%x\n", __func__,

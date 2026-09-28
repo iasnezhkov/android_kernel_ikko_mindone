@@ -720,7 +720,7 @@ u_int8_t rsnIsSuitableBSS(IN struct ADAPTER *prAdapter,
 	}
 
 	if (aisGetAuthMode(prAdapter, ucBssIndex) == AUTH_MODE_WPA3_SAE) {
-		DBGLOG(RSN, WARN, "Don't check AuthKeyMgtSuite with SAE\n");
+		DBGLOG(RSN, TRACE, "Don't check AuthKeyMgtSuite with SAE\n");
 		return TRUE;
 	}
 

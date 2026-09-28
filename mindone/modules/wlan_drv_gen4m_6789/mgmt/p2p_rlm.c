@@ -574,13 +574,15 @@ void rlmProcessPublicAction(struct ADAPTER *prAdapter,
 
 					if (prBssInfo->auc2G_NonHtChnlList[i]
 						==
-						prChnlReport->aucChannelList[j])
+						*(prChnlReport->aucChannelList
+						+ j))
 						break;
 				}
 				if ((i > prBssInfo->auc2G_NonHtChnlList[0])
 					&& (i <= CHNL_LIST_SZ_2G)) {
 					prBssInfo->auc2G_NonHtChnlList[i] =
-						prChnlReport->aucChannelList[j];
+						*(prChnlReport->aucChannelList
+						+ j);
 					prBssInfo->auc2G_NonHtChnlList[0]++;
 				}
 			}

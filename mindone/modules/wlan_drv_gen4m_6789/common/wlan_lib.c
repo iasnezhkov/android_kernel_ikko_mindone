@@ -1415,12 +1415,14 @@ uint32_t wlanAdapterStart(IN struct ADAPTER *prAdapter,
 			case RAM_CODE_DOWNLOAD_FAIL:
 			case SET_CHIP_ECO_INFO_FAIL:
 				halHifSwInfoUnInit(prAdapter->prGlueInfo);
+				fallthrough;
 			case INIT_HIFINFO_FAIL:
 				nicRxUninitialize(prAdapter);
 				nicTxRelease(prAdapter, FALSE);
 				/* System Service Uninitialization */
 				nicUninitSystemService(prAdapter);
 			/* fallthrough */
+				fallthrough;
 			case INIT_ADAPTER_FAIL:
 			/* fallthrough */
 			case DRIVER_OWN_FAIL:
@@ -5390,7 +5392,7 @@ uint32_t wlanLoadManufactureData(IN struct ADAPTER
 				      VIR_MEM_TYPE);
 
 		kalMemCopy(&prCmdNvramSettings->rNvramSettings,
-			   &prRegInfo->prNvramSettings->u2Part1OwnVersion,
+			   prRegInfo->prNvramSettings,
 			   sizeof(struct CMD_NVRAM_SETTING));
 		ASSERT(sizeof(struct WIFI_CFG_PARAM_STRUCT) == 2048);
 		wlanSendSetQueryCmd(prAdapter,
@@ -9132,6 +9134,7 @@ textresume:
 					x++;
 					continue;
 				}
+				fallthrough;
 			case '\n':
 				/* \ <lf> -> line continuation */
 				x++;
@@ -10713,6 +10716,7 @@ wlanNotifyFwSuspend(struct GLUE_INFO *prGlueInfo,
 	struct NETDEV_PRIVATE_GLUE_INFO *prNetDevPrivate =
 		(struct NETDEV_PRIVATE_GLUE_INFO *) NULL;
 	struct CMD_SUSPEND_MODE_SETTING rSuspendCmd;
+	struct BSS_INFO *prBssInfo;
 
 	prNetDevPrivate = (struct NETDEV_PRIVATE_GLUE_INFO *)
 			  netdev_priv(prDev);
@@ -10721,8 +10725,10 @@ wlanNotifyFwSuspend(struct GLUE_INFO *prGlueInfo,
 		DBGLOG(REQ, WARN, "%s: unexpected prGlueInfo(0x%p)!\n",
 		       __func__, prNetDevPrivate->prGlueInfo);
 
+	kalMemZero(&rSuspendCmd, sizeof(rSuspendCmd));
 	rSuspendCmd.ucBssIndex = prNetDevPrivate->ucBssIdx;
 	rSuspendCmd.ucEnableSuspendMode = fgSuspend;
+	rSuspendCmd.ucMdtim = 1;
 
 	if (prGlueInfo->prAdapter->rWifiVar.ucWow
 	    && prGlueInfo->prAdapter->rWowCtrl.fgWowEnable) {
@@ -10748,6 +10754,33 @@ wlanNotifyFwSuspend(struct GLUE_INFO *prGlueInfo,
 			rSuspendCmd.ucMdtim =
 				prGlueInfo->prAdapter->rWifiVar.ucWowOffMdtim;
 			DBGLOG(REQ, TRACE, "mdtim [3]\n");
+		}
+	}
+
+	if (fgSuspend && prGlueInfo->prAdapter->rWifiVar.ucHostMaxMdtim)
+		rSuspendCmd.ucMdtim =
+			prGlueInfo->prAdapter->rWifiVar.ucHostMaxMdtim;
+
+	prBssInfo = GET_BSS_INFO_BY_INDEX(prGlueInfo->prAdapter,
+					   rSuspendCmd.ucBssIndex);
+	if (fgSuspend && prBssInfo &&
+	    prBssInfo->eConnectionState == MEDIA_STATE_CONNECTED &&
+	    prBssInfo->fgBssMaxIdlePeriodPresent &&
+	    prBssInfo->ucDTIMPeriod && prBssInfo->u2BeaconInterval) {
+		uint32_t u4MaxIdleTu =
+			(uint32_t) prBssInfo->u2BssMaxIdlePeriod * 1000;
+		uint32_t u4CycleTu = (uint32_t) prBssInfo->ucDTIMPeriod *
+				     prBssInfo->u2BeaconInterval;
+		uint32_t u4AllowedMdtim = u4MaxIdleTu / u4CycleTu;
+
+		if (u4AllowedMdtim < 1)
+			u4AllowedMdtim = 1;
+		if (rSuspendCmd.ucMdtim > u4AllowedMdtim) {
+			DBGLOG(REQ, INFO,
+			       "cap suspend mdtim %u -> %u for BSS Max Idle Period %u\n",
+			       rSuspendCmd.ucMdtim, u4AllowedMdtim,
+			       prBssInfo->u2BssMaxIdlePeriod);
+			rSuspendCmd.ucMdtim = (uint8_t) u4AllowedMdtim;
 		}
 	}
 
@@ -13404,13 +13437,18 @@ wlanGetTRXInfo(IN struct ADAPTER *prAdapter,
 	uint8_t *pucSavedPtr = NULL;
 	uint32_t u4temp = 0;
 	uint32_t index = 0;
+	uint32_t *apu4Mib[] = {
+		&prTRxInfo->u4TxFail[0], &prTRxInfo->u4TxFail[1],
+		&prTRxInfo->u4RxFail[0], &prTRxInfo->u4RxFail[1],
+		&prTRxInfo->u4TxHwRetry[0], &prTRxInfo->u4TxHwRetry[1],
+	};
 
 	wlanChipConfig(prAdapter, &arQueryMib[0], sizeof(arQueryMib));
 	DBGLOG(REQ, INFO, "Mib:%s\n", arQueryMib);
 	pucItem = (uint8_t *)kalStrtokR(&arQueryMib[0], " ", &pucSavedPtr);
-	while (pucItem) {
-		kalkStrtou32(pucItem, 0, &u4temp);
-		*(((uint32_t *)prTRxInfo) + index) = u4temp;
+	while (pucItem && index < ARRAY_SIZE(apu4Mib)) {
+		if (kalkStrtou32(pucItem, 0, apu4Mib[index]))
+			*apu4Mib[index] = 0;
 		pucItem =
 			(uint8_t *)kalStrtokR(NULL, " ", &pucSavedPtr);
 		index++;
@@ -13427,8 +13465,9 @@ wlanGetTRXInfo(IN struct ADAPTER *prAdapter,
 	wlanChipConfig(prAdapter, &arQueryTRx[0], sizeof(arQueryTRx));
 	DBGLOG(REQ, INFO, "TRX:%s\n", arQueryTRx);
 	pucItem = (uint8_t *)kalStrtokR(&arQueryTRx[0], " ", &pucSavedPtr);
-	while (pucItem) {
-		kalkStrtou32(pucItem, 0, &u4temp);
+	while (pucItem && index < 2 * MAX_BSSID_NUM) {
+		if (kalkStrtou32(pucItem, 0, &u4temp))
+			u4temp = 0;
 		if (index % 2 == 0)
 			prTRxInfo->u4TxOk[index / 2] = u4temp;
 		else
@@ -13614,17 +13653,9 @@ void wlanTpeFlush(struct GLUE_INFO *prGlueInfo)
 	GLUE_RELEASE_SPIN_LOCK(prGlueInfo, SPIN_LOCK_TX_QUE);
 }
 
-#if KERNEL_VERSION(4, 15, 0) <= LINUX_VERSION_CODE
 void wlanTpeTimeoutHandler(struct timer_list *timer)
-#else
-void wlanTpeTimeoutHandler(unsigned long ulData)
-#endif
 {
-#if KERNEL_VERSION(4, 15, 0) <= LINUX_VERSION_CODE
 	struct GLUE_INFO *prGlueInfo = from_timer(prGlueInfo, timer, rTpeTimer);
-#else
-	struct GLUE_INFO *prGlueInfo = (struct GLUE_INFO *)ulData;
-#endif
 
 	ASSERT(prGlueInfo);
 
@@ -13663,13 +13694,7 @@ void wlanTpeInit(struct GLUE_INFO *prGlueInfo)
 		prAdapter->rWifiVar.u4TpEnhanceInterval,
 		prAdapter->rWifiVar.cTpEnhanceRSSI);
 
-#if KERNEL_VERSION(4, 15, 0) <= LINUX_VERSION_CODE
 	timer_setup(&prGlueInfo->rTpeTimer, wlanTpeTimeoutHandler, 0);
-#else
-	init_timer(&prGlueInfo->rTpeTimer);
-	prGlueInfo->rTpeTimer.function = wlanTpeTimeoutHandler;
-	prGlueInfo->rTpeTimer.data = ((unsigned long) prGlueInfo);
-#endif
 	prGlueInfo->rTpeTimer.expires = jiffies - 10;
 	add_timer(&prGlueInfo->rTpeTimer);
 }
@@ -13813,11 +13838,10 @@ void wlanSetConnsysFwLog(IN struct ADAPTER *prAdapter)
 	/* Enable FW log */
 	wlanDbgGetGlobalLogLevel(
 		ENUM_WIFI_LOG_MODULE_FW, &u4LogLevel);
-	if (u4LogLevel > ENUM_WIFI_LOG_LEVEL_DEFAULT)
-		wlanDbgSetLogLevel(prAdapter,
-			ENUM_WIFI_LOG_LEVEL_VERSION_V1,
-			ENUM_WIFI_LOG_MODULE_FW,
-			u4LogLevel, TRUE);
+	wlanDbgSetLogLevel(prAdapter,
+		ENUM_WIFI_LOG_LEVEL_VERSION_V1,
+		ENUM_WIFI_LOG_MODULE_FW,
+		u4LogLevel, TRUE);
 
 #ifdef CONFIG_MTK_CONNSYS_DEDICATED_LOG_PATH
 	kalMemZero(&rFwLogCmd, sizeof(rFwLogCmd));

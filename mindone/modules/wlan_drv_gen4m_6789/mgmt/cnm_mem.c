@@ -1073,7 +1073,7 @@ void cnmStaSendUpdateCmd(struct ADAPTER *prAdapter, struct STA_RECORD *prStaRec,
 	kalMemZero(prCmdContent, sizeof(struct CMD_UPDATE_STA_RECORD));
 
 	if (prTxBfPfmuStaInfo) {
-		memcpy(&prCmdContent->u2PfmuId, prTxBfPfmuStaInfo,
+		memcpy(&prCmdContent->rTxBfPfmuStaInfo, prTxBfPfmuStaInfo,
 			sizeof(struct TXBF_PFMU_STA_INFO));
 	}
 

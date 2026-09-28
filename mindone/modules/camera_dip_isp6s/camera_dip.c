@@ -15,7 +15,6 @@
 //#include <error_test.h>
 #include <linux/types.h>
 #include <drivers/misc/mediatek/smi/mtk-smi-larb.h>
-#include <mindone/compat.h>
 #include <linux/device.h>
 #include <linux/cdev.h>
 #include <linux/platform_device.h>
@@ -4192,7 +4191,7 @@ static inline void Prepare_Enable_ccf_clock(void)
 	int ret;
 	/* enable through smi API */
 	pm_runtime_get_sync(dip_devs->dev);
-	LOG_INF("larb9: %p, larb11: %p ,clk_MFB: %d\n", dip_devs->larb9, dip_devs->larb11,
+	LOG_INF("larb9: %p, larb11: %p ,clk_MFB: %p\n", dip_devs->larb9, dip_devs->larb11,
 		dip_clk.DIP_IMG_MFB_DIP);
 	LOG_INF("%s cnt(%d)\n", __func__, G_u4DipEnClkCnt);
 	ret = mtk_smi_larb_get(dip_devs->larb9);
@@ -4257,7 +4256,7 @@ static inline void Disable_Unprepare_ccf_clock(void)
 	clk_disable_unprepare(dip_clk.DIP_IMG_DIP);
 	LOG_INF("%s clk_disable_unprepare DIP_IMG_DIP", __func__);
 	clk_disable_unprepare(dip_clk.DIP_IMG_LARB9);
-	LOG_INF("%s cnt(%d),clk_MFB: %d\n", __func__, G_u4DipEnClkCnt, dip_clk.DIP_IMG_MFB_DIP);
+	LOG_INF("%s cnt(%d),clk_MFB: %p\n", __func__, G_u4DipEnClkCnt, dip_clk.DIP_IMG_MFB_DIP);
 	mtk_smi_larb_put(dip_devs->larb9);
 
 	if (dip_clk.DIP_IMG_MFB_DIP != NULL || dip_clk.DIP_IMG_DIP2 != NULL) {
@@ -6385,8 +6384,6 @@ static long DIP_ioctl(
 			}
 			mutex_lock(&(DipMutexbuf));
 
-			dip_ion_list = kzalloc(sizeof(struct dip_fd_list_template), GFP_KERNEL);
-			dip_ion_entry = kzalloc(sizeof(struct dip_fd_list_template), GFP_KERNEL);
 			if (ion_mem_info.check_flag == 1) {
 				list_for_each(pos, &dip_fd_head) {
 					dip_ion_entry = list_entry(pos,
@@ -6397,6 +6394,12 @@ static long DIP_ioctl(
 				}
 			}
 			if (ion_mem_info.check_flag == 0) {
+				dip_ion_list = kzalloc(sizeof(struct dip_fd_list_template), GFP_KERNEL);
+				if (!dip_ion_list) {
+					mutex_unlock(&(DipMutexbuf));
+					Ret = -ENOMEM;
+					goto EXIT;
+				}
 				put_cnt = 0;
 				get_cnt++;
 				dip_ion_list->fd = ion_mem_info.buf_fd;
@@ -7399,7 +7402,7 @@ static signed int DIP_probe(struct platform_device *pDev)
 		}
 
 		/* Create class register */
-		pIspClass = MINDONE_CLASS_CREATE("dipdrv");
+		pIspClass = class_create("dipdrv");
 		if (IS_ERR(pIspClass)) {
 			Ret = PTR_ERR(pIspClass);
 			LOG_ERR("Unable to create class, err = %d\n", Ret);

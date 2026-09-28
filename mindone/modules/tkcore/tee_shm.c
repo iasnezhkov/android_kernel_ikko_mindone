@@ -16,9 +16,8 @@
 #include <linux/types.h>
 #include <linux/dma-buf.h>
 #include <linux/hugetlb.h>
-#include <linux/version.h>
 #include <linux/anon_inodes.h>
-#include <linux/export.h> /* MINDONE-TEE-RPMBSUPPORT: EXPORT_SYMBOL below, P80/P45 */
+#include <linux/export.h>
 
 #include <linux/sched.h>
 #include <linux/mm.h>
@@ -27,18 +26,6 @@
 #include "tee_core_priv.h"
 #include "tee_shm.h"
 
-/*
- * MINDONE-TEE-POOLREF switch (see tee_shm_free_io()). On by default: proven on
- * the device with the release switched on live, where one Gatekeeper PIN
- * verify had leaked 1.1-1.3 MiB of the 16 MiB pool (three verifies and one
- * Wi-Fi reconnect: 2.7 -> 6.3 MiB) and with the release on, ten verifies moved
- * it by 24 KiB while the release ran 2375 times, with no warning of any kind.
- * Kept as a switch as a way back without a flash:
- *   echo 0 > /sys/module/tkcore/parameters/release_rpc_pool_ref
- * Switching at any moment is safe in both directions: the reference is taken
- * unconditionally when teed gets the fd, and is dropped (or, when off, kept)
- * exactly once when that fd is closed. rpc_pool_ref_drops counts the drops.
- */
 static bool release_rpc_pool_ref = true;
 module_param(release_rpc_pool_ref, bool, 0644);
 MODULE_PARM_DESC(release_rpc_pool_ref,
@@ -72,7 +59,6 @@ static struct tee_shm *tee_shm_alloc_static(struct tee *tee, size_t size,
 
 	shm = tee->ops->alloc(tee, size, flags);
 	if (IS_ERR_OR_NULL(shm)) {
-		/* MINDONE-TEE-POOLDIAG: see tkcore_drv/tee_mem.c. */
 		pr_err_ratelimited("allocation failed (s=%d,flags=0x%08x) err=%ld\n",
 			(int) size, flags, PTR_ERR(shm));
 		goto exit;
@@ -386,32 +372,6 @@ static int __tee_shm_dma_buf_mmap(struct dma_buf *dmabuf,
 	return ret;
 }
 
-#if LINUX_VERSION_CODE < KERNEL_VERSION(4, 12, 0)
-
-static void *__tee_shm_dma_buf_kmap_atomic(struct dma_buf *dmabuf,
-		unsigned long pgnum)
-{
-	return NULL;
-}
-
-static void *__tee_shm_dma_buf_kmap(struct dma_buf *db, unsigned long pgnum)
-{
-	struct tee_shm *shm = db->priv;
-
-	/*
-	 * A this stage, a shm allocated by the tee
-	 * must be have a kernel address
-	 */
-	return shm->resv.kaddr;
-}
-
-static void __tee_shm_dma_buf_kunmap(
-	struct dma_buf *db, unsigned long pfn, void *kaddr)
-{
-	/* unmap is done at the de init of the shm pool */
-}
-
-#endif
 
 static const struct dma_buf_ops tee_static_shm_dma_buf_ops = {
 	.attach = __tee_shm_attach_dma_buf,
@@ -419,11 +379,6 @@ static const struct dma_buf_ops tee_static_shm_dma_buf_ops = {
 	.map_dma_buf = __tee_shm_dma_buf_map_dma_buf,
 	.unmap_dma_buf = __tee_shm_dma_buf_unmap_dma_buf,
 	.release = __tee_shm_dma_buf_release,
-#if  LINUX_VERSION_CODE < KERNEL_VERSION(4, 12, 0)
-	.kmap_atomic = __tee_shm_dma_buf_kmap_atomic,
-	.kmap = __tee_shm_dma_buf_kmap,
-	.kunmap = __tee_shm_dma_buf_kunmap,
-#endif
 	.mmap = __tee_shm_dma_buf_mmap,
 };
 
@@ -560,21 +515,6 @@ struct tee_shm *tee_shm_alloc_from_rpc(struct tee *tee, size_t size,
 
 	shm->ctx = NULL;
 
-	/*
-	 * MINDONE-TEE-SHMLIFE (follow-up B31): idle state for a shm
-	 * sitting in tee->list_rpc_shm - nobody owes it anything yet. See the
-	 * rpc_round_owed/rpc_dmabuf_refs field comment in linux/tee_core.h for
-	 * the full design: these two are tracked completely independently
-	 * (a round finishing does not require teed's fd for it to already be
-	 * closed, and teed getting an fd to service a round already in flight -
-	 * the normal case - must never be treated as touching the round's own
-	 * claim). This replaces a single shared rpc_claims counter (B23) that
-	 * conflated the two and underflowed when a decrement landed on the
-	 * wrong logical side, and a later attempt (B29) that tried to fix that
-	 * by having tee_shm_fd_for_rpc() refuse to run during a round - which
-	 * blocked every RPMB round outright (B31), since fd_for_rpc() servicing
-	 * an in-flight round is required, not an intruder.
-	 */
 	shm->rpc_round_owed = false;
 	shm->rpc_dmabuf_refs = 0;
 	shm->rpc_want_free = false;
@@ -584,32 +524,6 @@ out:
 	return shm;
 }
 
-/*
- * MINDONE-TEE-SHMLIFE (follow-up B31): retires a checked-out
- * TEE_SHM_FROM_RPC buffer - recycles it into tee->list_rpc_shm, or actually
- * frees it if rpc_want_free - once BOTH independent kinds of outstanding
- * work are done (see the rpc_round_owed/rpc_dmabuf_refs field comment in
- * tee_core.h): the secure-world round using this buffer has ended
- * (rpc_round_owed clear), and every dma-buf/fd teed holds for it has been
- * released (rpc_dmabuf_refs == 0). Neither side needs to know how many
- * claims the OTHER side has outstanding, or in what order they finish - it
- * just checks both fields and acts once, whichever call happens to be the
- * last to bring both to their idle state. Called with tee->lock held, from
- * tee_shm_realloc_from_rpc(), tee_shm_free_from_rpc(), and tee_shm_free_io().
- *
- * The vendor code had no such accounting at all: both sides unlinked/freed the
- * shm unconditionally, so whichever ran second touched memory the other had
- * already freed or relisted - "list_add corruption ... LIST_POISON2" ->
- * kernel BUG at lib/list_debug.c:31 on teed startup (F4231: the vendor
- * list_add_tail() left the node linked in ctx->list_shm while also adding
- * it to list_rpc_shm; F4232/68fe356: swapping in list_move_tail() by itself
- * just made the same unconditional double-touch deterministic instead of
- * intermittent, because it still assumed this call alone was safe to
- * unlink/relist the shm). Two earlier fixes here (B23's single shared
- * rpc_claims counter, B29's rpc_round_pending flag that refused
- * tee_shm_fd_for_rpc() mid-round and broke every RPMB round outright) are
- * superseded by this split - see the field comment for why.
- */
 static void tee_shm_rpc_maybe_finalize(struct tee *tee, struct tee_shm *shm)
 {
 	if (shm->rpc_round_owed || shm->rpc_dmabuf_refs > 0)
@@ -638,20 +552,6 @@ void tee_shm_realloc_from_rpc(struct tee *tee, struct tee_shm *shm)
 
 	mutex_lock(&tee->lock);
 
-	/*
-	 * MINDONE-TEE-SHMLIFE (follow-up B31): the secure-world round
-	 * (handle_rpmb_cmd() et al.) finished and wants the buffer back in the
-	 * pool for reuse, not freed. This is the only caller paired with
-	 * tee_shm_from_paddr() (handle_rpmb_cmd() always looks the shm up that
-	 * way first, before this call), so rpc_round_owed must already be set -
-	 * WARN_ON if not, since that would mean a round ended twice, or without
-	 * a matching lookup. Clearing it does NOT by itself retire the shm:
-	 * tee_shm_rpc_maybe_finalize() also waits on rpc_dmabuf_refs, tracked
-	 * completely independently - very possibly nonzero right now, if teed
-	 * grabbed an fd to service THIS round (the normal case; see
-	 * tee_shm_fd_for_rpc(), which never consults rpc_round_owed and must
-	 * never be refused just because a round is in flight).
-	 */
 	WARN_ON(!shm->rpc_round_owed);
 	shm->rpc_round_owed = false;
 	shm->rpc_want_free = false;
@@ -659,10 +559,6 @@ void tee_shm_realloc_from_rpc(struct tee *tee, struct tee_shm *shm)
 
 	mutex_unlock(&tee->lock);
 }
-/* MINDONE-TEE-RPMBSUPPORT (P80/P45, 12.09): tkcore_drv's handle_rpmb_cmd() (RPMB RPC from
- * the secure world, CONFIG_TRUSTKERNEL_TEE_RPMB_SUPPORT) needs this across the module
- * boundary - it was defined here but never exported, so the RPMB branch stayed dead code.
- */
 EXPORT_SYMBOL(tee_shm_realloc_from_rpc);
 
 void tee_shm_free_from_rpc(struct tee_shm *shm)
@@ -675,28 +571,6 @@ void tee_shm_free_from_rpc(struct tee_shm *shm)
 	tee = shm->tee;
 	mutex_lock(&tee->lock);
 
-	/*
-	 * MINDONE-TEE-SHMLIFE (follow-up B31): record that the secure
-	 * world wants this buffer freed for real (not recycled), then let
-	 * tee_shm_rpc_maybe_finalize() decide - it only acts once
-	 * rpc_dmabuf_refs is also 0, so a still-live dma-buf (teed's fd) can
-	 * never be freed out from under it (the vendor code called tkcore_shm_free()
-	 * here unconditionally regardless of any outstanding fd - a guaranteed
-	 * use-after-free the moment teed closed its dma-buf while the shm was
-	 * still linked into ctx->list_shm; F4231's class of bug on this
-	 * generic RPC-free path instead of the RPMB realloc path - never
-	 * observed here only because nothing on this device frees a
-	 * still-mapped RPC buffer via TEE_RPC_ICMD_FREE today).
-	 *
-	 * Unlike tee_shm_realloc_from_rpc(), this function is NOT paired with
-	 * tee_shm_from_paddr() - its only caller is tee_supp_com.c's
-	 * TEE_RPC_ICMD_FREE handler, reached from the generic cookie-tracked
-	 * payload path (handle_rpc()'s TESSMC_ST_RPC_FUNC_FREE_PAYLOAD via
-	 * shm_handle_db), never from handle_rpmb_cmd(). rpc_round_owed is
-	 * therefore always false here in practice; clear it anyway
-	 * (false-to-false is a no-op) rather than WARN, since a WARN here would
-	 * fire on every ordinary generic-payload free, not on a bug.
-	 */
 	shm->rpc_round_owed = false;
 	shm->rpc_want_free = true;
 	tee_shm_rpc_maybe_finalize(tee, shm);
@@ -733,25 +607,6 @@ struct tee_shm *tee_shm_from_paddr(struct tee *tee, void *paddr, bool ns)
 	mutex_lock(&tee->lock);
 	shm = shm_from_paddr(tee, paddr, ns);
 	if (shm) {
-		/*
-		 * MINDONE-TEE-SHMLIFE (follow-up B31): this lookup is the
-		 * start of a secure-world round (handle_rpmb_cmd() - the only
-		 * caller of this exported function). Mark it owed under this same
-		 * lock, so tee_shm_realloc_from_rpc()/tee_shm_free_from_rpc()
-		 * (called much later, after a blocking tee_supp_cmd() round-trip to
-		 * teed that releases tee->lock for its duration) has an explicit
-		 * flag to clear when the round ends. This is tracked completely
-		 * separately from rpc_dmabuf_refs: tee_shm_fd_for_rpc() does NOT
-		 * consult rpc_round_owed at all, and getting an fd to service the
-		 * round this exact lookup started is the normal, required case,
-		 * not a conflict (B29 refused it here and broke every RPMB round).
-		 *
-		 * If rpc_round_owed is already set, a round is already in flight
-		 * against this exact buffer - the "one piece of shared memory"
-		 * design (see handle_rpmb_cmd()'s comment) doesn't expect two
-		 * concurrent rounds on it, so refuse instead of handing out a shm
-		 * two rounds would both believe they own.
-		 */
 		if (WARN_ON(shm->rpc_round_owed))
 			shm = NULL;
 		else
@@ -760,8 +615,6 @@ struct tee_shm *tee_shm_from_paddr(struct tee *tee, void *paddr, bool ns)
 	mutex_unlock(&tee->lock);
 	return shm;
 }
-/* MINDONE-TEE-RPMBSUPPORT (P80/P45, 12.09): see tee_shm_realloc_from_rpc() above - same
- * reason, same caller (tkcore_drv's handle_rpmb_cmd()). */
 EXPORT_SYMBOL(tee_shm_from_paddr);
 
 /* Buffer allocated by rpc from fw and to be accessed by the user
@@ -798,26 +651,6 @@ int tee_shm_fd_for_rpc(struct tee_context *ctx, struct tee_shm_io *shm_io)
 		goto out;
 	}
 
-	/*
-	 * MINDONE-TEE-SHMLIFE (follow-up B31): this call is normal and
-	 * REQUIRED while a secure-world round is in flight against this exact
-	 * buffer - teed needs the fd/mmap to service that very round
-	 * (handle_rpmb_cmd() -> tee_supp_cmd() -> teed -> this ioctl -> teed
-	 * mmaps and replies -> tee_supp_cmd() returns ->
-	 * tee_shm_realloc_from_rpc()). It must NEVER be refused, or its claim
-	 * folded into the round's own - B29 tried checking rpc_round_owed here
-	 * and returning -EBUSY, which blocked EVERY RPMB round outright (B31:
-	 * teed never got rpmb_ioctl_tk_frames at all; tee_rpmb_get_dev_info's
-	 * very first round failed with TEE_ERROR_BAD_PARAMETERS). rpc_dmabuf_refs
-	 * is tracked fully independently of rpc_round_owed for exactly this
-	 * reason - see tee_shm_rpc_maybe_finalize().
-	 *
-	 * shm_from_paddr() only ever finds objects in tee->list_rpc_shm, which
-	 * this checkout is about to move out of - so rpc_dmabuf_refs must
-	 * still be at its idle 0 here (no other live dma-buf could have kept
-	 * this object checked out into ctx->list_shm while also leaving it in
-	 * list_rpc_shm to be found by this same lookup).
-	 */
 	WARN_ON(shm->rpc_dmabuf_refs != 0);
 	shm->ctx = ctx;
 	list_move(&shm->entry, &ctx->list_shm);
@@ -945,53 +778,10 @@ void tee_shm_free_io(struct tee_shm *shm)
 	mutex_lock(&tee->lock);
 
 	if (shm->flags & TEE_SHM_FROM_RPC) {
-		/*
-		 * MINDONE-TEE-SHMLIFE (follow-up B31): this dma-buf/anon-inode
-		 * release means teed is done with ONE fd tee_shm_fd_for_rpc() handed
-		 * it. Drop that one dma-buf reference and let
-		 * tee_shm_rpc_maybe_finalize() decide whether the buffer is fully
-		 * idle - it also needs rpc_round_owed clear (the secure-world round
-		 * may not have finished yet, so this call alone must never unlink
-		 * shm->entry or free shm - the vendor code did exactly that, F4231).
-		 * Release THIS dma-buf's own pins (tee_get()/tee_context_get()/
-		 * get_device(), taken together in tee_shm_fd_for_rpc())
-		 * unconditionally, using the copies captured above before
-		 * maybe_finalize() could reset shm->ctx/shm->dev - correct
-		 * regardless of whether this happens to be the last live dma-buf.
-		 */
 		WARN_ON(shm->rpc_dmabuf_refs <= 0);
 		if (shm->rpc_dmabuf_refs > 0)
 			shm->rpc_dmabuf_refs--;
 
-		/*
-		 * MINDONE-TEE-POOLREF: tee_shm_fd_for_rpc() takes FOUR pins for the
-		 * fd it hands teed, not the three the comment above lists: tee_get(),
-		 * tee_context_get(), get_device() -- and a reference on the backing
-		 * store itself (shm_inc_ref()/tee_ns_shm_inc_ref()). Only the first
-		 * three were released here, so every RPC buffer teed was ever given
-		 * an fd for kept that fourth reference for good: the pool chunk's
-		 * counter went 1->2 at fd creation and never came back down, so
-		 * tkcore_shm_pool_free() returned 1 ("still referenced") instead of
-		 * releasing the chunk, and shm_pool->used never shrank -- not even
-		 * when the secure world later asked for the buffer to be freed for
-		 * real via rpc_want_free.
-		 *
-		 * The tee_shm accounting stayed balanced throughout (tee_dec_stats()
-		 * runs on the rpc_want_free path regardless), which is why the sysfs
-		 * "stat" shm counter reads 0/N on a device whose pool is bleeding --
-		 * it hid this until the 16 MiB region ran dry. On the device that was
-		 * ~one 4 KiB chunk a minute: the pool was exhausted in under 61 h,
-		 * which killed the KeyMint HAL and, through Wi-Fi MAC randomisation
-		 * (MacAddressUtil -> keystore HMAC), stalled the whole Wi-Fi state
-		 * machine so no scan ever completed.
-		 *
-		 * Drop it here, symmetrically with the other three, and before
-		 * tee_shm_rpc_maybe_finalize(): when rpc_want_free is set, that call
-		 * then takes the chunk 1->0 and actually returns it to the pool. The
-		 * counter cannot reach 0 at this point -- the allocation's own
-		 * reference is released only inside maybe_finalize(), which has not
-		 * run yet -- so this never frees shm out from under that call.
-		 */
 		if (READ_ONCE(release_rpc_pool_ref)) {
 			if (shm_test_nonsecure(shm->flags))
 				tee_shm_free_ns(shm);

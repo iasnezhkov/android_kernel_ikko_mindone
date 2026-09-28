@@ -6,8 +6,6 @@
 #include <drm/drm_atomic_helper.h>
 #include <linux/vmalloc.h>
 #include <drivers/misc/mediatek/smi/mtk-smi-larb.h>
-#include <mindone/compat-drm.h>
-#include <mindone/compat.h>
 #include "mindone_log.h"
 int mindone_log;
 module_param(mindone_log, int, 0644);
@@ -987,17 +985,9 @@ static void mtk_atomic_doze_finish(struct drm_device *dev,
 	}
 }
 
-/*
- * MINDONE-LK-TAKEOVER: NO_LK brings the display up from scratch (dark until the first
- * SurfaceFlinger frame, ~11 s, F3492); the legacy build assumes the bootloader stream
- * without checking (panel never lit, F2313). Middle path: armed by a module parameter
- * (0 = old behaviour), taken only when the DSI0 probe verified in hardware that the
- * bootloader stream still runs (mtk_dsi.c, mindone_lk_probe_check). Decided once;
- * every former compile-time "LK on" asks this.
- */
 int mindone_lk_takeover;
 module_param(mindone_lk_takeover, int, 0644);
-static int mindone_lk_alive = -1;	/* -1 undecided, 0 cold init, 1 taken over */
+static int mindone_lk_alive = -1;
 static int mindone_lk_alive_ro = -1;
 module_param_named(mindone_lk_alive, mindone_lk_alive_ro, int, 0444);
 
@@ -4244,15 +4234,7 @@ void mtk_drm_top_clk_prepare_enable(struct drm_device *drm)
 		priv->data->sodi_config(drm, DDP_COMPONENT_ID_MAX, NULL, &en);
 }
 
-/* MINDONE F2453/F2471: screen blank sometimes hangs the device dead (watchdog
- * resets the SoC after ~31s). This loop waits for top_isr_ref (held by
- * ovl/rdma/wdma/dsc/dsi/mutex/dp_intf IRQ handlers via
- * mtk_drm_top_clk_isr_get/_put) UNCONDITIONALLY; clocks/MTCMOS get removed
- * regardless, so a handler running AFTER that touches a dead display block
- * (same class as F2466 USB, F2439 cpu6). mindone_top_clk_isr_wait_retries
- * (0644, live) bounds the wait to test the hypothesis; race_hits (0444) counts
- * losses. Full writeup: MINDONE-MODULES-NOTES-0901. */
-static int mindone_top_clk_isr_wait_retries;	/* 0 = vendor FULL wait, see F2652 */
+static int mindone_top_clk_isr_wait_retries;
 module_param(mindone_top_clk_isr_wait_retries, int, 0644);
 MODULE_PARM_DESC(mindone_top_clk_isr_wait_retries,
 	"top_isr_ref wait retries (x20-40us); 0 (default) = wait unbounded, like vendor");
@@ -4274,10 +4256,6 @@ void mtk_drm_top_clk_disable_unprepare(struct drm_device *drm)
 	spin_lock_irqsave(&top_clk_lock, flags);
 	atomic_dec(&top_clk_ref);
 	if (atomic_read(&top_clk_ref) == 0) {
-		/* MINDONE F2652: at 0 the counter condition DEGENERATES and the loop waits
-		 * to completion, same as vendor. The bound only activates on an explicit
-		 * param write.
-		 */
 		while (atomic_read(&top_isr_ref) > 0 &&
 		       (mindone_top_clk_isr_wait_retries <= 0 ||
 		        cnt++ < mindone_top_clk_isr_wait_retries)) {
@@ -4288,11 +4266,6 @@ void mtk_drm_top_clk_disable_unprepare(struct drm_device *drm)
 			spin_lock_irqsave(&top_clk_lock, flags);
 		}
 		if (atomic_read(&top_isr_ref) > 0) {
-			/* MINDONE F2516: counter ONLY, NO logging. The vendor loop above
-			 * deliberately drops top_clk_lock before pr_notice; logging under that
-			 * lock with interrupts disabled broke boot. Read the value via the
-			 * module param mindone_top_clk_isr_race_hits.
-			 */
 			mindone_top_clk_isr_race_hits++;
 		}
 		priv->power_state = false;
@@ -4307,7 +4280,7 @@ void mtk_drm_top_clk_disable_unprepare(struct drm_device *drm)
 		clk_disable_unprepare(priv->top_clk[i]);
 	}
 
-	DDPMSG("%s: mtcmos off\n", __func__);
+	DDPDBG("%s: mtcmos off\n", __func__);
 	pm_runtime_put_sync(priv->mmsys_dev);
 	if (priv->side_mmsys_dev)
 		pm_runtime_put_sync(priv->side_mmsys_dev);
@@ -4950,14 +4923,6 @@ int _parse_tag_videolfb(unsigned int *vramsize, phys_addr_t *fb_base,
 {
 	struct device_node *chosen_node;
 
-	/*
-	 * MINDONE-LK-TAG: read and report what the bootloader left ("atag,videolfb":
-	 * framebuffer, islcmfound) even under CONFIG_MTK_DISP_NO_LK, where the body used to
-	 * be compiled out and the kernel never looked. Both values decide whether the
-	 * display can be taken over instead of brought up cold (black first ~11 s of boot).
-	 * A device tree read touches no hardware; the return value is unchanged under
-	 * NO_LK - observation only.
-	 */
 	*fps = 6000;
 	chosen_node = of_find_node_by_path("/chosen");
 
@@ -4974,7 +4939,6 @@ int _parse_tag_videolfb(unsigned int *vramsize, phys_addr_t *fb_base,
 			*fps = videolfb_tag->fps;
 			if (*fps == 0)
 				*fps = 6000;
-			/* MINDONE-LK-TAG: DDPINFO is filtered out on this build. */
 			DDPMSG("MINDONE-LK-TAG: fb_base=0x%llx vram=0x%x fps=%d islcmfound=0x%x\n",
 			       (unsigned long long)videolfb_tag->fb_base,
 			       videolfb_tag->vram, videolfb_tag->fps,
@@ -4991,9 +4955,6 @@ int _parse_tag_videolfb(unsigned int *vramsize, phys_addr_t *fb_base,
 
 found:
 #ifdef CONFIG_MTK_DISP_NO_LK
-	/* MINDONE-LK-TAKEOVER: with the takeover armed the callers get the
-	 * bootloader framebuffer (mtk_crtc_fill_fb_para maps it for the OVL);
-	 * otherwise the answer stays as it was, see MINDONE-LK-TAG. */
 	return mindone_lk_takeover ? 0 : -1;
 #else
 	DDPINFO("[DT][videolfb] fb_base    = 0x%lx\n", (unsigned long)*fb_base);
@@ -5234,7 +5195,7 @@ void mtk_drm_mmlsys_submit_done_cb(void *cb_param)
 		return;
 	}
 
-	DDPINFO("%s cb_para:0x%x, 0x%x, 0x%x\n", __func__,
+	DDPINFO("%s cb_para:%p, %p, %p\n", __func__,
 		cb_para, &(cb_para->mml_job_submit_done), &(cb_para->mml_job_submit_wq));
 	atomic_set(&(cb_para->mml_job_submit_done), 1);
 	DDPINFO("%s 2\n", __func__);
@@ -5246,7 +5207,7 @@ void mtk_drm_wait_mml_submit_done(struct mtk_mml_cb_para *cb_para)
 {
 	int ret = 0;
 
-	DDPINFO("%s 1 0x%x 0x%x, 0x%x\n", __func__,
+	DDPINFO("%s 1 %p %p, %p\n", __func__,
 		cb_para,
 		&(cb_para->mml_job_submit_wq),
 		&(cb_para->mml_job_submit_done));
@@ -5472,11 +5433,7 @@ static int mtk_drm_kms_init(struct drm_device *drm)
 		goto put_dma_dev;
 	}
 
-	ret = MINDONE_DMA_SET_MAX_SEG_SIZE(dma_dev, (unsigned int)DMA_BIT_MASK(32));
-	if (ret) {
-		dev_err(dma_dev, "Failed to set DMA segment size\n");
-		goto err_unset_dma_parms;
-	}
+	dma_set_max_seg_size(dma_dev, (unsigned int)DMA_BIT_MASK(32));
 
 	/*
 	 * drm->irq_enabled removed from struct drm_device outside
@@ -5624,7 +5581,6 @@ int mtk_drm_fm_lcm_auto_test(struct drm_device *dev, void *data,
 }
 #endif
 
-/* ===== MINDONE-IOC: per-ioctl entry/exit instrumentation (F788 follow-up) ===== */
 #define MRK_WRAP(IOCTL, fn) \
 static int mrk_##fn(struct drm_device *dev, void *data, struct drm_file *file_priv) \
 { \
@@ -5705,133 +5661,133 @@ MRK_WRAP(MTK_SEC_HND_TO_GEM_HND, mtk_drm_sec_hnd_to_gem_hnd)
 
 static const struct drm_ioctl_desc mtk_ioctls[] = {
 	DRM_IOCTL_DEF_DRV(MTK_GEM_CREATE, mrk_mtk_gem_create_ioctl,
-			  MINDONE_DRM_UNLOCKED | DRM_AUTH | DRM_RENDER_ALLOW),
+			  DRM_AUTH | DRM_RENDER_ALLOW),
 	DRM_IOCTL_DEF_DRV(MTK_GEM_MAP_OFFSET, mrk_mtk_gem_map_offset_ioctl,
-			  MINDONE_DRM_UNLOCKED | DRM_AUTH | DRM_RENDER_ALLOW),
+			  DRM_AUTH | DRM_RENDER_ALLOW),
 	DRM_IOCTL_DEF_DRV(MTK_GEM_SUBMIT, mrk_mtk_gem_submit_ioctl,
-			  MINDONE_DRM_UNLOCKED | DRM_AUTH | DRM_RENDER_ALLOW),
+			  DRM_AUTH | DRM_RENDER_ALLOW),
 	DRM_IOCTL_DEF_DRV(MTK_SESSION_CREATE, mrk_mtk_drm_session_create_ioctl,
-			  MINDONE_DRM_UNLOCKED | DRM_AUTH | DRM_RENDER_ALLOW),
+			  DRM_AUTH | DRM_RENDER_ALLOW),
 	DRM_IOCTL_DEF_DRV(MTK_SESSION_DESTROY, mrk_mtk_drm_session_destroy_ioctl,
-			  MINDONE_DRM_UNLOCKED | DRM_AUTH | DRM_RENDER_ALLOW),
+			  DRM_AUTH | DRM_RENDER_ALLOW),
 	DRM_IOCTL_DEF_DRV(MTK_LAYERING_RULE, mrk_mtk_layering_rule_ioctl,
-			  MINDONE_DRM_UNLOCKED | DRM_AUTH | DRM_RENDER_ALLOW),
+			  DRM_AUTH | DRM_RENDER_ALLOW),
 	DRM_IOCTL_DEF_DRV(MTK_CRTC_GETFENCE, mrk_mtk_drm_crtc_getfence_ioctl,
-			  MINDONE_DRM_UNLOCKED | DRM_AUTH | DRM_RENDER_ALLOW),
+			  DRM_AUTH | DRM_RENDER_ALLOW),
 	DRM_IOCTL_DEF_DRV(MTK_CRTC_GETSFFENCE, mrk_mtk_drm_crtc_get_sf_fence_ioctl,
-			  MINDONE_DRM_UNLOCKED | DRM_AUTH | DRM_RENDER_ALLOW),
+			  DRM_AUTH | DRM_RENDER_ALLOW),
 	DRM_IOCTL_DEF_DRV(MTK_SET_MSYNC_PARAMS, mrk_mtk_drm_set_msync_params_ioctl,
-			  MINDONE_DRM_UNLOCKED | DRM_AUTH | DRM_RENDER_ALLOW),
+			  DRM_AUTH | DRM_RENDER_ALLOW),
 	DRM_IOCTL_DEF_DRV(MTK_GET_MSYNC_PARAMS, mrk_mtk_drm_get_msync_params_ioctl,
-			  MINDONE_DRM_UNLOCKED | DRM_AUTH | DRM_RENDER_ALLOW),
+			  DRM_AUTH | DRM_RENDER_ALLOW),
 	DRM_IOCTL_DEF_DRV(MTK_WAIT_REPAINT, mrk_mtk_drm_wait_repaint_ioctl,
-			  MINDONE_DRM_UNLOCKED | DRM_AUTH | DRM_RENDER_ALLOW),
+			  DRM_AUTH | DRM_RENDER_ALLOW),
 	DRM_IOCTL_DEF_DRV(MTK_GET_DISPLAY_CAPS, mrk_mtk_drm_get_display_caps_ioctl,
-			  MINDONE_DRM_UNLOCKED | DRM_AUTH | DRM_RENDER_ALLOW),
+			  DRM_AUTH | DRM_RENDER_ALLOW),
 	DRM_IOCTL_DEF_DRV(MTK_SET_DDP_MODE, mrk_mtk_drm_set_ddp_mode,
-			  MINDONE_DRM_UNLOCKED | DRM_AUTH | DRM_RENDER_ALLOW),
+			  DRM_AUTH | DRM_RENDER_ALLOW),
 	DRM_IOCTL_DEF_DRV(MTK_GET_SESSION_INFO, mrk_mtk_drm_get_info_ioctl,
-			  MINDONE_DRM_UNLOCKED | DRM_AUTH | DRM_RENDER_ALLOW),
+			  DRM_AUTH | DRM_RENDER_ALLOW),
 	DRM_IOCTL_DEF_DRV(MTK_GET_MASTER_INFO, mrk_mtk_drm_get_master_info_ioctl,
-			  MINDONE_DRM_UNLOCKED),
+			  0),
 	DRM_IOCTL_DEF_DRV(MTK_PQ_PERSIST_PROPERTY, mrk_mtk_drm_ioctl_pq_get_persist_property,
-				MINDONE_DRM_UNLOCKED),
+				0),
 	DRM_IOCTL_DEF_DRV(MTK_SET_CCORR, mrk_mtk_drm_ioctl_set_ccorr,
-			  MINDONE_DRM_UNLOCKED),
+			  0),
 	DRM_IOCTL_DEF_DRV(MTK_CCORR_EVENTCTL, mrk_mtk_drm_ioctl_ccorr_eventctl,
-			  MINDONE_DRM_UNLOCKED),
+			  0),
 	DRM_IOCTL_DEF_DRV(MTK_CCORR_GET_IRQ, mrk_mtk_drm_ioctl_ccorr_get_irq,
-			  MINDONE_DRM_UNLOCKED),
+			  0),
 	DRM_IOCTL_DEF_DRV(MTK_AIBLD_CV_MODE, mrk_mtk_drm_ioctl_aibld_cv_mode,
-			  MINDONE_DRM_UNLOCKED),
+			  0),
 	DRM_IOCTL_DEF_DRV(MTK_SUPPORT_COLOR_TRANSFORM, mrk_mtk_drm_ioctl_support_color_matrix,
-				MINDONE_DRM_UNLOCKED),
+				0),
 	DRM_IOCTL_DEF_DRV(MTK_SET_GAMMALUT, mrk_mtk_drm_ioctl_set_gammalut,
-			  MINDONE_DRM_UNLOCKED),
+			  0),
 	DRM_IOCTL_DEF_DRV(MTK_SET_12BIT_GAMMALUT, mrk_mtk_drm_ioctl_set_12bit_gammalut,
-			  MINDONE_DRM_UNLOCKED),
+			  0),
 	DRM_IOCTL_DEF_DRV(MTK_SET_PQPARAM, mrk_mtk_drm_ioctl_set_pqparam,
-			  MINDONE_DRM_UNLOCKED),
+			  0),
 	DRM_IOCTL_DEF_DRV(MTK_SET_PQINDEX, mrk_mtk_drm_ioctl_set_pqindex,
-			  MINDONE_DRM_UNLOCKED),
+			  0),
 	DRM_IOCTL_DEF_DRV(MTK_SET_COLOR_REG, mrk_mtk_drm_ioctl_set_color_reg,
-			  MINDONE_DRM_UNLOCKED),
+			  0),
 	DRM_IOCTL_DEF_DRV(MTK_MUTEX_CONTROL, mrk_mtk_drm_ioctl_mutex_control,
-			  MINDONE_DRM_UNLOCKED),
+			  0),
 	DRM_IOCTL_DEF_DRV(MTK_READ_REG, mrk_mtk_drm_ioctl_read_reg,
-			  MINDONE_DRM_UNLOCKED),
+			  0),
 	DRM_IOCTL_DEF_DRV(MTK_WRITE_REG, mrk_mtk_drm_ioctl_write_reg,
-			  MINDONE_DRM_UNLOCKED),
+			  0),
 	DRM_IOCTL_DEF_DRV(MTK_BYPASS_COLOR, mrk_mtk_drm_ioctl_bypass_color,
-			  MINDONE_DRM_UNLOCKED),
+			  0),
 	DRM_IOCTL_DEF_DRV(MTK_PQ_SET_WINDOW, mrk_mtk_drm_ioctl_pq_set_window,
-			  MINDONE_DRM_UNLOCKED),
+			  0),
 	DRM_IOCTL_DEF_DRV(MTK_WRITE_SW_REG, mrk_mtk_drm_ioctl_write_sw_reg,
-			  MINDONE_DRM_UNLOCKED),
+			  0),
 	DRM_IOCTL_DEF_DRV(MTK_READ_SW_REG, mrk_mtk_drm_ioctl_read_sw_reg,
-			  MINDONE_DRM_UNLOCKED),
+			  0),
 	DRM_IOCTL_DEF_DRV(MTK_GET_LCM_INDEX, mrk_mtk_drm_ioctl_get_lcm_index,
-			  MINDONE_DRM_UNLOCKED),
+			  0),
 	DRM_IOCTL_DEF_DRV(MTK_GET_PANELS_INFO, mrk_mtk_drm_ioctl_get_all_connector_panel_info,
-			  MINDONE_DRM_UNLOCKED),
+			  0),
 	DRM_IOCTL_DEF_DRV(MTK_AAL_INIT_REG, mrk_mtk_drm_ioctl_aal_init_reg,
-			  MINDONE_DRM_UNLOCKED),
+			  0),
 	DRM_IOCTL_DEF_DRV(MTK_AAL_GET_HIST, mrk_mtk_drm_ioctl_aal_get_hist,
-			  MINDONE_DRM_UNLOCKED),
+			  0),
 	DRM_IOCTL_DEF_DRV(MTK_AAL_SET_PARAM, mrk_mtk_drm_ioctl_aal_set_param,
-			  MINDONE_DRM_UNLOCKED),
+			  0),
 	DRM_IOCTL_DEF_DRV(MTK_AAL_EVENTCTL, mrk_mtk_drm_ioctl_aal_eventctl,
-			  MINDONE_DRM_UNLOCKED),
+			  0),
 	DRM_IOCTL_DEF_DRV(MTK_AAL_INIT_DRE30, mrk_mtk_drm_ioctl_aal_init_dre30,
-			  MINDONE_DRM_UNLOCKED),
+			  0),
 	DRM_IOCTL_DEF_DRV(MTK_AAL_GET_SIZE, mrk_mtk_drm_ioctl_aal_get_size,
-			  MINDONE_DRM_UNLOCKED),
+			  0),
 	DRM_IOCTL_DEF_DRV(MTK_HDMI_GET_DEV_INFO, mrk_mtk_drm_dp_get_dev_info,
-			  MINDONE_DRM_UNLOCKED),
+			  0),
 	DRM_IOCTL_DEF_DRV(MTK_HDMI_AUDIO_ENABLE, mrk_mtk_drm_dp_audio_enable,
-			  MINDONE_DRM_UNLOCKED),
+			  0),
 	DRM_IOCTL_DEF_DRV(MTK_HDMI_AUDIO_CONFIG, mrk_mtk_drm_dp_audio_config,
-			  MINDONE_DRM_UNLOCKED),
+			  0),
 	DRM_IOCTL_DEF_DRV(MTK_HDMI_GET_CAPABILITY, mrk_mtk_drm_dp_get_cap,
-			  MINDONE_DRM_UNLOCKED),
+			  0),
 	DRM_IOCTL_DEF_DRV(MTK_MML_GEM_SUBMIT, mrk_mtk_drm_ioctl_mml_gem_submit,
-			  MINDONE_DRM_UNLOCKED | DRM_AUTH | DRM_RENDER_ALLOW),
+			  DRM_AUTH | DRM_RENDER_ALLOW),
 	DRM_IOCTL_DEF_DRV(MTK_SET_DISP_TDSHP_REG, mrk_mtk_drm_ioctl_tdshp_set_reg,
-			  MINDONE_DRM_UNLOCKED),
+			  0),
 	DRM_IOCTL_DEF_DRV(MTK_DISP_TDSHP_GET_SIZE, mrk_mtk_drm_ioctl_tdshp_get_size,
-			  MINDONE_DRM_UNLOCKED),
+			  0),
 	DRM_IOCTL_DEF_DRV(MTK_C3D_GET_BIN_NUM, mrk_mtk_drm_ioctl_c3d_get_bin_num,
-			  MINDONE_DRM_UNLOCKED),
+			  0),
 	DRM_IOCTL_DEF_DRV(MTK_C3D_GET_IRQ, mrk_mtk_drm_ioctl_c3d_get_irq,
-			  MINDONE_DRM_UNLOCKED),
+			  0),
 	DRM_IOCTL_DEF_DRV(MTK_C3D_EVENTCTL, mrk_mtk_drm_ioctl_c3d_eventctl,
-			  MINDONE_DRM_UNLOCKED),
+			  0),
 	DRM_IOCTL_DEF_DRV(MTK_C3D_SET_LUT, mrk_mtk_drm_ioctl_c3d_set_lut,
-			  MINDONE_DRM_UNLOCKED),
+			  0),
 	DRM_IOCTL_DEF_DRV(MTK_SET_BYPASS_C3D, mrk_mtk_drm_ioctl_bypass_c3d,
-			  MINDONE_DRM_UNLOCKED),
+			  0),
 	DRM_IOCTL_DEF_DRV(MTK_GET_CHIST, mrk_mtk_drm_ioctl_get_chist,
-			  MINDONE_DRM_UNLOCKED),
+			  0),
 	DRM_IOCTL_DEF_DRV(MTK_GET_CHIST_CAPS, mrk_mtk_drm_ioctl_get_chist_caps,
-			  MINDONE_DRM_UNLOCKED),
+			  0),
 	DRM_IOCTL_DEF_DRV(MTK_SET_CHIST_CONFIG, mrk_mtk_drm_ioctl_set_chist_config,
-			  MINDONE_DRM_UNLOCKED),
+			  0),
 	DRM_IOCTL_DEF_DRV(MTK_SET_DITHER_PARAM, mrk_mtk_drm_ioctl_set_dither_param,
-			  MINDONE_DRM_UNLOCKED),
+			  0),
 	DRM_IOCTL_DEF_DRV(MTK_BYPASS_DISP_GAMMA, mrk_mtk_drm_ioctl_bypass_disp_gamma,
-		MINDONE_DRM_UNLOCKED),
+		0),
 #if IS_ENABLED(CONFIG_DEBUG_FS)
 	DRM_IOCTL_DEF_DRV(MTK_FACTORY_LCM_AUTO_TEST, mrk_mtk_drm_fm_lcm_auto_test,
-			  MINDONE_DRM_UNLOCKED),
+			  0),
 #endif
 #ifndef DRM_BYPASS_PQ
 	DRM_IOCTL_DEF_DRV(MTK_GET_PQ_CAPS, mrk_mtk_drm_ioctl_get_pq_caps,
-			  MINDONE_DRM_UNLOCKED),
+			  0),
 	DRM_IOCTL_DEF_DRV(MTK_SET_PQ_CAPS, mrk_mtk_drm_ioctl_set_pq_caps,
-			  MINDONE_DRM_UNLOCKED),
+			  0),
 #endif
 	DRM_IOCTL_DEF_DRV(MTK_SEC_HND_TO_GEM_HND, mrk_mtk_drm_sec_hnd_to_gem_hnd,
-			MINDONE_DRM_UNLOCKED | DRM_AUTH | DRM_RENDER_ALLOW),
+			DRM_AUTH | DRM_RENDER_ALLOW),
 };
 
 #if IS_ENABLED(CONFIG_COMPAT)
@@ -5932,7 +5888,7 @@ long mtk_drm_compat_ioctl(struct file *filp, unsigned int cmd, unsigned long arg
 			  mtk_compat_ioctls[nr - DRM_COMMAND_BASE].name);
 	ret = (*fn)(filp, cmd, arg);
 	if (ret)
-		DDPDBG("%s: %s: ret = %d\n",
+		DDPDBG("%s: %s: ret = %ld\n",
 			  __func__,
 			  mtk_compat_ioctls[nr - DRM_COMMAND_BASE].name, ret);
 	return ret;
@@ -5950,7 +5906,7 @@ static const struct file_operations mtk_drm_fops = {
 	.mmap = mtk_drm_gem_mmap,
 	.poll = drm_poll,
 	.read = drm_read,
-	MINDONE_FOPS_UNSIGNED_OFFSET
+	.fop_flags = FOP_UNSIGNED_OFFSET,
 #ifdef CONFIG_COMPAT
 	.compat_ioctl = mtk_drm_compat_ioctl,
 #endif
@@ -5985,7 +5941,6 @@ static struct drm_driver mtk_drm_driver = {
 	.prime_fd_to_handle = drm_gem_prime_fd_to_handle,
 	.gem_prime_import = drm_gem_prime_import,
 	.gem_prime_import_sg_table = mtk_gem_prime_import_sg_table,
-	MINDONE_DRM_GEM_PRIME_MMAP(mtk_drm_gem_mmap_buf)
 	.ioctls = mtk_ioctls,
 	.num_ioctls = ARRAY_SIZE(mtk_ioctls),
 	.fops = &mtk_drm_fops,
@@ -6753,7 +6708,7 @@ static int mtk_drm_probe(struct platform_device *pdev)
 				"dispsys_num", &dispsys_num);
 	if (ret) {
 		dev_err(dev,
-			"no dispsys_config dispsys_num\n", ret);
+			"no dispsys_config dispsys_num, ret %d\n", ret);
 		dispsys_num = 1;
 	}
 
@@ -6824,7 +6779,7 @@ SKIP_SIDE_DISP:
 			if (IS_ERR(private->infra_regs))
 				DDPPR_ERR("%s: infra_ao_base of_iomap failed\n", __func__);
 			else
-				DDPMSG("%s, infra_regs:0x%p, infra_regs_pa:0x%lx\n",
+				DDPMSG("%s, infra_regs:0x%p, infra_regs_pa:0x%llx\n",
 					__func__, (void *)private->infra_regs,
 					private->infra_regs_pa);
 		}

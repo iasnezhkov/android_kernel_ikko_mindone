@@ -9,7 +9,6 @@
 #define pr_fmt(fmt) "dma_heap: mtk_sec "fmt
 
 #include <linux/dma-buf.h>
-#include <mindone/compat.h>
 #include <linux/dma-mapping.h>
 #include <linux/iommu.h>
 #include <linux/dma-heap.h>
@@ -300,7 +299,7 @@ static int region_base_free(struct secure_heap_region *sec_heap, struct mtk_sec_
 	}
 
 	if (atomic64_sub_return(buffer->len, &sec_heap->total_size) < 0)
-		pr_warn("%s warn!, total memory overflow, 0x%lx!!\n", __func__,
+		pr_warn("%s warn!, total memory overflow, 0x%llx!!\n", __func__,
 			atomic64_read(&sec_heap->total_size));
 
 	if (!atomic64_read(&sec_heap->total_size)) {
@@ -315,7 +314,7 @@ static int region_base_free(struct secure_heap_region *sec_heap, struct mtk_sec_
 		pr_info("%s: all secure memory already free, unmap heap_region iova\n", __func__);
 	}
 
-	pr_info("%s done, [%s] size:0x%lx, total_size:0x%lx\n",
+	pr_info("%s done, [%s] size:0x%lx, total_size:0x%llx\n",
 		__func__, dma_heap_get_name(buffer->heap), buffer->len,
 		atomic64_read(&sec_heap->total_size));
 	return ret;
@@ -356,10 +355,10 @@ static int page_base_free(struct secure_heap_page *sec_heap, struct mtk_sec_heap
 	}
 
 	if (atomic64_sub_return(buffer->len, &sec_heap->total_size) < 0)
-		pr_warn("%s, total memory overflow, 0x%lx!!\n", __func__,
+		pr_warn("%s, total memory overflow, 0x%llx!!\n", __func__,
 			atomic64_read(&sec_heap->total_size));
 
-	pr_info("%s done, [%s] size:0x%lx, total_size:0x%lx\n",
+	pr_info("%s done, [%s] size:0x%lx, total_size:0x%llx\n",
 		__func__, dma_heap_get_name(buffer->heap), buffer->len,
 		atomic64_read(&sec_heap->total_size));
 
@@ -377,7 +376,7 @@ static void tmem_region_free(struct dma_buf *dmabuf)
 	buffer = dmabuf->priv;
 	sec_heap = sec_heap_region_get(buffer->heap);
 	if (!sec_heap) {
-		pr_err("%s, can not find secure heap!!\n",
+		pr_err("%s, can not find secure heap!! (%s)\n",
 			__func__, buffer->heap ? dma_heap_get_name(buffer->heap) : "null ptr");
 		return;
 	}
@@ -407,7 +406,7 @@ static void tmem_page_free(struct dma_buf *dmabuf)
 	buffer = dmabuf->priv;
 	sec_heap = sec_heap_page_get(buffer->heap);
 	if (!sec_heap) {
-		pr_err("%s, can not find secure heap!!\n",
+		pr_err("%s, can not find secure heap!! (%s)\n",
 			__func__, buffer->heap ? dma_heap_get_name(buffer->heap) : "null ptr");
 		return;
 	}
@@ -759,7 +758,7 @@ static struct sg_table *mtk_sec_heap_region_map_dma_buf(struct dma_buf_attachmen
 			mutex_unlock(&buffer->map_lock);
 			return ERR_PTR(ret);
 		}
-		pr_info("%s reserve_iommu-dev(%s) dma_map_sgtable done, iova:0x%lx, id:(%d,%d)\n",
+		pr_info("%s reserve_iommu-dev(%s) dma_map_sgtable done, iova:0x%llx, id:(%d,%d)\n",
 			__func__, dev_name(attachment->dev), sg_dma_address(table->sgl),
 			tab_id, dom_id);
 		goto map_done;
@@ -944,7 +943,7 @@ static int region_base_alloc(struct secure_heap_region *sec_heap,
 		return -ENOMEM;
 	}
 	if (!sec_handle) {
-		pr_err("%s alloc security memory failed, req_size:0x%lx, total_size 0x%lx\n",
+		pr_err("%s alloc security memory failed, req_size:0x%lx, total_size 0x%llx\n",
 			__func__, req_sz, atomic64_read(&sec_heap->total_size));
 		return -ENOMEM;
 	}
@@ -980,7 +979,7 @@ static int region_base_alloc(struct secure_heap_region *sec_heap,
 
 	atomic64_add(buffer->len, &sec_heap->total_size);
 
-	pr_info("%s done: [%s], req_size:0x%lx, align_sz:0x%lx, handle:%u, pa:0x%lx, total_sz:0x%lx\n",
+	pr_info("%s done: [%s], req_size:0x%lx, align_sz:0x%lx, handle:%u, pa:0x%llx, total_sz:0x%llx\n",
 		__func__, dma_heap_get_name(buffer->heap), req_sz, buffer->len,
 		buffer->sec_handle, phy_addr, atomic64_read(&sec_heap->total_size));
 
@@ -1036,7 +1035,7 @@ static int page_base_alloc(struct secure_heap_page *sec_heap, struct mtk_sec_hea
 	buffer->ssheap = ssheap;
 	atomic64_add(buffer->len, &sec_heap->total_size);
 
-	pr_info("%s done: [%s], req_size:0x%lx(0x%lx), align_sz:0x%lx, nent:%u--%lu, align:0x%lx, total_sz:0x%lx\n",
+	pr_info("%s done: [%s], req_size:0x%lx(0x%lx), align_sz:0x%lx, nent:%u--%lu, align:0x%lx, total_sz:0x%llx\n",
 		__func__, dma_heap_get_name(sec_heap->heap), buffer->ssheap->req_size, req_sz,
 		buffer->len, buffer->ssheap->table->orig_nents, buffer->ssheap->elems,
 		buffer->ssheap->alignment, atomic64_read(&sec_heap->total_size));
@@ -1095,8 +1094,8 @@ static struct dma_buf *alloc_dmabuf(struct dma_heap *heap, struct mtk_sec_heap_b
 
 static struct dma_buf *tmem_page_allocate(struct dma_heap *heap,
 				     unsigned long len,
-				     mindone_heap_fd_flags_t fd_flags,
-				     mindone_heap_flags_t heap_flags)
+				     u32 fd_flags,
+				     u64 heap_flags)
 {
 	int ret = -ENOMEM;
 	struct dma_buf *dmabuf;
@@ -1104,7 +1103,7 @@ static struct dma_buf *tmem_page_allocate(struct dma_heap *heap,
 	struct secure_heap_page *sec_heap = sec_heap_page_get(heap);
 
 	if (!sec_heap) {
-		pr_err("%s, can not find secure heap!!\n",
+		pr_err("%s, can not find secure heap!! (%s)\n",
 			__func__, heap ? dma_heap_get_name(heap) : "null ptr");
 		return ERR_PTR(-EINVAL);
 	}
@@ -1154,8 +1153,8 @@ free_buffer:
 
 static struct dma_buf *tmem_region_allocate(struct dma_heap *heap,
 				     unsigned long len,
-				     mindone_heap_fd_flags_t fd_flags,
-				     mindone_heap_flags_t heap_flags)
+				     u32 fd_flags,
+				     u64 heap_flags)
 {
 	int ret = -ENOMEM;
 	struct dma_buf *dmabuf;
@@ -1261,7 +1260,7 @@ static int sec_buf_priv_dump(const struct dma_buf *dmabuf,
 			}
 
 			dmabuf_dump(s,
-				    "\t\tbuf_priv: tab:%-2u dom:%-2u map:%d iova:0x%-12lx %s attr:0x%-4lx dir:%-2d dev:%s\n",
+				    "\t\tbuf_priv: tab:%-2u dom:%-2u map:%d iova:0x%-12llx %s attr:0x%-4lx dir:%-2d dev:%s\n",
 				    i, j, mapped, iova,
 				    region_buf ? tmp_str : "",
 				    buf->dev_info[i][j].map_attrs,

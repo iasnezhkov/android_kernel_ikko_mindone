@@ -28,7 +28,6 @@
 #include <asm/barrier.h>
 #include <linux/irq.h>
 #include <linux/jiffies.h>
-#include <linux/version.h>
 #include <linux/sched/clock.h>	/* local_clock */
 
 #include "public/mc_user.h"

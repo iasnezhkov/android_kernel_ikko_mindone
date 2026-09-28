@@ -45,14 +45,12 @@
 #include <connectivity_build_in_adapter.h>
 #include "wmt_lib.h"
 
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(4, 15, 0))
 #include <linux/regulator/consumer.h>
 #include <linux/mfd/mt6397/core.h>
 #include <linux/of.h>
 #include <linux/of_platform.h>
 #include <linux/regmap.h>
 #define ALLOCATE_CONNSYS_EMI_FROM_KO 1
-#endif
 
 #include <linux/suspend.h>
 #include <linux/thermal.h>
@@ -173,21 +171,12 @@ struct pinctrl *consys_pinctrl;
 struct work_struct plt_resume_worker;
 static void plat_resume_handler(struct work_struct *work);
 
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(4, 15, 0))
 struct regmap *g_regmap;
-#endif
-#if (KERNEL_VERSION(6, 1, 0) <= LINUX_VERSION_CODE)
 static int wmt_thermal_get_temp_cb(struct thermal_zone_device *tz,
 		int *temp);
 static const struct thermal_zone_device_ops tz_wmt_thermal_ops = {
 	.get_temp = wmt_thermal_get_temp_cb,
 };
-#else
-static int wmt_thermal_get_temp_cb(void *data, int *temp);
-static const struct thermal_zone_of_device_ops tz_wmt_thermal_ops = {
-	.get_temp = wmt_thermal_get_temp_cb,
-};
-#endif
 
 /*******************************************************************************
 *                           P R I V A T E   D A T A
@@ -244,7 +233,6 @@ P_WMT_CONSYS_IC_OPS mtk_wcn_get_consys_ic_ops(VOID)
 	return (P_WMT_CONSYS_IC_OPS)of_id->data;
 }
 
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(4, 15, 0))
 static VOID mtk_wcn_get_regmap(struct platform_device *pdev)
 {
 	struct device_node *pmic_node;
@@ -275,7 +263,6 @@ static VOID mtk_wcn_get_regmap(struct platform_device *pdev)
 		WMT_PLAT_PR_INFO("get regmap fail\n");
 	}
 }
-#endif
 
 static INT32 wmt_allocate_connsys_emi(struct platform_device *pdev)
 {
@@ -334,12 +321,8 @@ static int wmt_allocate_connsys_emi_by_lk2(struct platform_device *pdev)
 	return 0;
 }
 
-#if (KERNEL_VERSION(6, 1, 0) <= LINUX_VERSION_CODE)
 static int wmt_thermal_get_temp_cb(struct thermal_zone_device *tz,
 		int *temp)
-#else
-static int wmt_thermal_get_temp_cb(void *data, int *temp)
-#endif
 {
 #define MAX_PRINT_TEMP     70000 /* Max temperature for print log */
 
@@ -363,13 +346,8 @@ static INT32 wmt_thermal_register(struct platform_device *pdev)
 	int ret;
 
 	/* register thermal zone */
-#if (KERNEL_VERSION(6, 1, 0) <= LINUX_VERSION_CODE)
 	tz = devm_thermal_of_zone_register(
 		&pdev->dev, 0, NULL, &tz_wmt_thermal_ops);
-#else
-	tz = devm_thermal_zone_of_sensor_register(
-		&pdev->dev, 0, NULL, &tz_wmt_thermal_ops);
-#endif
 
 	if (IS_ERR(tz)) {
 		ret = PTR_ERR(tz);
@@ -463,9 +441,7 @@ static INT32 mtk_wmt_probe(struct platform_device *pdev)
 	if (wmt_consys_ic_ops->ic_bt_wifi_share_v33_spin_lock_init)
 		wmt_consys_ic_ops->ic_bt_wifi_share_v33_spin_lock_init();
 
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(4, 15, 0))
 	mtk_wcn_get_regmap(pdev);
-#endif
 	if (wmt_consys_ic_ops->consys_ic_pmic_get_from_dts)
 		wmt_consys_ic_ops->consys_ic_pmic_get_from_dts(pdev);
 

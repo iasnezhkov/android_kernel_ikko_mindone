@@ -804,6 +804,7 @@ check_recycle_qh:
 				break;
 			}
 
+			fallthrough;
 		case USB_ENDPOINT_XFER_ISOC:
 		case USB_ENDPOINT_XFER_INT:
 			/* this is where periodic bandwidth should be

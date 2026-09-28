@@ -7,7 +7,6 @@
 
 /* platform related header file*/
 #include "scp.h"
-#include <mindone/compat-sound.h>
 #include "mtk-scp-audio-mem-control.h"
 #include "mtk-scp-audio-pcm.h"
 
@@ -114,7 +113,7 @@ int mtk_scp_audio_init_mem(void)
 	task_base->msg_atod_share_buf.size = A2D_SHAREMEM_SIZE;
 
 	dev_info(scp_audio->dev,
-		 "%s(), a2d mem pa=0x%llx, va=0x%llx, size=0x%llx\n",
+		 "%s(), a2d mem pa=0x%llx, va=0x%lx, size=0x%llx\n",
 		 __func__,
 		 paddr,
 		 vaddr,
@@ -133,13 +132,13 @@ int mtk_scp_audio_init_mem(void)
 	task_base->msg_dtoa_share_buf.size = D2A_SHAREMEM_SIZE;
 
 	dev_info(scp_audio->dev,
-		 "%s(), d2a mem pa=0x%llx, va=0x%llx, size=0x%llx\n",
+		 "%s(), d2a mem pa=0x%llx, va=0x%lx, size=0x%llx\n",
 		 __func__,
 		 paddr,
 		 vaddr,
 		 task_base->msg_dtoa_share_buf.size);
 	dev_info(scp_audio->dev,
-		 "%s(), scp reserve mem pa=0x%llx, va=0x%llx, size=0x%llx\n",
+		 "%s(), scp reserve mem pa=0x%llx, va=%p, size=0x%llx\n",
 		 __func__,
 		 scp_audio_rsv_mem->phy_addr,
 		 scp_audio_rsv_mem->vir_addr,
@@ -235,7 +234,7 @@ int mtk_scp_allocate_mem(struct snd_pcm_substream *substream, unsigned int size)
 {
 	struct snd_dma_buffer *dma_buf = &substream->dma_buffer;
 	struct snd_soc_pcm_runtime *rtd = substream->private_data;
-	int id = MINDONE_RTD_TO_CPU(rtd, 0)->id;
+	int id = snd_soc_rtd_to_cpu(rtd, 0)->id;
 	struct mtk_scp_audio_base *scp_audio = get_scp_audio_base();
 	//struct scp_audio_reserve_mem *scp_audio_rsv_mem = &scp_audio->rsv_mem;
 	//int buf_offset;
@@ -276,7 +275,7 @@ int mtk_scp_allocate_mem(struct snd_pcm_substream *substream, unsigned int size)
 	substream->runtime->dma_area = dma_buf->area;
 
 	dev_info(scp_audio->dev,
-		"%s(), scp audio VA:0x%p,PA:0x%lx,size:%d,using_sram=0\n",
+		"%s(), scp audio VA:0x%p,PA:0x%llx,size:%zu,using_sram=0\n",
 		__func__,
 		dma_buf->area,
 		dma_buf->addr,

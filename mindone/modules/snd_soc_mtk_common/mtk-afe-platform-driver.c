@@ -7,7 +7,6 @@
  */
 
 #include <linux/module.h>
-#include <mindone/compat-sound.h>
 #include <linux/dma-mapping.h>
 #include <sound/soc.h>
 
@@ -101,9 +100,9 @@ EXPORT_SYMBOL_GPL(mtk_afe_pcm_open);
 snd_pcm_uframes_t mtk_afe_pcm_pointer(struct snd_soc_component *component,
 				      struct snd_pcm_substream *substream)
 {
-	struct snd_soc_pcm_runtime *rtd = MINDONE_SUBSTREAM_TO_RTD(substream);
+	struct snd_soc_pcm_runtime *rtd = snd_soc_substream_to_rtd(substream);
 	struct mtk_base_afe *afe = snd_soc_component_get_drvdata(component);
-	struct mtk_base_afe_memif *memif = &afe->memif[MINDONE_RTD_TO_CPU(rtd, 0)->id];
+	struct mtk_base_afe_memif *memif = &afe->memif[snd_soc_rtd_to_cpu(rtd, 0)->id];
 	const struct mtk_base_memif_data *memif_data = memif->data;
 	struct regmap *regmap = afe->regmap;
 	struct device *dev = afe->dev;
@@ -171,8 +170,7 @@ static int default_write_copy(struct snd_pcm_substream *substream,
 			      int channel, unsigned long hwoff,
 			      void *buf, unsigned long bytes)
 {
-	if (MINDONE_SND_COPY_FROM_USER(get_dma_ptr(substream->runtime, channel, hwoff),
-				       (mindone_snd_buf_t)buf, bytes))
+	if ((copy_from_iter(get_dma_ptr(substream->runtime, channel, hwoff), bytes, (struct iov_iter *)buf) != bytes))
 		return -EFAULT;
 	return 0;
 }
@@ -182,9 +180,7 @@ static int default_read_copy(struct snd_pcm_substream *substream,
 			     int channel, unsigned long hwoff,
 			     void *buf, unsigned long bytes)
 {
-	if (MINDONE_SND_COPY_TO_USER((mindone_snd_buf_t)buf,
-				     get_dma_ptr(substream->runtime, channel, hwoff),
-				     bytes))
+	if ((copy_to_iter(get_dma_ptr(substream->runtime, channel, hwoff), bytes, (struct iov_iter *)buf) != bytes))
 		return -EFAULT;
 	return 0;
 }
@@ -192,7 +188,7 @@ static int default_read_copy(struct snd_pcm_substream *substream,
 int mtk_afe_pcm_copy_user(struct snd_soc_component *component,
 			  struct snd_pcm_substream *substream,
 			  int channel, unsigned long hwoff,
-			  mindone_snd_buf_t buf, unsigned long bytes)
+			  struct iov_iter *buf, unsigned long bytes)
 {
 	struct mtk_base_afe *afe = snd_soc_component_get_drvdata(component);
 	int is_playback = substream->stream == SNDRV_PCM_STREAM_PLAYBACK;
@@ -221,7 +217,7 @@ int mtk_afe_pcm_ack(struct snd_pcm_substream *substream)
 	struct snd_soc_component *component =
 		snd_soc_rtdcom_lookup(rtd, AFE_PCM_NAME);
 	struct mtk_base_afe *afe = snd_soc_component_get_drvdata(component);
-	struct snd_soc_dai *cpu_dai = MINDONE_RTD_TO_CPU(rtd, 0);
+	struct snd_soc_dai *cpu_dai = snd_soc_rtd_to_cpu(rtd, 0);
 	struct mtk_base_afe_memif *memif = &afe->memif[cpu_dai->id];
 
 	if (!memif->ack_enable)

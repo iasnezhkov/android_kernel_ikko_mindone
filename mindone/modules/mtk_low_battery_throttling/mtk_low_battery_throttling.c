@@ -28,7 +28,7 @@
 #define LVSYS_THD_VOLT_L 2900
 #define MAX_INT 0x7FFFFFFF
 #define MIN_LBAT_VOLT 2000
-#define MAX(a, b) ((a) > (b) ? (a) : (b))
+#define LBAT_MAX(a, b) ((a) > (b) ? (a) : (b))
 
 
 struct lbat_intr_tbl {
@@ -325,7 +325,7 @@ static unsigned int decide_and_throttle(enum LOW_BATTERY_USER_TAG user, unsigned
 			__func__, low_bat_thl_data->low_bat_thl_stop,
 			low_bat_thl_data->ppb_mode);
 		} else {
-			input = MAX(low_bat_thl_data->lbat_thl_intr_level,
+			input = LBAT_MAX(low_bat_thl_data->lbat_thl_intr_level,
 						low_bat_thl_data->lvsys_thl_intr_level);
 			exec_throttle(input);
 		}
@@ -337,7 +337,7 @@ static unsigned int decide_and_throttle(enum LOW_BATTERY_USER_TAG user, unsigned
 			__func__, low_bat_thl_data->low_bat_thl_stop,
 			low_bat_thl_data->ppb_mode);
 		} else {
-			input = MAX(low_bat_thl_data->lbat_thl_intr_level,
+			input = LBAT_MAX(low_bat_thl_data->lbat_thl_intr_level,
 						low_bat_thl_data->lvsys_thl_intr_level);
 			exec_throttle(input);
 		}
@@ -356,7 +356,7 @@ static unsigned int decide_and_throttle(enum LOW_BATTERY_USER_TAG user, unsigned
 				&low_thd_volts[0], LOW_BATTERY_LEVEL_NUM);
 			dump_thd_volts_ext(&low_thd_volts[0], LOW_BATTERY_LEVEL_NUM);
 		} else {
-			input = MAX(low_bat_thl_data->lbat_thl_intr_level,
+			input = LBAT_MAX(low_bat_thl_data->lbat_thl_intr_level,
 						low_bat_thl_data->lvsys_thl_intr_level);
 			exec_throttle(input);
 			thd_info =

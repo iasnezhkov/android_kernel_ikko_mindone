@@ -192,7 +192,7 @@ static inline int moveAF(unsigned long a_u4Position)
     g_u4TargetPosition = a_u4Position;
     spin_unlock(g_pAF_SpinLock);	
 
-    LOG_INF("[PD9402A] move [curr] %d [target] %d\n", g_u4CurrPosition, g_u4TargetPosition);
+    LOG_INF("[PD9402A] move [curr] %lu [target] %lu\n", g_u4CurrPosition, g_u4TargetPosition);
 
     spin_lock(g_pAF_SpinLock);
     spin_unlock(g_pAF_SpinLock);	

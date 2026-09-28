@@ -352,6 +352,8 @@ struct mtk_charger {
 	int old_cv;
 	bool stop_6pin_re_en;
 	int vbat0_flag;
+	int ext_psy_last_online;
+	int ext_psy_last_usb_type;
 
 	/* sw jeita */
 	bool enable_sw_jeita;
@@ -453,7 +455,6 @@ extern int mtk_chg_enable_vbus_ovp(bool enable);
 #if IS_ENABLED(CONFIG_PRIZE_MT5725_SUPPORT_15W)
 extern int set_otg_gpio(int en);
 extern int turn_off_5725(int en);
-extern int get_MT5725_status(void);
 #endif
 
 #if IS_ENABLED(CONFIG_PRIZE_CHARGE_CTRL_POLICY)

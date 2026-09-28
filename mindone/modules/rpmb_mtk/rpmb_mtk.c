@@ -4,7 +4,6 @@
  */
 
 #include <linux/kernel.h>
-#include <mindone/compat.h>
 #include <linux/module.h>
 #include <linux/init.h>
 #include <linux/moduleparam.h>
@@ -14,7 +13,6 @@
 #include <linux/fs.h>
 #include <linux/ioctl.h>
 #include <linux/uaccess.h>
-#include <linux/version.h>
 #include <linux/spinlock.h>
 #include <linux/semaphore.h>
 #include <linux/delay.h>
@@ -135,7 +133,6 @@ static struct nl_rpmb_send_req nl_rpmb_req;
 
 #define RPMB_NAME "rpmb"
 
-#define MIN(a, b) (((a) < (b)) ? (a) : (b))
 
 #define RPMB_IOCTL_PROGRAM_KEY  1
 #define RPMB_IOCTL_WRITE_DATA   3
@@ -150,28 +147,6 @@ struct rpmb_ioc_param {
 	unsigned int hmac_len;
 };
 
-/*
- * MINDONE-RPMB-GETDEVINFO (P80/P45, 12.09, B16): the userspace RPMB client teed ships
- * --rpmbdev /dev/rpmb0 for its "proprietary" (non-mmcblk) backend, and its GET_DEV_INFO
- * probe issues exactly these two ioctls against that node (confirmed on-device: dmesg from
- * a pre-fix build logged "wrong ioctl code (13)" and "wrong ioctl code (-1068977408)" =
- * 0xC048B300 from this very rpmb_ioctl_ufs()'s own default case; the two request/response
- * shapes below were read out of aarch64-linux-gnu-objdump on the real /vendor/bin/teed, not
- * guessed). Neither is a JEDEC RPMB frame operation - both stay outside the existing
- * copy_from_user(&param, ...) path below, which is sized/shaped for RPMB_IOCTL_* only.
- *
- * 13 - a private, non-_IOC-encoded query (matches this driver's own raw-literal 1/3/4
- * convention): a 16-byte in/out buffer whose bytes [12..15] hold reliable_wr_count as a u32
- * (teed only reads the low byte back into rel_wr_sec_c).
- *
- * 0xC048B300 - this decodes as _IOWR(179, 0, <72 bytes>): 179 = MMC_BLOCK_MAJOR, i.e. this is
- * the real uapi MMC_IOC_CMD, teed's shared "read_extcsd()" helper reusing the standard eMMC
- * command-passthrough ioctl to fetch the SEND_EXT_CSD (opcode 8) register block, then reading
- * RPMB_SIZE_MULT/REL_WR_SEC_C straight out of the standard EXT_CSD byte offsets (168/222) of
- * the 512-byte response it DMAs back via data_ptr. We do not implement generic MMC command
- * passthrough - only recognize this one exact request shape (opcode 8) and hand back a
- * synthetic EXT_CSD-shaped buffer with just those two bytes filled in.
- */
 #define RPMB_IOCTL_GET_RELIABLE_WR_COUNT  13
 
 struct rpmb_reliable_wr_info {
@@ -459,7 +434,7 @@ static int rpmb_cal_hmac(struct rpmb_frame *frame, int blk_cnt,
 	int i;
 	u8 *buf, *buf_start;
 
-	buf = buf_start = kzalloc(RPMB_SZ_CAL_HMAC * blk_cnt, 0);
+	buf = buf_start = kcalloc(blk_cnt, RPMB_SZ_CAL_HMAC, 0);
 	if (!buf_start)
 		return -ENOMEM;
 
@@ -505,7 +480,7 @@ static void rpmb_dump_frame(u8 *data_frame)
 #if IS_ENABLED(CONFIG_SCSI_UFS_MEDIATEK)
 static struct rpmb_frame *rpmb_alloc_frames(unsigned int cnt)
 {
-	return kzalloc(sizeof(struct rpmb_frame) * cnt, 0);
+	return kcalloc(cnt, sizeof(struct rpmb_frame), 0);
 }
 #endif
 
@@ -1028,7 +1003,7 @@ static int rpmb_req_ioctl_write_data_ufs(struct rpmb_ioc_param *param)
 		 */
 
 		dataBuf_start = dataBuf =
-			kzalloc(RPMB_SZ_CAL_HMAC * tran_blkcnt, 0);
+			kcalloc(tran_blkcnt, RPMB_SZ_CAL_HMAC, 0);
 		if (!dataBuf_start) {
 			kfree(rpmbdata.icmd.frames);
 			kfree(rpmbdata.ocmd.frames);
@@ -1257,7 +1232,7 @@ static int rpmb_req_ioctl_read_data_ufs(struct rpmb_ioc_param *param)
 		 */
 
 		dataBuf_start = dataBuf =
-			kzalloc(RPMB_SZ_CAL_HMAC * tran_blkcnt, 0);
+			kcalloc(tran_blkcnt, RPMB_SZ_CAL_HMAC, 0);
 		if (!dataBuf_start) {
 			kfree(rpmbdata.icmd.frames);
 			kfree(rpmbdata.ocmd.frames);
@@ -1575,7 +1550,7 @@ static int emmc_rpmb_send_command(
 	mrq.cmd = &cmd;
 	mrq.data = &data;
 	mrq.stop = NULL;
-	transfer_buf = kzalloc(512 * blks, GFP_KERNEL);
+	transfer_buf = kcalloc(blks, 512, GFP_KERNEL);
 	if (!transfer_buf)
 		return -ENOMEM;
 
@@ -2254,7 +2229,7 @@ int rpmb_req_ioctl_read_data_emmc(struct mmc_card *card,
 		 * multi buffer, pre-alloced it)
 		 */
 		rpmb_frame =
-			kzalloc(tran_blkcnt * sizeof(struct s_rpmb) + tran_blkcnt * 512, 0);
+			kcalloc(tran_blkcnt, sizeof(struct s_rpmb) + 512, 0);
 		if (rpmb_frame == NULL)
 			return RPMB_ALLOC_ERROR;
 
@@ -2603,27 +2578,10 @@ static int rpmb_open(struct inode *pinode, struct file *pfile)
 }
 
 #if IS_ENABLED(CONFIG_SCSI_UFS_MEDIATEK)
-/*
- * MINDONE-RPMB-TKFRAMES (/12.09, B16b -> B16c): after get-dev-info (ioctl 13 /
- * MMC_IOC_CMD), teed (TrustKernel) sends ready-made JEDEC RPMB frames, prepared in the
- * TEE, via three private ioctls on /dev/rpmb0 (disassembly of /vendor/bin/teed, function
- * 0x48e4: request type = be16 in bytes [510..511] of the frame):
- *   type 0x0002 (read write counter), 1 frame     -> ioctl 12
- *   type 0x0004 (read data),  blk_cnt frames       -> ioctl 11
- *   type 0x0003 (write data), 1 frame              -> ioctl 10
- * Argument -- 16 bytes: { u32 blk_cnt; u8 *buf } (userspace buffer: on input, the first
- * frame is the request; on output, the response frames, blk_cnt*512 for reads, 1 frame
- * for the rest).
- * On B16b the log showed: "wrong ioctl code (12)", then "(11)" x3 -> TEE: "Verify RPMB
- * Key failed with 0xffff0000", "read rpmb superblock failed" -- that is what it ran into.
- * Return: 0 on a successful transaction (the TEE itself checks the result field of the
- * frame), -EIO on a transport error. Frames on UFS are carried by ufs_mtk_rpmb_xfer()
- * (ufs_mtk_rpmb.ko).
- */
 #define MINDONE_TK_RPMB_IOCTL_WRITE_DATA 10
 #define MINDONE_TK_RPMB_IOCTL_READ_DATA  11
 #define MINDONE_TK_RPMB_IOCTL_GET_WC     12
-#define MINDONE_TK_RPMB_MAX_BLKS         64	/* 32 KiB at a time -- headroom against the TEE's 128 */
+#define MINDONE_TK_RPMB_MAX_BLKS         64
 
 struct mindone_tk_rpmb_arg {
 	u32 blk_cnt;
@@ -2704,7 +2662,6 @@ static long rpmb_ioctl_ufs(struct file *pfile, unsigned int cmd, unsigned long a
 	unsigned long n;
 	struct rpmb_ioc_param param;
 
-	/* MINDONE-RPMB-GETDEVINFO: neither shape matches rpmb_ioc_param below - handle first. */
 	if (cmd == RPMB_IOCTL_GET_RELIABLE_WR_COUNT)
 		return rpmb_ioctl_get_reliable_wr_count(arg);
 	if (cmd == MTK_RPMB_MMC_IOC_CMD)
@@ -3096,7 +3053,7 @@ static int __init rpmb_init(void)
 	}
 
 #ifdef __RPMB_IOCTL_SUPPORT
-	mtk_rpmb_class = MINDONE_CLASS_CREATE("rpmb_mtk"); /* MINDONE-RPMB-CLASS (F3140): class "rpmb" is taken by the new rpmb core (rpmb.ko); the /dev/rpmb node stays */
+	mtk_rpmb_class = class_create("rpmb_mtk");
 
 	if (IS_ERR(mtk_rpmb_class)) {
 		MSG(ERR, "%s, init class_create failed!\n", __func__);

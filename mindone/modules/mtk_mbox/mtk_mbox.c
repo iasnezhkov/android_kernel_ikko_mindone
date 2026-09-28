@@ -361,6 +361,8 @@ int mtk_mbox_set_base_reg(struct mtk_mbox_device *mbdev, unsigned int mbox,
 		return MBOX_PARA_ERR;
 
 	minfo = &(mbdev->info_table[mbox]);
+	if (!minfo->init_base_reg)
+		return MBOX_PARA_ERR;
 	writel(addr, minfo->init_base_reg);
 
 
@@ -743,9 +745,14 @@ int mtk_mbox_probe(struct platform_device *pdev, struct mtk_mbox_device *mbdev,
 		/*init reg*/
 		snprintf(name, sizeof(name), "mbox%d_init", mbox);
 		res = platform_get_resource_byname(pdev, IORESOURCE_MEM, name);
-		minfo->init_base_reg = devm_ioremap_resource(dev, res);
-		if (IS_ERR((void const *) minfo->init_base_reg))
-			pr_err("MBOX %d can't find init reg\n", mbox);
+		minfo->init_base_reg = NULL;
+		if (res) {
+			minfo->init_base_reg = devm_ioremap_resource(dev, res);
+			if (IS_ERR((void const *) minfo->init_base_reg)) {
+				pr_err("MBOX %d init reg map failed\n", mbox);
+				minfo->init_base_reg = NULL;
+			}
+		}
 		/*set irq reg*/
 		snprintf(name, sizeof(name), "mbox%d_set", mbox);
 		res = platform_get_resource_byname(pdev, IORESOURCE_MEM, name);
@@ -765,18 +772,24 @@ int mtk_mbox_probe(struct platform_device *pdev, struct mtk_mbox_device *mbdev,
 		/*send status reg*/
 		snprintf(name, sizeof(name), "mbox%d_send", mbox);
 		res = platform_get_resource_byname(pdev, IORESOURCE_MEM, name);
-		minfo->send_status_reg = devm_ioremap_resource(dev, res);
-		if (IS_ERR((void const *) minfo->send_status_reg)) {
-			pr_notice("MBOX %d can't find send status reg\n", mbox);
-			minfo->send_status_reg = NULL;
+		minfo->send_status_reg = NULL;
+		if (res) {
+			minfo->send_status_reg = devm_ioremap_resource(dev, res);
+			if (IS_ERR((void const *) minfo->send_status_reg)) {
+				pr_err("MBOX %d send status reg map failed\n", mbox);
+				minfo->send_status_reg = NULL;
+			}
 		}
 		/*recv status reg*/
 		snprintf(name, sizeof(name), "mbox%d_recv", mbox);
 		res = platform_get_resource_byname(pdev, IORESOURCE_MEM, name);
-		minfo->recv_status_reg = devm_ioremap_resource(dev, res);
-		if (IS_ERR((void const *) minfo->recv_status_reg)) {
-			pr_notice("MBOX %d can't find recv status reg\n", mbox);
-			minfo->recv_status_reg = NULL;
+		minfo->recv_status_reg = NULL;
+		if (res) {
+			minfo->recv_status_reg = devm_ioremap_resource(dev, res);
+			if (IS_ERR((void const *) minfo->recv_status_reg)) {
+				pr_err("MBOX %d recv status reg map failed\n", mbox);
+				minfo->recv_status_reg = NULL;
+			}
 		}
 
 		snprintf(name, sizeof(name), "mbox%d", mbox);

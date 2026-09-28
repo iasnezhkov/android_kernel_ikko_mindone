@@ -5,7 +5,6 @@
 
 #include <linux/cpufreq.h>
 #include <linux/platform_device.h>
-#include <mindone/compat.h>
 #include <linux/energy_model.h>
 #include <linux/module.h>
 #include <linux/mutex.h>
@@ -175,11 +174,11 @@ static u32 cpu_power_to_freq(struct cpu_pbm_policy *pbm_policy, u32 power)
 		return 0;
 
 	for (i = pbm_policy->max_perf_state - 1; i > 0; i--) {
-		if (power >= MINDONE_EM_TABLE(pbm_policy->em)[i].power)
+		if (power >= em_perf_state_from_pd(pbm_policy->em)[i].power)
 			break;
 	}
 
-	return MINDONE_EM_TABLE(pbm_policy->em)[i].frequency;
+	return em_perf_state_from_pd(pbm_policy->em)[i].frequency;
 }
 
 static u32 cpu_freq_to_power(struct cpu_pbm_policy *pbm_policy, u32 freq)
@@ -190,11 +189,11 @@ static u32 cpu_freq_to_power(struct cpu_pbm_policy *pbm_policy, u32 freq)
 		return 0;
 
 	for (i = pbm_policy->max_perf_state - 1; i > 0; i--) {
-		if (freq >= MINDONE_EM_TABLE(pbm_policy->em)[i].frequency)
+		if (freq >= em_perf_state_from_pd(pbm_policy->em)[i].frequency)
 			break;
 	}
 
-	return MINDONE_EM_TABLE(pbm_policy->em)[i].power;
+	return em_perf_state_from_pd(pbm_policy->em)[i].power;
 }
 
 static void mtk_cpu_dlpt_set_limit_by_pbm(unsigned int limit_power)

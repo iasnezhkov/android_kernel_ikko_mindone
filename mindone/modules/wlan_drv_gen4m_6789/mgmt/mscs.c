@@ -129,7 +129,7 @@ void mscsAddFiveTuple(IN struct ADAPTER *prAdapter,
 		DBGLOG(TX, WARN, "No memory for 5 tuple\n");
 		return;
 	}
-	kalMemCopy(&prEntry->u4SrcIp, prTargetTuple, LEN_OF_FIVE_TUPLE);
+	kalMemCopy(&prEntry->rTuple, prTargetTuple, LEN_OF_FIVE_TUPLE);
 	LINK_INSERT_TAIL(prMonitorList, &prEntry->rLinkEntry);
 }
 
@@ -263,7 +263,7 @@ void mscsAddTcpForMonitor(IN struct ADAPTER *prAdapter,
 		DBGLOG(TX, WARN, "No memory for TCP Monitor\n");
 		return;
 	}
-	kalMemCopy(&prEntry->u4SrcIp, prTargetTuple, LEN_OF_TCP_INFO);
+	kalMemCopy(&prEntry->rTuple, prTargetTuple, LEN_OF_TCP_INFO);
 	LINK_INSERT_TAIL(prMonitorList, &prEntry->rLinkEntry);
 }
 
@@ -376,7 +376,7 @@ uint8_t mscsIsTcpNeedMonitor(IN struct ADAPTER *prAdapter, IN uint8_t *pucPkt)
 	DBGLOG_MEM8(TX, LOUD, &rTcpInfo.u4SrcIp, LEN_OF_TCP_INFO);
 
 	if (ucTcpFlag == TCP_FLAG_SYN) {
-		mscsAddTcpForMonitor(prAdapter, (uint8_t *) &rTcpInfo.u4SrcIp);
+		mscsAddTcpForMonitor(prAdapter, (uint8_t *) &rTcpInfo.rTuple);
 		return FALSE;
 	} else if (ucTcpFlag == TCP_FLAG_ACK) {
 		prTcpEntry = mscsSearchTcpEntry(prAdapter,
@@ -634,6 +634,7 @@ uint32_t mscsRequest(IN struct ADAPTER *prAdapter,
 	uint32_t u4Status = WLAN_STATUS_SUCCESS;
 	uint32_t u4TCLASLen = 0;
 	struct MSCS_FIVE_TUPLE_T rTargetFiveTuple;
+	struct IE_TCLAS_CLASS_TYPE_4 *prClassType4;
 	uint8_t *pucTCLAS = NULL;
 
 	/* 1. Retrieve TCLAS if needed */
@@ -667,13 +668,17 @@ uint32_t mscsRequest(IN struct ADAPTER *prAdapter,
 	if (u4Status == WLAN_STATUS_SUCCESS) {
 		DBGLOG(TX, TRACE, "[F] add 5-tuple\n");
 		/* pucTargetFiveTuple = GET_SRC_IP_BY_IE(pucTCLAS);  */
-		kalMemCopy(&rTargetFiveTuple.u4SrcIp,
-			GET_SRC_IP_BY_IE(pucTCLAS), 12);
+		prClassType4 = (struct IE_TCLAS_CLASS_TYPE_4 *)
+			&((struct IE_TCLAS_MASK *)pucTCLAS)->aucFrameClassifier[0];
+		rTargetFiveTuple.u4SrcIp = prClassType4->u4SrcIp;
+		rTargetFiveTuple.u4DestIp = prClassType4->u4DestIp;
+		rTargetFiveTuple.u2SrcPort = prClassType4->u2SrcPort;
+		rTargetFiveTuple.u2DestPort = prClassType4->u2DestPort;
 		rTargetFiveTuple.ucProtocol = GET_PROTOCOL_BY_IE(pucTCLAS);
 		DBGLOG_MEM8(TX, TRACE, &rTargetFiveTuple.u4SrcIp,
 			LEN_OF_FIVE_TUPLE);
 		mscsAddFiveTuple(prAdapter, (uint8_t *)
-			&rTargetFiveTuple.u4SrcIp);
+			&rTargetFiveTuple.rTuple);
 	}
 
 	if (pucTCLAS)
@@ -929,7 +934,7 @@ uint8_t fpExamKeyBitmap(uint32_t *pu4KeyBitmapA, uint32_t *pu4KeyBitmapB,
 	uint8_t ucIdx = 0;
 	uint8_t fgIsKeyBitmapHitted = FALSE;
 
-	for (ucIdx; ucIdx < KEY_BITMAP_LEN_DW; ucIdx++) {
+	for (; ucIdx < KEY_BITMAP_LEN_DW; ucIdx++) {
 		pu4KeyBitmap[ucIdx] =
 			pu4KeyBitmapA[ucIdx] & pu4KeyBitmapB[ucIdx];
 		if (pu4KeyBitmap[ucIdx])

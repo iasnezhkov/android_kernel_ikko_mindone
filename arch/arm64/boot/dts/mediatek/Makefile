@@ -1,6 +1,8 @@
 # SPDX-License-Identifier: GPL-2.0
 DTC_FLAGS_mindone := -@
 dtb-$(CONFIG_ARCH_MEDIATEK) += mindone.dtb
+DTC_FLAGS_mindone-overlay := -@
+dtb-$(CONFIG_ARCH_MEDIATEK) += mindone-overlay.dtbo
 dtb-$(CONFIG_ARCH_MEDIATEK) += mt2712-evb.dtb
 dtb-$(CONFIG_ARCH_MEDIATEK) += mt6755-evb.dtb
 dtb-$(CONFIG_ARCH_MEDIATEK) += mt6779-evb.dtb

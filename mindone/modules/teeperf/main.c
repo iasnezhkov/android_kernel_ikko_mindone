@@ -4,7 +4,6 @@
  */
 
 #include <linux/cdev.h>
-#include <mindone/compat.h>
 #include <linux/module.h>
 #include <linux/of.h>
 #include <linux/fs.h>
@@ -36,7 +35,7 @@ static inline int teeperf_device_common_init(void)
 		return ret;
 	}
 
-	main_ctx.class = MINDONE_CLASS_CREATE("teeperf");
+	main_ctx.class = class_create("teeperf");
 	if (IS_ERR(main_ctx.class)) {
 		ret = PTR_ERR(main_ctx.class);
 		pr_info(PFX "class_create failed, ret %d\n", ret);

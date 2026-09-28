@@ -230,9 +230,6 @@ mtk_rpmsg_create_device(struct platform_device *pdev,
 	mdev->ops = &mtk_rpmsg_ops;
 	rpdev = &mdev->rpdev;
 	rpdev->ops = &mtk_rpmsg_device_ops;
-	pr_notice("MINDONE-RPMSG: sizeof(rpmsg_device_ops)=%zu rpdev=%p ops=%p create_ept=%pS\n",
-		sizeof(struct rpmsg_device_ops), rpdev, rpdev->ops,
-		rpdev->ops ? rpdev->ops->create_ept : NULL);
 	rpdev->src = ipc_chan_id;
 	//rpdev->dst = info->dst;
 
