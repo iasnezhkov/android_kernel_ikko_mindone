@@ -3496,6 +3496,7 @@ static void mtk_battery_daemon_handler(struct mtk_battery *gm, void *nl_data,
 			gm->ui_soc = 50;
 		else
 			gm->ui_soc = (daemon_ui_soc + 50) / 100;
+		smp_store_release(&gm->cc_soc_ready, true);
 
 		/* when UISOC changes, check the diff time for smooth */
 		if (old_uisoc != gm->ui_soc) {

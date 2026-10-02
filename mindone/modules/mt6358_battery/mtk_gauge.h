@@ -229,6 +229,10 @@ struct mtk_gauge {
 	struct regmap *regmap;
 	struct platform_device *pdev;
 	struct mutex ops_lock;
+	bool charge_counter_valid;
+	int charge_counter_car;
+	long long charge_counter_uah;
+	int charge_counter_full_uah;
 
 	struct power_supply_desc psy_desc;
 	struct power_supply_config psy_cfg;
@@ -300,5 +304,8 @@ struct mtk_gauge_sysfs_field_info {
 	int (*get)(struct mtk_gauge *gauge,
 		struct mtk_gauge_sysfs_field_info *attr, int *val);
 };
+
+int gauge_get_charge_counter(struct mtk_gauge *gauge, int seed_uah,
+	int full_uah);
 
 #endif /* __MTK_GAUGE_INTF_H__ */

@@ -958,10 +958,7 @@ struct mtk_battery {
 	int d_saved_car;
 	struct zcv_filter zcvf;
 
-	bool cc_anchor_valid;
-	int cc_anchor_ui_soc;
-	int cc_anchor_car;
-	long long cc_anchor_uah;
+	bool cc_soc_ready;
 
 	/*battery health*/
 	struct ag_center_data_st bh_data;

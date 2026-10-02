@@ -304,7 +304,7 @@ static int dummy_ioctl(unsigned int cmd, unsigned long arg)
 		break;
 
 	default:
-		pr_info("No such command and arg(%d): (%d, %d)\n",
+		pr_debug("No such command and arg(%d): (%d, %d)\n",
 				channel, _IOC_NR(cmd), (int)fl_arg->arg);
 		return -ENOTTY;
 	}

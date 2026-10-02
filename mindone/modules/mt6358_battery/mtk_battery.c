@@ -326,65 +326,16 @@ int mtk_battery_get_learned_q_max(struct mtk_battery *gm)
 	return (int)((long long)q_max * aging / 10000);
 }
 
-static void mtk_battery_cc_anchor_update(struct mtk_battery *gm)
-{
-	int car = 0;
-	int ret;
-	int q_max;
-
-	/* Re-anchor only on an actual whole-percent change. battery_update() has
-	 * many call sites unrelated to a percent change (charger plug/unplug,
-	 * EOC, periodic thread refreshes); anchoring on every one of them would
-	 * collapse the coulomb delta window back to ~0 and defeat the point of
-	 * this fix -- the anchor is meant to span the whole time ui_soc sits
-	 * still, not just the true instant it changed. */
-	if (gm->cc_anchor_valid && gm->cc_anchor_ui_soc == gm->ui_soc)
-		return;
-
-	ret = gauge_get_property(GAUGE_PROP_COULOMB, &car);
-	if (ret < 0)
-		return; /* keep the previous anchor rather than anchor on a bad read */
-
-	q_max = mtk_battery_get_learned_q_max(gm);
-
-	gm->cc_anchor_car = car;
-	gm->cc_anchor_uah = (long long)gm->ui_soc * q_max * 1000LL / 100;
-	gm->cc_anchor_ui_soc = gm->ui_soc;
-	gm->cc_anchor_valid = true;
-}
-
-/* Remaining charge in uAh: cc_anchor_uah plus the coulomb-counter delta since
- * that anchor was taken (see mtk_battery_cc_anchor_update() above). Falls
- * back to the old ui_soc*q_max formula if no anchor has been taken yet this
- * boot (fresh probe, before the first ui_soc change/EOC) or if the gauge
- * register read fails -- so this can never report a bogus or uninitialized
- * number, only the same value the driver already reported before this fix. */
 static int mtk_battery_get_charge_now_uah(struct mtk_battery *gm)
 {
 	int q_max = mtk_battery_get_learned_q_max(gm);
-	long long full_uah = (long long)q_max * 1000;
-	long long now_uah;
-	int car = 0;
-	int ret;
+	int full_uah = q_max * 1000;
 
-	if (!gm->cc_anchor_valid)
-		return gm->ui_soc * q_max * 1000 / 100;
+	if (!smp_load_acquire(&gm->cc_soc_ready))
+		return (long long)gm->ui_soc * full_uah / 100;
 
-	ret = gauge_get_property(GAUGE_PROP_COULOMB, &car);
-	if (ret < 0)
-		return gm->ui_soc * q_max * 1000 / 100;
-
-	now_uah = gm->cc_anchor_uah +
-		(long long)(car - gm->cc_anchor_car) * 100LL;
-
-	/* Coulomb-counter drift/calibration error must never surface as a value
-	 * outside the physically sane [0, charge_full] range. */
-	if (now_uah < 0)
-		now_uah = 0;
-	else if (now_uah > full_uah)
-		now_uah = full_uah;
-
-	return (int)now_uah;
+	return gauge_get_charge_counter(gm->gauge,
+		(long long)READ_ONCE(gm->ui_soc) * full_uah / 100, full_uah);
 }
 
 static int battery_psy_get_property(struct power_supply *psy,
@@ -2215,7 +2166,7 @@ void battery_update(struct mtk_battery *gm)
 	if (gm->algo.active == true)
 		bat_data->bat_capacity = gm->ui_soc;
 
-	mtk_battery_cc_anchor_update(gm);
+	mtk_battery_get_charge_now_uah(gm);
 
 	if (!IS_ERR_OR_NULL(bat_data->chg_psy)) {
 		union power_supply_propval online = { .intval = 0 };
@@ -2467,6 +2418,7 @@ static int uisoc_set(struct mtk_battery *gm,
 		gm->ui_soc = 50;
 	else
 		gm->ui_soc = (daemon_ui_soc + 50) / 100;
+	smp_store_release(&gm->cc_soc_ready, true);
 
 	/* when UISOC changes, check the diff time for smooth */
 	if (old_uisoc != gm->ui_soc) {
@@ -3839,4 +3791,3 @@ int battery_init(struct platform_device *pdev)
 
 	return 0;
 }
-

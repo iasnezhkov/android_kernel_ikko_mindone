@@ -391,22 +391,28 @@ static int mv_to_reg_12_value(struct mtk_gauge *gauge, signed int _reg)
 	return ret;
 }
 
-static void pre_gauge_update(struct mtk_gauge *gauge)
+static int pre_gauge_update(struct mtk_gauge *gauge)
 {
 	int m = 0;
+	int ret;
 	unsigned int reg_val = 0;
 
-	regmap_write(gauge->regmap, RG_FGADC_CON1, 0x1);
+	ret = regmap_write(gauge->regmap, RG_FGADC_CON1, 0x1);
+	if (ret)
+		return ret;
 
 	do {
 		m++;
 		if (m > 1000) {
 			bm_err("[%s] gauge_update_polling timeout 1:%x!\r\n",
 				__func__, reg_val);
-			break;
+			return -ETIMEDOUT;
 		}
-		regmap_read(gauge->regmap, RG_FGADC_CON1, &reg_val);
+		ret = regmap_read(gauge->regmap, RG_FGADC_CON1, &reg_val);
+		if (ret)
+			return ret;
 	} while (!(reg_val & FG_LATCHDATA_ST_MASK));
+	return 0;
 }
 
 void disable_all_irq(struct mtk_battery *gm)
@@ -1864,13 +1870,24 @@ static int coulomb_get(struct mtk_gauge *gauge,
 	long long temp_value = 0;
 	int r_fg_value;
 	int car_tune_value;
+	int ret;
 
 	r_fg_value = gauge->hw_status.r_fg_value;
 	car_tune_value = gauge->gm->fg_cust_data.car_tune_value;
-	pre_gauge_update(gauge);
+	ret = pre_gauge_update(gauge);
+	if (ret) {
+		post_gauge_update(gauge);
+		return ret;
+	}
 
-	regmap_read(gauge->regmap, RG_FGADC_CAR_CON0, &temp_car_15_0);
-	regmap_read(gauge->regmap, RG_FGADC_CAR_CON1, &temp_car_31_16);
+	ret = regmap_read(gauge->regmap, RG_FGADC_CAR_CON0, &temp_car_15_0);
+	if (!ret)
+		ret = regmap_read(gauge->regmap, RG_FGADC_CAR_CON1,
+			&temp_car_31_16);
+	if (ret) {
+		post_gauge_update(gauge);
+		return ret;
+	}
 	uvalue32_car = temp_car_15_0 >> 11;
 	uvalue32_car |= (temp_car_31_16 & 0x7fff) << 5;
 	uvalue32_car_msb = (temp_car_31_16 & 0x8000) >> 15;
@@ -1941,6 +1958,38 @@ static int coulomb_get(struct mtk_gauge *gauge,
 	*val = dvalue_CAR;
 
 	return 0;
+}
+
+static void charge_counter_update(struct mtk_gauge *gauge, int car)
+{
+	gauge->charge_counter_uah +=
+		((long long)car - gauge->charge_counter_car) * 100;
+	gauge->charge_counter_car = car;
+	gauge->charge_counter_uah = clamp_t(long long,
+		gauge->charge_counter_uah, 0, gauge->charge_counter_full_uah);
+}
+
+int gauge_get_charge_counter(struct mtk_gauge *gauge, int seed_uah,
+	int full_uah)
+{
+	int car;
+	int result;
+
+	mutex_lock(&gauge->ops_lock);
+	gauge->charge_counter_full_uah = full_uah;
+	if (!coulomb_get(gauge, NULL, &car)) {
+		if (!gauge->charge_counter_valid) {
+			gauge->charge_counter_uah = seed_uah;
+			gauge->charge_counter_car = car;
+			gauge->charge_counter_valid = true;
+		}
+		charge_counter_update(gauge, car);
+	}
+	result = gauge->charge_counter_valid ?
+		gauge->charge_counter_uah : seed_uah;
+	mutex_unlock(&gauge->ops_lock);
+
+	return result;
 }
 
 int hw_info_set(struct mtk_gauge *gauge_dev,
@@ -3441,13 +3490,28 @@ static int vbat_ht_set(struct mtk_gauge *gauge,
 static int reset_set(struct mtk_gauge *gauge,
 	struct mtk_gauge_sysfs_field_info *attr, int threshold)
 {
-	unsigned int ret = 0;
+	int car;
+	int ret;
+
+	if (gauge->charge_counter_valid) {
+		ret = coulomb_get(gauge, NULL, &car);
+		if (ret)
+			return ret;
+		charge_counter_update(gauge, car);
+	}
 
 	bm_err("[fgauge_hw_reset]: start\n");
 	ret = regmap_update_bits(gauge->regmap,
 		RG_FGADC_CON1, 0x0600, 0x1f00);
+	if (ret)
+		return ret;
 	bm_err("[fgauge_hw_reset] reset fgadc car ret =%d\n", ret);
 	mdelay(1);
+	if (gauge->charge_counter_valid) {
+		gauge->charge_counter_car = 0;
+		if (!coulomb_get(gauge, NULL, &car))
+			charge_counter_update(gauge, car);
+	}
 	bm_err("[fgauge_hw_reset]: end\n");
 
 	return 0;

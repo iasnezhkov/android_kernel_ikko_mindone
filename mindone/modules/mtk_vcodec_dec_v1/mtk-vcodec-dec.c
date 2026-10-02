@@ -1847,7 +1847,7 @@ static int vidioc_try_fmt(struct mtk_vcodec_ctx *ctx, struct v4l2_format *f,
 			(pix_fmt_mp->height + 64) <= MTK_VDEC_MAX_H)
 			pix_fmt_mp->height += 64;
 
-		mtk_v4l2_debug(0,
+		mtk_v4l2_debug(1,
 			"before resize width=%d, height=%d, after resize width=%d, height=%d, sizeimage=%d",
 			tmp_w, tmp_h, pix_fmt_mp->width,
 			pix_fmt_mp->height,
