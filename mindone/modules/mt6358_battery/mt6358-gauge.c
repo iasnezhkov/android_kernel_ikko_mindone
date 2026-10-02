@@ -1872,6 +1872,7 @@ static int coulomb_get(struct mtk_gauge *gauge,
 	int car_tune_value;
 	int ret;
 
+	*val = gauge->coulomb_car;
 	r_fg_value = gauge->hw_status.r_fg_value;
 	car_tune_value = gauge->gm->fg_cust_data.car_tune_value;
 	ret = pre_gauge_update(gauge);
@@ -1956,6 +1957,7 @@ static int coulomb_get(struct mtk_gauge *gauge,
 		dvalue_CAR, r_fg_value, car_tune_value);
 
 	*val = dvalue_CAR;
+	gauge->coulomb_car = dvalue_CAR;
 
 	return 0;
 }
@@ -3506,6 +3508,7 @@ static int reset_set(struct mtk_gauge *gauge,
 	if (ret)
 		return ret;
 	bm_err("[fgauge_hw_reset] reset fgadc car ret =%d\n", ret);
+	gauge->coulomb_car = 0;
 	mdelay(1);
 	if (gauge->charge_counter_valid) {
 		gauge->charge_counter_car = 0;

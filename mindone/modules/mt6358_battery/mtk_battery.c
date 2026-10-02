@@ -2490,22 +2490,28 @@ static int reset_set(struct mtk_battery *gm,
 	int val)
 {
 	int car;
+	int ret;
 
 	if (gm->disableGM30)
 		return 0;
+	ret = gauge_get_property(GAUGE_PROP_COULOMB, &car);
+	if (ret)
+		return ret;
 
 	/* must handle sw_ncar before reset car */
 	fg_sw_bat_cycle_accu(gm);
-	gm->bat_cycle_car = 0;
-	car = gauge_get_int_property(GAUGE_PROP_COULOMB);
-	gm->log.car_diff += car;
 
 	bm_err("%s car:%d\n",
 		__func__, car);
 
-	gauge_coulomb_before_reset(gm);
-	gauge_set_property(GAUGE_PROP_RESET, 0);
-	gauge_coulomb_after_reset(gm);
+	ret = gauge_coulomb_before_reset(gm);
+	if (ret)
+		return ret;
+	ret = gauge_set_property(GAUGE_PROP_RESET, 0);
+	gauge_coulomb_after_reset(gm, ret == 0);
+	if (ret)
+		return ret;
+	gm->log.car_diff += car;
 
 	gm->sw_iavg_time = ktime_get_boottime();
 	gm->sw_iavg_car = gauge_get_int_property(GAUGE_PROP_COULOMB);

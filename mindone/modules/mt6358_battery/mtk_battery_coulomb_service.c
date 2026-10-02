@@ -95,34 +95,41 @@ void gauge_coulomb_dump_list(struct mtk_battery *gm)
 	mutex_unlock(&cs->coulomb_lock);
 }
 
-void gauge_coulomb_before_reset(struct mtk_battery *gm)
+int gauge_coulomb_before_reset(struct mtk_battery *gm)
 {
 	struct mtk_coulomb_service *cs;
 	int val;
+	int ret;
 
 	cs = &gm->cs;
 
 	if (cs->init == false) {
 		bm_err("[%s]gauge_coulomb service is not rdy\n",
 			__func__);
-		return;
+		return 0;
 	}
 	mutex_lock(&cs->coulomb_lock);
 	mutex_lock(&cs->hw_coulomb_lock);
+	ret = gauge_get_property(GAUGE_PROP_COULOMB, &val);
+	if (ret) {
+		mutex_unlock(&cs->hw_coulomb_lock);
+		mutex_unlock(&cs->coulomb_lock);
+		return ret;
+	}
+	cs->reset_coulomb = val;
 	gauge_set_property(GAUGE_PROP_COULOMB_HT_INTERRUPT, 0);
 	gauge_set_property(GAUGE_PROP_COULOMB_LT_INTERRUPT, 0);
 	mutex_unlock(&cs->hw_coulomb_lock);
 	mutex_unlock(&cs->coulomb_lock);
 
-	gauge_get_property(GAUGE_PROP_COULOMB, &val);
-	cs->reset_coulomb = val;
 	bm_err("%s car=%ld\n",
 		__func__,
 		cs->reset_coulomb);
 	gauge_coulomb_dump_list(gm);
+	return 0;
 }
 
-void gauge_coulomb_after_reset(struct mtk_battery *gm)
+void gauge_coulomb_after_reset(struct mtk_battery *gm, bool reset_done)
 {
 	struct list_head *pos;
 	struct list_head *phead;
@@ -135,6 +142,10 @@ void gauge_coulomb_after_reset(struct mtk_battery *gm)
 
 	if (cs->init == false)
 		return;
+	if (!reset_done) {
+		wake_up_gauge_coulomb(gm);
+		return;
+	}
 	bm_err("%s\n", __func__);
 	now = cs->reset_coulomb;
 	mutex_lock(&cs->coulomb_lock);

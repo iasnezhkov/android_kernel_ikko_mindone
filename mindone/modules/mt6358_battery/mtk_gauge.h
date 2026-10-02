@@ -229,6 +229,7 @@ struct mtk_gauge {
 	struct regmap *regmap;
 	struct platform_device *pdev;
 	struct mutex ops_lock;
+	int coulomb_car;
 	bool charge_counter_valid;
 	int charge_counter_car;
 	long long charge_counter_uah;

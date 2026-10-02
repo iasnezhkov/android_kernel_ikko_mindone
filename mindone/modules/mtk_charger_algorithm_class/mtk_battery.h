@@ -1098,8 +1098,8 @@ extern void gauge_coulomb_start(struct mtk_battery *gm,
 extern void gauge_coulomb_stop(struct mtk_battery *gm,
 	struct gauge_consumer *coulomb);
 extern void gauge_coulomb_dump_list(struct mtk_battery *gm);
-extern void gauge_coulomb_before_reset(struct mtk_battery *gm);
-extern void gauge_coulomb_after_reset(struct mtk_battery *gm);
+extern int gauge_coulomb_before_reset(struct mtk_battery *gm);
+extern void gauge_coulomb_after_reset(struct mtk_battery *gm, bool reset_done);
 /* coulomb sub system end */
 
 /*mtk_battery.c */
