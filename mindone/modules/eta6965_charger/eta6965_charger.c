@@ -771,6 +771,10 @@ static struct i2c_driver eta6965_driver = {
 	.remove = eta6965_remove,
 	.id_table = eta6965_i2c_id,
 };
+static char *eta6965_supplied_to[] = {
+	"mtk-master-charger",
+};
+
 static int eta6965_plat_probe(struct platform_device *pdev)
 {
 	struct regulator_config config = { };
@@ -783,6 +787,8 @@ static int eta6965_plat_probe(struct platform_device *pdev)
 	if (!g_eta6965->psy) {
 		psy_cfg.drv_data = g_eta6965;
 		psy_cfg.of_node = pdev->dev.of_node;
+		psy_cfg.supplied_to = eta6965_supplied_to;
+		psy_cfg.num_supplicants = ARRAY_SIZE(eta6965_supplied_to);
 		g_eta6965->psy = power_supply_register(&pdev->dev, &eta6965_psy_desc,
 							&psy_cfg);
 		if (IS_ERR(g_eta6965->psy)) {

@@ -293,9 +293,33 @@ static enum power_supply_property battery_props[] = {
 
 int mtk_battery_get_learned_q_max(struct mtk_battery *gm)
 {
-	int q_max = gm->fg_table_cust_data.fg_profile[gm->battery_id].q_max;
+	struct fuel_gauge_table_custom_data *tables = &gm->fg_table_cust_data;
+	int count = clamp(tables->active_table_number, 1, MAX_TABLE);
+	int temperature = gm->bs_data.bat_batt_temp;
 	int aging = gm->algo.active ? gm->algo.aging_factor : gm->aging_factor;
+	int q_max = tables->fg_profile[count - 1].q_max;
+	int i;
 
+	if (gm->algo.active && gm->algo.quse_tb1 > 0)
+		return gm->algo.quse_tb1 / UNIT_TRANS_10;
+
+	if (temperature >= tables->fg_profile[0].temperature)
+		q_max = tables->fg_profile[0].q_max;
+	else {
+		for (i = 1; i < count; i++) {
+			struct fuel_gauge_table *high = &tables->fg_profile[i - 1];
+			struct fuel_gauge_table *low = &tables->fg_profile[i];
+			int span = high->temperature - low->temperature;
+
+			if (temperature < low->temperature || span <= 0)
+				continue;
+			q_max = low->q_max + (long long)(high->q_max - low->q_max) *
+				(temperature - low->temperature) / span;
+			break;
+		}
+	}
+	if (q_max <= 0)
+		q_max = 2200;
 	if (aging < 5000 || aging > 10000)
 		aging = 10000;
 
@@ -440,8 +464,7 @@ static int battery_psy_get_property(struct power_supply *psy,
 			(ret == POWER_SUPPLY_CAPACITY_LEVEL_UNKNOWN))
 			val->intval = 0;
 		else {
-			int q_max_now = gm->fg_table_cust_data.fg_profile[
-						gm->battery_id].q_max;
+			int q_max_now = mtk_battery_get_learned_q_max(gm);
 			int remain_ui = 100 - bs_data->bat_capacity;
 			int remain_mah = remain_ui * q_max_now / 10;
 			int current_now = 0;
@@ -464,8 +487,7 @@ static int battery_psy_get_property(struct power_supply *psy,
 		ret = 0;
 		break;
 	case POWER_SUPPLY_PROP_CHARGE_FULL_DESIGN:
-		val->intval = gm->fg_table_cust_data.fg_profile[
-				gm->battery_id].q_max * 1000;
+		val->intval = 2200000;
 		break;
 	case POWER_SUPPLY_PROP_CONSTANT_CHARGE_VOLTAGE:
 		bs_data = &gm->bs_data;

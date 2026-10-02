@@ -2385,10 +2385,30 @@ stop_charging:
 	info->can_charging = charging;
 }
 
+static void charger_init_algorithms(struct mtk_charger *info)
+{
+	static const char * const names[] = { "pe5", "pe4", "pd", "pe2", "pe" };
+	static const int ids[] = { PE5_ID, PE4_ID, PDC_ID, PE2_ID, PE_ID };
+	struct chg_alg_device *alg;
+	int i;
+
+	for (i = 0; i < ARRAY_SIZE(names); i++) {
+		if (info->alg[i])
+			continue;
+		alg = get_chg_alg_by_name(names[i]);
+		if (!alg)
+			continue;
+		alg->config = info->config;
+		alg->alg_id = ids[i];
+		chg_alg_init_algo(alg);
+		register_chg_alg_notifier(alg, &info->chg_alg_nb);
+		info->alg[i] = alg;
+		chr_info("registered charging algorithm %s\n", names[i]);
+	}
+}
+
 static bool charger_init_algo(struct mtk_charger *info)
 {
-	struct chg_alg_device *alg;
-	int idx = 0;
 
 	info->chg1_dev = get_charger_by_name("primary_chg");
 	if (info->chg1_dev)
@@ -2399,69 +2419,7 @@ static bool charger_init_algo(struct mtk_charger *info)
 		return false;
 	}
 
-	alg = get_chg_alg_by_name("pe5");
-	info->alg[idx] = alg;
-	if (alg == NULL)
-		chr_err("get pe5 fail\n");
-	else {
-		chr_err("get pe5 success\n");
-		alg->config = info->config;
-		alg->alg_id = PE5_ID;
-		chg_alg_init_algo(alg);
-		register_chg_alg_notifier(alg, &info->chg_alg_nb);
-	}
-	idx++;
-
-	alg = get_chg_alg_by_name("pe4");
-	info->alg[idx] = alg;
-	if (alg == NULL)
-		chr_err("get pe4 fail\n");
-	else {
-		chr_err("get pe4 success\n");
-		alg->config = info->config;
-		alg->alg_id = PE4_ID;
-		chg_alg_init_algo(alg);
-		register_chg_alg_notifier(alg, &info->chg_alg_nb);
-	}
-	idx++;
-
-	alg = get_chg_alg_by_name("pd");
-	info->alg[idx] = alg;
-	if (alg == NULL)
-		chr_err("get pd fail\n");
-	else {
-		chr_err("get pd success\n");
-		alg->config = info->config;
-		alg->alg_id = PDC_ID;
-		chg_alg_init_algo(alg);
-		register_chg_alg_notifier(alg, &info->chg_alg_nb);
-	}
-	idx++;
-
-	alg = get_chg_alg_by_name("pe2");
-	info->alg[idx] = alg;
-	if (alg == NULL)
-		chr_err("get pe2 fail\n");
-	else {
-		chr_err("get pe2 success\n");
-		alg->config = info->config;
-		alg->alg_id = PE2_ID;
-		chg_alg_init_algo(alg);
-		register_chg_alg_notifier(alg, &info->chg_alg_nb);
-	}
-	idx++;
-
-	alg = get_chg_alg_by_name("pe");
-	info->alg[idx] = alg;
-	if (alg == NULL)
-		chr_err("get pe fail\n");
-	else {
-		chr_err("get pe success\n");
-		alg->config = info->config;
-		alg->alg_id = PE_ID;
-		chg_alg_init_algo(alg);
-		register_chg_alg_notifier(alg, &info->chg_alg_nb);
-	}
+	charger_init_algorithms(info);
 
 	chr_err("config is %d\n", info->config);
 	if (info->config == DUAL_CHARGERS_IN_SERIES) {
@@ -2823,6 +2781,7 @@ static int charger_routine_thread(void *arg)
 			__pm_stay_awake(info->charger_wakelock);
 		spin_unlock_irqrestore(&info->slock, flags);
 		info->charger_thread_timeout = false;
+		charger_init_algorithms(info);
 
 		info->battery_temp = get_battery_temperature(info);
 		ret = charger_dev_get_adc(info->chg1_dev,
@@ -3472,18 +3431,24 @@ static void mtk_charger_external_power_changed(struct power_supply *psy)
 	chg_psy = info->chg_psy;
 
 	if (IS_ERR_OR_NULL(chg_psy)) {
-		pr_notice("%s Couldn't get chg_psy\n", __func__);
 		chg_psy = devm_power_supply_get_by_phandle(&info->pdev->dev,
 						       "charger");
 		info->chg_psy = chg_psy;
-	} else {
-		ret = power_supply_get_property(chg_psy,
-			POWER_SUPPLY_PROP_ONLINE, &prop);
-		ret = power_supply_get_property(chg_psy,
-			POWER_SUPPLY_PROP_USB_TYPE, &prop2);
-		ret = power_supply_get_property(chg_psy,
-			POWER_SUPPLY_PROP_ENERGY_EMPTY, &vbat0);
 	}
+	if (IS_ERR_OR_NULL(chg_psy))
+		return;
+
+	ret = power_supply_get_property(chg_psy,
+		POWER_SUPPLY_PROP_ONLINE, &prop);
+	if (ret < 0)
+		return;
+	ret = power_supply_get_property(chg_psy,
+		POWER_SUPPLY_PROP_USB_TYPE, &prop2);
+	if (ret < 0)
+		return;
+	vbat0.intval = info->vbat0_flag;
+	power_supply_get_property(chg_psy,
+		POWER_SUPPLY_PROP_ENERGY_EMPTY, &vbat0);
 
 	if (info->vbat0_flag != vbat0.intval) {
 		if (vbat0.intval) {
@@ -3527,6 +3492,7 @@ int notify_adapter_event(struct notifier_block *notifier,
 		pinfo->pd_reset = false;
 		mutex_unlock(&pinfo->pd_lock);
 		mtk_chg_alg_notify_call(pinfo, EVT_DETACH, 0);
+		_wake_up_charger(pinfo);
 		/* reset PE40 */
 		break;
 
@@ -3547,6 +3513,7 @@ int notify_adapter_event(struct notifier_block *notifier,
 		pinfo->pd_type = MTK_PD_CONNECT_PE_READY_SNK;
 		pinfo->pd_reset = false;
 		mutex_unlock(&pinfo->pd_lock);
+		_wake_up_charger(pinfo);
 		/* PD is ready */
 		break;
 
@@ -3556,6 +3523,7 @@ int notify_adapter_event(struct notifier_block *notifier,
 		pinfo->pd_type = MTK_PD_CONNECT_PE_READY_SNK_PD30;
 		pinfo->pd_reset = false;
 		mutex_unlock(&pinfo->pd_lock);
+		_wake_up_charger(pinfo);
 		/* PD30 is ready */
 		break;
 

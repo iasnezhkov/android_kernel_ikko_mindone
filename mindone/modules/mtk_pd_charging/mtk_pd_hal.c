@@ -168,9 +168,10 @@ int pd_hal_get_adapter_cap(struct chg_alg_device *alg, struct pd_power_cap *cap)
 		cap->pwr_limit[i] = acap.pwr_limit[i];
 		cap->min_mv[i] = acap.min_mv[i];
 		cap->max_mv[i] = acap.max_mv[i];
-		cap->ma[i] = acap.ma[i];
-		cap->maxwatt[i] = acap.maxwatt[i];
-		cap->minwatt[i] = acap.minwatt[i];
+		cap->ma[i] = acap.max_mv[i] > 5000 ?
+			min(acap.ma[i], 2000) : acap.ma[i];
+		cap->maxwatt[i] = cap->max_mv[i] * cap->ma[i];
+		cap->minwatt[i] = cap->min_mv[i] * cap->ma[i];
 		cap->type[i] = acap.type[i];
 		cap->info[i] = acap.info[i];
 	}

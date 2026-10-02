@@ -99,6 +99,35 @@ static bool is_typec_adapter(struct mtk_charger *info)
 	return false;
 }
 
+static bool skip_legacy_algorithm(struct mtk_charger *info,
+	struct chg_alg_device *alg)
+{
+	if (alg->alg_id != PE_ID && alg->alg_id != PE2_ID)
+		return false;
+
+	return info->pd_reset ||
+		info->pd_type == MTK_PD_CONNECT_PE_READY_SNK ||
+		info->pd_type == MTK_PD_CONNECT_PE_READY_SNK_PD30 ||
+		info->pd_type == MTK_PD_CONNECT_PE_READY_SNK_APDO;
+}
+
+static void set_algorithm_current_limit(struct mtk_charger *info,
+	struct chg_alg_device *alg)
+{
+	struct chg_limit_setting setting = info->setting;
+	struct charger_data *pdata = &info->chg_data[CHG1_SETTING];
+
+	if (alg->alg_id == PDC_ID) {
+		setting.input_current_limit1 = setting.input_current_limit1 < 0 ?
+			pdata->input_current_limit :
+			min(setting.input_current_limit1, pdata->input_current_limit);
+		setting.charging_current_limit1 = setting.charging_current_limit1 < 0 ?
+			pdata->charging_current_limit :
+			min(setting.charging_current_limit1, pdata->charging_current_limit);
+	}
+	chg_alg_set_current_limit(alg, &setting);
+}
+
 static bool support_fast_charging(struct mtk_charger *info)
 {
 	struct chg_alg_device *alg;
@@ -107,14 +136,14 @@ static bool support_fast_charging(struct mtk_charger *info)
 
 	for (i = 0; i < MAX_ALG_NO; i++) {
 		alg = info->alg[i];
-		if (alg == NULL)
+		if (alg == NULL || skip_legacy_algorithm(info, alg))
 			continue;
 
 		if (info->enable_fast_charging_indicator &&
 		    ((alg->alg_id & info->fast_charging_indicator) == 0))
 			continue;
 
-		chg_alg_set_current_limit(alg, &info->setting);
+		set_algorithm_current_limit(info, alg);
 		state = chg_alg_is_algo_ready(alg);
 		chr_debug("%s %s ret:%s\n", __func__, dev_name(&alg->dev),
 			chg_alg_state_to_str(state));
@@ -352,7 +381,8 @@ static bool select_charging_current_limit(struct mtk_charger *info,
 		battery_ntc = prop.intval;
 	}
 	if (alg_pe != NULL) {
-		if (chg_alg_is_algo_ready(alg_pe) == ALG_RUNNING){
+		if (chg_alg_is_algo_ready(alg_pe) == ALG_RUNNING ||
+		    skip_legacy_algorithm(info, alg_pe)) {
 			if (battery_ntc >= 400) {
 				if (info->pre_battery_ntc >= 400 && battery_ntc >= 390)
 					battery_ntc = 430;
@@ -466,7 +496,7 @@ static int do_algorithm(struct mtk_charger *info)
 		is_basic = true;
 		for (i = 0; i < MAX_ALG_NO; i++) {
 			alg = info->alg[i];
-			if (alg == NULL)
+			if (alg == NULL || skip_legacy_algorithm(info, alg))
 				continue;
 
 			if (info->enable_fast_charging_indicator &&
@@ -496,7 +526,7 @@ static int do_algorithm(struct mtk_charger *info)
 				chr_err("%s notify:%d\n", __func__, notify.evt);
 			}
 
-			chg_alg_set_current_limit(alg, &info->setting);
+			set_algorithm_current_limit(info, alg);
 			ret = chg_alg_is_algo_ready(alg);
 
 			chr_err("%s %s ret:%s\n", __func__,
