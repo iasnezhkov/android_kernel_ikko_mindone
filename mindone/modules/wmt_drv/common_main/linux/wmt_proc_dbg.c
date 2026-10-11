@@ -42,7 +42,7 @@ static ssize_t wmt_dev_proc_for_dump_info_read(struct file *filp, char __user *b
 
 	if (osal_lock_sleepable_lock(&g_dump_info_read_lock)) {
 		WMT_ERR_FUNC("lock failed\n");
-		return 0;
+		return -EIO;
 	}
 
 	if (*f_pos == 0) {
@@ -91,6 +91,9 @@ static ssize_t wmt_dev_proc_for_dump_info_read(struct file *filp, char __user *b
 
 
 			dmp_info_buf_ptr = dmp_info_buf;
+		} else {
+			retval = -EIO;
+			goto dump_info_err_exit;
 		}
 
 		WMT_INFO_FUNC("wmt_dev:wmt for dump info buffer len(%d)\n", g_dump_info_buf_len);

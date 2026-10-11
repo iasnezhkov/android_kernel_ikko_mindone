@@ -11,6 +11,7 @@
 #include <linux/atomic.h>
 #include <linux/extcon.h>
 #include <linux/hrtimer.h>
+#include <linux/interrupt.h>
 #include <linux/nvmem-consumer.h>
 #include <linux/power_supply.h>
 #include <linux/sysfs.h>
@@ -915,6 +916,10 @@ struct mtk_battery {
 	struct sock *mtk_battery_sk;
 
 	struct mtk_battery_algo algo;
+	bool kernel_setup_in_progress;
+	bool kernel_setup_mutated;
+	int kernel_setup_error;
+	int kernel_service_error;
 
 	u_int fgd_pid;
 
@@ -1108,26 +1113,34 @@ struct mtk_battery_sysfs_field_info {
 };
 
 /* coulomb service */
-extern void gauge_coulomb_service_init(struct mtk_battery *gm);
+extern int gauge_coulomb_service_init(struct mtk_battery *gm);
 extern void gauge_coulomb_consumer_init(struct gauge_consumer *coulomb,
 	struct device *dev, char *name);
-extern void gauge_coulomb_start(struct mtk_battery *gm,
+extern int gauge_coulomb_start(struct mtk_battery *gm,
 	struct gauge_consumer *coulomb, int car);
 extern void gauge_coulomb_stop(struct mtk_battery *gm,
 	struct gauge_consumer *coulomb);
 extern void gauge_coulomb_dump_list(struct mtk_battery *gm);
 extern int gauge_coulomb_before_reset(struct mtk_battery *gm);
+extern int battery_reset_charge_locked(struct mtk_battery *gm);
+extern int battery_reset_charge_init_locked(struct mtk_battery *gm);
 extern void gauge_coulomb_after_reset(struct mtk_battery *gm, bool reset_done);
 /* coulomb sub system end */
 
 /*mtk_battery.c */
-extern void enable_gauge_irq(struct mtk_gauge *gauge,
+extern int validate_gauge_irq(struct mtk_gauge *gauge,
 	enum gauge_irq irq);
-extern void disable_gauge_irq(struct mtk_gauge *gauge,
+extern int request_gauge_irq(struct mtk_battery *gm, enum gauge_irq irq,
+	irq_handler_t handler, const char *name);
+extern void release_gauge_irq(struct mtk_battery *gm, enum gauge_irq irq);
+extern void release_gauge_irqs(struct mtk_battery *gm);
+extern int enable_gauge_irq(struct mtk_gauge *gauge,
+	enum gauge_irq irq);
+extern int disable_gauge_irq(struct mtk_gauge *gauge,
 	enum gauge_irq irq);
 extern int bat_get_debug_level(void);
 extern int force_get_tbat(struct mtk_battery *gm, bool update);
-extern int force_get_tbat_internal(struct mtk_battery *gm, bool update);
+extern int force_get_tbat_internal(struct mtk_battery *gm, bool update, int *val);
 extern int wakeup_fg_algo_cmd(struct mtk_battery *gm,
 	unsigned int flow_state, int cmd, int para1);
 extern int wakeup_fg_algo(struct mtk_battery *gm, unsigned int flow_state);
@@ -1155,6 +1168,7 @@ extern void set_shutdown_vbat_lt(struct mtk_battery *gm,
 	int vbat_lt, int vbat_lt_lv1);
 extern void fg_sw_bat_cycle_accu(struct mtk_battery *gm);
 extern void notify_fg_chr_full(struct mtk_battery *gm);
+extern void mtk_battery_daemon_ready(struct mtk_battery *gm);
 extern int fgauge_get_profile_id(void);
 extern void disable_fg(struct mtk_battery *gm);
 extern int get_shutdown_cond(struct mtk_battery *gm);
@@ -1166,10 +1180,13 @@ extern int dump_pseudo100(enum charge_sel select);
 /*mtk_battery.c end */
 
 /* mtk_battery_algo.c */
-extern void battery_algo_init(struct mtk_battery *gm);
+extern int battery_algo_init(struct mtk_battery *gm);
+extern int battery_enable_kernel_algo(struct mtk_battery *gm);
 extern void do_fg_algo(struct mtk_battery *gm, unsigned int intr_num,
 	int cmd, int para1);
 extern int fgr_learned_aging_get(struct mtk_battery *gm, int *aging_bp);
+extern void fgr_sw_cycle_accu_car(struct mtk_battery *gm, int car);
+extern void fgr_reset_car(struct mtk_battery *gm, int car);
 extern int fgr_learned_aging_set(struct mtk_battery *gm, int aging_bp);
 extern int fgr_learned_cycles_get(struct mtk_battery *gm, int *cycles_x100);
 extern int fgr_learned_cycles_set(struct mtk_battery *gm, int cycles_x100);

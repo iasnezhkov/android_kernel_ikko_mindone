@@ -3767,7 +3767,7 @@ static INT32 opfunc_met_ctrl(P_WMT_OP pWmtOp)
 
 static INT32 opfunc_get_consys_state(P_WMT_OP pWmtOp)
 {
-	INT32 ret = 0, i;
+	INT32 ret = 0, dump_ret, i;
 	INT32 times = 0, slp_ms;
 	P_CONSYS_STATE_DMP_OP dmp_op = (P_CONSYS_STATE_DMP_OP)pWmtOp->au4OpData[0];
 	ULONG ver = (ULONG)pWmtOp->au4OpData[1];
@@ -3786,13 +3786,13 @@ static INT32 opfunc_get_consys_state(P_WMT_OP pWmtOp)
 		goto done;
 	}
 
-	if (mtk_wcn_consys_sleep_info_read_all_ctrl(&dmp_op->dmp_info.state) != 0)
-		ret = -1;
+	ret = mtk_wcn_consys_sleep_info_read_all_ctrl(&dmp_op->dmp_info.state);
 
 	/* Consys register should be readable */
 	if (mtk_consys_check_reg_readable() == 0) {
 		WMT_INFO_FUNC("cr cannot readable");
-		ret = -1;
+		if (ret == 0)
+			ret = -1;
 		goto done;
 	}
 
@@ -3808,17 +3808,17 @@ static INT32 opfunc_get_consys_state(P_WMT_OP pWmtOp)
 			osal_sleep_ms(slp_ms);
 	}
 
-	ret = mtk_consys_dump_osc_state(&dmp_op->dmp_info.state);
-	if (ret != MTK_WCN_BOOL_TRUE)
-		ret = -2;
+	dump_ret = mtk_consys_dump_osc_state(&dmp_op->dmp_info.state);
+	if (ret == 0 && dump_ret != MTK_WCN_BOOL_TRUE)
+		ret = dump_ret < 0 ? dump_ret : -2;
 
-	ret = mtk_wcn_consys_dump_gating_state(&dmp_op->dmp_info.state);
-	if (ret != MTK_WCN_BOOL_TRUE)
-		ret = -3;
+	dump_ret = mtk_wcn_consys_dump_gating_state(&dmp_op->dmp_info.state);
+	if (ret == 0 && dump_ret != MTK_WCN_BOOL_TRUE)
+		ret = dump_ret < 0 ? dump_ret : -3;
 
 done:
 	osal_unlock_sleepable_lock(&dmp_op->lock);
-	return 0;
+	return ret;
 }
 
 INT32 opfunc_dump_pc_log(P_WMT_OP pWmtOp)

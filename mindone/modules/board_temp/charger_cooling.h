@@ -42,6 +42,7 @@ enum charger_type {
 struct charger_cooling_device {
 	char name[MAX_CHARGER_COOLER_NAME_LEN];
 	unsigned long target_state;
+	bool request_dirty;
 	unsigned long max_state;
 	struct thermal_cooling_device *cdev;
 	int (*throttle)(struct charger_cooling_device *charger_cdev, unsigned long state);

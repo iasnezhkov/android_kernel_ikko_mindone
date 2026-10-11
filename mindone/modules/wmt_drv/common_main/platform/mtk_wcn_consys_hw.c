@@ -540,7 +540,6 @@ static void plat_resume_handler(struct work_struct *work)
 	CONSYS_STATE_DMP_INFO dmp_info;
 	UINT8 dmp_info_buf[DBG_LOG_STR_SIZE];
 	int len = 0, i, dmp_cnt = 5;
-	P_DEV_WMT pDev = &gDevWmt;
 
 	if (wmt_lib_dmp_consys_state(&dmp_info, dmp_cnt, 0) == MTK_WCN_BOOL_TRUE) {
 		len += snprintf(dmp_info_buf + len,
@@ -572,10 +571,7 @@ static void plat_resume_handler(struct work_struct *work)
 
 		WMT_PLAT_PR_INFO("%s\n", dmp_info_buf);
 	} else {
-		if ((wmt_lib_get_drv_status(WMTDRV_TYPE_WMT) != DRV_STS_FUNC_ON)
-				|| (osal_test_bit(WMT_STAT_PWR, &pDev->state)) == 0) {
-			WMT_PLAT_PR_INFO("TOP:0,0;MCU:0,0;BT:0,0;WIFI:0,0;GPS:0,0\n");
-		}
+		WMT_PLAT_PR_INFO("CONSYS state measurement unavailable\n");
 	}
 }
 
@@ -606,41 +602,50 @@ static int connsys_pm_notifier_callback(struct notifier_block *nb,
 
 INT32 mtk_wcn_consys_sleep_info_read_all_ctrl(P_CONSYS_STATE state)
 {
-	INT32 ret = 0;
+	INT32 ret = 0, read_ret;
 	INT32 i = 0;
-	UINT64 sleep_counter = 0, sleep_timer = 0;
+	UINT64 sleep_counter[WMT_SLEEP_COUNT_MAX] = {0};
+	UINT64 sleep_timer[WMT_SLEEP_COUNT_MAX] = {0};
 	UINT8 strbuf[DBG_LOG_STR_SIZE] = {""};
 	UINT32 len = 0;
 
 	WMT_PLAT_PR_DBG("sleep count info read all ctrl start\n");
 
-	if (wmt_consys_ic_ops->consys_ic_sleep_info_enable_ctrl &&
+	if (wmt_consys_ic_ops && wmt_consys_ic_ops->consys_ic_sleep_info_enable_ctrl &&
 			wmt_consys_ic_ops->consys_ic_sleep_info_read_ctrl &&
 			wmt_consys_ic_ops->consys_ic_sleep_info_clear) {
 		osal_lock_unsleepable_lock(&g_sleep_counter_spinlock);
 		if (atomic64_read(&g_sleep_counter_enable) == 1) {
 			for (i = 0; i < WMT_SLEEP_COUNT_MAX; i++) {
-				sleep_counter = 0;
-				sleep_timer = 0;
-				wmt_consys_ic_ops->consys_ic_sleep_info_read_ctrl(i, &sleep_counter, &sleep_timer);
-				if (state) {
-					state->sleep_counter[i] = sleep_counter;
-					state->sleep_timer[i] = sleep_timer;
-				}
+				read_ret = wmt_consys_ic_ops->consys_ic_sleep_info_read_ctrl(i,
+					&sleep_counter[i], &sleep_timer[i]);
+				if (ret == 0 && read_ret != 0)
+					ret = read_ret;
 				len += osal_sprintf(strbuf + len, "%s%s%s%s%s:%llu,%llu;",
 					((i == WMT_SLEEP_COUNT_TOP) ? "TOP" : ""),
 					((i == WMT_SLEEP_COUNT_MCU) ? "MCU" : ""),
 					((i == WMT_SLEEP_COUNT_BT) ? "BT" : ""),
 					((i == WMT_SLEEP_COUNT_WF) ? "WIFI" : ""),
 					((i == WMT_SLEEP_COUNT_GPS) ? "GPS" : ""),
-					sleep_counter, sleep_timer);
+					sleep_counter[i], sleep_timer[i]);
+			}
+			if (ret != 0)
+				goto unlock;
+			if (state) {
+				for (i = 0; i < WMT_SLEEP_COUNT_MAX; i++) {
+					state->sleep_counter[i] = sleep_counter[i];
+					state->sleep_timer[i] = sleep_timer[i];
+				}
 			}
 			len += osal_sprintf(strbuf + len - 1, "");
 			WMT_PLAT_PR_INFO("%s\n", strbuf);
 		} else {
 			ret = -21;
 		}
+	unlock:
 		osal_unlock_unsleepable_lock(&g_sleep_counter_spinlock);
+	} else {
+		ret = -EOPNOTSUPP;
 	}
 
 	return ret;

@@ -117,16 +117,18 @@ int gauge_coulomb_before_reset(struct mtk_battery *gm)
 		return ret;
 	}
 	cs->reset_coulomb = val;
-	gauge_set_property(GAUGE_PROP_COULOMB_HT_INTERRUPT, 0);
-	gauge_set_property(GAUGE_PROP_COULOMB_LT_INTERRUPT, 0);
+	ret = gauge_set_property(GAUGE_PROP_COULOMB_HT_INTERRUPT, 0);
+	if (!ret)
+		ret = gauge_set_property(GAUGE_PROP_COULOMB_LT_INTERRUPT, 0);
 	mutex_unlock(&cs->hw_coulomb_lock);
 	mutex_unlock(&cs->coulomb_lock);
 
 	bm_err("%s car=%ld\n",
 		__func__,
 		cs->reset_coulomb);
-	gauge_coulomb_dump_list(gm);
-	return 0;
+	if (!ret)
+		gauge_coulomb_dump_list(gm);
+	return ret;
 }
 
 void gauge_coulomb_after_reset(struct mtk_battery *gm, bool reset_done)
@@ -185,7 +187,7 @@ void gauge_coulomb_after_reset(struct mtk_battery *gm, bool reset_done)
 	wake_up_gauge_coulomb(gm);
 }
 
-void gauge_coulomb_start(struct mtk_battery *gm,
+int gauge_coulomb_start(struct mtk_battery *gm,
 	struct gauge_consumer *coulomb, int car)
 {
 	struct list_head *pos;
@@ -194,21 +196,23 @@ void gauge_coulomb_start(struct mtk_battery *gm,
 	int hw_car, now_car;
 	bool wake = false;
 	int car_now;
-	int val;
+	int val, ret;
 	struct mtk_coulomb_service *cs;
 
 	cs = &gm->cs;
 
 	if (car == 0)
-		return;
+		return 0;
 
-	if (cs->init == false) {
-		cs = NULL;
-		return;
-	}
+	if (cs->init == false)
+		return -EAGAIN;
 
 	mutex_lock(&cs->coulomb_lock);
-	gauge_get_property(GAUGE_PROP_COULOMB, &val);
+	ret = gauge_get_property(GAUGE_PROP_COULOMB, &val);
+	if (ret) {
+		mutex_unlock(&cs->coulomb_lock);
+		return ret;
+	}
 	car_now = val;
 	/* del from old list */
 	if (list_empty(&coulomb->list) != true) {
@@ -250,7 +254,7 @@ void gauge_coulomb_start(struct mtk_battery *gm,
 		}
 		hw_car = ptr->end - now_car;
 		mutex_lock(&cs->hw_coulomb_lock);
-		gauge_set_property(GAUGE_PROP_COULOMB_HT_INTERRUPT, hw_car);
+		ret = gauge_set_property(GAUGE_PROP_COULOMB_HT_INTERRUPT, hw_car);
 		mutex_unlock(&cs->hw_coulomb_lock);
 	} else {
 		list_for_each(pos, phead) {
@@ -262,18 +266,19 @@ void gauge_coulomb_start(struct mtk_battery *gm,
 		}
 		hw_car = now_car - ptr->end;
 		mutex_lock(&cs->hw_coulomb_lock);
-		gauge_set_property(GAUGE_PROP_COULOMB_LT_INTERRUPT, hw_car);
+		ret = gauge_set_property(GAUGE_PROP_COULOMB_LT_INTERRUPT, hw_car);
 		mutex_unlock(&cs->hw_coulomb_lock);
 	}
 	mutex_unlock(&cs->coulomb_lock);
 
-	if (wake == true)
+	if (!ret && wake)
 		wake_up_gauge_coulomb(gm);
 
 	bm_debug("%s dev:%s name:%s s:%ld e:%ld v:%d car:%d w:%d\n",
 	__func__,
 	dev_name(coulomb->dev), coulomb->name, coulomb->start, coulomb->end,
 	coulomb->variable, car, wake);
+	return ret;
 }
 
 void gauge_coulomb_stop(struct mtk_battery *gm, struct gauge_consumer *coulomb)
@@ -485,57 +490,70 @@ static int system_pm_notify(struct notifier_block *nb,
 }
 #endif /* CONFIG_PM */
 
-void gauge_coulomb_service_init(struct mtk_battery *gm)
+int gauge_coulomb_service_init(struct mtk_battery *gm)
 {
-	int val;
-	struct mtk_coulomb_service *cs;
-	int ret;
+	struct mtk_coulomb_service *cs = &gm->cs;
+	struct task_struct *thread;
+	bool acquired_h = !gm->gauge->irq_requested[COULOMB_H_IRQ];
+	bool acquired_l = !gm->gauge->irq_requested[COULOMB_L_IRQ];
+	int val, ret;
 
-	bm_debug("%s\n", __func__);
-	cs = &gm->cs;
+	if (cs->init)
+		return 0;
+	ret = gauge_get_property(GAUGE_PROP_COULOMB, &val);
+	if (ret)
+		return ret;
 	cs->gm = gm;
-
 	INIT_LIST_HEAD(&cs->coulomb_head_minus);
 	INIT_LIST_HEAD(&cs->coulomb_head_plus);
 	mutex_init(&cs->coulomb_lock);
 	mutex_init(&cs->hw_coulomb_lock);
 	spin_lock_init(&cs->slock);
-	cs->wlock = wakeup_source_register(NULL, "gauge coulomb wakelock");
 	init_waitqueue_head(&cs->wait_que);
 	atomic_set(&cs->in_sleep, 0);
-	if (!gm->disableGM30)
-		kthread_run(gauge_coulomb_thread, cs, "gauge_coulomb_thread");
+	cs->pre_coulomb = val;
+
+	ret = request_gauge_irq(gm, COULOMB_H_IRQ, coulomb_irq,
+		"mtk_gauge_coulomb_high");
+	if (ret)
+		goto release;
+	ret = request_gauge_irq(gm, COULOMB_L_IRQ, coulomb_irq,
+		"mtk_gauge_coulomb_low");
+	if (ret)
+		goto release;
+	cs->wlock = wakeup_source_register(NULL, "gauge coulomb wakelock");
+	if (!cs->wlock) {
+		ret = -ENOMEM;
+		goto release;
+	}
 
 #ifdef CONFIG_PM
 	cs->pm_nb.notifier_call = system_pm_notify;
 	ret = register_pm_notifier(&cs->pm_nb);
-	if (ret) {
-		bm_err("failed to register system pm notify\n");
-		unregister_pm_notifier(&cs->pm_nb);
-	}
-#endif /* CONFIG_PM */
-
-	ret = devm_request_threaded_irq(&gm->gauge->pdev->dev,
-	gm->gauge->irq_no[COULOMB_H_IRQ],
-	NULL, coulomb_irq,
-	IRQF_ONESHOT | IRQF_TRIGGER_HIGH,
-	"mtk_gauge_coulomb_high",
-	gm);
-	//disable_irq_nosync(gm->gauge->coulomb_h_irq);
 	if (ret)
-		bm_err("failed to request coulomb h irq\n");
-
-	ret = devm_request_threaded_irq(&gm->gauge->pdev->dev,
-	gm->gauge->irq_no[COULOMB_L_IRQ],
-	NULL, coulomb_irq,
-	IRQF_ONESHOT | IRQF_TRIGGER_HIGH,
-	"mtk_gauge_coulomb_low",
-	gm);
-	//disable_irq_nosync(gm->gauge->coulomb_l_irq);
-	if (ret)
-		bm_err("failed to request coulomb l irq\n");
-
-	gauge_get_property(GAUGE_PROP_COULOMB, &val);
-	cs->pre_coulomb = val;
+		goto unregister_wakeup;
+#endif
 	cs->init = true;
+	if (!gm->disableGM30) {
+		thread = kthread_run(gauge_coulomb_thread, cs, "gauge_coulomb_thread");
+		if (IS_ERR(thread)) {
+			ret = PTR_ERR(thread);
+			cs->init = false;
+#ifdef CONFIG_PM
+			unregister_pm_notifier(&cs->pm_nb);
+#endif
+			goto unregister_wakeup;
+		}
+	}
+	return 0;
+
+unregister_wakeup:
+	wakeup_source_unregister(cs->wlock);
+	cs->wlock = NULL;
+release:
+	if (acquired_l)
+		release_gauge_irq(gm, COULOMB_L_IRQ);
+	if (acquired_h)
+		release_gauge_irq(gm, COULOMB_H_IRQ);
+	return ret;
 }

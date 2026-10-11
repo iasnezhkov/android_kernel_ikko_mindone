@@ -159,6 +159,10 @@ static void pm_callback_power_off_nolock(struct kbase_device *kbdev)
 	/* on,off/ SWCG(BG3D)/ MTCMOS/ BUCK */
 #if defined(CONFIG_MTK_GPUFREQ_V2)
 	if (gpufreq_power_control(POWER_OFF) < 0) {
+		mtk_common_pm_mfg_active();
+#if IS_ENABLED(CONFIG_MALI_MIDGARD_DVFS) && IS_ENABLED(CONFIG_MALI_MTK_DVFS_POLICY)
+		ged_dvfs_gpu_clock_switch_notify(1);
+#endif
 		dev_info(kbdev->dev, "GPU PM Callback - Power Off Failed");
 		return;
 	}

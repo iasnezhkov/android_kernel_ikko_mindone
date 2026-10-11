@@ -1109,7 +1109,7 @@ extern void disable_gauge_irq(struct mtk_gauge *gauge,
 	enum gauge_irq irq);
 extern int bat_get_debug_level(void);
 extern int force_get_tbat(struct mtk_battery *gm, bool update);
-extern int force_get_tbat_internal(struct mtk_battery *gm, bool update);
+extern int force_get_tbat_internal(struct mtk_battery *gm, bool update, int *val);
 extern int wakeup_fg_algo_cmd(struct mtk_battery *gm,
 	unsigned int flow_state, int cmd, int para1);
 extern int wakeup_fg_algo(struct mtk_battery *gm, unsigned int flow_state);

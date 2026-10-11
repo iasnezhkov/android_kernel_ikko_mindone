@@ -2763,6 +2763,9 @@ int mtk_cfg80211_vendor_set_packet_filter(struct wiphy *wiphy,
 
 	attr = (struct nlattr *)data;
 
+	if (!nla_ok(attr, data_len))
+		return -EINVAL;
+
 	if (nla_type(attr) != APF_ATTRIBUTE_PROGRAM) {
 		DBGLOG(REQ, ERROR, "Get program fail. (%u)\n",
 			nla_type(attr));
@@ -2770,6 +2773,9 @@ int mtk_cfg80211_vendor_set_packet_filter(struct wiphy *wiphy,
 	}
 
 	u4ProgLen = nla_len(attr);
+	if (u4ProgLen > APF_MAX_PROGRAM_LEN)
+		return -EINVAL;
+
 	ucFragNum = u4ProgLen / PKT_OFLD_BUF_SIZE;
 	if (u4ProgLen > PKT_OFLD_BUF_SIZE && u4ProgLen % PKT_OFLD_BUF_SIZE > 0)
 		ucFragNum++;
@@ -2811,7 +2817,7 @@ int mtk_cfg80211_vendor_set_packet_filter(struct wiphy *wiphy,
 			return -EFAULT;
 		}
 		ucFragSeq++;
-		u4RemainLen -= u4SentLen;
+		u4RemainLen -= rInfo.u4BufLen;
 	} while (ucFragSeq < ucFragNum);
 
 	return 0;
@@ -2876,7 +2882,8 @@ int mtk_cfg80211_vendor_read_packet_filter(struct wiphy *wiphy,
 				sizeof(struct PARAM_OFLD_INFO),
 				TRUE, TRUE, TRUE, &u4SetInfoLen);
 
-		if (rStatus != WLAN_STATUS_SUCCESS) {
+		if (rStatus != WLAN_STATUS_SUCCESS ||
+			u4SetInfoLen != sizeof(rInfo)) {
 			DBGLOG(REQ, ERROR, "APF query fail:0x%x\n", rStatus);
 			goto query_apf_failure;
 		}
@@ -2884,17 +2891,30 @@ int mtk_cfg80211_vendor_read_packet_filter(struct wiphy *wiphy,
 		if (ucCurrSeq == 0) {
 			ucFragNum = rInfo.ucFragNum;
 			u4ProgLen = rInfo.u4TotalLen;
-			if (u4ProgLen == 0) {
+			if (u4ProgLen == 0 ||
+				u4ProgLen > APF_MAX_PROGRAM_LEN ||
+				u4ProgLen != APF_MAX_PROGRAM_LEN ||
+				ucFragNum > DIV_ROUND_UP(APF_MAX_PROGRAM_LEN,
+					PKT_OFLD_BUF_SIZE) ||
+				(ucFragNum == 0 &&
+					u4ProgLen > PKT_OFLD_BUF_SIZE)) {
 				DBGLOG(REQ, ERROR,
 					"Failed to query APF from firmware.\n");
 				 goto query_apf_failure;
 			}
-		} else if (rInfo.ucFragSeq != ucCurrSeq) {
+		}
+
+		if (rInfo.ucFragSeq != ucCurrSeq ||
+			rInfo.ucFragNum != ucFragNum ||
+			rInfo.u4TotalLen != u4ProgLen) {
 			DBGLOG(REQ, ERROR, "Wrong frag seq (%d, %d)\n",
 				ucCurrSeq, rInfo.ucFragSeq);
 			goto query_apf_failure;
-		} else if (rInfo.u4BufLen > PKT_OFLD_BUF_SIZE ||
-				(u4RecvLen + rInfo.u4BufLen) > u4ProgLen) {
+		}
+		if (rInfo.u4BufLen == 0 ||
+			rInfo.u4BufLen > PKT_OFLD_BUF_SIZE ||
+			u4RecvLen > u4ProgLen ||
+			rInfo.u4BufLen > u4ProgLen - u4RecvLen) {
 			DBGLOG(REQ, ERROR,
 				"Buffer overflow, got wrong size %d\n",
 				(u4RecvLen + rInfo.u4BufLen));
@@ -2911,6 +2931,9 @@ int mtk_cfg80211_vendor_read_packet_filter(struct wiphy *wiphy,
 		ucCurrSeq++;
 		rInfo.ucFragSeq = ucCurrSeq;
 	} while (rInfo.ucFragSeq < ucFragNum);
+
+	if (u4RecvLen != u4ProgLen)
+		goto query_apf_failure;
 
 	if (unlikely(nla_put(skb, APF_ATTRIBUTE_PROGRAM,
 				u4ProgLen, prProg) < 0))

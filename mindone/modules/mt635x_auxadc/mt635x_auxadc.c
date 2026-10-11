@@ -777,30 +777,34 @@ static int auxadc_get_uisoc(void)
 static int get_auxadc_out(struct mt635x_auxadc_device *adc_dev,
 			  const struct auxadc_channels *auxadc_chan, int *val)
 {
-	int ret;
+	int ret, out;
 	bool is_timeout = false;
 
 #if AUXADC_DEBUG
 	if (auxadc_chan->convert_fn)
 		auxadc_chan->convert_fn(adc_dev, 1);
 #endif
-	regmap_write(adc_dev->regmap,
-		     auxadc_chan->regs->rqst_reg,
-		     BIT(auxadc_chan->regs->rqst_shift));
+	ret = regmap_write(adc_dev->regmap,
+			     auxadc_chan->regs->rqst_reg,
+			     BIT(auxadc_chan->regs->rqst_shift));
+	if (ret)
+		goto out;
 	usleep_range(auxadc_chan->avg_num * AUXADC_AVG_TIME_US,
 		     (auxadc_chan->avg_num + 1) * AUXADC_AVG_TIME_US);
 
 	ret = regmap_read_poll_timeout(adc_dev->regmap,
 				       auxadc_chan->regs->out_reg,
-				       *val,
-				       (*val & AUXADC_RDY_BIT),
+				       out,
+				       (out & AUXADC_RDY_BIT),
 				       AUXADC_POLL_DELAY_US,
 				       AUXADC_TIMEOUT_US);
-	*val &= BIT(auxadc_chan->res) - 1;
+	if (!ret)
+		*val = out & (BIT(auxadc_chan->res) - 1);
 	if (ret == -ETIMEDOUT) {
 		dev_info(adc_dev->dev, "(%d)Time out!\n", auxadc_chan->ch_num);
 		is_timeout = true;
 	}
+out:
 #if AUXADC_DEBUG
 	auxadc_timeout_handler(adc_dev, is_timeout);
 	if (auxadc_chan->convert_fn)
@@ -818,7 +822,7 @@ static int mt635x_auxadc_read_raw(struct iio_dev *indio_dev,
 {
 	struct mt635x_auxadc_device *adc_dev = iio_priv(indio_dev);
 	const struct auxadc_channels *auxadc_chan;
-	int auxadc_out = 0;
+	int auxadc_out = 0, imp_current = 0;
 	int ret;
 
 	mutex_lock(&adc_dev->lock);
@@ -829,7 +833,7 @@ static int mt635x_auxadc_read_raw(struct iio_dev *indio_dev,
 	case AUXADC_IMP:
 		if (adc_dev->info->imp_conv)
 			ret = adc_dev->info->imp_conv(adc_dev,
-						      &auxadc_out, val2);
+						      &auxadc_out, &imp_current);
 		else
 			ret = -EINVAL;
 		break;
@@ -848,17 +852,22 @@ static int mt635x_auxadc_read_raw(struct iio_dev *indio_dev,
 
 	pm_relax(adc_dev->dev);
 	mutex_unlock(&adc_dev->lock);
-	if (ret != -ETIMEDOUT && ret < 0)
+	if (ret < 0)
 		goto err;
 
 	switch (mask) {
 	case IIO_CHAN_INFO_PROCESSED:
-		*val = auxadc_out * auxadc_chan->r_ratio[0] * VOLT_FULL;
-		*val = (*val / auxadc_chan->r_ratio[1]) >> auxadc_chan->res;
+		auxadc_out = auxadc_out * auxadc_chan->r_ratio[0] * VOLT_FULL;
+		auxadc_out = (auxadc_out / auxadc_chan->r_ratio[1]) >> auxadc_chan->res;
 #if AUXADC_DEBUG
-		if (auxadc_chan->cali_fn)
-			*val = auxadc_chan->cali_fn(adc_dev, *val, 10);
+		if (auxadc_chan->cali_fn) {
+			ret = auxadc_chan->cali_fn(adc_dev, auxadc_out, 10);
+			if (ret < 0)
+				goto err;
+			auxadc_out = ret;
+		}
 #endif
+		*val = auxadc_out;
 		ret = IIO_VAL_INT;
 		break;
 	case IIO_CHAN_INFO_RAW:
@@ -868,8 +877,10 @@ static int mt635x_auxadc_read_raw(struct iio_dev *indio_dev,
 	default:
 		return -EINVAL;
 	}
-	if (chan->channel == AUXADC_IMP)
+	if (chan->channel == AUXADC_IMP) {
+		*val2 = imp_current;
 		ret = IIO_VAL_INT_MULTIPLE;
+	}
 err:
 	return ret;
 }
@@ -900,8 +911,10 @@ int auxadc_priv_read_channel(struct mt635x_auxadc_device *adc_dev, int channel)
 	auxadc_chan = &auxadc_chans[channel];
 
 	ret = get_auxadc_out(adc_dev, auxadc_chan, &val);
-	if (ret < 0)
+	if (ret < 0) {
 		pr_info("%s ret=%d\n", __func__, ret);
+		return ret;
+	}
 	val = val * auxadc_chan->r_ratio[0] * VOLT_FULL;
 	val = (val / auxadc_chan->r_ratio[1]) >> auxadc_chan->res;
 
@@ -1088,6 +1101,8 @@ static int mt6358_batadc_cali(struct mt635x_auxadc_device *adc_dev,
 	if (!g_DEGC)
 		mt6358_batadc_cali_init(adc_dev);
 	vthr = auxadc_priv_read_channel(adc_dev, AUXADC_CHIP_TEMP);
+	if (vthr < 0)
+		return vthr;
 	mV_diff = vthr - g_O_VTS * 1800 / 4096;
 	if (g_O_SLOPE_SIGN == 0)
 		T_curr = mV_diff * 10000 / (signed int)(1681 + g_O_SLOPE * 10);
@@ -1154,6 +1169,8 @@ static int wk_bat_temp_dbg(struct mt635x_auxadc_device *adc_dev,
 	unsigned short i;
 
 	vbif28 = auxadc_priv_read_channel(adc_dev, AUXADC_VBIF);
+	if (vbif28 < 0)
+		return vbif28;
 	pr_notice("BAT_TEMP_PREV:%d,BAT_TEMP:%d,VBIF28:%d\n",
 		bat_temp_prev, bat_temp, vbif28);
 	if (bat_temp < 200 || abs(bat_temp_prev - bat_temp) > 100) {
@@ -1162,6 +1179,8 @@ static int wk_bat_temp_dbg(struct mt635x_auxadc_device *adc_dev,
 			arr_bat_temp[i] =
 				auxadc_priv_read_channel(adc_dev,
 							 AUXADC_BAT_TEMP);
+			if (arr_bat_temp[i] < 0)
+				return arr_bat_temp[i];
 		}
 		bat_temp_new = bat_temp_filter(arr_bat_temp, 5);
 		pr_notice("%d,%d,%d,%d,%d, BAT_TEMP_NEW:%d\n",
@@ -1173,9 +1192,13 @@ static int wk_bat_temp_dbg(struct mt635x_auxadc_device *adc_dev,
 		for (i = 0; i < 5; i++) {
 			bat = auxadc_priv_read_channel(adc_dev,
 						       AUXADC_BATADC);
+			if (bat < 0)
+				return bat;
 			arr_bat_temp[i] =
 				auxadc_priv_read_channel(adc_dev,
 							 AUXADC_BAT_TEMP);
+			if (arr_bat_temp[i] < 0)
+				return arr_bat_temp[i];
 			pr_notice("[CH3_DBG] %d,%d\n",
 				  bat, arr_bat_temp[i]);
 		}
@@ -1191,6 +1214,7 @@ static int mt635x_bat_temp_cali(struct mt635x_auxadc_device *adc_dev,
 	static int bat_temp_prev;
 	static unsigned int dbg_count;
 	static unsigned int aee_count;
+	int ret;
 
 	if (!adc_dev && bat_temp == -1 && precision_factor == -1) {
 		bat_temp_prev = 0;
@@ -1203,11 +1227,15 @@ static int mt635x_bat_temp_cali(struct mt635x_auxadc_device *adc_dev,
 	if (bat_temp < 200 || abs(bat_temp_prev - bat_temp) > 100) {
 		/* dump debug log when BAT_TEMP being abnormal */
 		bat_temp = wk_bat_temp_dbg(adc_dev, bat_temp_prev, bat_temp);
+		if (bat_temp < 0)
+			return bat_temp;
 		pr_notice("PMIC AUXADC BAT_TEMP aee_count=%d\n", aee_count);
 		aee_count++;
 	} else if (dbg_count % 50 == 0) {
 		/* dump debug log in normal case */
-		wk_bat_temp_dbg(adc_dev, bat_temp_prev, bat_temp);
+		ret = wk_bat_temp_dbg(adc_dev, bat_temp_prev, bat_temp);
+		if (ret < 0)
+			return ret;
 	}
 out:
 	bat_temp_prev = bat_temp;

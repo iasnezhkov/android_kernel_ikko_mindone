@@ -1684,6 +1684,8 @@ static INT32 consys_dump_osc_state(P_CONSYS_STATE state)
 			len += osal_sprintf(strbuf + len - 1, ")");
 		}
 		WMT_PLAT_PR_INFO("%s\n", strbuf);
+	} else {
+		return MTK_WCN_BOOL_FALSE;
 	}
 	return MTK_WCN_BOOL_TRUE;
 }

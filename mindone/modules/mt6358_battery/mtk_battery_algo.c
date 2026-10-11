@@ -4,6 +4,7 @@
  * Author Wy Chuang<wy.chuang@mediatek.com>
  */
 
+#include <linux/slab.h>
 #include "mtk_battery.h"
 
 #define CAR_MIN_GAP 15
@@ -14,22 +15,17 @@ int set_kernel_soc(struct mtk_battery *gm, int _soc)
 	return 0;
 }
 
-void set_fg_bat_tmp_c_gap(int tmp)
+int set_fg_bat_tmp_c_gap(int tmp)
 {
-	battery_set_property(BAT_PROP_TEMP_TH_GAP, tmp);
+	return battery_set_property(BAT_PROP_TEMP_TH_GAP, tmp);
 }
 
 void set_fg_time(struct mtk_battery *gm, int _time)
 {
-	struct timespec64 tmp_time_now, end_time;
-	ktime_t ktime, time_now;
+	ktime_t ktime;
 
-	if (_time != 0 && _time > 0) {
-		time_now = ktime_get_boottime();
-		tmp_time_now = ktime_to_timespec64(time_now);
-		end_time.tv_sec = tmp_time_now.tv_sec + _time;
-
-		ktime = ktime_set(end_time.tv_sec, end_time.tv_nsec);
+	if (_time > 0) {
+		ktime = ktime_add(ktime_get_boottime(), ktime_set(_time, 0));
 		alarm_start(&gm->tracking_timer, ktime);
 	} else {
 		alarm_cancel(&gm->tracking_timer);
@@ -114,8 +110,7 @@ static int get_imix_r(struct mtk_battery *gm)
 
 int fg_adc_reset(struct mtk_battery *gm)
 {
-	battery_set_property(BAT_PROP_FG_RESET, 0);
-	return 0;
+	return battery_reset_charge_locked(gm);
 }
 
 static int interpolation(int i1, int b1, int i2, int b2, int i)
@@ -686,14 +681,11 @@ static int fg_compensate_battery_voltage_from_low(
 	return fg_volt;
 }
 
-void fgr_construct_vboot(struct mtk_battery *gm, int table_idx)
+static void fgr_construct_vboot_sample(struct mtk_battery *gm, int table_idx,
+	int curr_temp, int rac, int ptim_vbat, int ptim_i)
 {
 	int iboot = 0;
-	int rac = get_ptimrac();
-	int ptim_vbat;
-	int ptim_i;
 	int vboot_t = 0;
-	int curr_temp = force_get_tbat(gm, true);
 	struct mtk_battery_algo *algo;
 	struct fuel_gauge_table_custom_data *ptable;
 	struct fuel_gauge_custom_data *pdata;
@@ -701,9 +693,6 @@ void fgr_construct_vboot(struct mtk_battery *gm, int table_idx)
 	algo = &gm->algo;
 	ptable = &gm->fg_table_cust_data;
 	pdata = &gm->fg_cust_data;
-	ptim_i = get_ptim_i(gm);
-	ptim_vbat = gauge_get_int_property(GAUGE_PROP_PTIM_BATTERY_VOLTAGE)
-		* 10;
 
 	bm_debug("[%s] idx %d T_NEW %d T_table %d T_table_c %d qmax_sel %d\n",
 		__func__,
@@ -783,6 +772,12 @@ void fgr_construct_vboot(struct mtk_battery *gm, int table_idx)
 			ptable->fg_profile[0].pmic_min_vol,
 			iboot, rac);
 	}
+}
+
+void fgr_construct_vboot(struct mtk_battery *gm, int table_idx)
+{
+	fgr_construct_vboot_sample(gm, table_idx, force_get_tbat(gm, true),
+		get_ptimrac(), get_ptim_vbat(), get_ptim_i(gm));
 }
 
 void fgr_dump_table(struct mtk_battery *gm, int idx)
@@ -874,9 +869,11 @@ void fgr_update_uisoc_threshold(struct mtk_battery *gm)
 
 	/* calculate ui lt_gap */
 	D_Remain = algo->soc * algo->quse_tb1 / 10000;
-	algo->lt_gap =
-		D_Remain * gm->fg_cust_data.diff_soc_setting
-		/ algo->ui_soc;
+	if (algo->ui_soc > 0)
+		algo->lt_gap = D_Remain * gm->fg_cust_data.diff_soc_setting
+			/ algo->ui_soc;
+	else
+		algo->lt_gap = algo->quse_tb1 / 200;
 
 	if (algo->lt_gap < (algo->quse_tb1 / 1000))
 		algo->lt_gap = algo->quse_tb1 / 1000;
@@ -894,29 +891,33 @@ void fgr_update_uisoc_threshold(struct mtk_battery *gm)
 		algo->lt_gap, D_Remain);
 }
 
-void fgr_update_uisoc_ht(struct mtk_battery *gm)
+int fgr_update_uisoc_ht(struct mtk_battery *gm)
 {
 	struct mtk_battery_algo *algo;
+	int ret;
 
 	algo = &gm->algo;
 	fgr_update_uisoc_threshold(gm);
-	battery_set_property(BAT_PROP_UISOC_HT_INT_GAP, algo->ht_gap);
+	ret = battery_set_property(BAT_PROP_UISOC_HT_INT_GAP, algo->ht_gap);
 	bm_debug("[%s] update ht_en:%d ht_gap:%d\n",
 		__func__,
 		algo->uisoc_ht_en, algo->ht_gap);
 
+	return ret;
 }
 
-void fgr_update_uisoc_lt(struct mtk_battery *gm)
+int fgr_update_uisoc_lt(struct mtk_battery *gm)
 {
 	struct mtk_battery_algo *algo;
+	int ret;
 
 	algo = &gm->algo;
 	fgr_update_uisoc_threshold(gm);
-	battery_set_property(BAT_PROP_UISOC_LT_INT_GAP, algo->lt_gap);
+	ret = battery_set_property(BAT_PROP_UISOC_LT_INT_GAP, algo->lt_gap);
 	bm_debug("[%s] update lt_en:%d lt_gap:%d\n",
 		__func__,
 		algo->uisoc_lt_en, algo->lt_gap);
+	return ret;
 }
 
 void fg_enable_uisoc_ht(struct mtk_battery *gm, int en)
@@ -1167,7 +1168,7 @@ void fgr_update_fg_bat_tmp_threshold_c(struct mtk_battery *gm)
 	gm->algo.fg_bat_tmp_c_gap = 1;
 }
 
-void fgr_update_c_dod(struct mtk_battery *gm)
+static void fgr_update_c_dod_car(struct mtk_battery *gm, int car)
 {
 	struct mtk_battery_algo *algo;
 	struct fuel_gauge_table_custom_data *ptable;
@@ -1177,7 +1178,7 @@ void fgr_update_c_dod(struct mtk_battery *gm)
 	ptable = &gm->fg_table_cust_data;
 	pdata = &gm->fg_cust_data;
 
-	algo->car = gauge_get_int_property(GAUGE_PROP_COULOMB);
+	algo->car = car;
 	fgr_update_quse(gm, 1);
 	Set_fg_c_d0_by_ocv(gm, algo->fg_c_d0_ocv);
 	algo->fg_c_dod = algo->fg_c_d0_dod -
@@ -1191,11 +1192,15 @@ void fgr_update_c_dod(struct mtk_battery *gm)
 		algo->fg_c_soc);
 }
 
-void fgr_dod_init(struct mtk_battery *gm)
+void fgr_update_c_dod(struct mtk_battery *gm)
 {
-	int init_swocv = get_ptim_vbat();
-	int con0_soc = gauge_get_int_property(GAUGE_PROP_CON0_SOC);
-	int con0_uisoc = gauge_get_int_property(GAUGE_PROP_RTC_UI_SOC);
+	fgr_update_c_dod_car(gm, gauge_get_int_property(GAUGE_PROP_COULOMB));
+}
+
+int fgr_dod_init(struct mtk_battery *gm)
+{
+	int init_swocv, con0_soc, con0_uisoc;
+	int ret;
 
 	struct mtk_battery_algo *algo;
 	struct fuel_gauge_table_custom_data *ptable;
@@ -1205,9 +1210,24 @@ void fgr_dod_init(struct mtk_battery *gm)
 	ptable = &gm->fg_table_cust_data;
 	pdata = &gm->fg_cust_data;
 
+	ret = gauge_get_property(GAUGE_PROP_CON0_SOC, &con0_soc);
+	if (ret < 0)
+		return ret;
+	ret = gauge_get_property(GAUGE_PROP_RTC_UI_SOC, &con0_uisoc);
+	if (ret < 0)
+		return ret;
+	ret = gauge_get_property(GAUGE_PROP_PTIM_BATTERY_VOLTAGE, &init_swocv);
+	if (ret < 0)
+		return ret;
+	if (con0_soc < 0 || con0_soc > 100 || con0_uisoc < 0 || con0_uisoc > 100)
+		return -ERANGE;
+	if (init_swocv <= 0)
+		return -ENODATA;
+	ret = battery_reset_charge_init_locked(gm);
+	if (ret)
+		return ret;
+	init_swocv *= 10;
 	algo->rtc_ui_soc = UNIT_TRANS_100 * con0_uisoc;
-	init_swocv = gauge_get_int_property(GAUGE_PROP_PTIM_BATTERY_VOLTAGE)
-		* 10;
 
 	if (algo->rtc_ui_soc == 0 || con0_soc == 0) {
 		algo->rtc_ui_soc = OCV_to_SOC_c(gm, init_swocv);
@@ -1233,8 +1253,7 @@ void fgr_dod_init(struct mtk_battery *gm)
 
 	algo->fg_c_d0_ocv = SOC_to_OCV_c(gm, algo->fg_c_d0_soc);
 	Set_fg_c_d0_by_ocv(gm, algo->fg_c_d0_ocv);
-	fg_adc_reset(gm);
-	algo->fg_c_d0_car = gauge_get_int_property(GAUGE_PROP_COULOMB);
+	algo->fg_c_d0_car = 0;
 
 	if (pdata->d0_sel == 1) {
 		/* reserve for custom c_d0 / custom ui_soc */
@@ -1244,7 +1263,7 @@ void fgr_dod_init(struct mtk_battery *gm)
 		algo->fg_c_d0_ocv = SOC_to_OCV_c(gm, algo->fg_c_d0_soc);
 		Set_fg_c_d0_by_ocv(gm, algo->fg_c_d0_ocv);
 	}
-	fgr_update_c_dod(gm);
+	fgr_update_c_dod_car(gm, 0);
 	algo->ui_soc = algo->ui_d0_soc;
 	fgr_set_soc_by_vc_mode(gm);
 
@@ -1255,6 +1274,7 @@ void fgr_dod_init(struct mtk_battery *gm)
 		algo->fg_c_dod, algo->fg_c_soc,
 		algo->rtc_ui_soc, algo->ui_d0_soc,
 		algo->soc, con0_uisoc, con0_soc);
+	return 0;
 }
 
 void fgr_imix_error_calibration(struct mtk_battery *gm)
@@ -1271,7 +1291,7 @@ void fgr_imix_error_calibration(struct mtk_battery *gm)
 
 void fgr_dlpt_sd_handler(struct mtk_battery *gm)
 {
-	gm->ui_soc = 0;
+	gm->algo.ui_soc = 0;
 	gm->algo.low_tracking_enable = 0;
 	set_fg_time(gm, 0);
 	battery_set_property(BAT_PROP_ENABLE_UISOC_HT_INT, 0);
@@ -1465,12 +1485,12 @@ static int fgr_cycle_capacity(struct mtk_battery *gm)
 	return mtk_battery_get_learned_q_max(gm) * UNIT_TRANS_10;
 }
 
-void fgr_sw_cycle_accu(struct mtk_battery *gm)
+void fgr_sw_cycle_accu_car(struct mtk_battery *gm, int car_now)
 {
 	struct mtk_battery_algo *algo = &gm->algo;
-	int car_now = gauge_get_int_property(GAUGE_PROP_COULOMB);
 	int cap = fgr_cycle_capacity(gm);
 
+	lockdep_assert_held(&gm->algo_lock);
 	if (!algo->sw_cycle_valid) {
 		algo->sw_cycle_car = car_now;
 		algo->sw_cycle_valid = true;
@@ -1487,6 +1507,29 @@ void fgr_sw_cycle_accu(struct mtk_battery *gm)
 		bm_err("[%s]bat_cycle %d ncar %d cap %d\n",
 			__func__, gm->bat_cycle, algo->sw_cycle_ncar, cap);
 	}
+}
+
+void fgr_sw_cycle_accu(struct mtk_battery *gm)
+{
+	int car_now;
+
+	if (gauge_get_property(GAUGE_PROP_COULOMB, &car_now))
+		return;
+	fgr_sw_cycle_accu_car(gm, car_now);
+}
+
+void fgr_reset_car(struct mtk_battery *gm, int car)
+{
+	struct mtk_battery_algo *algo = &gm->algo;
+
+	lockdep_assert_held(&gm->algo_lock);
+	algo->fg_c_d0_car -= car;
+	algo->prev_car_bat0 -= car;
+	if (algo->zcv_learn_valid)
+		algo->zcv_learn_car -= car;
+	if (algo->sw_cycle_valid)
+		algo->sw_cycle_car -= car;
+	algo->car -= car;
 }
 
 void fgr_bat_int1_handler(struct mtk_battery *gm)
@@ -1759,9 +1802,11 @@ save:
 void fgr_zcv_recal_handler(struct mtk_battery *gm)
 {
 	struct mtk_battery_algo *algo = &gm->algo;
-	int zcv = gauge_get_int_property(GAUGE_PROP_ZCV);
-	int zcv_curr = gauge_get_int_property(GAUGE_PROP_ZCV_CURRENT);
-	int car_now;
+	int zcv, zcv_curr, car_now;
+
+	if (gauge_get_property(GAUGE_PROP_ZCV, &zcv) ||
+		gauge_get_property(GAUGE_PROP_ZCV_CURRENT, &zcv_curr))
+		return;
 
 	if (zcv <= 0 || abs(zcv_curr) >= gm->fg_cust_data.sleep_current_avg) {
 		bm_err("[%s]skip zcv %d curr %d limit %d\n",
@@ -1770,11 +1815,12 @@ void fgr_zcv_recal_handler(struct mtk_battery *gm)
 		return;
 	}
 
-	car_now = gauge_get_int_property(GAUGE_PROP_COULOMB);
+	if (gauge_get_property(GAUGE_PROP_COULOMB, &car_now))
+		return;
 	Set_fg_c_d0_by_ocv(gm, zcv);
 	algo->fg_c_d0_car = car_now;
 	fgr_learn_aging_factor(gm, car_now, algo->fg_c_d0_soc);
-	fgr_update_c_dod(gm);
+	fgr_update_c_dod_car(gm, car_now);
 	fgr_set_soc_by_vc_mode(gm);
 
 	bm_err("[%s]zcv %d soc %d car %d aging %d\n",
@@ -1784,7 +1830,10 @@ void fgr_zcv_recal_handler(struct mtk_battery *gm)
 void fgr_chr_full_int_handler(struct mtk_battery *gm)
 {
 	struct mtk_battery_algo *algo = &gm->algo;
-	int car_now = gauge_get_int_property(GAUGE_PROP_COULOMB);
+	int car_now;
+
+	if (gauge_get_property(GAUGE_PROP_COULOMB, &car_now))
+		return;
 
 	fgr_learn_aging_factor(gm, car_now, 10000);
 
@@ -1992,88 +2041,157 @@ void do_fg_algo(struct mtk_battery *gm, unsigned int intr_num,
 	bm_debug("[%s] intr_num=0x%x\n", __func__, intr_num);
 }
 
-void fgr_set_int1(struct mtk_battery *gm)
+int fgr_set_int1(struct mtk_battery *gm)
 {
-	struct mtk_battery_algo *algo;
-	struct fuel_gauge_table_custom_data *ptable;
-	struct fuel_gauge_custom_data *pdata;
-	int car_now = gauge_get_int_property(GAUGE_PROP_COULOMB);
+	struct mtk_battery_algo *algo = &gm->algo;
+	struct fuel_gauge_custom_data *pdata = &gm->fg_cust_data;
+	int car_now, con0_soc, readback, ret;
 
-	algo = &gm->algo;
-	ptable = &gm->fg_table_cust_data;
-	pdata = &gm->fg_cust_data;
+	ret = gauge_get_property(GAUGE_PROP_COULOMB, &car_now);
+	if (ret < 0)
+		return ret;
 	fgr_update_quse(gm, 1);
-	/* set c gap */
 	fgr_update_fg_bat_int1_threshold(gm);
-	battery_set_property(BAT_PROP_COULOMB_INT_GAP,
-		algo->fg_bat_int1_gap);
-	bm_debug("[%s]set cgap :fg_bat_int1_gap %d to kernel done\n",
-		__func__,
-		algo->fg_bat_int1_gap);
-
-	/* set ui_soc gap*/
+	ret = battery_set_property(BAT_PROP_COULOMB_INT_GAP, algo->fg_bat_int1_gap);
+	if (ret < 0)
+		return ret;
 	algo->prev_car_bat0 = car_now;
-	fgr_update_uisoc_ht(gm);
-	fgr_update_uisoc_lt(gm);
-
-	battery_set_property(BAT_PROP_ENABLE_UISOC_HT_INT, 1);
-	battery_set_property(BAT_PROP_ENABLE_UISOC_LT_INT, 1);
-
-	/*set bat tempture  */
+	ret = fgr_update_uisoc_ht(gm);
+	if (ret < 0)
+		return ret;
+	ret = fgr_update_uisoc_lt(gm);
+	if (ret < 0)
+		return ret;
+	ret = battery_set_property(BAT_PROP_ENABLE_UISOC_HT_INT, 1);
+	if (ret < 0)
+		return ret;
+	ret = battery_set_property(BAT_PROP_ENABLE_UISOC_LT_INT, 1);
+	if (ret < 0)
+		return ret;
 	algo->fg_bat_tmp_c_gap = 1;
-	set_fg_bat_tmp_c_gap(algo->fg_bat_tmp_c_gap);
-	bm_debug("[%s]fg_bat_tmp_c_gap %d\n",
-		__func__, algo->fg_bat_tmp_c_gap);
-
+	ret = set_fg_bat_tmp_c_gap(algo->fg_bat_tmp_c_gap);
+	if (ret < 0)
+		return ret;
 	algo->fg_vbat2_lt = pdata->vbat2_det_voltage1;
-	gauge_set_property(GAUGE_PROP_VBAT_LT_INTR_THRESHOLD,
-		algo->fg_vbat2_lt);
-	gauge_set_property(GAUGE_PROP_EN_LOW_VBAT_INTERRUPT, true);
-
-	set_kernel_soc(gm, algo->soc);
-	battery_set_property(BAT_PROP_UISOC, algo->ui_soc);
-	gauge_set_property(GAUGE_PROP_RTC_UI_SOC,
-		(algo->ui_soc + 50) / 100);
-
+	ret = gauge_set_property(GAUGE_PROP_VBAT_LT_INTR_THRESHOLD, algo->fg_vbat2_lt);
+	if (ret < 0)
+		return ret;
+	ret = gauge_set_property(GAUGE_PROP_EN_LOW_VBAT_INTERRUPT, true);
+	if (ret < 0)
+		return ret;
+	ret = gauge_set_property(GAUGE_PROP_RTC_UI_SOC, (algo->ui_soc + 50) / 100);
+	if (ret < 0)
+		return ret;
+	ret = gauge_get_property(GAUGE_PROP_RTC_UI_SOC, &readback);
+	if (ret < 0)
+		return ret;
+	if (readback != (algo->ui_soc + 50) / 100)
+		return -EIO;
 	if (algo->soc <= 100)
-		gauge_set_property(GAUGE_PROP_CON0_SOC, 100);
+		con0_soc = 100;
 	else if (algo->soc >= 12000)
-		gauge_set_property(GAUGE_PROP_CON0_SOC, 10000);
+		con0_soc = 10000;
 	else
-		gauge_set_property(GAUGE_PROP_CON0_SOC, algo->soc);
-
-	bm_debug("[%s] done\n", __func__);
+		con0_soc = algo->soc;
+	ret = gauge_set_property(GAUGE_PROP_CON0_SOC, con0_soc);
+	if (ret < 0)
+		return ret;
+	ret = gauge_get_property(GAUGE_PROP_CON0_SOC, &readback);
+	if (ret < 0)
+		return ret;
+	return readback == con0_soc / 100 ? 0 : -EIO;
 }
 
-void battery_algo_init(struct mtk_battery *gm)
+int battery_algo_init(struct mtk_battery *gm)
 {
-	int is_bat_exist = 1;
-	struct mtk_battery_algo *algo;
-	struct fuel_gauge_table_custom_data *ptable;
+	struct mtk_battery_algo saved = gm->algo;
+	struct fuel_gauge_table_custom_data *ptable = &gm->fg_table_cust_data;
+	struct fuelgauge_profile_struct *profile, *saved_profile;
+	int is_bat_exist, temperature, rac, vbat, current_sample;
+	int ascending, descending, ret, handoff;
+	int saved_soc = gm->soc;
 
-	ptable = &gm->fg_table_cust_data;
-	algo = &gm->algo;
-	algo->fg_bat_tmp_c_gap = 1;
+	lockdep_assert_held(&gm->algo_lock);
+	ret = gauge_get_property(GAUGE_PROP_BATTERY_EXIST, &is_bat_exist);
+	if (ret < 0)
+		return ret;
+	if (!is_bat_exist)
+		return -ENODEV;
+	ret = force_get_tbat_internal(gm, true, &temperature);
+	if (ret < 0)
+		return ret;
+	ret = gauge_get_property(GAUGE_PROP_PTIM_RESIST, &rac);
+	if (ret < 0)
+		return ret;
+	ret = gauge_get_property(GAUGE_PROP_PTIM_BATTERY_VOLTAGE, &vbat);
+	if (ret < 0)
+		return ret;
+	ret = gauge_get_property(GAUGE_PROP_BATTERY_CURRENT, &current_sample);
+	if (ret < 0)
+		return ret;
+	if (vbat <= 0)
+		return -ENODATA;
+	profile = fg_get_profile(gm, ptable->temperature_tb1);
+	if (!profile || fg_check_temperature_order(gm, &ascending, &descending))
+		return -EINVAL;
+	saved_profile = kmemdup(profile, 100 * sizeof(*profile), GFP_KERNEL);
+	if (!saved_profile)
+		return -ENOMEM;
 
-	algo->aging_factor = 10000;
-
-	algo->DC_ratio = 100;
-	gauge_get_property(GAUGE_PROP_BATTERY_EXIST, &is_bat_exist);
-	bm_err("MTK Battery algo init bat_exist:%d\n",
-		is_bat_exist);
-
-	if (is_bat_exist) {
-		fgr_construct_table_by_temp(gm, true,
-			ptable->temperature_tb1);
-		fgr_construct_vboot(gm,
-			ptable->temperature_tb1);
-		fgr_dump_table(gm, ptable->temperature_tb1);
-		fgr_dod_init(gm);
-		fgr_set_int1(gm);
-		battery_set_property(BAT_PROP_INIT_DONE, 1);
-		gauge_set_property(GAUGE_PROP_IS_NVRAM_FAIL_MODE, 1);
+	gm->algo.fg_bat_tmp_c_gap = 1;
+	gm->algo.aging_factor = 10000;
+	gm->algo.DC_ratio = 100;
+	gm->algo.last_temp = temperature;
+	fgr_construct_battery_profile(gm, ptable->temperature_tb1);
+	fgr_construct_vboot_sample(gm, ptable->temperature_tb1, temperature,
+		rac, vbat * 10, current_sample);
+	fgr_update_quse(gm, 1);
+	if (gm->algo.quse_tb1 <= 0) {
+		ret = -ENODATA;
+		goto restore;
 	}
-	bm_err("[battery_recovery] is_evb:%d is_bat_exist %d\n",
-		 gm->disableGM30, is_bat_exist);
-}
+	WRITE_ONCE(gm->kernel_setup_mutated, false);
+	WRITE_ONCE(gm->kernel_setup_in_progress, true);
+	ret = fgr_dod_init(gm);
+	if (ret)
+		goto restore;
 
+	ret = fgr_set_int1(gm);
+	if (ret)
+		goto restore;
+	ret = gauge_set_property(GAUGE_PROP_IS_NVRAM_FAIL_MODE, 1);
+	if (ret < 0)
+		goto restore;
+	ret = gauge_get_property(GAUGE_PROP_IS_NVRAM_FAIL_MODE, &handoff);
+	if (ret < 0)
+		goto restore;
+	if (handoff != 1) {
+		ret = -EIO;
+		goto restore;
+	}
+	mutex_lock(&gm->gauge->ops_lock);
+	ret = READ_ONCE(gm->kernel_setup_error);
+	WRITE_ONCE(gm->kernel_setup_in_progress, false);
+	mutex_unlock(&gm->gauge->ops_lock);
+	if (ret)
+		goto restore;
+	set_kernel_soc(gm, gm->algo.soc);
+	ret = battery_set_property(BAT_PROP_UISOC, gm->algo.ui_soc);
+	if (ret < 0)
+		goto restore;
+	fgr_dump_table(gm, ptable->temperature_tb1);
+	kfree(saved_profile);
+	return 0;
+
+restore:
+	WRITE_ONCE(gm->kernel_setup_in_progress, false);
+	if (READ_ONCE(gm->kernel_setup_mutated)) {
+		cmpxchg(&gm->kernel_setup_error, 0, ret);
+		bm_err("[%s] hardware setup failed %d; reboot required\n", __func__, ret);
+	}
+	gm->soc = saved_soc;
+	gm->algo = saved;
+	memcpy(profile, saved_profile, 100 * sizeof(*profile));
+	kfree(saved_profile);
+	return ret;
+}

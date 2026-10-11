@@ -1435,31 +1435,39 @@ void nicCmdEventQueryOfldInfo(IN struct ADAPTER
 		u4QueryInfoLen = sizeof(struct
 					PARAM_OFLD_INFO);
 
-		if (prCmdInfo->u4InformationBufferLength < sizeof(
-			    struct PARAM_OFLD_INFO)) {
+		if (!prCmdInfo->pvInformationBuffer ||
+			prCmdInfo->u4InformationBufferLength <
+				sizeof(struct PARAM_OFLD_INFO)) {
 			DBGLOG(REQ, INFO,
 			       "Ofld info query length %u is not valid.\n",
 			       prCmdInfo->u4InformationBufferLength);
+			kalOidComplete(prGlueInfo, prCmdInfo, 0,
+				WLAN_STATUS_INVALID_LENGTH);
+			return;
 		}
 		prParamOfldInfo = (struct PARAM_OFLD_INFO
 				    *) prCmdInfo->pvInformationBuffer;
-		prParamOfldInfo->ucFragNum = prCmdOfldInfo->ucFragNum;
-		prParamOfldInfo->ucFragSeq = prCmdOfldInfo->ucFragSeq;
-		prParamOfldInfo->u4TotalLen = prCmdOfldInfo->u4TotalLen;
-		prParamOfldInfo->u4BufLen = prCmdOfldInfo->u4BufLen;
 
-		if (prCmdOfldInfo->u4TotalLen > 0 &&
-				prCmdOfldInfo->u4BufLen > 0 &&
-				prCmdOfldInfo->u4BufLen <= PKT_OFLD_BUF_SIZE) {
-			kalMemCopy(prParamOfldInfo->aucBuf,
-				prCmdOfldInfo->aucBuf,
-				prCmdOfldInfo->u4BufLen);
-		} else {
+		if (prCmdOfldInfo->u4TotalLen == 0 ||
+			prCmdOfldInfo->u4BufLen == 0 ||
+			prCmdOfldInfo->u4BufLen > PKT_OFLD_BUF_SIZE ||
+			prCmdOfldInfo->u4BufLen > prCmdOfldInfo->u4TotalLen ||
+			prCmdOfldInfo->ucFragSeq != prParamOfldInfo->ucFragSeq) {
 			DBGLOG(REQ, INFO,
 			       "Invalid query result, length: %d Buf size: %d.\n",
 				prCmdOfldInfo->u4TotalLen,
 				prCmdOfldInfo->u4BufLen);
+			kalOidComplete(prGlueInfo, prCmdInfo, 0,
+				WLAN_STATUS_INVALID_DATA);
+			return;
 		}
+
+		prParamOfldInfo->ucFragNum = prCmdOfldInfo->ucFragNum;
+		prParamOfldInfo->ucFragSeq = prCmdOfldInfo->ucFragSeq;
+		prParamOfldInfo->u4TotalLen = prCmdOfldInfo->u4TotalLen;
+		prParamOfldInfo->u4BufLen = prCmdOfldInfo->u4BufLen;
+		kalMemCopy(prParamOfldInfo->aucBuf,
+			prCmdOfldInfo->aucBuf, prCmdOfldInfo->u4BufLen);
 		kalOidComplete(prGlueInfo, prCmdInfo,
 		   u4QueryInfoLen, WLAN_STATUS_SUCCESS);
 	}
@@ -5414,4 +5422,3 @@ void nicEventHandleDelayBar(IN struct ADAPTER *prAdapter,
 		nicRxIndicatePackets(prAdapter, prRetSwRfb);
 }
 #endif /* CFG_SUPPORT_BAR_DELAY_INDICATION */
-

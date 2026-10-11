@@ -116,7 +116,7 @@ unsigned int get_pa_num(void)
  * Local functions
  *==================================================
  */
-static unsigned long find_max_mutt_state(void)
+static unsigned long find_max_mutt_state(struct md_cooling_device *requested, unsigned long state)
 {
 	struct md_cooling_device *md_cdev;
 	unsigned long final_state = MD_COOLING_UNLIMITED_STATE;
@@ -125,7 +125,8 @@ static unsigned long find_max_mutt_state(void)
 	for (i = 0; i < mdc->pa_num; i++) {
 		md_cdev = get_md_cdev(MD_COOLING_TYPE_MUTT, i);
 		if (md_cdev)
-			final_state = max(final_state, md_cdev->target_state);
+			final_state = max(final_state,
+				md_cdev == requested ? state : md_cdev->target_state);
 	}
 
 	return final_state;
@@ -178,9 +179,9 @@ static int mutt_throttle(struct md_cooling_device *md_cdev, unsigned long state)
 		return 0;
 	}
 
-	md_cdev->target_state = state;
-	final_state = find_max_mutt_state();
+	final_state = find_max_mutt_state(md_cdev, state);
 	if (final_state == mdc->mutt_state) {
+		md_cdev->target_state = state;
 		mutex_unlock(&mdc_data_lock);
 		dev_info(dev, "%s: ignore set state %ld due to final_state(%ld) is not changed\n",
 				md_cdev->name, state, final_state);
@@ -197,6 +198,7 @@ static int mutt_throttle(struct md_cooling_device *md_cdev, unsigned long state)
 	}
 
 	new_status = state_to_md_cooling_status(final_state);
+	md_cdev->target_state = state;
 	mdc->status = new_status;
 	mdc->mutt_state = final_state;
 

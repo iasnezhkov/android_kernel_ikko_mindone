@@ -5,6 +5,7 @@
 #include <linux/err.h>
 #include <linux/kernel.h>
 #include <linux/module.h>
+#include <linux/mutex.h>
 #include <linux/of.h>
 #include <linux/of_device.h>
 #include <linux/platform_device.h>
@@ -19,9 +20,11 @@ struct charger_cooler_info {
 	int num_state;
 	int cur_current;
 	int cur_state;
+	bool request_dirty;
 };
 
 static struct charger_cooler_info charger_cl_data;
+static DEFINE_MUTEX(charger_cooler_lock);
 /* < -1 is unlimit, unit is uA. */
 static const int master_charger_state_to_current_limit[CHARGER_STATE_NUM] = {
 	-1, 2600000, 2200000, 1800000, 1400000, 1000000, 700000, 500000, 0
@@ -37,9 +40,19 @@ static const int slave_charger_state_to_current_limit[CHARGER_STATE_NUM] = {
 static int charger_throttle(struct charger_cooling_device *charger_cdev, unsigned long state)
 {
 	struct device *dev = charger_cdev->dev;
+	unsigned long previous = charger_cdev->target_state;
+	int ret;
 
 	charger_cdev->target_state = state;
-	charger_cdev->pdata->state_to_charger_limit(charger_cdev);
+	ret = charger_cdev->pdata->state_to_charger_limit(charger_cdev);
+	if (ret) {
+		charger_cdev->target_state = previous;
+		charger_cdev->request_dirty = true;
+		charger_cl_data.request_dirty = true;
+		return ret;
+	}
+	charger_cdev->request_dirty = false;
+	charger_cl_data.request_dirty = false;
 	charger_cl_data.cur_state = state;
 	charger_cl_data.cur_current = master_charger_state_to_current_limit[state];
 	dev_info(dev, "%s: set lv = %ld done\n", charger_cdev->name, state);
@@ -54,11 +67,14 @@ static int charger_cooling_get_max_state(struct thermal_cooling_device *cdev, un
 	return 0;
 }
 
-static int charger_cooling_get_cur_state(struct thermal_cooling_device *cdev, unsigned long *state)
+static int charger_cooling_get_cur_state(struct thermal_cooling_device *cdev,
+	unsigned long *state)
 {
 	struct charger_cooling_device *charger_cdev = cdev->devdata;
 
+	mutex_lock(&charger_cooler_lock);
 	*state = charger_cdev->target_state;
+	mutex_unlock(&charger_cooler_lock);
 
 	return 0;
 }
@@ -72,10 +88,12 @@ static int charger_cooling_set_cur_state(struct thermal_cooling_device *cdev, un
 	if (WARN_ON(state > charger_cdev->max_state || !charger_cdev->throttle))
 		return -EINVAL;
 
-	if (charger_cdev->target_state == state)
-		return 0;
-
-	ret = charger_cdev->throttle(charger_cdev, state);
+	mutex_lock(&charger_cooler_lock);
+	if (charger_cdev->target_state == state && !charger_cdev->request_dirty)
+		ret = 0;
+	else
+		ret = charger_cdev->throttle(charger_cdev, state);
+	mutex_unlock(&charger_cooler_lock);
 
 	return ret;
 }
@@ -93,10 +111,10 @@ static int cooling_state_to_charger_limit_v1(struct charger_cooling_device *chg)
 	union power_supply_propval prop_s_bat_chr;
 	int ret = -1;
 
-	if (chg->chg_psy == NULL || IS_ERR(chg->chg_psy)) {
-		pr_info("Couldn't get chg_psy\n");
-		return ret;
-	}
+	if (IS_ERR_OR_NULL(chg->chg_psy))
+		return chg->chg_psy ? PTR_ERR(chg->chg_psy) : -ENODEV;
+	if (chg->type == DUAL_CHARGER && IS_ERR_OR_NULL(chg->s_chg_psy))
+		return chg->s_chg_psy ? PTR_ERR(chg->s_chg_psy) : -ENODEV;
 	prop_bat_chr.intval = master_charger_state_to_current_limit[chg->target_state];
 
 	ret = power_supply_set_property(chg->chg_psy,
@@ -139,10 +157,6 @@ static int cooling_state_to_charger_limit_v1(struct charger_cooling_device *chg)
 	power_supply_changed(chg->chg_psy);
 
 	if (chg->type == DUAL_CHARGER) {
-		if (chg->s_chg_psy == NULL || IS_ERR(chg->s_chg_psy)) {
-			pr_info("Couldn't get s_chg_psy\n");
-			return ret;
-		}
 		prop_s_bat_chr.intval = slave_charger_state_to_current_limit[chg->target_state];
 
 		ret = power_supply_set_property(chg->s_chg_psy,
@@ -205,8 +219,13 @@ static ssize_t charger_curr_show(struct kobject *kobj,
 {
 	int len = 0;
 
-	len += snprintf(buf + len, PAGE_SIZE - len, "%d\n",
+	mutex_lock(&charger_cooler_lock);
+	if (charger_cl_data.request_dirty)
+		len = -ENODATA;
+	else
+		len += snprintf(buf + len, PAGE_SIZE - len, "%d\n",
 				charger_cl_data.cur_current);
+	mutex_unlock(&charger_cooler_lock);
 	return len;
 }
 

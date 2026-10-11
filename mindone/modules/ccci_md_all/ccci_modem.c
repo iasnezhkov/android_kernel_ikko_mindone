@@ -37,6 +37,7 @@
 #include "mt-plat/mtk_ccci_common.h"
 
 #define TAG "md"
+#define MD_THROTTLING_COOLER_LV_COMMAND 3
 
 struct ccci_modem *modem_sys[MAX_MD_NUM];
 EXPORT_SYMBOL(modem_sys); /* provider for ccci_dpmaif satellite */
@@ -2405,9 +2406,11 @@ int exec_ccci_kern_func_by_md_id(int md_id, unsigned int id, char *buf,
 		break;
 		/* used for throttling feature - start */
 	case ID_THROTTLING_CFG:
+		tmp_data = *((int *)buf);
 		ret = ccci_port_send_msg_to_md(md_id, CCCI_SYSTEM_TX,
 				MD_THROTTLING,
-				*((int *)buf), 1);
+				tmp_data,
+				(tmp_data & 0xff) != MD_THROTTLING_COOLER_LV_COMMAND);
 		break;
 		/* used for throttling feature - end */
 	case ID_UPDATE_TX_POWER:

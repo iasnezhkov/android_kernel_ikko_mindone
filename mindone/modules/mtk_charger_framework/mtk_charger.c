@@ -1399,8 +1399,13 @@ static int mtk_chg_en_safety_timer_show(struct seq_file *m, void *data)
 {
 	struct mtk_charger *pinfo = m->private;
 	bool safety_timer_en = false;
+	int ret;
 
-	charger_dev_is_safety_timer_enabled(pinfo->chg1_dev, &safety_timer_en);
+	if (!pinfo)
+		return -EINVAL;
+	ret = charger_dev_is_safety_timer_enabled(pinfo->chg1_dev, &safety_timer_en);
+	if (ret)
+		return ret;
 	seq_printf(m, "%d\n", safety_timer_en);
 
 	return 0;
@@ -1421,10 +1426,10 @@ static ssize_t mtk_chg_en_safety_timer_write(struct file *file,
 
 	if (!info)
 		return -EINVAL;
-	if (count <= 0)
+	if (count == 0 || count >= sizeof(desc))
 		return -EINVAL;
 
-	len = (count < (sizeof(desc) - 1)) ? count : (sizeof(desc) - 1);
+	len = count;
 	if (copy_from_user(desc, buffer, len))
 		return -EFAULT;
 
@@ -1432,7 +1437,11 @@ static ssize_t mtk_chg_en_safety_timer_write(struct file *file,
 
 	ret = kstrtou32(desc, 10, &enable);
 	if (ret == 0) {
-		charger_dev_enable_safety_timer(info->chg1_dev, enable);
+		if (enable > 1)
+			return -EINVAL;
+		ret = charger_dev_enable_safety_timer(info->chg1_dev, enable);
+		if (ret)
+			return ret;
 		info->safety_timer_cmd = (int)enable;
 		chr_info("%s: enable safety timer = %d\n", __func__, enable);
 
@@ -1448,7 +1457,7 @@ static ssize_t mtk_chg_en_safety_timer_write(struct file *file,
 	}
 
 	chr_err("bad argument, echo [enable] > en_safety_timer\n");
-	return count;
+	return ret;
 }
 
 static const struct proc_ops mtk_chg_en_safety_timer_fops = {
@@ -3166,7 +3175,7 @@ static int psy_charger_get_property(struct power_supply *psy,
 		chg = info->dvchg2_dev;
 	else {
 		chr_err("%s fail\n", __func__);
-		return 0;
+		return -ENODEV;
 	}
 
 	switch (psp) {
@@ -3187,16 +3196,26 @@ static int psy_charger_get_property(struct power_supply *psy,
 			break;
 		}
 
-		val->intval = is_charger_exist(info);
-		break;
+		if (IS_ERR_OR_NULL(info->chg_psy))
+			return -ENODEV;
+		return power_supply_get_property(info->chg_psy,
+			POWER_SUPPLY_PROP_ONLINE, val);
 	case POWER_SUPPLY_PROP_PRESENT:
 		if (chg != NULL)
 			val->intval = true;
 		else
 			val->intval = false;
 		break;
-	case POWER_SUPPLY_PROP_STATUS:
-		if (!is_charger_exist(info)) {
+	case POWER_SUPPLY_PROP_STATUS: {
+		union power_supply_propval online = {0};
+
+		if (IS_ERR_OR_NULL(info->chg_psy))
+			return -ENODEV;
+		ret = power_supply_get_property(info->chg_psy,
+			POWER_SUPPLY_PROP_ONLINE, &online);
+		if (ret)
+			return ret;
+		if (!online.intval) {
 			val->intval = POWER_SUPPLY_STATUS_DISCHARGING;
 			break;
 		}
@@ -3205,12 +3224,21 @@ static int psy_charger_get_property(struct power_supply *psy,
 		if (chg != NULL) {
 			bool done = false, en = false;
 
-			if (charger_dev_is_charging_done(chg, &done) == 0 && done)
+			ret = charger_dev_is_charging_done(chg, &done);
+			if (ret && ret != -EOPNOTSUPP)
+				return ret;
+			if (!ret && done)
 				val->intval = POWER_SUPPLY_STATUS_FULL;
-			else if (charger_dev_is_enabled(chg, &en) == 0 && en)
-				val->intval = POWER_SUPPLY_STATUS_CHARGING;
+			else {
+				ret = charger_dev_is_enabled(chg, &en);
+				if (ret && ret != -EOPNOTSUPP)
+					return ret;
+				if (!ret && en)
+					val->intval = POWER_SUPPLY_STATUS_CHARGING;
+			}
 		}
 		break;
+	}
 	case POWER_SUPPLY_PROP_VOLTAGE_MAX:
 		val->intval = info->enable_hv_charging;
 		break;
@@ -3236,12 +3264,18 @@ static int psy_charger_get_property(struct power_supply *psy,
 	case POWER_SUPPLY_PROP_CONSTANT_CHARGE_CURRENT_MAX:
 		if (chg == NULL)
 			return -ENODATA;
-		val->intval = get_charger_charging_current(info, chg);
+		ret = get_charger_charging_current(info, chg);
+		if (ret < 0)
+			return ret;
+		val->intval = ret;
 		break;
 	case POWER_SUPPLY_PROP_INPUT_CURRENT_LIMIT:
 		if (chg == NULL)
 			return -ENODATA;
-		val->intval = get_charger_input_current(info, chg);
+		ret = get_charger_input_current(info, chg);
+		if (ret < 0)
+			return ret;
+		val->intval = ret;
 		break;
 	case POWER_SUPPLY_PROP_USB_TYPE:
 		val->intval = info->chr_type;
@@ -3377,7 +3411,7 @@ int psy_charger_set_property(struct power_supply *psy,
 		idx = DVCHG2_SETTING;
 	else {
 		chr_err("%s fail\n", __func__);
-		return 0;
+		return -ENODEV;
 	}
 
 	switch (psp) {

@@ -276,10 +276,13 @@ void fg_daemon_send_data(struct mtk_battery *gm,
 				gm->fg_version.custom_table_len !=
 					sizeof(struct fuel_gauge_table_custom_data)) {
 
-				mutex_lock(&gm->algo_lock);
-				gm->algo.active = true;
-				battery_algo_init(gm);
-				mutex_unlock(&gm->algo_lock);
+				int init_ret = battery_enable_kernel_algo(gm);
+
+				if (init_ret) {
+					bm_err("[%s]: Kernel mode Gauge initialization failed %d\n",
+						__func__, init_ret);
+					return;
+				}
 				bm_err("[%s]: %d %d,%d %d,%d %zu,%d %zu, enable Kernel mode Gauge\n",
 					__func__,
 					gm->fg_version.daemon_cmds, FG_DAEMON_CMD_FROM_USER_NUMBER,
@@ -570,9 +573,10 @@ void Intr_Number_to_Name(char *intr_name, unsigned int intr_no)
 	}
 }
 
-void exec_BAT_EC(int cmd, int param)
+int exec_BAT_EC(int cmd, int param)
 {
 	int i;
+	int ret;
 	struct mtk_battery *gm;
 	struct BAT_EC_Struct *ec;
 	struct fuel_gauge_custom_data *fg_cust_data;
@@ -1700,21 +1704,9 @@ void exec_BAT_EC(int cmd, int param)
 		break;
 	case 805:
 		{
-			mutex_lock(&gm->algo_lock);
-			gm->algo.active = true;
-			battery_algo_init(gm);
-			mutex_unlock(&gm->algo_lock);
-			wakeup_fg_algo(gm, FG_INTR_FG_TIME);
-			wakeup_fg_algo(gm, FG_INTR_BAT_INT1_HT);
-			wakeup_fg_algo(gm, FG_INTR_BAT_INT1_LT);
-			wakeup_fg_algo(gm, FG_INTR_BAT_INT2_HT);
-			wakeup_fg_algo(gm, FG_INTR_BAT_INT2_LT);
-			wakeup_fg_algo(gm, FG_INTR_BAT_TIME_INT);
-			wakeup_fg_algo(gm, FG_INTR_IAVG);
-			wakeup_fg_algo(gm, FG_INTR_VBAT2_L);
-			wakeup_fg_algo(gm, FG_INTR_VBAT2_H);
-			wakeup_fg_algo(gm, FG_INTR_BAT_INT1_CHECK);
-			wakeup_fg_algo(gm, FG_INTR_BAT_INT2_CHECK);
+			ret = battery_enable_kernel_algo(gm);
+			if (ret)
+				return ret;
 			bm_err("exe_BAT_EC cmd %d for SET\n", cmd);
 			battery_update(gm);
 		}
@@ -1728,6 +1720,7 @@ void exec_BAT_EC(int cmd, int param)
 		break;
 	}
 
+	return 0;
 }
 
 
@@ -2344,6 +2337,7 @@ static ssize_t BAT_EC_store(
 	const char *buf, size_t size)
 {
 	int ret1 = 0, ret2 = 0;
+	int ret;
 	char cmd_buf[4], param_buf[16];
 	struct mtk_battery *gm;
 
@@ -2385,9 +2379,9 @@ static ssize_t BAT_EC_store(
 	}
 
 
-	exec_BAT_EC(gm->BAT_EC_cmd, gm->BAT_EC_param);
+	ret = exec_BAT_EC(gm->BAT_EC_cmd, gm->BAT_EC_param);
 
-	return size;
+	return ret < 0 ? ret : size;
 }
 
 
@@ -2501,79 +2495,33 @@ static DEVICE_ATTR_RW(BAT_EC);
 static DEVICE_ATTR_RW(BAT_HEALTH);
 
 
+static struct attribute *battery_daemon_attrs[] = {
+	&dev_attr_Battery_Temperature.attr,
+	&dev_attr_UI_SOC.attr,
+	&dev_attr_uisoc_update_type.attr,
+	&dev_attr_disable_nafg.attr,
+	&dev_attr_ntc_disable_nafg.attr,
+	&dev_attr_FG_meter_resistance.attr,
+	&dev_attr_FG_daemon_log_level.attr,
+	&dev_attr_FG_daemon_disable.attr,
+	&dev_attr_BAT_EC.attr,
+	&dev_attr_FG_Battery_CurrentConsumption.attr,
+	&dev_attr_Power_On_Voltage.attr,
+	&dev_attr_Power_Off_Voltage.attr,
+	&dev_attr_shutdown_condition_enable.attr,
+	&dev_attr_reset_battery_cycle.attr,
+	&dev_attr_BAT_HEALTH.attr,
+	&dev_attr_reset_aging_factor.attr,
+	NULL,
+};
+
+static const struct attribute_group battery_daemon_attr_group = {
+	.attrs = battery_daemon_attrs,
+};
+
 static int mtk_battery_setup_files(struct platform_device *pdev)
 {
-	int ret = 0;
-
-	ret = device_create_file(&(pdev->dev), &dev_attr_Battery_Temperature);
-	if (ret)
-		goto _out;
-
-	ret = device_create_file(&(pdev->dev), &dev_attr_UI_SOC);
-	if (ret)
-		goto _out;
-
-	ret = device_create_file(&(pdev->dev), &dev_attr_uisoc_update_type);
-	if (ret)
-		goto _out;
-
-	ret = device_create_file(&(pdev->dev), &dev_attr_disable_nafg);
-	if (ret)
-		goto _out;
-
-	ret = device_create_file(&(pdev->dev), &dev_attr_ntc_disable_nafg);
-	if (ret)
-		goto _out;
-
-	ret = device_create_file(&(pdev->dev), &dev_attr_FG_meter_resistance);
-	if (ret)
-		goto _out;
-
-	ret = device_create_file(&(pdev->dev), &dev_attr_FG_daemon_log_level);
-	if (ret)
-		goto _out;
-
-	ret = device_create_file(&(pdev->dev), &dev_attr_FG_daemon_disable);
-	if (ret)
-		goto _out;
-
-	ret = device_create_file(&(pdev->dev), &dev_attr_BAT_EC);
-	if (ret)
-		goto _out;
-
-	ret = device_create_file(&(pdev->dev),
-		&dev_attr_FG_Battery_CurrentConsumption);
-	if (ret)
-		goto _out;
-
-	ret = device_create_file(&(pdev->dev), &dev_attr_Power_On_Voltage);
-	if (ret)
-		goto _out;
-
-	ret = device_create_file(&(pdev->dev), &dev_attr_Power_Off_Voltage);
-	if (ret)
-		goto _out;
-
-	ret = device_create_file(&(pdev->dev),
-		&dev_attr_shutdown_condition_enable);
-	if (ret)
-		goto _out;
-
-	ret = device_create_file(&(pdev->dev), &dev_attr_reset_battery_cycle);
-	if (ret)
-		goto _out;
-
-	ret = device_create_file(&(pdev->dev), &dev_attr_BAT_HEALTH);
-	if (ret)
-		goto _out;
-
-	ret = device_create_file(&(pdev->dev), &dev_attr_reset_aging_factor);
-	if (ret)
-		goto _out;
-
-
-_out:
-	return ret;
+	return devm_device_add_group(&pdev->dev, &battery_daemon_attr_group);
 }
 
 
@@ -2599,7 +2547,7 @@ static void mtk_battery_daemon_handler(struct mtk_battery *gm, void *nl_data,
 	switch (msg->fgd_cmd) {
 	case FG_DAEMON_CMD_IS_BAT_EXIST:
 	{
-		int is_bat_exist = 0;
+		int is_bat_exist = gm->bs_data.bat_present;
 
 		gauge_get_property(GAUGE_PROP_BATTERY_EXIST, &is_bat_exist);
 		ret_msg->fgd_data_len += sizeof(is_bat_exist);
@@ -2753,21 +2701,24 @@ static void mtk_battery_daemon_handler(struct mtk_battery *gm, void *nl_data,
 	break;
 	case FG_DAEMON_CMD_IS_CHARGER_EXIST:
 	{
-		/* todo */
+		struct power_supply *chg_psy = gm->bs_data.chg_psy;
+		union power_supply_propval online = { .intval = 0 };
 		int is_charger_exist = 0;
+		int ret = -ENODEV;
 
-		if (gm->bs_data.bat_status == POWER_SUPPLY_STATUS_CHARGING)
-			is_charger_exist = true;
-		else
-			is_charger_exist = false;
+		if (!IS_ERR_OR_NULL(chg_psy))
+			ret = power_supply_get_property(chg_psy,
+				POWER_SUPPLY_PROP_ONLINE, &online);
+		if (!ret)
+			is_charger_exist = online.intval ? true : false;
 
 		ret_msg->fgd_data_len += sizeof(is_charger_exist);
 		memcpy(ret_msg->fgd_data,
 			&is_charger_exist, sizeof(is_charger_exist));
 
 		bm_debug(
-			"[K]FG_DAEMON_CMD_IS_CHARGER_EXIST=%d\n",
-			is_charger_exist);
+			"[K]FG_DAEMON_CMD_IS_CHARGER_EXIST=%d ret=%d\n",
+			is_charger_exist, ret);
 	}
 	break;
 	case FG_DAEMON_CMD_GET_HW_OCV:
@@ -4018,7 +3969,7 @@ static void mtk_battery_daemon_handler(struct mtk_battery *gm, void *nl_data,
 	break;
 	case FG_DAEMON_CMD_GET_VERSION_CONTROL:
 	{
-		int mode = gm->algo.active;
+		int mode = is_algo_active(gm);
 
 		ret_msg->fgd_data_len += sizeof(mode);
 		memcpy(ret_msg->fgd_data, &mode,
@@ -4131,6 +4082,13 @@ static void mtk_battery_daemon_handler(struct mtk_battery *gm, void *nl_data,
 	}
 }
 
+static void fg_daemon_init_complete(struct mtk_battery *gm, int command)
+{
+	if (command == FG_DAEMON_CMD_SET_INIT_FLAG ||
+	    command == FG_DAEMON_CMD_SET_DAEMON_PID)
+		mtk_battery_daemon_ready(gm);
+}
+
 void mtk_battery_netlink_handler(struct sk_buff *skb)
 {
 	u32 pid;
@@ -4204,6 +4162,7 @@ void mtk_battery_netlink_handler(struct sk_buff *skb)
 	memset(fgd_ret_msg, 0, size);
 	mtk_battery_daemon_handler(gm, data, fgd_ret_msg);
 	mtk_battery_send_to_user(gm, seq, fgd_ret_msg);
+	fg_daemon_init_complete(gm, fgd_msg->fgd_cmd);
 
 	kvfree(fgd_ret_msg);
 }
@@ -4410,10 +4369,12 @@ void fg_int_event(struct mtk_battery *gm, enum gauge_event evt)
 /* ============================================================ */
 void sw_check_bat_plugout(struct mtk_battery *gm)
 {
-	int is_bat_exist;
+	int is_bat_exist, ret;
 
 	if (gm->disable_plug_int && gm->disableGM30 != true) {
-		is_bat_exist = gauge_get_int_property(GAUGE_PROP_BATTERY_EXIST);
+		ret = gauge_get_property(GAUGE_PROP_BATTERY_EXIST, &is_bat_exist);
+		if (ret < 0)
+			return;
 		if (is_bat_exist == 0) {
 			bm_err(
 				"[swcheck_bat_plugout]g_disable_plug_int=%d, is_bat_exist %d, is_fg_disable %d\n",
@@ -4600,7 +4561,11 @@ static irqreturn_t nafg_irq(int irq, void *data)
 static irqreturn_t bat_plugout_irq(int irq, void *data)
 {
 	struct mtk_battery *gm = data;
-	int is_bat_exist = gauge_get_int_property(GAUGE_PROP_BATTERY_EXIST);
+	int is_bat_exist, ret;
+
+	ret = gauge_get_property(GAUGE_PROP_BATTERY_EXIST, &is_bat_exist);
+	if (ret < 0)
+		return IRQ_HANDLED;
 
 	bm_err("[%s]is_bat %d miss:%d\n",
 		__func__,
@@ -4650,9 +4615,10 @@ static irqreturn_t zcv_irq(int irq, void *data)
 	if (fg_interrupt_check(gm) == false)
 		return IRQ_HANDLED;
 
-	fg_coulomb = gauge_get_int_property(GAUGE_PROP_COULOMB);
-	zcv_intr_curr = gauge_get_int_property(GAUGE_PROP_ZCV_CURRENT);
-	zcv = gauge_get_int_property(GAUGE_PROP_ZCV);
+	if (gauge_get_property(GAUGE_PROP_COULOMB, &fg_coulomb) ||
+		gauge_get_property(GAUGE_PROP_ZCV_CURRENT, &zcv_intr_curr) ||
+		gauge_get_property(GAUGE_PROP_ZCV, &zcv))
+		return IRQ_HANDLED;
 	bm_err("[%s] car:%d zcv_curr:%d zcv:%d, slp_cur_avg:%d\n",
 		__func__,
 		fg_coulomb, zcv_intr_curr, zcv,
@@ -4791,20 +4757,10 @@ static irqreturn_t bat_temp_irq(int irq, void *data)
 /* ============================================================ */
 void notify_fg_chr_full(struct mtk_battery *gm)
 {
-	ktime_t ctime = 0, dtime = 0, pre_time = 0;
-	struct timespec64 difftime;
-
-	ctime = ktime_get_boottime();
-	pre_time = timespec64_to_ktime(gm->chr_full_handler_time);
-	dtime = ktime_sub(ctime, pre_time);
-	difftime = ktime_to_timespec64(dtime);
-
-	if (ctime <= 10 || difftime.tv_sec >= 10) {
-		gm->chr_full_handler_time = ktime_to_timespec64(ctime);
-		bm_err("[fg_chr_full_int_handler]\n");
-		wakeup_fg_algo(gm, FG_INTR_CHR_FULL);
-		fg_int_event(gm, EVT_INT_CHR_FULL);
-	}
+	gm->chr_full_handler_time = ktime_to_timespec64(ktime_get_boottime());
+	bm_err("[fg_chr_full_int_handler]\n");
+	wakeup_fg_algo(gm, FG_INTR_CHR_FULL);
+	fg_int_event(gm, EVT_INT_CHR_FULL);
 }
 
 
@@ -5048,9 +5004,54 @@ bool is_daemon_support(struct mtk_battery *gm)
 	return is_support;
 }
 
+static int mtk_battery_request_irqs(struct mtk_battery *gm, int hw_version)
+{
+	static const struct {
+		enum gauge_irq irq;
+		irq_handler_t handler;
+		const char *name;
+		int minimum;
+		int maximum;
+	} requests[] = {
+		{ ZCV_IRQ, zcv_irq, "mtk_gauge_zcv", GAUGE_HW_V0500, INT_MAX },
+		{ NAFG_IRQ, nafg_irq, "mtk_gauge_nafg", GAUGE_HW_V1000, INT_MAX },
+		{ BAT_PLUGOUT_IRQ, bat_plugout_irq, "mtk_gauge_bat_plugout", GAUGE_HW_V2000, INT_MAX },
+		{ FG_N_CHARGE_L_IRQ, cycle_irq, "mtk_cycle_zcv", GAUGE_HW_V2000, INT_MAX },
+		{ FG_IAVG_H_IRQ, iavg_h_irq, "mtk_gauge_iavg_h", GAUGE_HW_V2000, INT_MAX },
+		{ FG_IAVG_L_IRQ, iavg_l_irq, "mtk_gauge_iavg_l", GAUGE_HW_V2000, INT_MAX },
+		{ BAT_TMP_H_IRQ, bat_temp_irq, "mtk_bat_tmp_h", GAUGE_HW_V2000, INT_MAX },
+		{ BAT_TMP_L_IRQ, bat_temp_irq, "mtk_bat_tmp_l", GAUGE_HW_V2000, INT_MAX },
+		{ VBAT_H_IRQ, vbat_h_irq, "mtk_gauge_vbat_high", GAUGE_HW_V0500, GAUGE_HW_V0500 },
+		{ VBAT_L_IRQ, vbat_l_irq, "mtk_gauge_vbat_low", GAUGE_HW_V0500, GAUGE_HW_V0500 },
+		{ VBAT_H_IRQ, vbat_h_irq, "mtk_gauge_vbat_high", GAUGE_HW_V2000, INT_MAX },
+		{ VBAT_L_IRQ, vbat_l_irq, "mtk_gauge_vbat_low", GAUGE_HW_V2000, INT_MAX },
+	};
+	bool acquired[ARRAY_SIZE(requests)] = { false };
+	struct mtk_gauge *gauge = gm->gauge;
+	int ret, i, count = ARRAY_SIZE(requests);
+
+	for (i = 0; i < count; i++) {
+		if (hw_version < requests[i].minimum || hw_version > requests[i].maximum)
+			continue;
+		acquired[i] = !gauge->irq_requested[requests[i].irq];
+		ret = request_gauge_irq(gm, requests[i].irq, requests[i].handler,
+			requests[i].name);
+		if (ret)
+			goto release;
+	}
+	return 0;
+
+release:
+	for (; i >= 0; i--)
+		if (acquired[i])
+			release_gauge_irq(gm, requests[i].irq);
+	return ret;
+}
+
 int mtk_battery_daemon_init(struct platform_device *pdev)
 {
-	int ret;
+	bool previous_irq_requested[GAUGE_IRQ_MAX];
+	int ret, i;
 	int hw_version;
 	struct mtk_battery *gm;
 	struct mtk_gauge *gauge;
@@ -5072,7 +5073,14 @@ int mtk_battery_daemon_init(struct platform_device *pdev)
 	gm->pl_two_sec_reboot = gauge_get_int_property(GAUGE_PROP_2SEC_REBOOT);
 	gauge_set_property(GAUGE_PROP_2SEC_REBOOT, 0);
 
-	hw_version = gauge_get_int_property(GAUGE_PROP_HW_VERSION);
+	ret = gauge_get_property(GAUGE_PROP_HW_VERSION, &hw_version);
+	if (ret < 0)
+		return ret;
+	memcpy(previous_irq_requested, gauge->irq_requested,
+		sizeof(previous_irq_requested));
+	ret = mtk_battery_request_irqs(gm, hw_version);
+	if (ret)
+		return ret;
 
 	gm->shutdown = mtk_battery_shutdown;
 	gm->suspend = mtk_battery_suspend;
@@ -5085,38 +5093,7 @@ int mtk_battery_daemon_init(struct platform_device *pdev)
 		gm->gauge->sw_vbat_l_irq = sw_vbat_l_irq_handler;
 	}
 
-	if (hw_version >= GAUGE_HW_V0500) {
-		ret = devm_request_threaded_irq(&gm->gauge->pdev->dev,
-		gm->gauge->irq_no[ZCV_IRQ],
-		NULL, zcv_irq,
-		IRQF_ONESHOT | IRQF_TRIGGER_HIGH,
-		"mtk_gauge_zcv",
-		gm);
-
-		if (hw_version == GAUGE_HW_V0500) {
-			ret = devm_request_threaded_irq(&gm->gauge->pdev->dev,
-			gm->gauge->irq_no[VBAT_H_IRQ],
-			NULL, vbat_h_irq,
-			IRQF_ONESHOT | IRQF_TRIGGER_HIGH,
-			"mtk_gauge_vbat_high",
-			gm);
-
-			ret = devm_request_threaded_irq(&gm->gauge->pdev->dev,
-			gm->gauge->irq_no[VBAT_L_IRQ],
-			NULL, vbat_l_irq,
-			IRQF_ONESHOT | IRQF_TRIGGER_HIGH,
-			"mtk_gauge_vbat_low",
-			gm);
-		}
-	}
-
 	if (hw_version >= GAUGE_HW_V1000) {
-		ret = devm_request_threaded_irq(&gm->gauge->pdev->dev,
-		gm->gauge->irq_no[NAFG_IRQ],
-		NULL, nafg_irq,
-		IRQF_ONESHOT | IRQF_TRIGGER_HIGH,
-		"mtk_gauge_nafg",
-		gm);
 		if (hw_version < GAUGE_HW_V2000) {
 #if IS_ENABLED(CONFIG_PMIC_LBAT_SERVICE)
 			gm->lowbat_service =
@@ -5153,67 +5130,11 @@ int mtk_battery_daemon_init(struct platform_device *pdev)
 		}
 	}
 
-	if (hw_version >= GAUGE_HW_V2000) {
-		ret = devm_request_threaded_irq(&gm->gauge->pdev->dev,
-		gm->gauge->irq_no[BAT_PLUGOUT_IRQ],
-		NULL, bat_plugout_irq,
-		IRQF_ONESHOT | IRQF_TRIGGER_HIGH,
-		"mtk_gauge_bat_plugout",
-		gm);
-
-		ret = devm_request_threaded_irq(&gm->gauge->pdev->dev,
-		gm->gauge->irq_no[FG_N_CHARGE_L_IRQ],
-		NULL, cycle_irq,
-		IRQF_ONESHOT | IRQF_TRIGGER_HIGH,
-		"mtk_cycle_zcv",
-		gm);
-
-		ret = devm_request_threaded_irq(&gm->gauge->pdev->dev,
-		gm->gauge->irq_no[FG_IAVG_H_IRQ],
-		NULL, iavg_h_irq,
-		IRQF_ONESHOT | IRQF_TRIGGER_HIGH,
-		"mtk_gauge_iavg_h",
-		gm);
-
-		ret = devm_request_threaded_irq(&gm->gauge->pdev->dev,
-		gm->gauge->irq_no[FG_IAVG_L_IRQ],
-		NULL, iavg_l_irq,
-		IRQF_ONESHOT | IRQF_TRIGGER_HIGH,
-		"mtk_gauge_iavg_l",
-		gm);
-
-		ret = devm_request_threaded_irq(&gm->gauge->pdev->dev,
-		gm->gauge->irq_no[BAT_TMP_H_IRQ],
-		NULL, bat_temp_irq,
-		IRQF_ONESHOT | IRQF_TRIGGER_HIGH,
-		"mtk_bat_tmp_h",
-		gm);
-
-		ret = devm_request_threaded_irq(&gm->gauge->pdev->dev,
-		gm->gauge->irq_no[BAT_TMP_L_IRQ],
-		NULL, bat_temp_irq,
-		IRQF_ONESHOT | IRQF_TRIGGER_HIGH,
-		"mtk_bat_tmp_l",
-		gm);
-
-		ret = devm_request_threaded_irq(&gm->gauge->pdev->dev,
-		gm->gauge->irq_no[VBAT_H_IRQ],
-		NULL, vbat_h_irq,
-		IRQF_ONESHOT | IRQF_TRIGGER_HIGH,
-		"mtk_gauge_vbat_high",
-		gm);
-
-		ret = devm_request_threaded_irq(&gm->gauge->pdev->dev,
-		gm->gauge->irq_no[VBAT_L_IRQ],
-		NULL, vbat_l_irq,
-		IRQF_ONESHOT | IRQF_TRIGGER_HIGH,
-		"mtk_gauge_vbat_low",
-		gm);
-
-	}
-
 	sw_iavg_init(gm);
-	mtk_battery_setup_files(pdev);
-	return 0;
+	ret = mtk_battery_setup_files(pdev);
+	if (ret)
+		for (i = GAUGE_IRQ_MAX - 1; i >= 0; i--)
+			if (!previous_irq_requested[i])
+				release_gauge_irq(gm, i);
+	return ret;
 }
-

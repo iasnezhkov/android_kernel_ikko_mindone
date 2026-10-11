@@ -476,7 +476,8 @@ static int do_algorithm(struct mtk_charger *info)
 	int val = 0;
 	//u32 curr = 0;
 	pdata = &info->chg_data[CHG1_SETTING];
-	charger_dev_is_charging_done(info->chg1_dev, &chg_done);
+	if (charger_dev_is_charging_done(info->chg1_dev, &chg_done))
+		chg_done = info->is_chg_done;
 	is_basic = select_charging_current_limit(info, &info->setting);
 
 	if (info->is_chg_done != chg_done) {
@@ -489,6 +490,7 @@ static int do_algorithm(struct mtk_charger *info)
 			info->polling_interval = CHARGING_INTERVAL;
 			chr_err("%s battery recharge\n", __func__);
 		}
+		power_supply_changed(info->psy1);
 	}
 
 	chr_debug("%s is_basic:%d\n", __func__, is_basic);

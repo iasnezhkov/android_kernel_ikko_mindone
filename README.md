@@ -140,7 +140,7 @@ clock layer here is already current.
 | ✅ Works | |
 |---|---|
 | **Boot** | ~21 s to `boot_completed` |
-| **Audio** | speaker, headset, Bluetooth, microphone, in-call |
+| **Audio** | speaker, headset, Bluetooth, microphone; outgoing cellular-call microphone and earpiece/speaker switching verified with the matching userspace audio HAL |
 | **Cellular** | calls, SMS, mobile data |
 | **Wireless** | Wi-Fi, Bluetooth, NFC |
 | **Camera** | both logical cameras of the flip module; the main IMX766 sensor's full 4096×3072 mode, brought up faster through burst I2C writes and chunked EEPROM calibration reads |
@@ -152,6 +152,7 @@ clock layer here is already current.
 
 | 🚧 Unfinished | |
 |---|---|
+| **Wi-Fi address offload** | known IPv6-only address-buffer allocation bug remains; see [Hardware](docs/HARDWARE.md#what-does-not) for the observed scope |
 | **RPMB** | hardware-backed key storage fails its MAC check; storage falls back safely, boot unaffected |
 | **60 Hz panel mode** | exists on a branch, held back: the panel reports no physical size, so the second mode reaches apps at dpi 0 |
 | **High-speed capture** | 120 fps not reached |
@@ -168,6 +169,11 @@ machine into one output path — a different absolute build path is not separate
 This is the kernel the device runs every day under LineageOS 23.2 (Android 16) — not a tree that
 merely compiles. But it is an independent bring-up by one person: expect rough edges, treat
 anything unusual as probably known, and keep a way to restore the stock firmware.
+
+The battery driver still uses the userspace fuel gauge by default. The opt-in kernel algorithm
+has only a bounded powered handover/recovery check; complete discharge tracking, learned-state
+persistence and physical usable capacity have not been validated. Charger and GPU error-path
+fixtures do not establish hardware fault recovery or battery-life improvements.
 
 Current focus is testing and optimisation rather than new features. Kernel **6.18** and
 **Android 17** are where this goes next; both have been looked at, neither is committed to.
@@ -201,7 +207,8 @@ that is where the drivers, the device tree, and all ongoing work live. **`androi
 the earlier step: the first forward-port of this device off its original vendor kernel, where
 the device tree and most of the driver work were first proven on real hardware. It is kept as
 history, unmaintained -- see its own README for what that means. The drivers are not duplicated
-there: `mindone/modules/` lives only on `android16-6.12` and builds against either kernel.
+there: `mindone/modules/` lives only on `android16-6.12`. The current module build and
+acceptance target 6.12; the archived 6.1 branch is not a validated target for this module set.
 
 ## 🔎 Useful beyond this phone
 

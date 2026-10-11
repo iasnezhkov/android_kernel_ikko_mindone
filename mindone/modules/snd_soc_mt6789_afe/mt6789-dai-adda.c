@@ -971,8 +971,9 @@ static int mtk_dai_adda_hw_params(struct snd_pcm_substream *substream,
 			regmap_write(afe->regmap, AFE_ADDA_PREDIS_CON0, 0);
 			regmap_write(afe->regmap, AFE_ADDA_PREDIS_CON1, 0);
 
-			regmap_write(afe->regmap,
-				     AFE_ADDA_DL_SRC2_CON0, dl_src2_con0);
+			regmap_update_bits(afe->regmap, AFE_ADDA_DL_SRC2_CON0,
+					   ~DL_2_SRC_ON_TMP_CTL_PRE_MASK_SFT,
+					   dl_src2_con0);
 			regmap_write(afe->regmap,
 				     AFE_ADDA_DL_SRC2_CON1, dl_src2_con1);
 

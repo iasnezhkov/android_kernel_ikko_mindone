@@ -39,6 +39,9 @@
 #define  REG00_EN_ICHG_MON_MASK	0x60
 #define  REG01_MIN_VBAT_SEL_MASK	0x01
 #define  REG05_EN_TIMER_MASK	0x08
+#define  REG05_CHG_TIMER_MASK	0x04
+#define  REG05_SAFETY_TIMER_MASK	(REG05_EN_TIMER_MASK | REG05_CHG_TIMER_MASK)
+#define  REG07_TMR2X_EN_MASK	0x40
 #define  REG06_OVP_MASK		0xc0
 #define  REG06_OVP_10V5		0x80
 #define ETA6965_REG_07		0x07
@@ -79,7 +82,7 @@ struct eta6965_device {
 	struct pinctrl_state	*ce_high;
 };
 
-static int eta6965_read_byte(struct eta6965_device *eta, u8 reg, u8 *val)
+static int eta6965_read_byte_unlocked(struct eta6965_device *eta, u8 reg, u8 *val)
 {
 	int ret = i2c_smbus_read_byte_data(eta->client, reg);
 	if (ret < 0)
@@ -87,24 +90,111 @@ static int eta6965_read_byte(struct eta6965_device *eta, u8 reg, u8 *val)
 	*val = ret & 0xff;
 	return 0;
 }
-static int eta6965_write_byte(struct eta6965_device *eta, u8 reg, u8 val)
+static int eta6965_read_byte(struct eta6965_device *eta, u8 reg, u8 *val)
 {
-	return i2c_smbus_write_byte_data(eta->client, reg, val);
+	int ret;
+
+	mutex_lock(&eta->lock);
+	if (eta->suspended)
+		ret = -ENODATA;
+	else
+		ret = eta6965_read_byte_unlocked(eta, reg, val);
+	mutex_unlock(&eta->lock);
+	return ret;
 }
-static int eta6965_update_bits(struct eta6965_device *eta, u8 reg, u8 mask, u8 val)
+
+static int eta6965_update_bits_unlocked(struct eta6965_device *eta, u8 reg,
+				      u8 mask, u8 val, bool verify)
 {
 	u8 tmp;
 	int ret;
+
+	if (eta->suspended)
+		return -ENODATA;
+	ret = eta6965_read_byte_unlocked(eta, reg, &tmp);
+	if (ret)
+		return ret;
+	tmp = (tmp & ~mask) | (val & mask);
+	ret = i2c_smbus_write_byte_data(eta->client, reg, tmp);
+	if (ret || !verify)
+		return ret;
+	ret = eta6965_read_byte_unlocked(eta, reg, &tmp);
+	if (ret)
+		return ret;
+	return (tmp & mask) == (val & mask) ? 0 : -EIO;
+}
+
+static int eta6965_update_bits(struct eta6965_device *eta, u8 reg, u8 mask, u8 val)
+{
+	int ret;
+
 	mutex_lock(&eta->lock);
-	ret = eta6965_read_byte(eta, reg, &tmp);
+	ret = eta6965_update_bits_unlocked(eta, reg, mask, val, false);
+	mutex_unlock(&eta->lock);
+	return ret;
+}
+
+static int eta6965_update_bits_checked(struct eta6965_device *eta, u8 reg,
+				     u8 mask, u8 val)
+{
+	int ret;
+
+	mutex_lock(&eta->lock);
+	ret = eta6965_update_bits_unlocked(eta, reg, mask, val, true);
+	mutex_unlock(&eta->lock);
+	return ret;
+}
+
+static int eta6965_read_safety_state(struct eta6965_device *eta, u8 *reg05,
+				   u8 *reg07)
+{
+	u8 timer, regulation;
+	int ret;
+
+	mutex_lock(&eta->lock);
+	if (eta->suspended) {
+		ret = -ENODATA;
+		goto out;
+	}
+	ret = eta6965_read_byte_unlocked(eta, ETA6965_REG_05, &timer);
 	if (ret)
 		goto out;
-	tmp = (tmp & ~mask) | (val & mask);
-	ret = eta6965_write_byte(eta, reg, tmp);
+	ret = eta6965_read_byte_unlocked(eta, ETA6965_REG_07, &regulation);
+	if (!ret) {
+		*reg05 = timer;
+		*reg07 = regulation;
+	}
 out:
 	mutex_unlock(&eta->lock);
 	return ret;
 }
+
+static ssize_t safety_timer_status_show(struct device *dev,
+				       struct device_attribute *attr, char *buf)
+{
+	struct eta6965_device *eta = dev_get_drvdata(dev);
+	u8 reg05, reg07;
+	int ret;
+
+	if (!eta)
+		return -ENODEV;
+	ret = eta6965_read_safety_state(eta, &reg05, &reg07);
+	if (ret)
+		return ret;
+	return sysfs_emit(buf,
+		"reg05=0x%02x reg07=0x%02x enabled=%u duration_hours=%u regulation_half_rate=%u\n",
+		reg05, reg07, !!(reg05 & REG05_EN_TIMER_MASK),
+		(reg05 & REG05_CHG_TIMER_MASK) ? 10 : 5,
+		!!(reg07 & REG07_TMR2X_EN_MASK));
+}
+
+static DEVICE_ATTR_RO(safety_timer_status);
+
+static struct attribute *eta6965_attrs[] = {
+	&dev_attr_safety_timer_status.attr,
+	NULL,
+};
+ATTRIBUTE_GROUPS(eta6965);
 
 static void eta6965_dump_register(struct eta6965_device *eta)
 {
@@ -140,7 +230,7 @@ static void eta6965_dump_register(struct eta6965_device *eta)
 
 #define ICHG_BASE_UA	0
 #define ICHG_STEP_UA	60000
-#define ICHG_MAX_CODE	54
+#define ICHG_MAX_CODE	50
 
 #define CV_BASE_UV	3848000
 #define CV_STEP_UV	32000
@@ -149,7 +239,7 @@ static void eta6965_dump_register(struct eta6965_device *eta)
 static const u32 iinlim_table_uA[] = {
 	 100000,  200000,  300000,  400000,  500000,  600000,  700000,  800000,
 	 900000, 1000000, 1100000, 1200000, 1300000, 1400000, 1500000, 1600000,
-	1700000, 1800000, 1900000, 2000000, 2100000, 2200000, 2300000,
+	1700000, 1800000, 1900000, 2000000, 2100000, 2200000, 2300000, 2400000,
 	2500000, 2600000, 2700000, 2800000, 2900000, 3000000, 3100000, 3200000,
 };
 #define IINLIM_MAX_CODE	(ARRAY_SIZE(iinlim_table_uA) - 1)
@@ -354,7 +444,7 @@ static int eta_op_run_aicl(struct charger_device *dev, u32 *uA)
 	struct eta6965_device *eta = charger_get_data(dev);
 	u8 orig_code, code, good_code;
 	u8 v;
-	int ret;
+	int ret, restore_ret;
 
 	ret = eta6965_read_byte(eta, ETA6965_REG_00, &v);
 	if (ret)
@@ -387,7 +477,11 @@ static int eta_op_run_aicl(struct charger_device *dev, u32 *uA)
 		good_code = code;
 	}
 
-	eta6965_update_bits(eta, ETA6965_REG_00, REG00_IINLIM_MASK, good_code);
+	restore_ret = eta6965_update_bits_checked(eta, ETA6965_REG_00, REG00_IINLIM_MASK, good_code);
+	if (ret)
+		return ret;
+	if (restore_ret)
+		return restore_ret;
 	*uA = iinlim_table_uA[good_code];
 	return 0;
 }
@@ -402,6 +496,27 @@ static int eta_op_enable_term(struct charger_device *dev, bool en)
 {
 	struct eta6965_device *eta = charger_get_data(dev);
 	return eta6965_update_bits(eta, ETA6965_REG_05, REG05_EN_TERM_MASK, en ? REG05_EN_TERM_MASK : 0);
+}
+
+static int eta_op_enable_safety_timer(struct charger_device *dev, bool en)
+{
+	struct eta6965_device *eta = charger_get_data(dev);
+	u8 mask = en ? REG05_SAFETY_TIMER_MASK : REG05_EN_TIMER_MASK;
+
+	return eta6965_update_bits_checked(eta, ETA6965_REG_05, mask,
+					 en ? REG05_SAFETY_TIMER_MASK : 0);
+}
+
+static int eta_op_is_safety_timer_enabled(struct charger_device *dev, bool *en)
+{
+	struct eta6965_device *eta = charger_get_data(dev);
+	u8 reg05;
+	int ret;
+
+	ret = eta6965_read_byte(eta, ETA6965_REG_05, &reg05);
+	if (!ret)
+		*en = !!(reg05 & REG05_EN_TIMER_MASK);
+	return ret;
 }
 static int eta6965_set_otg(struct eta6965_device *eta, bool en)
 {
@@ -474,10 +589,27 @@ static const struct regulator_desc eta6965_otg_vbus_desc = {
 	.fixed_uV	= 5000000,
 };
 
+static int eta_op_is_charging_done(struct charger_device *dev, bool *done)
+{
+	struct eta6965_device *eta = charger_get_data(dev);
+	u8 reg08;
+	int ret;
+
+	if (READ_ONCE(eta->suspended))
+		return -ENODATA;
+	ret = eta6965_read_byte(eta, ETA6965_REG_08, &reg08);
+	if (ret)
+		return ret;
+	*done = (reg08 & REG08_PG_STAT_MASK) &&
+		((reg08 & REG08_CHRG_STAT_MASK) >> REG08_CHRG_STAT_SHIFT) == 3;
+	return 0;
+}
+
 static const struct charger_ops eta6965_chg_ops = {
 	.enable			= eta_op_enable,
 	.send_ta_current_pattern = eta_op_send_ta_current_pattern,
 	.is_enabled		= eta_op_is_enabled,
+	.is_charging_done	= eta_op_is_charging_done,
 	.plug_in		= eta_op_plug_in,
 	.plug_out		= eta_op_plug_out,
 	.get_charging_current	= eta_op_get_ichg,
@@ -493,6 +625,8 @@ static const struct charger_ops eta6965_chg_ops = {
 	.run_aicl		= eta_op_run_aicl,
 	.kick_wdt		= eta_op_kick_wdt,
 	.enable_termination	= eta_op_enable_term,
+	.enable_safety_timer	= eta_op_enable_safety_timer,
+	.is_safety_timer_enabled = eta_op_is_safety_timer_enabled,
 	.enable_otg		= eta_op_enable_otg,
 	.set_boost_current_limit = eta_op_set_boost_ilim,
 	.dump_registers		= eta_op_dump_registers,
@@ -599,6 +733,12 @@ static int eta6965_psy_get_property(struct power_supply *psy,
 			return ret;
 		val->intval = uV;
 		break;
+	case POWER_SUPPLY_PROP_CHARGE_TERM_CURRENT:
+		ret = eta_op_get_eoc_current(eta->chg_dev, &uA);
+		if (ret)
+			return ret;
+		val->intval = uA;
+		break;
 	default:
 		return -EINVAL;
 	}
@@ -630,6 +770,7 @@ static enum power_supply_property eta6965_psy_properties[] = {
 	POWER_SUPPLY_PROP_VOLTAGE_MAX,
 	POWER_SUPPLY_PROP_CURRENT_MAX,
 	POWER_SUPPLY_PROP_CONSTANT_CHARGE_VOLTAGE,
+	POWER_SUPPLY_PROP_CHARGE_TERM_CURRENT,
 };
 
 static enum power_supply_usb_type eta6965_psy_usb_types[] __maybe_unused = {
@@ -664,14 +805,21 @@ static int eta6965_hw_init(struct eta6965_device *eta)
 		{ ETA6965_REG_01, REG01_MIN_VBAT_SEL_MASK, REG01_MIN_VBAT_SEL_MASK },
 		{ ETA6965_REG_02, REG02_BOOST_LIM_MASK, REG02_BOOST_LIM_MASK },
 		{ ETA6965_REG_03, REG03_IPRECHG_MASK, 8 << 4 },
-		{ ETA6965_REG_05, REG05_EN_TIMER_MASK, 0 },
+		{ ETA6965_REG_05, REG05_SAFETY_TIMER_MASK, REG05_SAFETY_TIMER_MASK },
 		{ ETA6965_REG_05, REG05_WATCHDOG_MASK, 0 },
 		{ ETA6965_REG_07, REG07_VDPM_BAT_TRACK_MASK, REG07_VDPM_BAT_TRACK_MASK },
 	};
-	int i, ret;
+	unsigned int i;
+	int ret;
 
 	for (i = 0; i < ARRAY_SIZE(init); i++) {
-		ret = eta6965_update_bits(eta, init[i].reg, init[i].mask, init[i].val);
+		if (init[i].reg == ETA6965_REG_05 &&
+		    init[i].mask == REG05_SAFETY_TIMER_MASK)
+			ret = eta6965_update_bits_checked(eta, init[i].reg,
+							init[i].mask, init[i].val);
+		else
+			ret = eta6965_update_bits(eta, init[i].reg,
+						init[i].mask, init[i].val);
 		if (ret)
 			return ret;
 	}
@@ -742,31 +890,38 @@ MODULE_DEVICE_TABLE(of, eta6965_of_match);
 static const struct i2c_device_id eta6965_i2c_id[] = { { "eta6965", 0 }, { } };
 MODULE_DEVICE_TABLE(i2c, eta6965_i2c_id);
 
-static int eta6965_suspend_noirq(struct device *dev)
+static int eta6965_suspend(struct device *dev)
 {
 	struct eta6965_device *eta = i2c_get_clientdata(to_i2c_client(dev));
 
-	if (eta)
+	if (eta) {
+		mutex_lock(&eta->lock);
 		WRITE_ONCE(eta->suspended, true);
+		mutex_unlock(&eta->lock);
+	}
 	return 0;
 }
 
-static int eta6965_resume_noirq(struct device *dev)
+static int eta6965_resume(struct device *dev)
 {
 	struct eta6965_device *eta = i2c_get_clientdata(to_i2c_client(dev));
 
-	if (eta)
+	if (eta) {
+		mutex_lock(&eta->lock);
 		WRITE_ONCE(eta->suspended, false);
+		mutex_unlock(&eta->lock);
+	}
 	return 0;
 }
 
 static const struct dev_pm_ops eta6965_pm_ops = {
-	NOIRQ_SYSTEM_SLEEP_PM_OPS(eta6965_suspend_noirq, eta6965_resume_noirq)
+	SYSTEM_SLEEP_PM_OPS(eta6965_suspend, eta6965_resume)
 };
 
 static struct i2c_driver eta6965_driver = {
 	.driver = { .name = "eta6965_charger", .of_match_table = eta6965_of_match,
-		    .pm = pm_sleep_ptr(&eta6965_pm_ops) },
+		    .pm = pm_sleep_ptr(&eta6965_pm_ops),
+		    .dev_groups = eta6965_groups },
 	.probe = eta6965_probe,
 	.remove = eta6965_remove,
 	.id_table = eta6965_i2c_id,

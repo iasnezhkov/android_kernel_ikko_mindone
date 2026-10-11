@@ -1047,12 +1047,75 @@ static int ccmni_ioctl(struct net_device *dev, struct ifreq *ifr, int cmd)
 	return 0;
 }
 
+static int ccmni_siocdevprivate(struct net_device *dev, struct ifreq *ifr,
+		void __user *data, int cmd)
+{
+	struct ccmni_instance *ccmni = netdev_priv(dev);
+	struct ccmni_ctl_block *ctlb, *target;
+	struct ifreq request = *ifr;
+	int md_id, i;
+
+	switch (cmd) {
+	case SIOCSTXQSTATE:
+	case SIOCCCMNICFG:
+	case SIOCFWDFILTER:
+	case SIOCACKPRIO:
+	case SIOPUSHPENDING:
+		break;
+	default:
+		return -EOPNOTSUPP;
+	}
+
+	if (ccmni->md_id < 0 || ccmni->md_id >= MAX_MD_NUM ||
+		ccmni->index < 0)
+		return -EINVAL;
+	ctlb = ccmni_ctl_blk[ccmni->md_id];
+	if (!ctlb || !ctlb->ccci_ops || !ccmni->dev)
+		return -ENODEV;
+	if ((unsigned int)ccmni->index >= ARRAY_SIZE(ctlb->ccmni_inst) ||
+		ctlb->ccci_ops->ccmni_num <= 0 ||
+		(unsigned int)ctlb->ccci_ops->ccmni_num >
+		ARRAY_SIZE(ctlb->ccmni_inst))
+		return -EINVAL;
+	if (!ctlb->ccmni_inst[ccmni->index])
+		return -ENODEV;
+
+	if (cmd == SIOCCCMNICFG && dev == ccmni->dev) {
+		md_id = ifr->ifr_ifru.ifru_ivalue;
+		if (md_id < 0 || md_id >= MAX_MD_NUM)
+			return -EINVAL;
+		target = ccmni_ctl_blk[md_id];
+		if (!target || !target->ccci_ops)
+			return -ENODEV;
+		if (target->ccci_ops->ccmni_num < 0 ||
+			(unsigned int)target->ccci_ops->ccmni_num >
+			ARRAY_SIZE(target->ccmni_inst))
+			return -EINVAL;
+		if (ccmni->index < target->ccci_ops->ccmni_num &&
+			(!target->ccmni_inst[ccmni->index] ||
+			 !target->ccmni_inst[ccmni->index]->dev))
+			return -ENODEV;
+	}
+	if (cmd == SIOCACKPRIO)
+		for (i = 0; i < ctlb->ccci_ops->ccmni_num; i++)
+			if (!ctlb->ccmni_inst[i])
+				return -ENODEV;
+	if (cmd == SIOPUSHPENDING &&
+		!ctlb->ccci_ops->ccci_handle_port_list)
+		return -EOPNOTSUPP;
+	if (cmd == SIOCFWDFILTER)
+		request.ifr_data = data;
+
+	return ccmni_ioctl(dev, &request, cmd);
+}
+
 static const struct net_device_ops ccmni_netdev_ops = {
 	.ndo_open		= ccmni_open,
 	.ndo_stop		= ccmni_close,
 	.ndo_start_xmit	= ccmni_start_xmit,
 	.ndo_tx_timeout	= ccmni_tx_timeout,
 	.ndo_do_ioctl   = ccmni_ioctl,
+	.ndo_siocdevprivate = ccmni_siocdevprivate,
 	.ndo_change_mtu = ccmni_change_mtu,
 	.ndo_select_queue = ccmni_select_queue,
 };
