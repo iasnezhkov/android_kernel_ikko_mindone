@@ -37,13 +37,10 @@ jobs:
           [ "$found" = "0" ] || { echo "binaries must not be committed"; exit 1; }
 
       - name: Every docs/ reference resolves to a file that is here
-        run: |
-          set -eu
-          fail=0
-          for ref in $(git grep -hoE 'docs/[A-Za-z0-9_-]+\.md' -- mindone arch/arm64/boot/dts/mediatek arch/arm64/configs docs README.md CONTRIBUTING.md build.sh | sort -u); do
-            [ -f "$ref" ] || { echo "comment points at a file this repository does not contain: $ref"; fail=1; }
-          done
-          [ "$fail" = 0 ] || { echo "use a bare marker, not a path -- see CONTRIBUTING.md"; exit 1; }
+        run: python3 mindone/modules/tools/scripts/docpathcheck.py
+
+      - name: Documentation reference regression
+        run: python3 mindone/tests/docpath-check.py
 
       - name: Python tools parse
         run: |
