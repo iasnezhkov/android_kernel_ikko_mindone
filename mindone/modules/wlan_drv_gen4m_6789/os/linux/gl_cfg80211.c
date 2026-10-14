@@ -1807,7 +1807,7 @@ int mtk_cfg80211_join_ibss(struct wiphy *wiphy,
 			   struct net_device *ndev,
 			   struct cfg80211_ibss_params *params)
 {
-	struct PARAM_SSID rNewSsid;
+	struct PARAM_SSID rNewSsid = {0};
 	struct GLUE_INFO *prGlueInfo = NULL;
 	uint32_t u4ChnlFreq;	/* Store channel or frequency information */
 	uint32_t u4BufLen = 0, u4SsidLen = 0;
@@ -1839,6 +1839,7 @@ int mtk_cfg80211_join_ibss(struct wiphy *wiphy,
 	else
 		u4SsidLen = params->ssid_len;
 
+	rNewSsid.u4SsidLen = u4SsidLen;
 	kalMemCopy(rNewSsid.aucSsid, params->ssid,
 		   u4SsidLen);
 	rStatus = kalIoctlByBssIdx(prGlueInfo,

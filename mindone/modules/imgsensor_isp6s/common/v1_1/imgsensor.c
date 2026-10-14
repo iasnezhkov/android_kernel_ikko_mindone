@@ -441,6 +441,7 @@ imgsensor_sensor_control(
 MINT32 imgsensor_sensor_close(struct IMGSENSOR_SENSOR *psensor)
 {
 	MINT32 ret = ERROR_NONE;
+	MINT32 power_ret;
 #if defined(CONFIG_MTK_CAM_SECURE_I2C)
 	MINT32 ret_sec = ERROR_NONE;
 	struct command_params c_params = {0};
@@ -478,13 +479,15 @@ MINT32 imgsensor_sensor_close(struct IMGSENSOR_SENSOR *psensor)
 #endif
 		if (ret != ERROR_NONE) {
 			PK_PR_ERR("[%s]", __func__);
-		} else {
-			imgsensor_hw_power(&pimgsensor->hw,
-				psensor,
-				IMGSENSOR_HW_POWER_STATUS_OFF);
-
-			psensor_inst->state = IMGSENSOR_STATE_CLOSE;
 		}
+		power_ret = imgsensor_hw_power(&pimgsensor->hw,
+			psensor,
+			IMGSENSOR_HW_POWER_STATUS_OFF);
+
+		if (power_ret == IMGSENSOR_RETURN_SUCCESS)
+			psensor_inst->state = IMGSENSOR_STATE_CLOSE;
+		else if (ret == ERROR_NONE)
+			ret = power_ret;
 
 		imgsensor_mutex_unlock(psensor_inst);
 
@@ -2012,14 +2015,16 @@ static inline int adopt_CAMERA_HW_FeatureControl(void *pBuf)
 					pFeatureCtrl->FeatureId,
 					(unsigned char *)pFeaturePara,
 					(unsigned int *)&FeatureParaLen);
-		set_sensor_streaming_state((int)psensor->inst.sensor_idx, 0);
+		if (ret == ERROR_NONE)
+			set_sensor_streaming_state((int)psensor->inst.sensor_idx, 0);
 		break;
 	case SENSOR_FEATURE_SET_STREAMING_RESUME:
 		ret = imgsensor_sensor_feature_control(psensor,
 					pFeatureCtrl->FeatureId,
 					(unsigned char *)pFeaturePara,
 					(unsigned int *)&FeatureParaLen);
-		set_sensor_streaming_state((int)psensor->inst.sensor_idx, 1);
+		if (ret == ERROR_NONE)
+			set_sensor_streaming_state((int)psensor->inst.sensor_idx, 1);
 		break;
 #endif
 	default:

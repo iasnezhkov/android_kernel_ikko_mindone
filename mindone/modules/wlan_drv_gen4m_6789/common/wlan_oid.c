@@ -5079,7 +5079,9 @@ wlanSendSetQueryExtCmd(
 		kalMemCopy(pucCmdBuf, pucInfoBuffer, u4SetQueryInfoLen);
 
 	/* insert into prCmdQueue */
-	kalEnqueueCommand(prGlueInfo, (struct QUE_ENTRY *) prCmdInfo);
+	if (!rxfilterDriverEnqueue(prAdapter, prCmdInfo, pucInfoBuffer,
+	    u4SetQueryInfoLen))
+		kalEnqueueCommand(prGlueInfo, (struct QUE_ENTRY *) prCmdInfo);
 
 	/* wakeup txServiceThread later */
 	GLUE_SET_EVENT(prGlueInfo);
@@ -8441,6 +8443,20 @@ wlanoidSetCurrentPacketFilter(IN struct ADAPTER *prAdapter,
 	} while (FALSE);
 
 	if (rStatus == WLAN_STATUS_SUCCESS) {
+		if (u4NewPacketFilter & PARAM_PACKET_FILTER_ALL_MULTICAST) {
+			uint8_t baseline[8] = {255, 0, 0, 0, 0, 0, 0, 0};
+
+			baseline[4] = GET_IOCTL_BSSIDX(prAdapter);
+			rResult = wlanSendSetQueryCmd(prAdapter,
+				CMD_ID_MAC_MCAST_ADDR, TRUE, FALSE, FALSE,
+				NULL, NULL, sizeof(baseline), baseline, NULL, 0);
+			if (rResult != WLAN_STATUS_PENDING) {
+				rxfilterDriverInvalidate(prAdapter,
+					GET_IOCTL_BSSIDX(prAdapter));
+				return rResult;
+			}
+		}
+
 		/* Store the packet filter */
 
 		prAdapter->u4OsPacketFilter &= PARAM_PACKET_FILTER_P2P_MASK;
@@ -8452,6 +8468,8 @@ wlanoidSetCurrentPacketFilter(IN struct ADAPTER *prAdapter,
 						 &rSetRxPacketFilter,
 						 TRUE, pvSetBuffer,
 						 u4SetBufferLen);
+		if (rResult != WLAN_STATUS_PENDING && rResult != WLAN_STATUS_SUCCESS)
+			rxfilterDriverInvalidate(prAdapter, GET_IOCTL_BSSIDX(prAdapter));
 		DBGLOG(OID, TRACE, "[MC debug] u4OsPacketFilter=0x%x\n",
 		       prAdapter->u4OsPacketFilter);
 		return rResult;
@@ -9654,7 +9672,8 @@ wlanoidSetNetworkAddress(IN struct ADAPTER *prAdapter,
 
 		prNetworkAddress = (struct PARAM_NETWORK_ADDRESS *)
 			((unsigned long) prNetworkAddress +
-			(unsigned long) (prNetworkAddress->u2AddressLength*2 +
+			(unsigned long) (prNetworkAddress->u2AddressLength *
+			(prNetworkAddress->u2AddressLength == IPV4_ADDR_LEN ? 2 : 1) +
 			OFFSET_OF(struct PARAM_NETWORK_ADDRESS, aucAddress)));
 	}
 
@@ -9727,7 +9746,8 @@ wlanoidSetNetworkAddress(IN struct ADAPTER *prAdapter,
 			prNetworkAddress = (struct PARAM_NETWORK_ADDRESS *)
 				((unsigned long)prNetworkAddress +
 				(unsigned long)(prNetworkAddress->
-				u2AddressLength*2 +
+				u2AddressLength *
+				(prNetworkAddress->u2AddressLength == IPV4_ADDR_LEN ? 2 : 1) +
 				OFFSET_OF(struct PARAM_NETWORK_ADDRESS,
 				aucAddress)));
 		}
@@ -9811,14 +9831,16 @@ wlanoidSetIPv6NetworkAddress(IN struct ADAPTER *prAdapter,
 
 		prNetworkAddress = (struct PARAM_NETWORK_ADDRESS *)
 			((unsigned long) prNetworkAddress +
-			(unsigned long) (prNetworkAddress->u2AddressLength * 2 +
+			(unsigned long) (prNetworkAddress->u2AddressLength *
+			(prNetworkAddress->u2AddressLength == IPV4_ADDR_LEN ? 2 : 1) +
 			OFFSET_OF(struct PARAM_NETWORK_ADDRESS, aucAddress)));
 	}
 
 	/* 4 <2> Calculate command buffer size */
 	/* construct payload of command packet */
 	if (u4IPv6AddrCount == 0)
-		u4CmdSize = sizeof(struct CMD_IPV6_NETWORK_ADDRESS_LIST);
+		u4CmdSize = sizeof(struct CMD_IPV6_NETWORK_ADDRESS_LIST) +
+			sizeof(struct CMD_IPV6_NETWORK_ADDRESS);
 	else
 		u4CmdSize =
 			OFFSET_OF(struct CMD_IPV6_NETWORK_ADDRESS_LIST,
@@ -9833,6 +9855,7 @@ wlanoidSetIPv6NetworkAddress(IN struct ADAPTER *prAdapter,
 
 	if (prCmdIPv6NetworkAddressList == NULL)
 		return WLAN_STATUS_FAILURE;
+	kalMemZero(prCmdIPv6NetworkAddressList, u4CmdSize);
 
 	/* 4 <4> Fill P_CMD_SET_NETWORK_ADDRESS_LIST */
 	prCmdIPv6NetworkAddressList->ucBssIndex =
@@ -9868,7 +9891,8 @@ wlanoidSetIPv6NetworkAddress(IN struct ADAPTER *prAdapter,
 			prNetworkAddress = (struct PARAM_NETWORK_ADDRESS *)
 			    ((unsigned long)prNetworkAddress +
 			    (unsigned long)(
-				prNetworkAddress->u2AddressLength * 2
+				prNetworkAddress->u2AddressLength *
+				(prNetworkAddress->u2AddressLength == IPV4_ADDR_LEN ? 2 : 1)
 				+ OFFSET_OF(struct PARAM_NETWORK_ADDRESS,
 				aucAddress)));
 		}
@@ -10674,8 +10698,10 @@ wlanSendSetQueryCmd(IN struct ADAPTER *prAdapter,
 		kalMemCopy(pucCmfBuf, pucInfoBuffer,
 			   u4SetQueryInfoLen);
 	/* insert into prCmdQueue */
-	kalEnqueueCommand(prGlueInfo,
-			  (struct QUE_ENTRY *) prCmdInfo);
+	if (!rxfilterDriverEnqueue(prAdapter, prCmdInfo, pucInfoBuffer,
+	    u4SetQueryInfoLen))
+		kalEnqueueCommand(prGlueInfo,
+			(struct QUE_ENTRY *) prCmdInfo);
 
 	/* wakeup txServiceThread later */
 	GLUE_SET_EVENT(prGlueInfo);

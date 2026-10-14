@@ -424,10 +424,20 @@ int mtk_battery_get_learned_q_max(struct mtk_battery *gm)
 	return (int)((long long)q_max * aging / 10000);
 }
 
+static int mtk_battery_get_full_uah(struct mtk_battery *gm)
+{
+	int quse = READ_ONCE(gm->daemon_quse);
+
+	if (!is_algo_active(gm) && READ_ONCE(gm->fgd_pid) &&
+	    quse >= UNIT_TRANS_10 && quse <= INT_MAX / 100)
+		return quse * 100;
+
+	return mtk_battery_get_learned_q_max(gm) * 1000;
+}
+
 static int mtk_battery_get_charge_now_uah(struct mtk_battery *gm)
 {
-	int q_max = mtk_battery_get_learned_q_max(gm);
-	int full_uah = q_max * 1000;
+	int full_uah = mtk_battery_get_full_uah(gm);
 
 	if (!smp_load_acquire(&gm->cc_soc_ready))
 		return (long long)gm->ui_soc * full_uah / 100;
@@ -458,7 +468,7 @@ static int mtk_battery_time_to_full(struct mtk_battery *gm, int *seconds)
 	ret = gauge_get_property(GAUGE_PROP_BATTERY_CURRENT, &current_raw);
 	if (ret < 0 || current_raw <= 0)
 		return -ENODATA;
-	q_max = mtk_battery_get_learned_q_max(gm);
+	q_max = mtk_battery_get_full_uah(gm) / 1000;
 	if (q_max <= 0)
 		return -ENODATA;
 	duration = (long long)(100 - capacity) * q_max * 360 / current_raw;
@@ -522,7 +532,7 @@ static int battery_psy_get_property(struct power_supply *psy,
 		break;
 	}
 	case POWER_SUPPLY_PROP_CHARGE_FULL:
-		val->intval = mtk_battery_get_learned_q_max(gm) * 1000;
+		val->intval = mtk_battery_get_full_uah(gm);
 		break;
 	case POWER_SUPPLY_PROP_CHARGE_COUNTER:
 	case POWER_SUPPLY_PROP_CHARGE_NOW:
@@ -3514,13 +3524,16 @@ static int shutdown_event_handler(struct mtk_battery *gm)
 
 	if (sdd->shutdown_status.is_under_shutdown_voltage) {
 
-		int vbatcnt = 0, i;
+		int vbatcnt = 0, i, ret;
 
 		if (gm->disableGM30)
 			vbat = 4000;
-		else
-			vbat = gauge_get_int_property(
-				GAUGE_PROP_BATTERY_VOLTAGE);
+		else {
+			ret = gauge_get_property(GAUGE_PROP_BATTERY_VOLTAGE,
+				&vbat);
+			if (ret < 0 || vbat <= 0)
+				return next_waketime(polling + 1);
+		}
 
 		sdd->batdata[sdd->batidx] = vbat;
 

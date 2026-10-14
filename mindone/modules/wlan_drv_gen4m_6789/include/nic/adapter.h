@@ -73,6 +73,7 @@
 #include "hs20.h"
 #endif /* CFG_SUPPORT_PASSPOINT */
 #include "gl_os.h"
+#include "rxfilter_driver.h"
 #if (CFG_SUPPORT_POWER_THROTTLING == 1)
 #include "thrm.h"
 #endif
@@ -1601,6 +1602,7 @@ struct TX_LATENCY_REPORT_STATS {
  * Major data structure for driver operation
  */
 struct ADAPTER {
+	struct rxfilter_driver rxfilter;
 	struct mt66xx_chip_info *chip_info;
 	uint8_t ucRevID;
 	u_int8_t fgIsReadRevID;

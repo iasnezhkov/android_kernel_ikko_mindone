@@ -136,6 +136,7 @@ static enum IMGSENSOR_RETURN regulator_set(
 				  pin,
 				  regulator_voltage[
 				  pin_state - IMGSENSOR_HW_PIN_STATE_LEVEL_0]);
+				return IMGSENSOR_RETURN_ERROR;
 			}
 			if (regulator_enable(pregulator)) {
 				PK_DBG(

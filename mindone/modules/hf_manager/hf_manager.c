@@ -969,14 +969,16 @@ static int hf_manager_device_enable(struct hf_device *device,
 		if (device->device_poll == HF_DEVICE_IO_POLLING)
 			device_poll_trigger(device, best_enable);
 	} else {
+		device_state_save(core, sensor_type, &old);
 		if (device_redisable(core, sensor_type, best_enable,
 				best_delay, best_latency)) {
 			atomic_dec_if_positive(&manager->io_enabled);
 			err = device->enable(device, sensor_type, best_enable);
-			/*
-			 * disable fail no need to handle error.
-			 * run next to update hrtimer or tasklet.
-			 */
+			if (err < 0) {
+				atomic_inc(&manager->io_enabled);
+				device_state_restore(core, sensor_type, &old);
+				goto out;
+			}
 		}
 		if (device->device_poll == HF_DEVICE_IO_POLLING)
 			device_poll_trigger(device, best_enable);
@@ -1036,6 +1038,7 @@ static int hf_manager_device_rawdata(struct hf_device *device,
 	struct hf_client *client = NULL;
 	struct sensor_state *request = NULL;
 	bool best_enable = false;
+	bool old_enable = core->state[sensor_type].raw;
 
 	if (!device->rawdata)
 		return 0;
@@ -1053,7 +1056,7 @@ static int hf_manager_device_rawdata(struct hf_device *device,
 	core->state[sensor_type].raw = best_enable;
 	err = device->rawdata(device, sensor_type, best_enable);
 	if (err < 0)
-		core->state[sensor_type].raw = false;
+		core->state[sensor_type].raw = old_enable;
 	return err;
 }
 
@@ -1289,13 +1292,43 @@ EXPORT_SYMBOL_GPL(hf_client_create);
 void hf_client_destroy(struct hf_client *client)
 {
 	unsigned long flags;
+	struct hf_core *core = client->core;
+	struct hf_manager *manager;
+	struct hf_device *device;
+	int sensor_type;
+	int ret;
 
 #ifdef HF_MANAGER_DEBUG
 	pr_notice("Client destroy\n");
 #endif
-	spin_lock_irqsave(&client->core->client_lock, flags);
+	mutex_lock(&core->manager_lock);
+	spin_lock_irqsave(&core->client_lock, flags);
 	list_del(&client->list);
-	spin_unlock_irqrestore(&client->core->client_lock, flags);
+	spin_unlock_irqrestore(&core->client_lock, flags);
+
+	for (sensor_type = 0; sensor_type < SENSOR_TYPE_SENSOR_MAX;
+			sensor_type++) {
+		if (!client->request[sensor_type].enable &&
+				!client->request[sensor_type].raw)
+			continue;
+		manager = hf_manager_find_manager(core, sensor_type);
+		if (!manager || !manager->hf_dev)
+			continue;
+		device = manager->hf_dev;
+		if (client->request[sensor_type].raw) {
+			ret = hf_manager_device_rawdata(device, sensor_type);
+			if (ret < 0)
+				pr_err("Client release rawdata %d failed: %d\n",
+					sensor_type, ret);
+		}
+		if (client->request[sensor_type].enable) {
+			ret = hf_manager_device_enable(device, sensor_type);
+			if (ret < 0)
+				pr_err("Client release sensor %d failed: %d\n",
+					sensor_type, ret);
+		}
+	}
+	mutex_unlock(&core->manager_lock);
 
 	kfree(client->hf_fifo.buffer);
 	kfree(client);

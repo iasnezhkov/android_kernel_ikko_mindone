@@ -688,6 +688,7 @@ struct ADAPTER *wlanAdapterCreate(IN struct GLUE_INFO
 #endif
 		kalMemZero(prAdpater, sizeof(struct ADAPTER));
 		prAdpater->prGlueInfo = prGlueInfo;
+		rxfilterDriverInit(prAdpater);
 
 	} while (FALSE);
 
@@ -915,6 +916,7 @@ void wlanNchoInit(IN struct ADAPTER *prAdapter, IN uint8_t fgFwSync)
 void wlanOnPostFirmwareReady(IN struct ADAPTER *prAdapter,
 		IN struct REG_INFO *prRegInfo)
 {
+	rxfilterDriverStart(prAdapter);
 	DBGLOG(INIT, TRACE, "start.\n");
 	/* OID timeout timer initialize */
 	cnmTimerInitTimer(prAdapter,
@@ -1509,6 +1511,8 @@ uint32_t wlanAdapterStop(IN struct ADAPTER *prAdapter,
 
 	ASSERT(prAdapter);
 
+	rxfilterDriverStop(prAdapter);
+
 	wlanOffClearAllQueues(prAdapter);
 
 	/* Hif power off wifi */
@@ -1631,6 +1635,10 @@ uint32_t wlanCheckWifiFunc(IN struct ADAPTER *prAdapter,
 	while (TRUE) {
 		DBGLOG(INIT, TRACE,
 			"Check ready_bits(=0x%x)\n", ready_bits);
+#if defined(_HIF_PCIE) || defined(_HIF_AXI)
+		if (!halWifiFuncCheck(prAdapter, ready_bits, fgRdyChk, &fgResult))
+			return WLAN_STATUS_FAILURE;
+#else
 		if (fgRdyChk)
 			HAL_WIFI_FUNC_READY_CHECK(prAdapter,
 					ready_bits /* WIFI_FUNC_READY_BITS */,
@@ -1646,6 +1654,7 @@ uint32_t wlanCheckWifiFunc(IN struct ADAPTER *prAdapter,
 				       "Handle pending interrupt\n");
 #endif /* _HIF_USB or _HIF_SDIO */
 		}
+#endif
 		u4CurTime = kalGetTimeTick();
 
 		if (CHECK_FOR_TIMEOUT(u4CurTime, u4StartTime,
@@ -1987,6 +1996,9 @@ uint32_t wlanSendCommand(IN struct ADAPTER *prAdapter,
 				 */
 	uint32_t rStatus = WLAN_STATUS_SUCCESS;
 
+	if (!rxfilterDriverCommandLive(prAdapter, prCmdInfo))
+		return WLAN_STATUS_FAILURE;
+
 	ASSERT(prAdapter);
 	ASSERT(prCmdInfo);
 	prTxCtrl = &prAdapter->rTxCtrl;
@@ -2017,7 +2029,7 @@ uint32_t wlanSendCommand(IN struct ADAPTER *prAdapter,
 		/* <1.4> Set Pending in response to Query Command/Need Response
 		 */
 		if (rStatus == WLAN_STATUS_SUCCESS) {
-			if ((!prCmdInfo->fgSetQuery) || (prCmdInfo->fgNeedResp))
+			if (cmdNeedsResponse(prCmdInfo))
 				rStatus = WLAN_STATUS_PENDING;
 		}
 
@@ -2062,6 +2074,9 @@ uint32_t wlanSendCommandMthread(IN struct ADAPTER
 #endif
 
 	KAL_SPIN_LOCK_DECLARATION();
+
+	if (!rxfilterDriverCommandLive(prAdapter, prCmdInfo))
+		return WLAN_STATUS_FAILURE;
 
 	ASSERT(prAdapter);
 	ASSERT(prCmdInfo);
@@ -2124,7 +2139,7 @@ uint32_t wlanSendCommandMthread(IN struct ADAPTER
 		}
 
 		/* Process to pending command queue firest */
-		if ((!prCmdInfo->fgSetQuery) || (prCmdInfo->fgNeedResp)) {
+		if (cmdNeedsResponse(prCmdInfo)) {
 			/* command packet which needs further handling upon
 			 * response
 			 */
@@ -2154,8 +2169,7 @@ uint32_t wlanSendCommandMthread(IN struct ADAPTER
 		/* <1.4> Set Pending in response to Query Command/Need Response
 		 */
 		if (rStatus == WLAN_STATUS_SUCCESS) {
-			if ((!prCmdInfo->fgSetQuery) ||
-			    (prCmdInfo->fgNeedResp) ||
+			if (cmdNeedsResponse(prCmdInfo) ||
 			    (prCmdInfo->eCmdType ==
 			    COMMAND_TYPE_SECURITY_FRAME ||
 			     prCmdInfo->eCmdType ==
@@ -2185,7 +2199,7 @@ void wlanTxCmdDoneCb(IN struct ADAPTER *prAdapter,
 
 	KAL_SPIN_LOCK_DECLARATION();
 
-	if ((!prCmdInfo->fgSetQuery) || (prCmdInfo->fgNeedResp)) {
+	if (cmdNeedsResponse(prCmdInfo)) {
 		DBGLOG(TX, INFO, "Add command: %p, %ps, cmd=0x%02X, seq=%u",
 			prCmdInfo, prCmdInfo->pfCmdDoneHandler,
 			prCmdInfo->ucCID, prCmdInfo->ucCmdSeqNum);
@@ -2270,7 +2284,7 @@ uint32_t wlanTxCmdMthread(IN struct ADAPTER *prAdapter)
 					((uint8_t *)prCmdInfo->pucInfoBuffer -
 						sizeof(struct MEM_TRACK));
 		if (prMemTrack) {
-			if (!prCmdInfo->fgSetQuery || prCmdInfo->fgNeedResp) {
+			if (cmdNeedsResponse(prCmdInfo)) {
 				prMemTrack->u2CmdIdAndWhere &= 0x00FF;
 				/* 0x30 means the CmdId needs to send to
 				 * FW via HIF
@@ -2286,7 +2300,14 @@ uint32_t wlanTxCmdMthread(IN struct ADAPTER *prAdapter)
 		}
 #endif
 
-		u4Ret = nicTxCmd(prAdapter, prCmdInfo, TC4_INDEX);
+		if (rxfilterDriverCommandLive(prAdapter, prCmdInfo)) {
+			u4Ret = nicTxCmd(prAdapter, prCmdInfo, TC4_INDEX);
+		} else {
+			nicTxReleaseResource_PSE(prAdapter,
+				nicTxGetCmdResourceType(prCmdInfo),
+				nicTxGetCmdPageCount(prAdapter, prCmdInfo), TRUE);
+			u4Ret = WLAN_STATUS_FAILURE;
+		}
 		if (u4Ret != WLAN_STATUS_SUCCESS)
 			DBGLOG(INIT, WARN, "nicTxCmd returns error[0x%08x]\n",
 			       u4Ret);
@@ -2296,7 +2317,7 @@ uint32_t wlanTxCmdMthread(IN struct ADAPTER *prAdapter)
 			break;
 		}
 
-		if (prCmdInfo->fgSetQuery && !prCmdInfo->fgNeedResp)
+		if (!cmdNeedsResponse(prCmdInfo))
 			QUEUE_INSERT_TAIL(prTempCmdDoneQue, prQueueEntry);
 
 		/* DBGLOG(INIT, INFO, "==> TX CMD QID: %d (Q:%d)\n",

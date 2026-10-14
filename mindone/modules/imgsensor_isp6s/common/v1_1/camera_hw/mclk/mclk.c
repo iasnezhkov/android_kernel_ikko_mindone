@@ -164,8 +164,10 @@ static enum IMGSENSOR_RETURN mclk_set(
 		mutex_lock(pinst->pmclk_mutex);
 
 		if (ppinctrl_state != NULL && !IS_ERR(ppinctrl_state)) {
-			pinctrl_select_state(pinst->ppinctrl, ppinctrl_state);
-			pr_debug("MINDONE-CAM-PWR: mclk_set OK sensor_idx=%d pin=%d state=%d drive_current=%d\n",
+			if (pinctrl_select_state(pinst->ppinctrl, ppinctrl_state))
+				ret = IMGSENSOR_RETURN_ERROR;
+			if (ret == IMGSENSOR_RETURN_SUCCESS)
+				pr_debug("MINDONE-CAM-PWR: mclk_set OK sensor_idx=%d pin=%d state=%d drive_current=%d\n",
 				sensor_idx_uint, pin, pin_state,
 				pinst->drive_current[sensor_idx_uint]);
 		} else {

@@ -28,6 +28,7 @@
 #include <linux/alarmtimer.h>
 #include <linux/suspend.h>
 #include <linux/rtc.h>
+#include <linux/mutex.h>
 
 /*******************************************************************************
 *                             D A T A   T Y P E S
@@ -38,11 +39,10 @@ enum FW_LOG_MODE {
 	LOG_TO_FILE = 1,
 };
 
-#ifdef CONFIG_MTK_CONNSYS_DEDICATED_LOG_PATH
-static atomic_t log_mode  = ATOMIC_INIT(LOG_TO_FILE);
-#else
-static atomic_t log_mode  = ATOMIC_INIT(PRINT_TO_KERNEL_LOG);
-#endif
+static atomic_t log_mode = ATOMIC_INIT(LOG_TO_FILE);
+static DEFINE_MUTEX(connlog_alarm_mutex);
+static DEFINE_MUTEX(connlog_callback_mutex);
+static DEFINE_MUTEX(connlog_readers);
 
 #define CONNLOG_ALARM_STATE_DISABLE	0x0
 #define CONNLOG_ALARM_STATE_ENABLE	0x01
@@ -56,7 +56,6 @@ struct connlog_alarm {
 	unsigned int blank_state;
 	unsigned int alarm_sec;
 	spinlock_t alarm_lock;
-	unsigned long flags;
 };
 
 struct connlog_dev {
@@ -65,8 +64,9 @@ struct connlog_dev {
 	struct connlog_emi_config emi_config;
 	int conn2ApIrqId;
 	bool eirqOn;
+	bool active;
+	bool wake_enabled;
 	spinlock_t irq_lock;
-	unsigned long flags;
 	unsigned int irq_counter;
 	CONNLOG_IRQ_CB irq_callback;
 	struct timer_list workTimer;
@@ -115,7 +115,7 @@ static void connlog_ring_buffer_deinit(void);
 static int connlog_set_ring_buffer_base_addr(void);
 static irqreturn_t connlog_eirq_isr(int irq, void *arg);
 static void connlog_set_ring_ready(void);
-static void connlog_buffer_init(int conn_type);
+static int connlog_buffer_init(int conn_type);
 static void connlog_ring_emi_to_cache(int conn_type);
 static void connlog_dump_buf(const char *title, const char *buf, ssize_t sz);
 static void connlog_ring_print(int conn_type);
@@ -207,30 +207,23 @@ static void connlog_set_ring_ready(void)
 * RETURNS
 *  void
 *****************************************************************************/
-static void connlog_buffer_init(int conn_type)
+static int connlog_buffer_init(int conn_type)
 {
-	if (conn_type < 0 || conn_type >= CONNLOG_TYPE_END)
-		return;
+	struct connlog_buffer *buffer = &connlog_buffer_table[conn_type];
 
-	/* init ring emi */
+	buffer->cache_base = connlog_cache_allocate(cache_size_table[conn_type]);
+	if (!buffer->cache_base)
+		return -ENOMEM;
+	memset(buffer->cache_base, 0, cache_size_table[conn_type]);
 	ring_emi_init(
-		      gDev.virAddrEmiLogBase + emi_offset_table[conn_type].emi_buf,
-		      emi_offset_table[conn_type].emi_size,
-		      gDev.virAddrEmiLogBase + emi_offset_table[conn_type].emi_read,
-		      gDev.virAddrEmiLogBase + emi_offset_table[conn_type].emi_write,
-		      &connlog_buffer_table[conn_type].ring_emi
-	);
-
-	/* init ring cache */
-	connlog_buffer_table[conn_type].cache_base = connlog_cache_allocate(cache_size_table[conn_type]);
-	memset(connlog_buffer_table[conn_type].cache_base, 0, cache_size_table[conn_type]);
-	ring_init(
-		  connlog_buffer_table[conn_type].cache_base,
-		  cache_size_table[conn_type],
-		  0,
-		  0,
-		  &connlog_buffer_table[conn_type].ring_cache
-	);
+		gDev.virAddrEmiLogBase + emi_offset_table[conn_type].emi_buf,
+		emi_offset_table[conn_type].emi_size,
+		gDev.virAddrEmiLogBase + emi_offset_table[conn_type].emi_read,
+		gDev.virAddrEmiLogBase + emi_offset_table[conn_type].emi_write,
+		&buffer->ring_emi);
+	ring_init(buffer->cache_base, cache_size_table[conn_type], 0, 0,
+		&buffer->ring_cache);
+	return 0;
 }
 
 /*****************************************************************************
@@ -245,75 +238,33 @@ static void connlog_buffer_init(int conn_type)
 *****************************************************************************/
 static void connlog_ring_emi_to_cache(int conn_type)
 {
-	struct ring_emi_segment ring_emi_seg;
-	struct ring_emi *ring_emi;
-	struct ring *ring_cache;
-	int total_size = 0;
-	int count = 0;
-	unsigned int cache_max_size = 0;
-	static DEFINE_RATELIMIT_STATE(_rs, 10 * HZ, 1);
-	static DEFINE_RATELIMIT_STATE(_rs2, HZ, 1);
+	struct ring_emi_segment emi_seg;
+	struct ring_emi *emi = &connlog_buffer_table[conn_type].ring_emi;
+	struct ring *cache = &connlog_buffer_table[conn_type].ring_cache;
+	unsigned int dropped = 0;
 
-	ratelimit_set_flags(&_rs, RATELIMIT_MSG_ON_RELEASE);
-	ratelimit_set_flags(&_rs2, RATELIMIT_MSG_ON_RELEASE);
-
-	if (conn_type < 0 || conn_type >= CONNLOG_TYPE_END)
-		return;
-
-	ring_emi = &connlog_buffer_table[conn_type].ring_emi;
-	ring_cache = &connlog_buffer_table[conn_type].ring_cache;
-
-	if (RING_FULL(ring_cache)) {
-		if (__ratelimit(&_rs))
-			pr_warn("%s cache is full.\n", type_to_title[conn_type]);
+	if (EMI_READ32(emi->read) >= emi->max_size ||
+		EMI_READ32(emi->write) >= emi->max_size) {
+		pr_err_ratelimited("%s EMI ring pointers out of bounds\n", type_to_title[conn_type]);
 		return;
 	}
-
-	cache_max_size = RING_WRITE_REMAIN_SIZE(ring_cache);
-	if (RING_EMI_EMPTY(ring_emi) || !ring_emi_read_prepare(cache_max_size, &ring_emi_seg, ring_emi)) {
-		if (__ratelimit(&_rs))
-			pr_err("%s no data, possibly taken by concurrent reader.\n", type_to_title[conn_type]);
+	if (!ring_emi_read_all_prepare(&emi_seg, emi))
 		return;
-	}
 
-	/* Check ring_emi buffer memory. Dump EMI data if it's corruption. */
-	if (EMI_READ32(ring_emi->read) > emi_offset_table[conn_type].emi_size ||
-		EMI_READ32(ring_emi->write) > emi_offset_table[conn_type].emi_size) {
-		if (__ratelimit(&_rs))
-			pr_err("%s read/write pointer out-of-bounds.\n", type_to_title[conn_type]);
-		connlog_emi_status_dump();
-		/* Trigger Connsys Assert */
-		mtk_wcn_wmt_assert(WMTDRV_TYPE_WMT, 46);
-		return;
-	}
+	RING_EMI_READ_ALL_FOR_EACH(emi_seg, emi) {
+		struct ring_segment cache_seg;
+		unsigned int copied = 0;
 
-	RING_EMI_READ_ALL_FOR_EACH(ring_emi_seg, ring_emi) {
-		struct ring_segment ring_cache_seg;
-		unsigned int emi_buf_size = ring_emi_seg.sz;
-		unsigned int written = 0;
-
-#ifdef DEBUG_RING
-		ring_emi_dump(__func__, ring_emi);
-		ring_emi_dump_segment(__func__, &ring_emi_seg);
-#endif
-		RING_WRITE_FOR_EACH(ring_emi_seg.sz, ring_cache_seg, &connlog_buffer_table[conn_type].ring_cache) {
-#ifdef DEBUG_RING
-			ring_dump(__func__, &connlog_buffer_table[conn_type].ring_cache);
-			ring_dump_segment(__func__, &ring_cache_seg);
-#endif
-			if (__ratelimit(&_rs2))
-				pr_info("%s: ring_emi_seg.sz=%d, ring_cache_pt=%p, ring_cache_seg.sz=%d\n",
-					type_to_title[conn_type], ring_emi_seg.sz, ring_cache_seg.ring_pt,
-					ring_cache_seg.sz);
-			memcpy_fromio(ring_cache_seg.ring_pt, ring_emi_seg.ring_emi_pt + ring_cache_seg.data_pos,
-				ring_cache_seg.sz);
-			emi_buf_size -= ring_cache_seg.sz;
-			written += ring_cache_seg.sz;
+		RING_WRITE_FOR_EACH(emi_seg.sz, cache_seg, cache) {
+			memcpy_fromio(cache_seg.ring_pt,
+				emi_seg.ring_emi_pt + cache_seg.data_pos, cache_seg.sz);
+			copied += cache_seg.sz;
 		}
-
-		total_size += ring_emi_seg.sz;
-		count++;
+		dropped += emi_seg.sz - copied;
 	}
+	if (dropped)
+		pr_debug_ratelimited("%s log cache dropped %u bytes\n",
+			type_to_title[conn_type], dropped);
 }
 
 /* output format
@@ -374,7 +325,9 @@ static void connlog_fw_log_parser(int conn_type, const char *buf, ssize_t sz)
 	while (sz > LOG_HEAD_LENG) {
 		if (*buf == log_head[0]) {
 			if (!memcmp(buf, log_head, sizeof(log_head))) {
-				buf_len = buf[14] + (buf[15] << 8);
+				buf_len = (unsigned char)buf[14] | ((unsigned char)buf[15] << 8);
+				if (buf_len > sz - LOG_HEAD_LENG)
+					break;
 				print_len = buf_len >= LOG_MAX_LEN ? LOG_MAX_LEN - 1 : buf_len;
 				memcpy(log_line, buf + LOG_HEAD_LENG, print_len);
 				log_line[print_len] = 0;
@@ -458,9 +411,15 @@ static void connlog_ring_print(int conn_type)
 *****************************************************************************/
 static void connlog_event_set(int conn_type)
 {
-	if ((conn_type >= 0) && (conn_type < CONNLOG_TYPE_END) &&
-		(event_callback_table[conn_type] != 0x0))
-		(*event_callback_table[conn_type])();
+	CONNLOG_EVENT_CB callback;
+
+	if (conn_type < 0 || conn_type >= CONNLOG_TYPE_END)
+		return;
+	mutex_lock(&connlog_callback_mutex);
+	callback = event_callback_table[conn_type];
+	if (callback)
+		callback();
+	mutex_unlock(&connlog_callback_mutex);
 }
 
 /*****************************************************************************
@@ -475,13 +434,20 @@ static void connlog_event_set(int conn_type)
 *****************************************************************************/
 static void connlog_do_schedule_work(bool count)
 {
-	spin_lock_irqsave(&gDev.irq_lock, gDev.flags);
-	if (count) {
-		gDev.irq_counter++;
-		EMI_WRITE32(gDev.virAddrEmiLogBase + CONNLOG_IRQ_COUNTER_BASE, gDev.irq_counter);
+	unsigned long flags;
+
+	if (!READ_ONCE(gDev.active))
+		return;
+	spin_lock_irqsave(&gDev.irq_lock, flags);
+	if (gDev.active) {
+		if (count) {
+			gDev.irq_counter++;
+			EMI_WRITE32(gDev.virAddrEmiLogBase + CONNLOG_IRQ_COUNTER_BASE,
+				gDev.irq_counter);
+		}
+		gDev.eirqOn = !schedule_work(&gDev.logDataWorker);
 	}
-	gDev.eirqOn = !schedule_work(&gDev.logDataWorker);
-	spin_unlock_irqrestore(&gDev.irq_lock, gDev.flags);
+	spin_unlock_irqrestore(&gDev.irq_lock, flags);
 }
 
 /*****************************************************************************
@@ -583,21 +549,23 @@ static int connlog_cancel_alarm_timer(void)
 *****************************************************************************/
 int connsys_log_alarm_enable(unsigned int sec)
 {
-	if (!gDev.virAddrEmiLogBase)
-		return -1;
+	unsigned long flags;
+	int ret = 0;
 
-	spin_lock_irqsave(&gDev.log_alarm.alarm_lock, gDev.log_alarm.flags);
-
-	gDev.log_alarm.alarm_sec = sec;
-	if (!connlog_is_alarm_enable()) {
-		gDev.log_alarm.alarm_state = CONNLOG_ALARM_STATE_ENABLE;
-		pr_info("[connsys_log_alarm] alarm timer enabled timeout=[%d]", sec);
+	mutex_lock(&connlog_alarm_mutex);
+	if (!READ_ONCE(gDev.active) || !sec) {
+		ret = -EINVAL;
+		goto out;
 	}
+	spin_lock_irqsave(&gDev.log_alarm.alarm_lock, flags);
+	gDev.log_alarm.alarm_sec = sec;
+	gDev.log_alarm.alarm_state = CONNLOG_ALARM_STATE_ENABLE;
 	if (gDev.log_alarm.blank_state == 0)
 		connlog_set_alarm_timer();
-
-	spin_unlock_irqrestore(&gDev.log_alarm.alarm_lock, gDev.log_alarm.flags);
-	return 0;
+	spin_unlock_irqrestore(&gDev.log_alarm.alarm_lock, flags);
+out:
+	mutex_unlock(&connlog_alarm_mutex);
+	return ret;
 }
 EXPORT_SYMBOL(connsys_log_alarm_enable);
 
@@ -613,19 +581,20 @@ EXPORT_SYMBOL(connsys_log_alarm_enable);
 *****************************************************************************/
 int connsys_log_alarm_disable(void)
 {
+	unsigned long flags;
 	int ret = 0;
 
-	if (!gDev.virAddrEmiLogBase)
-		return -1;
-
-	spin_lock_irqsave(&gDev.log_alarm.alarm_lock, gDev.log_alarm.flags);
-	if (connlog_is_alarm_enable()) {
-		ret = connlog_cancel_alarm_timer();
-		gDev.log_alarm.alarm_state = CONNLOG_ALARM_STATE_DISABLE;
-		pr_info("[connsys_log_alarm] alarm timer disable");
+	mutex_lock(&connlog_alarm_mutex);
+	if (!READ_ONCE(gDev.active)) {
+		ret = -ENODEV;
+		goto out;
 	}
-
-	spin_unlock_irqrestore(&gDev.log_alarm.alarm_lock, gDev.log_alarm.flags);
+	spin_lock_irqsave(&gDev.log_alarm.alarm_lock, flags);
+	gDev.log_alarm.alarm_state = CONNLOG_ALARM_STATE_DISABLE;
+	spin_unlock_irqrestore(&gDev.log_alarm.alarm_lock, flags);
+	ret = connlog_cancel_alarm_timer();
+out:
+	mutex_unlock(&connlog_alarm_mutex);
 	return ret;
 }
 EXPORT_SYMBOL(connsys_log_alarm_disable);
@@ -642,21 +611,28 @@ EXPORT_SYMBOL(connsys_log_alarm_disable);
 *****************************************************************************/
 int connsys_log_blank_state_changed(int blank_state)
 {
+	unsigned long flags;
+	bool cancel = false;
 	int ret = 0;
 
-	if (!gDev.virAddrEmiLogBase)
-		return -1;
-
-	spin_lock_irqsave(&gDev.log_alarm.alarm_lock, gDev.log_alarm.flags);
+	mutex_lock(&connlog_alarm_mutex);
+	if (!READ_ONCE(gDev.active)) {
+		ret = -ENODEV;
+		goto out;
+	}
+	spin_lock_irqsave(&gDev.log_alarm.alarm_lock, flags);
 	gDev.log_alarm.blank_state = blank_state;
 	if (connlog_is_alarm_enable()) {
 		if (blank_state == 0)
-			ret = connlog_set_alarm_timer();
+			connlog_set_alarm_timer();
 		else
-			ret = connlog_cancel_alarm_timer();
+			cancel = true;
 	}
-	spin_unlock_irqrestore(&gDev.log_alarm.alarm_lock, gDev.log_alarm.flags);
-
+	spin_unlock_irqrestore(&gDev.log_alarm.alarm_lock, flags);
+	if (cancel)
+		ret = connlog_cancel_alarm_timer();
+out:
+	mutex_unlock(&connlog_alarm_mutex);
 	return ret;
 }
 EXPORT_SYMBOL(connsys_log_blank_state_changed);
@@ -674,23 +650,15 @@ EXPORT_SYMBOL(connsys_log_blank_state_changed);
 static enum alarmtimer_restart alarm_timer_handler(struct alarm *alarm,
 	ktime_t now)
 {
-	ktime_t kt;
-	struct rtc_time tm;
-	unsigned int tsec, tusec;
-
-	connsys_dedicated_log_get_utc_time(&tsec, &tusec);
-	rtc_time64_to_tm(tsec, &tm);
-	pr_info("[connsys_log_alarm] alarm_timer triggered [%d-%02d-%02d %02d:%02d:%02d.%09u]"
-			, tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday
-			, tm.tm_hour, tm.tm_min, tm.tm_sec, tusec);
+	unsigned long flags;
 
 	connlog_do_schedule_work(false);
-
-	spin_lock_irqsave(&gDev.log_alarm.alarm_lock, gDev.log_alarm.flags);
-	kt = ktime_set(gDev.log_alarm.alarm_sec, 0);
-	alarm_start_relative(&gDev.log_alarm.alarm_timer, kt);
-	spin_unlock_irqrestore(&gDev.log_alarm.alarm_lock, gDev.log_alarm.flags);
-
+	spin_lock_irqsave(&gDev.log_alarm.alarm_lock, flags);
+	if (READ_ONCE(gDev.active) && connlog_is_alarm_enable() &&
+		gDev.log_alarm.blank_state == 0)
+		alarm_start_relative(&gDev.log_alarm.alarm_timer,
+			ktime_set(gDev.log_alarm.alarm_sec, 0));
+	spin_unlock_irqrestore(&gDev.log_alarm.alarm_lock, flags);
 	return ALARMTIMER_NORESTART;
 }
 
@@ -706,42 +674,25 @@ static enum alarmtimer_restart alarm_timer_handler(struct alarm *alarm,
 *****************************************************************************/
 static void connlog_log_data_handler(struct work_struct *work)
 {
-	int ret = 0;
+	unsigned long flags;
 	int i;
-	int module = 0;
-	static DEFINE_RATELIMIT_STATE(_rs, 10 * HZ, 1);
-	static DEFINE_RATELIMIT_STATE(_rs2, 2 * HZ, 1);
 
-	ratelimit_set_flags(&_rs, RATELIMIT_MSG_ON_RELEASE);
-	ratelimit_set_flags(&_rs2, RATELIMIT_MSG_ON_RELEASE);
-
-	do {
-		ret = 0;
-		for (i = 0; i < CONNLOG_TYPE_END; i++) {
-			if (!RING_EMI_EMPTY(&connlog_buffer_table[i].ring_emi)) {
-				if (atomic_read(&log_mode) == LOG_TO_FILE)
-					connlog_ring_emi_to_cache(i);
-				else
-					connlog_ring_print(i);
-
-				connlog_event_set(i);
-				/* Set module bit */
-				module |= (1 << i);
-				/* ret++; */
-			} else {
-				if (__ratelimit(&_rs))
-					pr_info("[connlog] %s emi ring is empty!!\n", type_to_title[i]);
-			}
+	for (i = 0; i < CONNLOG_TYPE_END; i++) {
+		if (RING_EMI_EMPTY(&connlog_buffer_table[i].ring_emi))
+			continue;
+		if (atomic_read(&log_mode) == LOG_TO_FILE) {
+			mutex_lock(&connlog_readers);
+			connlog_ring_emi_to_cache(i);
+			mutex_unlock(&connlog_readers);
+		} else {
+			connlog_ring_print(i);
 		}
-	} while (ret);
-
-	if (__ratelimit(&_rs2))
-		pr_info("[connlog] irq counter=%d module=0x%04x\n",
-			EMI_READ32(gDev.virAddrEmiLogBase + CONNLOG_IRQ_COUNTER_BASE), module);
-	spin_lock_irqsave(&gDev.irq_lock, gDev.flags);
-	if (gDev.eirqOn)
+		connlog_event_set(i);
+	}
+	spin_lock_irqsave(&gDev.irq_lock, flags);
+	if (gDev.active && gDev.eirqOn)
 		mod_timer(&gDev.workTimer, jiffies + 1);
-	spin_unlock_irqrestore(&gDev.irq_lock, gDev.flags);
+	spin_unlock_irqrestore(&gDev.irq_lock, flags);
 }
 
 /*****************************************************************************
@@ -779,35 +730,21 @@ static irqreturn_t connlog_eirq_isr(int irq, void *arg)
 *****************************************************************************/
 static int connlog_eirq_init(const struct connlog_irq_config *irq_config)
 {
-	int iret = 0;
+	int ret;
 
-	if (irq_config == NULL) {
-		pr_info("irq_config is NULL\n");
-		return -1;
-	}
-
-	if (gDev.conn2ApIrqId == 0)
-		gDev.conn2ApIrqId = irq_config->irq_num;
-	else {
-		pr_warn("IRQ has been initialized\n");
-		return -1;
-	}
-
+	if (!irq_config || !irq_config->irq_num || !irq_config->irq_callback)
+		return -EINVAL;
 	gDev.irq_callback = irq_config->irq_callback;
-
-	pr_info("EINT CONN_LOG_IRQ(%d, %d)\n", irq_config->irq_num, irq_config->irq_flag);
-
-	iret = request_irq(gDev.conn2ApIrqId, connlog_eirq_isr, irq_config->irq_flag, "CONN_LOG_IRQ", NULL);
-	if (iret) {
-		pr_err("EINT IRQ(%d) NOT AVAILABLE!!\n", gDev.conn2ApIrqId);
-	} else {
-		iret = enable_irq_wake(gDev.conn2ApIrqId);
-		if (iret)
-			pr_err("enable irq wake fail,irq_no(%d),iret(%d)\n", gDev.conn2ApIrqId, iret);
-		iret = 0;
-	}
-
-	return iret;
+	ret = request_irq(irq_config->irq_num, connlog_eirq_isr,
+		irq_config->irq_flag, "CONN_LOG_IRQ", NULL);
+	if (ret)
+		return ret;
+	gDev.conn2ApIrqId = irq_config->irq_num;
+	ret = enable_irq_wake(gDev.conn2ApIrqId);
+	if (ret)
+		return ret;
+	gDev.wake_enabled = true;
+	return 0;
 }
 
 /*****************************************************************************
@@ -822,7 +759,14 @@ static int connlog_eirq_init(const struct connlog_irq_config *irq_config)
 *****************************************************************************/
 static void connlog_eirq_deinit(void)
 {
-	free_irq(gDev.conn2ApIrqId, NULL);
+	if (gDev.wake_enabled) {
+		disable_irq_wake(gDev.conn2ApIrqId);
+		gDev.wake_enabled = false;
+	}
+	if (gDev.conn2ApIrqId) {
+		free_irq(gDev.conn2ApIrqId, NULL);
+		gDev.conn2ApIrqId = 0;
+	}
 }
 
 /*****************************************************************************
@@ -886,8 +830,10 @@ static int connlog_emi_init(phys_addr_t emi_base, const struct connlog_emi_confi
 				gDev.virAddrEmiLogBase,
 				(unsigned int)(gDev.phyAddrEmiBase + emi_config->emi_offset));
 		memset_io(gDev.virAddrEmiLogBase, 0, emi_config->emi_size_total);
-	} else
-		pr_err("EMI mapping fail\n");
+	} else {
+		gDev.phyAddrEmiBase = 0;
+		return -ENOMEM;
+	}
 
 	memcpy(&gDev.emi_config, emi_config, sizeof(struct connlog_emi_config));
 
@@ -945,7 +891,10 @@ static int connlog_emi_init(phys_addr_t emi_base, const struct connlog_emi_confi
 *****************************************************************************/
 static void connlog_emi_deinit(void)
 {
-	iounmap(gDev.virAddrEmiLogBase);
+	if (gDev.virAddrEmiLogBase)
+		iounmap(gDev.virAddrEmiLogBase);
+	gDev.virAddrEmiLogBase = NULL;
+	gDev.phyAddrEmiBase = 0;
 }
 
 /*****************************************************************************
@@ -960,6 +909,8 @@ static void connlog_emi_deinit(void)
 *****************************************************************************/
 static int connlog_ring_buffer_init(void)
 {
+	int i;
+
 	if (!gDev.virAddrEmiLogBase) {
 		pr_err("consys emi memory address phyAddrEmiBase invalid\n");
 		return -1;
@@ -972,12 +923,13 @@ static int connlog_ring_buffer_init(void)
 	cache_size_table[CONNLOG_TYPE_GPS] = emi_offset_table[CONNLOG_TYPE_GPS].emi_size;
 	cache_size_table[CONNLOG_TYPE_MCU] = emi_offset_table[CONNLOG_TYPE_MCU].emi_size;
 
-	connlog_buffer_init(CONNLOG_TYPE_WIFI);
-	connlog_buffer_init(CONNLOG_TYPE_BT);
-	connlog_buffer_init(CONNLOG_TYPE_GPS);
-	connlog_buffer_init(CONNLOG_TYPE_MCU);
+	for (i = 0; i < CONNLOG_TYPE_END; i++) {
+		if (connlog_buffer_init(i))
+			return -ENOMEM;
+	}
 	gDev.log_data = connlog_cache_allocate(CONNLOG_LOG_BUFFER_SIZE);
-	connlog_set_ring_ready();
+	if (!gDev.log_data)
+		return -ENOMEM;
 
 	return 0;
 }
@@ -1022,36 +974,36 @@ int connsys_dedicated_log_path_apsoc_init(
 	const struct connlog_emi_config *emi_config,
 	const struct connlog_irq_config *irq_config)
 {
-	gDev.phyAddrEmiBase = 0;
-	gDev.virAddrEmiLogBase = 0;
-	gDev.conn2ApIrqId = 0;
+	int ret;
+
+	if (READ_ONCE(gDev.active))
+		return -EALREADY;
 	gDev.eirqOn = false;
 	gDev.irq_counter = 0;
 	gDev.irq_callback = NULL;
-	memset(&gDev.emi_config, 0, sizeof(struct connlog_emi_config));
-
-	if (connlog_emi_init(emi_base, emi_config)) {
-		pr_err("EMI init failed\n");
-		return -1;
-	}
-
-	if (connlog_ring_buffer_init()) {
-		pr_err("Ring buffer init failed\n");
-		return -2;
-	}
-
-	timer_setup(&gDev.workTimer, work_timer_handler, 0);
-	gDev.workTimer.function = work_timer_handler;
 	spin_lock_init(&gDev.irq_lock);
+	timer_setup(&gDev.workTimer, work_timer_handler, 0);
 	INIT_WORK(&gDev.logDataWorker, connlog_log_data_handler);
-	if (connlog_eirq_init(irq_config)) {
-		pr_err("EIRQ init failed\n");
-		return -3;
-	}
-
-	/* alarm_timer */
 	connlog_alarm_init();
+	ret = connlog_emi_init(emi_base, emi_config);
+	if (ret)
+		return ret;
+	ret = connlog_ring_buffer_init();
+	if (ret)
+		goto free_buffers;
+	WRITE_ONCE(gDev.active, true);
+	ret = connlog_eirq_init(irq_config);
+	if (ret) {
+		connsys_dedicated_log_path_apsoc_deinit();
+		return ret;
+	}
+	connlog_set_ring_ready();
 	return 0;
+
+free_buffers:
+	connlog_ring_buffer_deinit();
+	connlog_emi_deinit();
+	return ret;
 }
 EXPORT_SYMBOL(connsys_dedicated_log_path_apsoc_init);
 
@@ -1068,9 +1020,28 @@ EXPORT_SYMBOL(connsys_dedicated_log_path_apsoc_init);
 *****************************************************************************/
 void connsys_dedicated_log_path_apsoc_deinit(void)
 {
-	connlog_emi_deinit();
+	unsigned long flags;
+
+	if (!READ_ONCE(gDev.active))
+		return;
+	spin_lock_irqsave(&gDev.irq_lock, flags);
+	gDev.active = false;
+	memset_io(gDev.virAddrEmiLogBase + CONNLOG_READY_PATTERN_BASE, 0,
+		CONNLOG_READY_PATTERN_BASE_SIZE);
+	spin_unlock_irqrestore(&gDev.irq_lock, flags);
 	connlog_eirq_deinit();
+	mutex_lock(&connlog_alarm_mutex);
+	spin_lock_irqsave(&gDev.log_alarm.alarm_lock, flags);
+	gDev.log_alarm.alarm_state = CONNLOG_ALARM_STATE_DISABLE;
+	spin_unlock_irqrestore(&gDev.log_alarm.alarm_lock, flags);
+	alarm_cancel(&gDev.log_alarm.alarm_timer);
+	mutex_unlock(&connlog_alarm_mutex);
+	timer_shutdown_sync(&gDev.workTimer);
+	cancel_work_sync(&gDev.logDataWorker);
+	mutex_lock(&connlog_readers);
 	connlog_ring_buffer_deinit();
+	connlog_emi_deinit();
+	mutex_unlock(&connlog_readers);
 }
 EXPORT_SYMBOL(connsys_dedicated_log_path_apsoc_deinit);
 
@@ -1104,7 +1075,9 @@ int connsys_log_deinit(int conn_type)
 {
 	if (conn_type >= CONNLOG_TYPE_END || conn_type < 0)
 		return -1;
-	event_callback_table[conn_type] = 0x0;
+	mutex_lock(&connlog_callback_mutex);
+	event_callback_table[conn_type] = NULL;
+	mutex_unlock(&connlog_callback_mutex);
 	return 0;
 }
 EXPORT_SYMBOL(connsys_log_deinit);
@@ -1121,9 +1094,15 @@ EXPORT_SYMBOL(connsys_log_deinit);
 *****************************************************************************/
 unsigned int connsys_log_get_buf_size(int conn_type)
 {
+	unsigned int size = 0;
+
 	if (conn_type >= CONNLOG_TYPE_END || conn_type < 0)
 		return -1;
-	return RING_SIZE(&connlog_buffer_table[conn_type].ring_cache);
+	mutex_lock(&connlog_readers);
+	if (READ_ONCE(gDev.active))
+		size = RING_SIZE(&connlog_buffer_table[conn_type].ring_cache);
+	mutex_unlock(&connlog_readers);
+	return size;
 }
 EXPORT_SYMBOL(connsys_log_get_buf_size);
 
@@ -1142,7 +1121,9 @@ int connsys_log_register_event_cb(int conn_type, CONNLOG_EVENT_CB func)
 {
 	if (conn_type >= CONNLOG_TYPE_END || conn_type < 0)
 		return -1;
+	mutex_lock(&connlog_callback_mutex);
 	event_callback_table[conn_type] = func;
+	mutex_unlock(&connlog_callback_mutex);
 	return 0;
 }
 EXPORT_SYMBOL(connsys_log_register_event_cb);
@@ -1170,6 +1151,9 @@ ssize_t connsys_log_read(int conn_type, char *buf, size_t count)
 	if (conn_type < 0 || conn_type >= CONNLOG_TYPE_END)
 		return 0;
 
+	mutex_lock(&connlog_readers);
+	if (!READ_ONCE(gDev.active))
+		goto done;
 	ring = &connlog_buffer_table[conn_type].ring_cache;
 
 	if (atomic_read(&log_mode) != LOG_TO_FILE)
@@ -1188,6 +1172,7 @@ ssize_t connsys_log_read(int conn_type, char *buf, size_t count)
 		written += ring_seg.sz;
 	}
 done:
+	mutex_unlock(&connlog_readers);
 	return written;
 }
 EXPORT_SYMBOL(connsys_log_read);
@@ -1219,6 +1204,9 @@ ssize_t connsys_log_read_to_user(int conn_type, char __user *buf, size_t count)
 	if (conn_type < 0 || conn_type >= CONNLOG_TYPE_END)
 		return 0;
 
+	mutex_lock(&connlog_readers);
+	if (!READ_ONCE(gDev.active))
+		goto done;
 	ring = &connlog_buffer_table[conn_type].ring_cache;
 
 	if (atomic_read(&log_mode) != LOG_TO_FILE)
@@ -1242,6 +1230,7 @@ ssize_t connsys_log_read_to_user(int conn_type, char __user *buf, size_t count)
 		written += ring_seg.sz;
 	}
 done:
+	mutex_unlock(&connlog_readers);
 	return written;
 }
 EXPORT_SYMBOL(connsys_log_read_to_user);
@@ -1312,7 +1301,12 @@ void connsys_dedicated_log_flush_emi(void)
 *****************************************************************************/
 void connsys_dedicated_log_dump_emi(int offset, int size)
 {
-	connlog_dump_buf("emi", gDev.virAddrEmiLogBase + offset, size);
+	mutex_lock(&connlog_readers);
+	if (READ_ONCE(gDev.active) && offset >= 0 && size >= 0 &&
+		(unsigned int)offset <= gDev.emi_config.emi_size_total &&
+		(unsigned int)size <= gDev.emi_config.emi_size_total - offset)
+		connlog_dump_buf("emi", gDev.virAddrEmiLogBase + offset, size);
+	mutex_unlock(&connlog_readers);
 }
 
 /*****************************************************************************
@@ -1357,17 +1351,19 @@ int connsys_dedicated_log_get_log_mode(void)
 *****************************************************************************/
 int connsys_dedicated_log_set_ap_state(int state)
 {
-	if (!gDev.virAddrEmiLogBase) {
-		pr_debug("%s gDev.virAddrEmiLogBase is NULL\n", __func__);
-		return -1;
-	}
+	unsigned long flags;
+	int ret = -ENODEV;
 
-	if (state < 0 || state > 1) {
-		pr_notice("%s state = %d is unexpected\n", __func__, state);
-		return -1;
+	if (state < 0 || state > 1)
+		return -EINVAL;
+	if (!READ_ONCE(gDev.active))
+		return ret;
+	spin_lock_irqsave(&gDev.irq_lock, flags);
+	if (gDev.active) {
+		EMI_WRITE32(gDev.virAddrEmiLogBase + 32, state);
+		ret = 0;
 	}
-
-	EMI_WRITE32(gDev.virAddrEmiLogBase + 32,  state);
-	return 0;
+	spin_unlock_irqrestore(&gDev.irq_lock, flags);
+	return ret;
 }
 

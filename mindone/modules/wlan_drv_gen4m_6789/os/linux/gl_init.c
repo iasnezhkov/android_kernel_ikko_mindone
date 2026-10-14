@@ -1684,24 +1684,24 @@ static void wlanSetMulticastList(struct net_device *prDev)
  * main_thread, so we can't let tx_thread to do this
  */
 
-static void wlanSetMulticastListWorkQueue(
-	struct work_struct *work)
+int wlanSyncMulticastList(struct net_device *prDev)
 {
-
 	struct GLUE_INFO *prGlueInfo = NULL;
 	uint32_t u4PacketFilter = 0;
 	uint32_t u4SetInfoLen;
-	struct net_device *prDev = gPrDev;
 	uint8_t ucBssIndex = 0;
+	uint32_t status = WLAN_STATUS_SUCCESS;
 
+	if (!prDev)
+		return -ENODEV;
 	ucBssIndex = wlanGetBssIdx(prDev);
 	if (!IS_BSS_INDEX_VALID(ucBssIndex))
-		return;
+		return -EINVAL;
 
 	down(&g_halt_sem);
 	if (g_u4HaltFlag) {
 		up(&g_halt_sem);
-		return;
+		return -ESHUTDOWN;
 	}
 
 	prGlueInfo = (prDev != NULL) ? *((struct GLUE_INFO **)
@@ -1713,13 +1713,13 @@ static void wlanSetMulticastListWorkQueue(
 		       "abnormal dev or skb: prDev(0x%p), prGlueInfo(0x%p)\n",
 		       prDev, prGlueInfo);
 		up(&g_halt_sem);
-		return;
+		return -ESHUTDOWN;
 	}
 
 	if (!prGlueInfo->u4ReadyFlag) {
 		DBGLOG(REQ, WARN, "driver is not ready\n");
 		up(&g_halt_sem);
-		return;
+		return -ESHUTDOWN;
 	}
 
 	DBGLOG(INIT, TRACE,
@@ -1742,12 +1742,12 @@ static void wlanSetMulticastListWorkQueue(
 
 	up(&g_halt_sem);
 
-	if (kalIoctl(prGlueInfo,
+	if (kalIoctlByBssIdx(prGlueInfo,
 		     wlanoidSetCurrentPacketFilter,
 		     &u4PacketFilter,
 		     sizeof(u4PacketFilter), FALSE, FALSE, TRUE,
-		     &u4SetInfoLen) != WLAN_STATUS_SUCCESS) {
-		return;
+		     &u4SetInfoLen, ucBssIndex) != WLAN_STATUS_SUCCESS) {
+		return -EIO;
 	}
 
 	if (u4PacketFilter & PARAM_PACKET_FILTER_MULTICAST) {
@@ -1759,7 +1759,7 @@ static void wlanSetMulticastListWorkQueue(
 		down(&g_halt_sem);
 		if (g_u4HaltFlag) {
 			up(&g_halt_sem);
-			return;
+			return -ESHUTDOWN;
 		}
 
 		prMCAddrList = kalMemAlloc(MAX_NUM_GROUP_ADDR * ETH_ALEN,
@@ -1767,7 +1767,7 @@ static void wlanSetMulticastListWorkQueue(
 		if (!prMCAddrList) {
 			DBGLOG(INIT, WARN, "prMCAddrList memory alloc fail!\n");
 			up(&g_halt_sem);
-			return;
+			return -ENOMEM;
 		}
 
 		/* Avoid race condition with kernel net subsystem */
@@ -1785,7 +1785,7 @@ static void wlanSetMulticastListWorkQueue(
 
 		up(&g_halt_sem);
 
-		kalIoctlByBssIdx(prGlueInfo,
+		status = kalIoctlByBssIdx(prGlueInfo,
 			 wlanoidSetMulticastList, prMCAddrList, (i * ETH_ALEN),
 			 FALSE, FALSE, TRUE, &u4SetInfoLen,
 			 ucBssIndex);
@@ -1794,7 +1794,13 @@ static void wlanSetMulticastListWorkQueue(
 			   MAX_NUM_GROUP_ADDR * ETH_ALEN);
 	}
 
-}				/* end of wlanSetMulticastList() */
+	return status == WLAN_STATUS_SUCCESS ? 0 : -EIO;
+}
+
+static void wlanSetMulticastListWorkQueue(struct work_struct *work)
+{
+	wlanSyncMulticastList(gPrDev);
+}
 
 /*----------------------------------------------------------------------------*/
 /*!
@@ -4960,6 +4966,7 @@ int32_t wlanOnWhenProbeSuccess(struct GLUE_INFO *prGlueInfo,
 
 	/* card is ready */
 	prGlueInfo->u4ReadyFlag = 1;
+	rxfilterDriverReady(prGlueInfo->prAdapter);
 #if CFG_MTK_ANDROID_WMT
 		update_driver_loaded_status(prGlueInfo->u4ReadyFlag);
 #endif
@@ -5165,6 +5172,7 @@ static int32_t wlanOffAtReset(void)
 		return WLAN_STATUS_FAILURE;
 	}
 
+	rxfilterDriverStop(prGlueInfo->prAdapter);
 	kalPerMonDestroy(prGlueInfo);
 
 	/* complete possible pending oid, which may block wlanRemove some time
@@ -5858,6 +5866,7 @@ static void wlanRemove(void)
 #endif /* WLAN_INCLUDE_SYS */
 
 	prAdapter = prGlueInfo->prAdapter;
+	rxfilterDriverStop(prGlueInfo->prAdapter);
 	kalPerMonDestroy(prGlueInfo);
 
 	/* Unregister notifier callback */

@@ -415,6 +415,10 @@ static INT32 mtk_wmt_probe(struct platform_device *pdev)
 			wmt_consys_ic_ops->consys_ic_emi_mpu_set_region_protection();
 
 		pConnsysEmiStart = ioremap(gConEmiPhyBase, gConEmiSize);
+		if (!pConnsysEmiStart) {
+			iRet = -ENOMEM;
+			goto fail_emi;
+		}
 		WMT_PLAT_PR_INFO("Clearing Connsys EMI (virtual(0x%p) physical(0x%pa)) %llu bytes\n",
 				   pConnsysEmiStart, &gConEmiPhyBase, gConEmiSize);
 		memset_io(pConnsysEmiStart, 0, gConEmiSize);
@@ -423,14 +427,20 @@ static INT32 mtk_wmt_probe(struct platform_device *pdev)
 
 		if (wmt_consys_ic_ops->consys_ic_emi_set_remapping_reg)
 			wmt_consys_ic_ops->consys_ic_emi_set_remapping_reg();
-		if (wmt_consys_ic_ops->consys_ic_emi_coredump_remapping)
-			wmt_consys_ic_ops->consys_ic_emi_coredump_remapping(&pEmibaseaddr, 1);
-#ifdef CONFIG_MTK_CONNSYS_DEDICATED_LOG_PATH
-		if (wmt_consys_ic_ops->consys_ic_dedicated_log_path_init)
-			wmt_consys_ic_ops->consys_ic_dedicated_log_path_init(pdev);
-#endif
+		if (wmt_consys_ic_ops->consys_ic_emi_coredump_remapping) {
+			iRet = wmt_consys_ic_ops->consys_ic_emi_coredump_remapping(&pEmibaseaddr, 1);
+			if (iRet)
+				goto fail_emi;
+		}
+		if (wmt_consys_ic_ops->consys_ic_dedicated_log_path_init) {
+			iRet = wmt_consys_ic_ops->consys_ic_dedicated_log_path_init(pdev);
+			if (iRet)
+				goto fail_emi;
+		}
 	} else {
 		WMT_PLAT_PR_ERR("consys emi memory address gConEmiPhyBase invalid\n");
+		iRet = -ENODEV;
+		goto fail_emi;
 	}
 
 #ifdef CONFIG_MTK_HIBERNATION
@@ -498,6 +508,17 @@ static INT32 mtk_wmt_probe(struct platform_device *pdev)
 	atomic_set(&g_probe_called, 1);
 
 	return 0;
+
+fail_emi:
+	if (wmt_consys_ic_ops->consys_ic_emi_coredump_remapping)
+		wmt_consys_ic_ops->consys_ic_emi_coredump_remapping(&pEmibaseaddr, 0);
+	if (wmt_consys_ic_ops->consys_ic_need_store_pdev &&
+		wmt_consys_ic_ops->consys_ic_need_store_pdev() == MTK_WCN_BOOL_TRUE) {
+		dev_pm_syscore_device(&pdev->dev, false);
+		pm_runtime_disable(&pdev->dev);
+	}
+	g_pdev = NULL;
+	return iRet;
 }
 
 static void mtk_wmt_remove(struct platform_device *pdev)
@@ -507,10 +528,8 @@ static void mtk_wmt_remove(struct platform_device *pdev)
 			pm_runtime_disable(&pdev->dev);
 	}
 
-#ifdef CONFIG_MTK_CONNSYS_DEDICATED_LOG_PATH
 	if (wmt_consys_ic_ops->consys_ic_dedicated_log_path_deinit)
 		wmt_consys_ic_ops->consys_ic_dedicated_log_path_deinit();
-#endif
 	if (wmt_consys_ic_ops->consys_ic_emi_coredump_remapping)
 		wmt_consys_ic_ops->consys_ic_emi_coredump_remapping(&pEmibaseaddr, 0);
 

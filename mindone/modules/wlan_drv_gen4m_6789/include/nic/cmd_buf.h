@@ -123,6 +123,7 @@ struct CMD_INFO {
 	uint8_t ucCID;
 	u_int8_t fgSetQuery;
 	u_int8_t fgNeedResp;
+	u_int8_t fgRxfilterQuery;
 	uint8_t ucCmdSeqNum;
 	uint32_t u4SetInfoLen;	/* Indicate how many byte we read for Set OID */
 
@@ -139,6 +140,12 @@ struct CMD_INFO {
 	uint8_t *pucTxd;
 	uint8_t *pucTxp;
 };
+
+static inline int cmdNeedsResponse(const struct CMD_INFO *command)
+{
+	return !command->fgRxfilterQuery &&
+		(!command->fgSetQuery || command->fgNeedResp);
+}
 
 /*******************************************************************************
  *                            P U B L I C   D A T A

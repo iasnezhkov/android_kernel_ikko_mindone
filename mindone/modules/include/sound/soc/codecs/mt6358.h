@@ -3760,6 +3760,7 @@ struct mt6358_priv {
 	int dmic_one_wire_mode;
 
 	int dev_counter[DEVICE_NUM];
+	unsigned int dl_active;
 
 	struct mt6358_codec_ops ops;
 	bool apply_n12db_gain;

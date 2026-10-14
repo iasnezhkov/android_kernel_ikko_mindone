@@ -1906,13 +1906,31 @@ void nicRxProcessEventPacket(IN struct ADAPTER *prAdapter,
 	struct mt66xx_chip_info *prChipInfo;
 	struct CMD_INFO *prCmdInfo;
 	struct WIFI_EVENT *prEvent;
-	uint32_t u4Idx, u4Size;
+	uint32_t u4Idx, u4Size, u4RxByteCount;
 
 	ASSERT(prAdapter);
 	ASSERT(prSwRfb);
 	prChipInfo = prAdapter->chip_info;
+	if (!prChipInfo->prRxDescOps ||
+	    !prChipInfo->prRxDescOps->nic_rxd_get_rx_byte_count) {
+		nicRxReturnRFB(prAdapter, prSwRfb);
+		return;
+	}
+	u4RxByteCount = prChipInfo->prRxDescOps->nic_rxd_get_rx_byte_count(
+		prSwRfb->prRxStatus);
+	if (u4RxByteCount > CFG_RX_MAX_PKT_SIZE ||
+	    prChipInfo->rxd_size > u4RxByteCount ||
+	    u4RxByteCount - prChipInfo->rxd_size < 8) {
+		nicRxReturnRFB(prAdapter, prSwRfb);
+		return;
+	}
 	prEvent = (struct WIFI_EVENT *)
 			(prSwRfb->pucRecvBuff + prChipInfo->rxd_size);
+	if (rxfilterDriverEvent(prAdapter, (u8 *)prEvent,
+		u4RxByteCount - prChipInfo->rxd_size)) {
+		nicRxReturnRFB(prAdapter, prSwRfb);
+		return;
+	}
 	if (prEvent->ucEID != EVENT_ID_DEBUG_MSG
 	    && prEvent->ucEID != EVENT_ID_ASSERT_DUMP) {
 		DBGLOG(NIC, TRACE,

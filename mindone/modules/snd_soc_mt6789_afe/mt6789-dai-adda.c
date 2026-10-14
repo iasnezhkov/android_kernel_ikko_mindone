@@ -1039,8 +1039,14 @@ static int mtk_dai_adda_hw_params(struct snd_pcm_substream *substream,
 			regmap_write(afe->regmap,
 				     AFE_ADDA_IIR_COEF_10_09, 0x0000C048);
 
-			regmap_write(afe->regmap,
-				     AFE_ADDA_UL_SRC_CON0, ul_src_con0);
+			if (id == MT6789_DAI_AP_DMIC || afe_priv->mtkaif_dmic)
+				ul_src_con0 |= UL_SDM_3_LEVEL_CTL_MASK_SFT |
+					       UL_MODE_3P25M_CH1_CTL_MASK_SFT |
+					       UL_MODE_3P25M_CH2_CTL_MASK_SFT;
+
+			regmap_update_bits(afe->regmap, AFE_ADDA_UL_SRC_CON0,
+					   ~(UL_SRC_ON_TMP_CTL_MASK_SFT |
+					     UL_AP_DMIC_ON_MASK_SFT), ul_src_con0);
 
 			/* Using Internal ADC */
 			regmap_update_bits(afe->regmap,
@@ -1048,24 +1054,16 @@ static int mtk_dai_adda_hw_params(struct snd_pcm_substream *substream,
 					   0x1 << 0,
 					   0x0 << 0);
 
-			/* mtkaif_rxif_data_mode = 0, amic */
 			regmap_update_bits(afe->regmap,
 					   AFE_ADDA_MTKAIF_RX_CFG0,
-					   0x1 << 0,
-					   0x0 << 0);
+					   0x1,
+					   id == MT6789_DAI_ADDA &&
+					   afe_priv->mtkaif_dmic ? 0x1 : 0x0);
 			break;
 		default:
 			break;
 		}
 
-		/* ap dmic */
-		switch (id) {
-		case MT6789_DAI_AP_DMIC:
-			mtk_adda_ul_src_dmic(afe, id);
-			break;
-		default:
-			break;
-		}
 	}
 
 	return 0;

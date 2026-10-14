@@ -1767,6 +1767,7 @@ uint32_t wlanGetStaIdxByWlanIdx(IN struct ADAPTER *prAdapter,
 				IN uint8_t ucIndex, OUT uint8_t *pucStaIdx);
 
 uint8_t wlanGetBssIdx(struct net_device *ndev);
+int wlanSyncMulticastList(struct net_device *prDev);
 
 struct net_device *wlanGetNetDev(IN struct GLUE_INFO *prGlueInfo,
 	IN uint8_t ucBssIndex);

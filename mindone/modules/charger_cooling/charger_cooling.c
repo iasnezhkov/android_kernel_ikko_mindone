@@ -209,10 +209,9 @@ static int get_charger_type(void)
 	node = of_find_compatible_node(NULL, NULL, "mediatek,charger");
 	WARN_ON_ONCE(node == 0);
 
-	if (of_property_read_u32(node, "charger_configuration", &val))
-		return 0;
-	else
-		return val;
+	of_property_read_u32(node, "charger_configuration", &val);
+	of_node_put(node);
+	return val;
 }
 static ssize_t charger_curr_show(struct kobject *kobj,
 	struct kobj_attribute *attr, char *buf)
@@ -289,35 +288,50 @@ static int charger_cooling_probe(struct platform_device *pdev)
 	charger_cdev->chg_psy = power_supply_get_by_name("mtk-master-charger");
 	if (charger_cdev->chg_psy == NULL || IS_ERR(charger_cdev->chg_psy)) {
 		pr_info("Couldn't get chg_psy\n");
-		return -EINVAL;
+		return charger_cdev->chg_psy ? PTR_ERR(charger_cdev->chg_psy) : -EPROBE_DEFER;
 	}
 	if (charger_cdev->type == DUAL_CHARGER) {
 		charger_cdev->s_chg_psy = power_supply_get_by_name("mtk-slave-charger");
 		if (charger_cdev->s_chg_psy == NULL || IS_ERR(charger_cdev->s_chg_psy)) {
 			pr_info("Couldn't get s_chg_psy\n");
-			return -EINVAL;
+			ret = charger_cdev->s_chg_psy ? PTR_ERR(charger_cdev->s_chg_psy) : -EPROBE_DEFER;
+			goto put_master;
 		}
 	}
 
 	ret = sysfs_create_group(kernel_kobj, &charger_cooler_attr_group);
 	if (ret) {
 		dev_info(&pdev->dev, "failed to create charger cooler sysfs, ret=%d!\n", ret);
-		return ret;
+		goto put_slave;
 	}
+	mutex_lock(&charger_cooler_lock);
 	charger_cl_data.cur_state = 0;
 	charger_cl_data.cur_current = -1;
 	charger_cl_data.num_state = CHARGER_STATE_NUM;
+	charger_cl_data.request_dirty = false;
+	mutex_unlock(&charger_cooler_lock);
 
 	cdev = thermal_of_cooling_device_register(np, charger_cdev->name,
 		charger_cdev, &charger_cooling_ops);
-	if (IS_ERR(cdev))
-		return -EINVAL;
+	if (IS_ERR(cdev)) {
+		ret = PTR_ERR(cdev);
+		goto remove_group;
+	}
 	charger_cdev->cdev = cdev;
 
 	platform_set_drvdata(pdev, charger_cdev);
 	dev_info(dev, "register %s done\n", charger_cdev->name);
 
 	return 0;
+
+remove_group:
+	sysfs_remove_group(kernel_kobj, &charger_cooler_attr_group);
+put_slave:
+	if (charger_cdev->type == DUAL_CHARGER)
+		power_supply_put(charger_cdev->s_chg_psy);
+put_master:
+	power_supply_put(charger_cdev->chg_psy);
+	return ret;
 }
 
 static void charger_cooling_remove(struct platform_device *pdev)
@@ -327,6 +341,10 @@ static void charger_cooling_remove(struct platform_device *pdev)
 	charger_cdev = (struct charger_cooling_device *)platform_get_drvdata(pdev);
 
 	thermal_cooling_device_unregister(charger_cdev->cdev);
+	sysfs_remove_group(kernel_kobj, &charger_cooler_attr_group);
+	if (charger_cdev->type == DUAL_CHARGER)
+		power_supply_put(charger_cdev->s_chg_psy);
+	power_supply_put(charger_cdev->chg_psy);
 	platform_set_drvdata(pdev, NULL);
 
 	return;

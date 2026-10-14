@@ -384,33 +384,12 @@ do { \
 
 #define HAL_WIFI_FUNC_READY_CHECK(_prAdapter, _checkItem, _pfgResult) \
 do { \
-	struct mt66xx_chip_info *prChipInfo = NULL; \
-	uint32_t u4Value = 0; \
-	if (!_prAdapter->chip_info) \
-		ASSERT(0); \
-	*_pfgResult = FALSE; \
-	prChipInfo = _prAdapter->chip_info; \
-	HAL_MCR_RD(_prAdapter, prChipInfo->sw_sync0, &u4Value); \
-	if ((u4Value & (_checkItem << prChipInfo->sw_ready_bit_offset)) \
-	     == (_checkItem << prChipInfo->sw_ready_bit_offset)) \
-		*_pfgResult = TRUE; \
+	halWifiFuncCheck(_prAdapter, _checkItem, TRUE, _pfgResult); \
 } while (0)
 
 #define HAL_WIFI_FUNC_OFF_CHECK(_prAdapter, _checkItem, _pfgResult) \
 do { \
-	u_int8_t fgLpOwnResult; \
-	HAL_WIFI_FUNC_READY_CHECK(_prAdapter, _checkItem, _pfgResult); \
-	if (*_pfgResult) { \
-		HAL_LP_OWN_RD(_prAdapter, &fgLpOwnResult); \
-		if (fgLpOwnResult == FALSE) { \
-			DBGLOG(INIT, INFO, \
-				"HAL_LP_OWN_RD %d\n", fgLpOwnResult); \
-			HAL_LP_OWN_SET(prAdapter, &fgLpOwnResult); \
-			DBGLOG(INIT, INFO, \
-				"HAL_LP_OWN_SET %d\n", fgLpOwnResult); \
-		} \
-	} \
-	*_pfgResult = !*_pfgResult; \
+	halWifiFuncCheck(_prAdapter, _checkItem, FALSE, _pfgResult); \
 } while (0)
 
 #define HAL_WIFI_FUNC_GET_STATUS(_prAdapter, _u4Result) \
@@ -1233,6 +1212,8 @@ bool halIsHifStateLinkup(IN struct ADAPTER *prAdapter);
 bool halIsHifStateSuspend(IN struct ADAPTER *prAdapter);
 
 #if defined(_HIF_PCIE) || defined(_HIF_AXI)
+bool halWifiFuncCheck(struct ADAPTER *prAdapter, uint32_t u4CheckItem,
+	u_int8_t fgReadyCheck, u_int8_t *pfgResult);
 void halRxReceiveRFBs(IN struct ADAPTER *prAdapter, uint32_t u4Port,
 	uint8_t fgRxData);
 u_int8_t halWpdmaWaitIdle(struct GLUE_INFO *prGlueInfo,

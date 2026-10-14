@@ -152,7 +152,6 @@ clock layer here is already current.
 
 | 🚧 Unfinished | |
 |---|---|
-| **Wi-Fi address offload** | known IPv6-only address-buffer allocation bug remains; see [Hardware](docs/HARDWARE.md#what-does-not) for the observed scope |
 | **RPMB** | hardware-backed key storage fails its MAC check; storage falls back safely, boot unaffected |
 | **60 Hz panel mode** | exists on a branch, held back: the panel reports no physical size, so the second mode reaches apps at dpi 0 |
 | **High-speed capture** | 120 fps not reached |
@@ -163,6 +162,24 @@ clock layer here is already current.
 `Image`**. `build.sh` pins the build user, host and `SOURCE_DATE_EPOCH`; before that the account
 name and the build moment were compiled in, and two builds differed by ~0.7 %. Verified on one
 machine into one output path — a different absolute build path is not separately tested.
+
+### Wi-Fi firmware pairing
+
+IPv6-only address-buffer allocation and the firmware address-list encoding for IPv6 neighbor
+solicitation offload are fixed. RXFILTER now supports independent IPv4/IPv6 multicast policy
+while suspended, with capability probing and nonce-checked firmware readback. The accepted
+C37 driver/firmware pair passed multicast allow/block/restore and unicast controls on hardware;
+awake traffic retains the original policy. This is functional acceptance, not a measured
+battery-life improvement. APF remains disabled because the original firmware does not support
+its command interface.
+
+RXFILTER requires the matching `WIFI_RAM_CODE_soc2_2_1d_1.bin`, SHA-256
+`bfb11a2b31fdd22aadb603b186e9ae0ebc98a476a7f7adf0f4a572d520abbfec`.
+The [companion device repository](../../../android_device_ikko_mindone/blob/lineage-23.2/docs/BLOBS.md)
+contains the firmware source tooling, release receipt and extraction checks. Firmware binaries
+are not distributed here; use your own extracted firmware and follow that repository's build
+instructions. An unsupported firmware query returns an error instead of reporting an applied
+RXFILTER policy. A successful ioctl alone does not establish wakeup or energy savings.
 
 ## 📊 Status
 

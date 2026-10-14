@@ -123,6 +123,7 @@ static enum IMGSENSOR_RETURN gpio_set(
 	struct GPIO           *pgpio = (struct GPIO *)pinstance;
 	enum   GPIO_STATE      gpio_state;
 	unsigned int pin_index = 0;
+	enum IMGSENSOR_RETURN ret = IMGSENSOR_RETURN_SUCCESS;
 	unsigned int sensor_idx_uint = 0;
 	/* PK_DBG("%s :debug pinctrl ENABLE, PinIdx %d, Val %d\n",
 	 *	__func__, pin, pin_state);
@@ -155,8 +156,10 @@ static enum IMGSENSOR_RETURN gpio_set(
 	mutex_lock(pgpio->pgpio_mutex);
 
 	if (ppinctrl_state != NULL && !IS_ERR(ppinctrl_state)) {
-		pinctrl_select_state(pgpio->ppinctrl, ppinctrl_state);
-		pr_debug("MINDONE-CAM-PWR: gpio_set OK sensor_idx=%d pin=%d state=%d\n",
+		if (pinctrl_select_state(pgpio->ppinctrl, ppinctrl_state))
+			ret = IMGSENSOR_RETURN_ERROR;
+		if (ret == IMGSENSOR_RETURN_SUCCESS)
+			pr_debug("MINDONE-CAM-PWR: gpio_set OK sensor_idx=%d pin=%d state=%d\n",
 			sensor_idx_uint, pin, pin_state);
 	} else {
 		PK_DBG("%s : pinctrl err, PinIdx %d, Val %d\n",
@@ -167,7 +170,7 @@ static enum IMGSENSOR_RETURN gpio_set(
 
 	mutex_unlock(pgpio->pgpio_mutex);
 
-	return IMGSENSOR_RETURN_SUCCESS;
+	return ret;
 }
 
 static enum IMGSENSOR_RETURN gpio_dump(void *pintance)

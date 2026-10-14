@@ -236,6 +236,7 @@ u_int8_t kalDevRegRead(IN struct GLUE_INFO *prGlueInfo,
 		}
 	} else {
 		DBGLOG(HAL, ERROR, "Not exist CR read[0x%08x]\n", u4Register);
+		return FALSE;
 	}
 
 	return TRUE;

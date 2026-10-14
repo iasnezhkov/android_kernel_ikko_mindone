@@ -15523,6 +15523,26 @@ struct PRIV_CMD_HANDLER priv_cmd_handlers[] = {
 	{CMD_SET_USE_CASE, priv_driver_set_multista_use_case},
 };
 
+static int priv_driver_rxfilter(struct net_device *device, const char *command,
+		int length)
+{
+	struct GLUE_INFO *glue = *((struct GLUE_INFO **)netdev_priv(device));
+	int operation = rxfilter_parse(command, length);
+	int result;
+
+	if (operation < 0)
+		return operation;
+	if (!glue)
+		return -ENODEV;
+	result = rxfilterDriverApply(glue->prAdapter, wlanGetBssIdx(device), operation);
+	if (result != -ENODATA)
+		return result;
+	result = wlanSyncMulticastList(device);
+	if (result)
+		return result;
+	return rxfilterDriverApply(glue->prAdapter, wlanGetBssIdx(device), operation);
+}
+
 int32_t priv_driver_cmds(IN struct net_device *prNetDev, IN int8_t *pcCommand,
 			 IN int32_t i4TotalLen)
 {
@@ -15540,6 +15560,9 @@ int32_t priv_driver_cmds(IN struct net_device *prNetDev, IN int8_t *pcCommand,
 		return -1;
 
 	prGlueInfo = *((struct GLUE_INFO **) netdev_priv(prNetDev));
+
+	if (i4TotalLen >= 8 && !strnicmp(pcCommand, "RXFILTER", 8))
+		return priv_driver_rxfilter(prNetDev, pcCommand, i4TotalLen);
 
 	for (i = 0; i < sizeof(priv_cmd_handlers) / sizeof(struct
 			PRIV_CMD_HANDLER); i++) {
@@ -15910,6 +15933,11 @@ int32_t priv_driver_cmds(IN struct net_device *prNetDev, IN int8_t *pcCommand,
 
 } /* priv_driver_cmds */
 
+static int priv_is_rxfilter_command(const char *command, int length)
+{
+	return length >= 8 && !strnicmp(command, "RXFILTER", 8);
+}
+
 #ifdef CFG_ANDROID_AOSP_PRIV_CMD
 int android_private_support_driver_cmd(IN struct net_device *prNetDev,
 	IN OUT struct ifreq *prReq, IN int i4Cmd)
@@ -15917,6 +15945,7 @@ int android_private_support_driver_cmd(IN struct net_device *prNetDev,
 	struct android_wifi_priv_cmd priv_cmd;
 	char *command = NULL;
 	int ret = 0, bytes_written = 0;
+	int rxfilter;
 
 	if (!prReq->ifr_data)
 		return -EINVAL;
@@ -15938,9 +15967,14 @@ int android_private_support_driver_cmd(IN struct net_device *prNetDev,
 		goto FREE;
 	}
 
-	bytes_written = priv_driver_cmds(prNetDev, command, priv_cmd.total_len);
+	rxfilter = priv_is_rxfilter_command(command, priv_cmd.total_len);
+	if (rxfilter && !memchr(command, 0, priv_cmd.total_len))
+		bytes_written = -EOPNOTSUPP;
+	else
+		bytes_written = priv_driver_cmds(prNetDev, command,
+			priv_cmd.total_len);
 
-	if (bytes_written == -EOPNOTSUPP) {
+	if (bytes_written == -EOPNOTSUPP && !rxfilter) {
 		/* Report positive status */
 		bytes_written = kalSnprintf(command, priv_cmd.total_len,
 						"%s", "NotSupport");
@@ -15979,6 +16013,7 @@ int priv_support_driver_cmd(IN struct net_device *prNetDev,
 	struct priv_driver_cmd_s *priv_cmd = NULL;
 	int i4BytesWritten = 0;
 	int i4TotalLen = 0;
+	int rxfilter;
 	struct ifreq *prOriprReq = NULL;
 	uint8_t *prOriprReqData = NULL;
 
@@ -16023,12 +16058,17 @@ int priv_support_driver_cmd(IN struct net_device *prNetDev,
 	priv_cmd->buf[PRIV_CMD_SIZE - 1] = '\0';
 	pcCommand = priv_cmd->buf;
 
-	DBGLOG(REQ, INFO, "%s: driver cmd \"%s\" on %s,(%p,%p)\n", __func__,
-		pcCommand, prReq->ifr_name, prReq, prReq->ifr_data);
+	DBGLOG(REQ, INFO, "%s: driver cmd \"%.*s\" on %s,(%p,%p)\n", __func__,
+		i4TotalLen, pcCommand, prReq->ifr_name, prReq, prReq->ifr_data);
 
-	i4BytesWritten = priv_driver_cmds(prNetDev, pcCommand, i4TotalLen);
+	rxfilter = priv_is_rxfilter_command(pcCommand, i4TotalLen);
+	if (rxfilter && !memchr(pcCommand, 0, i4TotalLen))
+		i4BytesWritten = -EOPNOTSUPP;
+	else
+		i4BytesWritten = priv_driver_cmds(prNetDev, pcCommand,
+			i4TotalLen);
 
-	if (i4BytesWritten == -EOPNOTSUPP) {
+	if (i4BytesWritten == -EOPNOTSUPP && !rxfilter) {
 		/* Report positive status */
 		i4BytesWritten = kalSnprintf(pcCommand, i4TotalLen,
 					    "%s", "UNSUPPORTED");

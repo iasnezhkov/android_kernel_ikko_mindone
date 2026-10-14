@@ -14,6 +14,14 @@ and mobile data, Wi-Fi, Bluetooth, NFC, camera, fingerprint, USB, charging, susp
 **Camera.** Both logical cameras of the flip module; the main IMX766 sensor's full 4096×3072
 mode, brought up faster through burst I2C writes and chunked EEPROM calibration reads.
 
+**Wi-Fi.** The IPv6-only address-buffer allocation bug is fixed, and address-list encoding
+includes IPv6 neighbor solicitation offload. Independent IPv4/IPv6 multicast RXFILTER policy
+is supported during suspend with the matching reviewed firmware; the accepted pair passed
+allow/block/restore and unicast controls. APF remains disabled. See the
+[firmware pairing requirements](../README.md#wi-fi-firmware-pairing) and the
+[companion device repository](../../../../android_device_ikko_mindone/blob/lineage-23.2/docs/BLOBS.md).
+These checks do not establish battery-life savings or universal network interoperability.
+
 **Video.** Hardware decode and encode through the stateful V4L2 driver (`mtk_vcodec`), behind an
 open Codec2 HAL.
 
@@ -26,7 +34,6 @@ open Codec2 HAL.
 
 | | |
 |---|---|
-| **Wi-Fi address offload** | `kalSetNetAddress()` underallocates its IPv6 address records. With no IPv4 address and one IPv6 address it allocates 29 bytes but writes 30. Retained KFENCE reports and the installed driver binary confirm the mismatch; their original boot date is unknown. The current source snapshot does not fix it. |
 | **RPMB** | Hardware-backed key storage is unfinished — the replay-protected block fails its MAC check. Storage falls back safely; boot and normal use are unaffected. |
 | **60 Hz panel mode** | Exists on a branch, held back: the panel reports no physical size, so the second mode reaches apps at dpi 0. |
 | **High-speed capture** | 120 fps not reached. |

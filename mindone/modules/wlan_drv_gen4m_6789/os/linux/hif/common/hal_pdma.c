@@ -363,6 +363,30 @@ void halDisableInterrupt(IN struct ADAPTER *prAdapter)
 	prAdapter->fgIsIntEnable = FALSE;
 }
 
+bool halWifiFuncCheck(struct ADAPTER *prAdapter, uint32_t u4CheckItem,
+	u_int8_t fgReadyCheck, u_int8_t *pfgResult)
+{
+	struct mt66xx_chip_info *prChipInfo;
+	uint32_t u4Value = 0;
+	uint32_t u4Mask;
+
+	*pfgResult = FALSE;
+	if (!prAdapter || !prAdapter->chip_info || !prAdapter->prGlueInfo)
+		return false;
+	if (prAdapter->rAcpiState == ACPI_STATE_D3) {
+		ASSERT(0);
+		return false;
+	}
+	prChipInfo = prAdapter->chip_info;
+	if (!kalDevRegRead(prAdapter->prGlueInfo, prChipInfo->sw_sync0,
+			   &u4Value))
+		return false;
+	u4Mask = u4CheckItem << prChipInfo->sw_ready_bit_offset;
+	*pfgResult = fgReadyCheck ? (u4Value & u4Mask) == u4Mask :
+		(u4Value & u4Mask) != u4Mask;
+	return true;
+}
+
 static u_int8_t halDriverOwnCheckCR4(struct ADAPTER *prAdapter)
 {
 	struct mt66xx_chip_info *prChipInfo;
@@ -372,25 +396,27 @@ static u_int8_t halDriverOwnCheckCR4(struct ADAPTER *prAdapter)
 	u_int8_t fgReady = FALSE;
 	u_int8_t fgDummyReq = FALSE;
 	bool fgTimeout;
+	bool fgReadOk;
 
 	ASSERT(prAdapter);
 
 	prChipInfo = prAdapter->chip_info;
 	ready_bits = prChipInfo->sw_ready_bits;
 
-	HAL_WIFI_FUNC_READY_CHECK(prAdapter,
-				  WIFI_FUNC_DUMMY_REQ, &fgDummyReq);
+	fgReadOk = halWifiFuncCheck(prAdapter, WIFI_FUNC_DUMMY_REQ,
+				   TRUE, &fgDummyReq);
 
 	u4CurrTick = kalGetTimeTick();
 	/* Wait CR4 ready */
 	while (1) {
 		fgTimeout = halIsTimeout(u4CurrTick,
 					 LP_OWN_BACK_TOTAL_DELAY_MS);
-		HAL_WIFI_FUNC_READY_CHECK(prAdapter, ready_bits, &fgReady);
+		fgReadOk = fgReadOk && halWifiFuncCheck(prAdapter, ready_bits,
+						      TRUE, &fgReady);
 
 		if (fgReady) {
 			break;
-		} else if (kalIsCardRemoved(prAdapter->prGlueInfo) ||
+		} else if (!fgReadOk || kalIsCardRemoved(prAdapter->prGlueInfo) ||
 			   fgIsBusAccessFailed || fgTimeout
 			   || wlanIsChipNoAck(prAdapter)) {
 			DBGLOG(INIT, INFO,
@@ -398,9 +424,11 @@ static u_int8_t halDriverOwnCheckCR4(struct ADAPTER *prAdapter)
 			       LP_OWN_BACK_FAILED_LOG_SKIP_MS);
 			fgStatus = FALSE;
 #if CFG_CHIP_RESET_SUPPORT
-			glSetRstReason(RST_DRV_OWN_FAIL);
-			GL_RESET_TRIGGER(prAdapter,
-					 RST_FLAG_CHIP_RESET);
+			if (!kalIsResetting()) {
+				glSetRstReason(RST_DRV_OWN_FAIL);
+				GL_RESET_TRIGGER(prAdapter,
+						 RST_FLAG_CHIP_RESET);
+			}
 #endif
 			break;
 		}
@@ -410,7 +438,7 @@ static u_int8_t halDriverOwnCheckCR4(struct ADAPTER *prAdapter)
 	}
 
 	/* Send dummy cmd and clear flag */
-	if (fgDummyReq) {
+	if (fgStatus && fgDummyReq) {
 		wlanSendDummyCmd(prAdapter, FALSE);
 		HAL_CLEAR_DUMMY_REQ(prAdapter);
 	}
@@ -3410,13 +3438,6 @@ uint32_t halHifPowerOffWifi(IN struct ADAPTER *prAdapter)
 	if (prBusInfo->clearEvtRingTillCmdRingEmpty)
 		prBusInfo->clearEvtRingTillCmdRingEmpty(prAdapter);
 
-	prHifInfo->fgIsPowerOff = true;
-
-	/* prAdapter->fgWiFiInSleepyState = TRUE; */
-	RECLAIM_POWER_CONTROL_TO_PM(prAdapter, FALSE);
-
-	rStatus = wlanCheckWifiFunc(prAdapter, FALSE);
-
 	if (prBusInfo->setDmaIntMask)
 		prBusInfo->setDmaIntMask(prAdapter->prGlueInfo,
 			BIT(DMA_INT_TYPE_MCU2HOST) | BIT(DMA_INT_TYPE_TRX),
@@ -3425,6 +3446,13 @@ uint32_t halHifPowerOffWifi(IN struct ADAPTER *prAdapter)
 	nicDisableInterrupt(prAdapter);
 	if (prBusInfo->disableSwInterrupt)
 		prBusInfo->disableSwInterrupt(prAdapter);
+
+	prHifInfo->fgIsPowerOff = true;
+	prAdapter->fgWiFiInSleepyState = FALSE;
+
+	rStatus = wlanCheckWifiFunc(prAdapter, FALSE);
+
+	RECLAIM_POWER_CONTROL_TO_PM(prAdapter, FALSE);
 
 	return rStatus;
 }

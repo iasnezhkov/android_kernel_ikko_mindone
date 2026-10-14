@@ -1101,6 +1101,7 @@ struct mtk_battery {
 	int log_level;
 	
 	struct power_supply *bms_psy;//prize
+	int daemon_quse;
 };
 
 struct mtk_battery_sysfs_field_info {

@@ -29,6 +29,8 @@
 #include <linux/platform_device.h>
 #include <linux/mfd/mt6397/core.h>
 #include <linux/regmap.h>
+#include <linux/irq.h>
+#include <linux/irqdomain.h>
 #include "connsys_debug_utility.h"
 #ifdef CONFIG_MTK_CONNSYS_DEDICATED_LOG_PATH
 #include "fw_log_wmt.h"
@@ -306,6 +308,7 @@ static const struct connlog_emi_config connsys_fw_log_parameter = {
 ********************************************************************************
 */
 static OSAL_UNSLEEPABLE_LOCK g_pwr_off_lock;
+static unsigned int connlog_irq;
 static atomic_t g_power_on = ATOMIC_INIT(0);
 
 /*******************************************************************************
@@ -1453,6 +1456,8 @@ static INT32 consys_dedicated_log_path_init(struct platform_device *pdev)
 	node = pdev->dev.of_node;
 	if (node) {
 		irq_num = irq_of_parse_and_map(node, 2);
+		if (!irq_num)
+			return -EINVAL;
 		irq_flag = irq_get_trigger_type(irq_num);
 		WMT_PLAT_PR_INFO("get conn2ap_sw_irq id(%d) and irq trigger flag(%d) from DT\n",
 				irq_num, irq_flag);
@@ -1466,8 +1471,14 @@ static INT32 consys_dedicated_log_path_init(struct platform_device *pdev)
 	irq_config.irq_flag = irq_flag;
 	irq_config.irq_callback = consys_conn2ap_sw_irq_clear;
 
-	connsys_dedicated_log_path_apsoc_init(
+	iret = connsys_dedicated_log_path_apsoc_init(
 		gConEmiPhyBase, &connsys_fw_log_parameter, &irq_config);
+	if (iret) {
+		irq_dispose_mapping(irq_num);
+		osal_unsleepable_lock_deinit(&g_pwr_off_lock);
+		return iret;
+	}
+	connlog_irq = irq_num;
 
 #ifdef CONFIG_MTK_CONNSYS_DEDICATED_LOG_PATH
 	fw_log_wmt_init();
@@ -1481,6 +1492,10 @@ static VOID consys_dedicated_log_path_deinit(VOID)
 	fw_log_wmt_deinit();
 #endif
 	connsys_dedicated_log_path_apsoc_deinit();
+	if (connlog_irq) {
+		irq_dispose_mapping(connlog_irq);
+		connlog_irq = 0;
+	}
 	osal_unsleepable_lock_deinit(&g_pwr_off_lock);
 }
 

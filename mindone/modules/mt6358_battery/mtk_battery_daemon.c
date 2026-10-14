@@ -13,6 +13,7 @@
 #include <linux/reboot.h>	/*kernel_power_off*/
 #include <linux/skbuff.h>	/* netlink */
 #include <linux/socket.h>	/* netlink */
+#include <net/netlink.h>
 #include <net/sock.h>		/* netlink */
 #include "mtk_battery_daemon.h"
 #include "mtk_battery.h"
@@ -3677,6 +3678,7 @@ static void mtk_battery_daemon_handler(struct mtk_battery *gm, void *nl_data,
 	case FG_DAEMON_CMD_SET_DAEMON_PID:
 	{
 		fg_cmd_check(msg);
+		WRITE_ONCE(gm->daemon_quse, 0);
 		/* check is daemon killed case*/
 		if (gm->fgd_pid == 0) {
 			memcpy(&gm->fgd_pid, &msg->fgd_data[0],
@@ -4039,15 +4041,30 @@ static void mtk_battery_daemon_handler(struct mtk_battery *gm, void *nl_data,
 	break;
 	case FG_DAEMON_CMD_SET_BATTERY_CAPACITY:
 	{
-		struct fgd_cmd_param_t_8 param;
+		struct fgd_cmd_param_t_8 param = {};
 		char *rcv;
 		struct fgd_cmd_param_t_4 *prcv;
+		size_t offset = offsetof(struct fgd_cmd_param_t_4, input);
+		size_t required = offsetof(struct fgd_cmd_param_t_8, data) +
+			10 * sizeof(param.data[0]);
+
+		if (msg->fgd_data_len < offset + required ||
+		    msg->fgd_data_len > sizeof(msg->fgd_data))
+			break;
 
 		rcv = &msg->fgd_data[0];
 		prcv = (struct fgd_cmd_param_t_4 *)rcv;
-		memcpy(&param, prcv->input, sizeof(struct fgd_cmd_param_t_8));
+		if (prcv->idx != 0 || prcv->size < required ||
+		    prcv->size > DATA_SIZE || prcv->size > prcv->total_size ||
+		    prcv->size > msg->fgd_data_len - offset)
+			break;
+		memcpy(&param, prcv->input,
+			min_t(size_t, sizeof(param), prcv->size));
+		if (param.data[4] >= UNIT_TRANS_10 &&
+		    param.data[4] <= INT_MAX / 100)
+			WRITE_ONCE(gm->daemon_quse, param.data[4]);
 
-		bm_err("[fr] FG_DAEMON_CMD_SET_BATTERY_CAPACITY = %d %d %d %d %d %d %d %d %d %d RM:%d\n",
+		bm_err("[fr] FG_DAEMON_CMD_SET_BATTERY_CAPACITY = %d %d %d %d %d %d %d %d %d %d RM:%lld\n",
 				param.data[0],
 				param.data[1],
 				param.data[2],
@@ -4058,7 +4075,7 @@ static void mtk_battery_daemon_handler(struct mtk_battery *gm, void *nl_data,
 				param.data[7],
 				param.data[8],
 				param.data[9],
-				param.data[4] * param.data[6] / 10000);
+				(long long)param.data[4] * param.data[6] / 10000);
 	}
 	break;
 	case FG_DAEMON_CMD_GET_BH_DATA:
@@ -4104,6 +4121,10 @@ void mtk_battery_netlink_handler(struct sk_buff *skb)
 		gm = get_mtk_battery();
 
 	nlh = (struct nlmsghdr *)skb->data;
+	if (skb->len < NLMSG_HDRLEN + FGD_NL_HDR_LEN ||
+	    nlh->nlmsg_len < NLMSG_HDRLEN + FGD_NL_HDR_LEN ||
+	    nlh->nlmsg_len > NLMSG_ALIGN(skb->len))
+		return;
 	pid = NETLINK_CREDS(skb)->pid;
 	uid = NETLINK_CREDS(skb)->uid;
 	seq = nlh->nlmsg_seq;
@@ -4111,6 +4132,10 @@ void mtk_battery_netlink_handler(struct sk_buff *skb)
 	data = NLMSG_DATA(nlh);
 
 	fgd_msg = (struct fgd_nl_msg_t *)data;
+	if (fgd_msg->fgd_data_len >
+	    min_t(unsigned int, skb->len, nlh->nlmsg_len) -
+	    NLMSG_HDRLEN - FGD_NL_HDR_LEN)
+		return;
 
 	bm_debug("rcv:%d %d %d %d %d %d\n",
 		fgd_msg->nl_cmd,

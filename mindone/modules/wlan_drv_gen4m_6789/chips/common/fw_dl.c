@@ -2315,8 +2315,13 @@ uint32_t wlanDownloadFW(IN struct ADAPTER *prAdapter)
 	DBGLOG(INIT, INFO,
 	       "wlanDownloadFW:: Check ready_bits(=0x%x)\n",
 	       prChipInfo->sw_ready_bits);
+#if defined(_HIF_PCIE) || defined(_HIF_AXI)
+	if (!halWifiFuncCheck(prAdapter, prChipInfo->sw_ready_bits, TRUE, &fgReady))
+		return WLAN_STATUS_FAILURE;
+#else
 	HAL_WIFI_FUNC_READY_CHECK(prAdapter,
 				  prChipInfo->sw_ready_bits, &fgReady);
+#endif
 
 	if (fgReady) {
 		DBGLOG(INIT, INFO,

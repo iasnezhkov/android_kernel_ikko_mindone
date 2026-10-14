@@ -6565,19 +6565,31 @@ kalGetIPv6Address(IN struct net_device *prDev,
 	uint32_t u4NumIPv6 = 0;
 	uint32_t u4AddrLen = IPV6_ADDR_LEN;
 	struct inet6_ifaddr *prIfa;
+	struct inet6_dev *prIn6Dev;
 
 	/* 4 <1> Sanity check of netDevice */
-	if (!prDev || !(prDev->ip6_ptr)) {
+	*pu4NumOfIpv6Addr = 0;
+	if (!prDev)
+		return FALSE;
+	rcu_read_lock();
+	prIn6Dev = __in6_dev_get(prDev);
+	if (!prIn6Dev) {
 		DBGLOG(INIT, INFO,
 		       "IPv6 address is not available for dev(0x%p)\n", prDev);
 
-		*pu4NumOfIpv6Addr = 0;
+		rcu_read_unlock();
 		return FALSE;
 	}
 
 
 	/* 4 <2> copy the IPv6 address */
-	LIST_FOR_EACH_IPV6_ADDR(prIfa, prDev->ip6_ptr) {
+	read_lock_bh(&prIn6Dev->lock);
+	LIST_FOR_EACH_IPV6_ADDR(prIfa, prIn6Dev) {
+		if (u4NumIPv6 >= u4MaxNumOfAddr)
+			break;
+		if (READ_ONCE(prIfa->flags) &
+		    (IFA_F_TENTATIVE | IFA_F_DADFAILED))
+			continue;
 		kalMemCopy(&pucIpv6Addrs[u4NumIPv6 * u4AddrLen],
 			   &prIfa->addr, u4AddrLen);
 
@@ -6585,10 +6597,10 @@ kalGetIPv6Address(IN struct net_device *prDev,
 		       "IPv6 addr [%u][" IPV6STR "]\n", u4NumIPv6,
 		       IPV6TOSTR(&pucIpv6Addrs[u4NumIPv6 * u4AddrLen]));
 
-		if ((u4NumIPv6 + 1) >= u4MaxNumOfAddr)
-			break;
 		u4NumIPv6++;
 	}
+	read_unlock_bh(&prIn6Dev->lock);
+	rcu_read_unlock();
 
 	*pu4NumOfIpv6Addr = u4NumIPv6;
 
@@ -6612,11 +6624,11 @@ kalSetNetAddress(IN struct GLUE_INFO *prGlueInfo,
 
 	/* 4 <1> Calculate buffer size */
 	/* IPv4 */
-	u4Len += (((sizeof(struct PARAM_NETWORK_ADDRESS) - 1) +
-		IPV4_ADDR_LEN) * u4NumIPv4Addr * 2);
+	u4Len += (OFFSET_OF(struct PARAM_NETWORK_ADDRESS, aucAddress) +
+		IPV4_ADDR_LEN * 2) * u4NumIPv4Addr;
 	/* IPv6 */
-	u4Len += (((sizeof(struct PARAM_NETWORK_ADDRESS) - 1) +
-		   IPV6_ADDR_LEN) * u4NumIPv6Addr);
+	u4Len += (OFFSET_OF(struct PARAM_NETWORK_ADDRESS, aucAddress) +
+		IPV6_ADDR_LEN) * u4NumIPv6Addr;
 
 	/* 4 <2> Allocate buffer */
 	prParamNetAddrList = (struct PARAM_NETWORK_ADDRESS_LIST *)
@@ -8851,11 +8863,11 @@ void kalIndicateChannelSwitch(IN struct GLUE_INFO *prGlueInfo,
 		break;
 
 	case CHNL_EXT_SCA:
-		rChannelType = NL80211_CHAN_HT40MINUS;
+		rChannelType = NL80211_CHAN_HT40PLUS;
 		break;
 
 	case CHNL_EXT_SCB:
-		rChannelType = NL80211_CHAN_HT40PLUS;
+		rChannelType = NL80211_CHAN_HT40MINUS;
 		break;
 
 	case CHNL_EXT_RES:
