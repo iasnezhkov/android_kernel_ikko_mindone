@@ -22,7 +22,7 @@ owns firmware suspend policy; no per-cycle PM notifier rewrites it. Independent 
 is supported during suspend with the matching reviewed firmware; the accepted pair passed
 allow/block/restore and unicast controls. APF v4 is enabled with a 2048-byte program limit. See the
 [firmware pairing requirements](../README.md#wi-fi-firmware-pairing) and the
-companion device repository's `docs/BLOBS.md`.
+companion device repository's proprietary-file guide.
 
 **Video.** Hardware decode and encode through the stateful V4L2 driver (`mtk_vcodec`), behind an
 open Codec2 HAL. The MT6789 driver advertises HEVC Main/Main10 and VP9 Profile 0
@@ -64,7 +64,7 @@ word: no console, no pstore, no slot change.
 
 **Virtual A/B uses shared logical-partition storage.** Deliver the paired `boot`,
 `vendor_boot`, `vendor_dlkm`, `system_dlkm` and DTBO in a full signed ROM as described
-by the companion device repository's `docs/FLASHING.md`. Updates through `update_engine`
+by the companion device repository's flashing guide. Updates through `update_engine`
 can target the inactive slot while snapshots preserve the running system.
 Direct writes to `super` are not an equivalent update path. After snapshot merge, the former
 slot is not necessarily an independent rollback even when both boot slots still exist. Check

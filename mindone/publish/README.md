@@ -81,7 +81,7 @@ built-in drivers and Google's permitted external imports. See [docs/BUILD.md](do
 
 Integrate the exact prebuilt `Image.gz`, matching GKI modules, vendor modules,
 DTB/DTBO and load metadata into the companion device tree, then build and sign
-its LineageOS package. Follow that repository's `docs/FLASHING.md` for signing,
+its LineageOS package. Follow that repository's flashing guide for signing,
 Virtual A/B installation and restoration.
 
 Deliver the paired `boot`, `vendor_boot`, `vendor_dlkm`, `system_dlkm` and DTBO
@@ -141,7 +141,7 @@ VFP-only 60 Hz mode beside the 96 Hz default.
 The RXFILTER implementation requires the reviewed
 `WIFI_RAM_CODE_soc2_2_1d_1.bin`, SHA-256
 `bfb11a2b31fdd22aadb603b186e9ae0ebc98a476a7f7adf0f4a572d520abbfec`.
-Use the companion device repository's `docs/BLOBS.md` for extraction, firmware source
+Use the companion device repository's proprietary-file guide for extraction, firmware source
 tooling and receipt checks. An arbitrary same-named firmware file is insufficient.
 
 The prior documentation records multicast allow/block/restore and unicast controls
