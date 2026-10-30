@@ -1168,25 +1168,30 @@ static inline int adopt_CAMERA_HW_FeatureControl(void *pBuf)
 		pSensorSyncInfo =
 			(struct ACDK_KD_SENSOR_SYNC_STRUCT *) pFeaturePara;
 
-		if (FeatureParaLen < 4 * sizeof(unsigned long long)) {
+		if (FeatureParaLen < sizeof(struct ACDK_KD_SENSOR_SYNC_STRUCT)) {
 			PK_DBG("FeatureParaLen is too small %d\n", FeatureParaLen);
 			kfree(pFeaturePara);
 			return -EINVAL;
 		}
 
-		FeatureParaLen = 2;
+		{
+			unsigned long long shutter = pSensorSyncInfo->u2SensorNewExpTime;
+			unsigned long long gain = pSensorSyncInfo->u2SensorNewGain;
 
-		imgsensor_sensor_feature_control(
-			psensor,
-			SENSOR_FEATURE_SET_ESHUTTER,
-			(unsigned char *)&pSensorSyncInfo->u2SensorNewExpTime,
-			(unsigned int *)&FeatureParaLen);
+			FeatureParaLen = 2;
+			imgsensor_sensor_feature_control(
+				psensor,
+				SENSOR_FEATURE_SET_ESHUTTER,
+				(unsigned char *)&shutter,
+				(unsigned int *)&FeatureParaLen);
 
-		imgsensor_sensor_feature_control(
-			psensor,
-			SENSOR_FEATURE_SET_GAIN,
-			(unsigned char *)&pSensorSyncInfo->u2SensorNewGain,
-			(unsigned int *) &FeatureParaLen);
+			FeatureParaLen = 2;
+			imgsensor_sensor_feature_control(
+				psensor,
+				SENSOR_FEATURE_SET_GAIN,
+				(unsigned char *)&gain,
+				(unsigned int *)&FeatureParaLen);
+		}
 		break;
 	case SENSOR_FEATURE_GET_OFFSET_TO_START_OF_EXPOSURE:
 	case SENSOR_FEATURE_GET_PIXEL_CLOCK_FREQ_BY_SCENARIO:
@@ -1970,15 +1975,14 @@ static inline int adopt_CAMERA_HW_FeatureControl(void *pBuf)
 	case SENSOR_FEATURE_SET_TEST_PATTERN:
 		{
 			pr_debug("SENSOR_FEATURE_SET_TEST_PATTERN");
+			if (FeatureParaLen < sizeof(unsigned long long)) {
+				kfree(pFeaturePara);
+				return -EINVAL;
+			}
 			pFeaturePara_64 = (unsigned long long *)pFeaturePara;
-			usr_ptr =
-				(void *)(uintptr_t)(*(pFeaturePara_64 + 1));
+			usr_ptr = FeatureParaLen >= 2 * sizeof(unsigned long long) ?
+				(void *)(uintptr_t)(*(pFeaturePara_64 + 1)) : NULL;
 			if (usr_ptr) {
-				if (FeatureParaLen < 2 * sizeof(unsigned long long)) {
-					PK_DBG("FeatureParaLen is too small %d\n", FeatureParaLen);
-					kfree(pFeaturePara);
-					return -EINVAL;
-				}
 				pData = kmalloc(sizeof(struct SET_SENSOR_PATTERN_SOLID_COLOR),
 					GFP_KERNEL);
 
@@ -1994,6 +1998,9 @@ static inline int adopt_CAMERA_HW_FeatureControl(void *pBuf)
 					((void *)pData, (void __user *)usr_ptr,
 					sizeof(struct SET_SENSOR_PATTERN_SOLID_COLOR))) {
 					PK_DBG("[CAMERA_HW]ERROR: copy_from_user fail\n");
+					kfree(pData);
+					kfree(pFeaturePara);
+					return -EFAULT;
 				}
 				//pr_debug("%x %x %x %x",
 					//pData->COLOR_R,pData->COLOR_Gr,

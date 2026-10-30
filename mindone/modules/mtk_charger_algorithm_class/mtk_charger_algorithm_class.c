@@ -39,6 +39,7 @@ static void chg_alg_device_release(struct device *dev)
 {
 	struct chg_alg_device *chg_dev = to_chg_alg_dev(dev);
 
+	srcu_cleanup_notifier_head(&chg_dev->evt_nh);
 	kfree(chg_dev);
 }
 
@@ -215,7 +216,6 @@ struct chg_alg_device *chg_alg_device_register(const char *name,
 	static struct lock_class_key key;
 	struct srcu_notifier_head *head;
 	int rc;
-	char *algo_name = NULL;
 
 	pr_debug("%s: name=%s\n", __func__, name);
 	chg_dev = kzalloc(sizeof(*chg_dev), GFP_KERNEL);
@@ -230,10 +230,8 @@ struct chg_alg_device *chg_alg_device_register(const char *name,
 	chg_dev->dev.class = charger_algorithm_class;
 	chg_dev->dev.parent = parent;
 	chg_dev->dev.release = chg_alg_device_release;
-	algo_name = kasprintf(GFP_KERNEL, "%s", name);
-	dev_set_name(&chg_dev->dev, algo_name);
+	dev_set_name(&chg_dev->dev, "%s", name);
 	dev_set_drvdata(&chg_dev->dev, devdata);
-	kfree(algo_name);
 
 	/* Copy properties */
 	if (props) {
@@ -242,7 +240,7 @@ struct chg_alg_device *chg_alg_device_register(const char *name,
 	}
 	rc = device_register(&chg_dev->dev);
 	if (rc) {
-		kfree(chg_dev);
+		put_device(&chg_dev->dev);
 		return ERR_PTR(rc);
 	}
 	chg_dev->ops = ops;

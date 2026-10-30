@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: GPL-2.0 OR BSD-3-Clause */
 /******************************************************************************
  *
  * This file is provided under a dual license.  When you use or
@@ -380,7 +381,17 @@ struct P2P_ROLE_FSM_INFO {
 
 /*========================= Initial ============================*/
 
-uint8_t p2pRoleFsmInit(IN struct ADAPTER *prAdapter, IN uint8_t ucRoleIdx);
+int p2pRoleFsmInit(IN struct ADAPTER *prAdapter, IN uint8_t ucRoleIdx,
+	const uint8_t *pucMacAddr, u_int8_t fgIsApMode);
+
+int p2pRoleFsmPrepare(struct ADAPTER *prAdapter, uint8_t ucRoleIdx,
+	const uint8_t *pucMacAddr, u_int8_t fgIsApMode,
+	struct P2P_ROLE_FSM_INFO **pprPrepared);
+
+void p2pRoleFsmReleasePrepared(struct ADAPTER *prAdapter,
+	struct P2P_ROLE_FSM_INFO *prRole);
+
+void p2pRoleFsmAbortInit(struct ADAPTER *prAdapter, uint8_t ucRoleIdx);
 
 void p2pRoleFsmUninit(IN struct ADAPTER *prAdapter, IN uint8_t ucRoleIdx);
 

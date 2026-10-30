@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: GPL-2.0
+# SPDX-FileCopyrightText: 2026 The LineageOS Project
 import json, sys, os
 d = json.load(open(sys.argv[1]))
 _dp = os.path.join(os.path.dirname(sys.argv[1]), 'deps.json')

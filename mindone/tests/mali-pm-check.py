@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: GPL-2.0
+# SPDX-FileCopyrightText: 2026 The LineageOS Project
 import argparse
 import os
 from pathlib import Path
@@ -7,6 +9,10 @@ import tempfile
 
 
 BASELINE = '8e7569ad533f128157d01fd24702f2e78e898b95'
+DEPENDENCY_REVISIONS = {
+    'mindone/modules/mtk_gpufreq_mt6789/gpufreq_mt6789.c': '99b64e3c36da1978770f0de81170121326d496f2',
+}
+BUILD_REVISION = '4afc916a1da507590878a086cda7e34d3934a24e'
 CALLBACK = 'mindone/modules/mali_kbase_clean/mali_kbase_config_mt6789.c'
 COMMON = 'mindone/modules/mali_kbase_clean/mtk_platform_common.c'
 PROVIDER = 'mindone/modules/mtk_gpufreq_mt6789/gpufreq_mt6789.c'
@@ -98,21 +104,33 @@ def main():
              '\t\tdev_info(kbdev->dev, "GPU PM Callback - Power Off Failed");')
     if source != replace_once(baseline, before, after):
         raise ValueError('Production scope exceeds the failed power-off rollback')
-    for path in (COMMON, PROVIDER, CONFIG, 'mindone/modules/BUILD.bazel',
+    for path in (COMMON, PROVIDER, CONFIG,
                  'mindone/modules/mali_kbase_clean/mali_kbase_pm_driver.c',
                  'mindone/modules/mali_kbase_clean/mali_kbase_pm_backend.c',
                  'mindone/modules/mali_kbase_clean/mtk_gpu_dvfs.c',
                  'mindone/modules/mtk_gpufreq_wrapper/gpufreq_v2.c',
                  'mindone/modules/ged/ged_notify_sw_vsync.c'):
-        if (tree / path).read_text() != git_show(tree, args.baseline, path):
+        revision = DEPENDENCY_REVISIONS.get(path, args.baseline)
+        if (tree / path).read_text() != git_show(tree, revision, path):
             raise ValueError('Actual PM dependency changed: ' + path)
+    provider = (tree / PROVIDER).read_text()
+    original_provider = git_show(tree, args.baseline, PROVIDER)
+    for name in ('__gpufreq_check_bus_idle', '__gpufreq_power_control'):
+        if function(provider, name) != function(original_provider, name):
+            raise ValueError('Actual PM provider contract changed: ' + name)
     build = (tree / 'mindone/modules/BUILD.bazel').read_text()
     target = re.search(r'name = "mali_kbase_mt6789",.*?^\)', build, re.M | re.S)
     if not target:
         raise ValueError('Missing actual Mali DDK target')
+    pinned = re.search(r'name = "mali_kbase_mt6789",.*?^\)',
+                       git_show(tree, BUILD_REVISION, 'mindone/modules/BUILD.bazel'), re.M | re.S)
+    if not pinned or target.group(0) != pinned.group(0):
+        raise ValueError('Actual Mali DDK target changed')
     for binding in ('"mali_kbase_clean/mali_kbase_config_mt6789.c",',
                     '"CONFIG_MTK_GPUFREQ_V2=1",', '"CONFIG_MALI_MIDGARD_DVFS=1",',
-                    '"CONFIG_MALI_MTK_DVFS_POLICY=1",', '"MALI_USE_CSF=0",'):
+                    '"CONFIG_MALI_MTK_DVFS_POLICY=1",', '"MALI_USE_CSF=0",',
+                    '"CONFIG_MALI_MTK_DEVFREQ=1",',
+                    '"CONFIG_MALI_MTK_DEVFREQ_THERMAL=1",'):
         if binding not in target.group(0):
             raise ValueError('Actual callback branch binding changed: ' + binding)
     config = uncomment((tree / CONFIG).read_text())

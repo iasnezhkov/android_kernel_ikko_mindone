@@ -15,6 +15,7 @@
 #include <linux/dma-mapping.h>
 #include <linux/slab.h>
 #include <linux/kfifo.h>
+#include <linux/power_supply.h>
 #include <linux/usb/composite.h>
 
 #if IS_ENABLED(CONFIG_USBIF_COMPLIANCE)
@@ -36,75 +37,6 @@
 #endif
 
 #include "musb_trace.h"
-
-#include "u_fs.h"
-
-/* workaround for f_fs use after free issue */
-struct ffs_ep {
-	struct usb_ep *ep;
-	struct usb_request *req;
-	struct usb_endpoint_descriptor	*descs[3];
-	u8 num;
-	int status;
-};
-
-struct ffs_function {
-	struct usb_configuration *conf;
-	struct usb_gadget *gadget;
-	struct ffs_data *ffs;
-	struct ffs_ep *eps;
-	u8 eps_revmap[16];
-	short *interfaces_nums;
-	struct usb_function function;
-};
-
-static struct usb_function *musb_ep_to_func(struct musb_ep *mep)
-{
-	struct usb_ep *ep = &mep->end_point;
-	struct usb_composite_dev *cdev;
-	struct usb_function *f = NULL;
-	int addr;
-
-	cdev = get_gadget_data(&mep->musb->g);
-	if (!cdev || !cdev->config)
-		return f;
-
-	if (!mep->current_epnum)
-		return f;
-
-	addr = ((ep->address & 0x80) >> 3)
-			| (ep->address & 0x0f);
-
-	list_for_each_entry(f, &cdev->config->functions, list) {
-		if (test_bit(addr, f->endpoints))
-			break;
-	}
-
-	return f;
-}
-
-static bool musb_ffs_state_valid(struct musb_ep *mep)
-{
-	struct usb_function *f;
-	struct ffs_function *func;
-
-	f = musb_ep_to_func(mep);
-
-	if (!f || strcmp("Function FS Gadget", f->name))
-		return true;
-
-	func = container_of(f, struct ffs_function, function);
-	if (!func->ffs)
-		return false;
-
-	if (!func->ffs->epfiles || func->ffs->state != FFS_ACTIVE) {
-		dev_info(mep->musb->controller, "%s ffs->state!=active\n", __func__);
-		return false;
-	}
-
-	return true;
-}
-/* workaround for f_fs use after free issue */
 
 #define FIFO_START_ADDR 512
 
@@ -1428,13 +1360,6 @@ static int musb_gadget_enable
 	 * packet size (or fail), set the mode, clear the fifo
 	 */
 
-	/* workaround for f_fs use after free issue */
-	if (!musb_ffs_state_valid(musb_ep)) {
-		DBG(0, "f_fs is invalid, do not enable ep!\n");
-		status = -EINVAL;
-		goto fail;
-	}
-
 	musb_ep_select(mbase, epnum);
 	if (usb_endpoint_dir_in(desc)) {
 
@@ -2334,14 +2259,36 @@ static int musb_gadget_vbus_session(struct usb_gadget *gadget, int is_active)
 }
 #endif
 
+static void musb_vbus_draw_work(struct work_struct *work)
+{
+	struct musb *musb = container_of(to_delayed_work(work), struct musb,
+				       vbus_draw_work);
+	struct power_supply *psy;
+	union power_supply_propval val;
+	int ret = -ENODEV;
+
+	psy = power_supply_get_by_name("eta6965_chg");
+	if (psy) {
+		val.intval = READ_ONCE(musb->vbus_draw) * 1000;
+		ret = power_supply_set_property(psy,
+				POWER_SUPPLY_PROP_INPUT_CURRENT_LIMIT, &val);
+		power_supply_put(psy);
+	}
+	if (ret && READ_ONCE(musb->vbus_draw_ready))
+		mod_delayed_work(system_power_efficient_wq,
+				 &musb->vbus_draw_work, msecs_to_jiffies(100));
+}
+
 static int musb_gadget_vbus_draw
 		(struct usb_gadget *gadget, unsigned int mA)
 {
 	struct musb *musb = gadget_to_musb(gadget);
 
-	if (!musb->xceiv->set_power)
-		return -EOPNOTSUPP;
-	return usb_phy_set_power(musb->xceiv, mA);
+	if (!READ_ONCE(musb->vbus_draw_ready))
+		return -ESHUTDOWN;
+	WRITE_ONCE(musb->vbus_draw, min(mA, 500U));
+	mod_delayed_work(system_power_efficient_wq, &musb->vbus_draw_work, 0);
+	return 0;
 }
 
 static void musb_gadget_set_ready(struct usb_gadget *gadget)
@@ -2536,6 +2483,9 @@ int musb_gadget_setup(struct musb *musb)
 	 * is probably held.
 	 */
 
+	INIT_DELAYED_WORK(&musb->vbus_draw_work, musb_vbus_draw_work);
+	musb->vbus_draw = 100;
+	WRITE_ONCE(musb->vbus_draw_ready, true);
 	musb->g.ops = &musb_gadget_operations;
 	musb->g.max_speed = USB_SPEED_HIGH;
 	musb->g.speed = USB_SPEED_UNKNOWN;
@@ -2567,6 +2517,8 @@ int musb_gadget_setup(struct musb *musb)
 
 	return 0;
 err:
+	WRITE_ONCE(musb->vbus_draw_ready, false);
+	cancel_delayed_work_sync(&musb->vbus_draw_work);
 	musb->g.dev.parent = NULL;
 	device_unregister(&musb->g.dev);
 	return status;
@@ -2575,6 +2527,10 @@ err:
 void musb_gadget_cleanup(struct musb *musb)
 {
 	usb_del_gadget_udc(&musb->g);
+	if (musb->vbus_draw_ready) {
+		WRITE_ONCE(musb->vbus_draw_ready, false);
+		cancel_delayed_work_sync(&musb->vbus_draw_work);
+	}
 }
 
 /*
@@ -2791,9 +2747,10 @@ void musb_g_suspend(struct musb *musb)
 
 	switch (musb->xceiv->otg->state) {
 	case OTG_STATE_B_IDLE:
-		if ((devctl & MUSB_DEVCTL_VBUS) == MUSB_DEVCTL_VBUS)
-			musb->xceiv->otg->state = OTG_STATE_B_PERIPHERAL;
-		break;
+		if ((devctl & MUSB_DEVCTL_VBUS) != MUSB_DEVCTL_VBUS)
+			break;
+		musb->xceiv->otg->state = OTG_STATE_B_PERIPHERAL;
+		fallthrough;
 	case OTG_STATE_B_PERIPHERAL:
 		musb->is_suspended = 1;
 		if (musb->async_callbacks && musb->gadget_driver &&
@@ -2802,6 +2759,7 @@ void musb_g_suspend(struct musb *musb)
 			musb->gadget_driver->suspend(&musb->g);
 			spin_lock(&musb->lock);
 		}
+		(void)musb_gadget_vbus_draw(&musb->g, 2);
 		musb_sync_with_bat(musb, USB_SUSPEND);
 		break;
 	default:
@@ -2862,6 +2820,7 @@ void musb_g_disconnect(struct musb *musb)
 		break;
 	}
 
+	(void)musb_gadget_vbus_draw(&musb->g, 100);
 	musb->is_active = 0;
 }
 
@@ -2945,5 +2904,5 @@ void musb_g_reset(struct musb *musb)
 	}
 
 	/* start with default limits on VBUS power draw */
-	(void)musb_gadget_vbus_draw(&musb->g, 8);
+	(void)musb_gadget_vbus_draw(&musb->g, 100);
 }

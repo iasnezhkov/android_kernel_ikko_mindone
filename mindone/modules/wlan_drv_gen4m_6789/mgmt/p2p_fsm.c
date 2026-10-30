@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0 OR BSD-3-Clause
 /******************************************************************************
  *
  * This file is provided under a dual license.  When you use or
@@ -398,14 +399,18 @@ void p2pFsmRunEventScanDone(IN struct ADAPTER *prAdapter,
 	struct MSG_SCN_SCAN_DONE *prScanDoneMsg =
 		(struct MSG_SCN_SCAN_DONE *) NULL;
 	struct BSS_INFO *prP2pBssInfo = (struct BSS_INFO *) NULL;
+	struct P2P_DEV_FSM_INFO *prDevFsmInfo;
+	struct P2P_ROLE_FSM_INFO *prRoleFsmInfo;
 
 	prScanDoneMsg = (struct MSG_SCN_SCAN_DONE *) prMsgHdr;
 
 	prP2pBssInfo =
 		GET_BSS_INFO_BY_INDEX(prAdapter, prScanDoneMsg->ucBssIndex);
 
-	if (!prP2pBssInfo ||
-		prAdapter->fgIsP2PRegistered == FALSE) {
+	if (!prP2pBssInfo || !prP2pBssInfo->fgIsInUse ||
+	    prP2pBssInfo->eNetworkType != NETWORK_TYPE_P2P ||
+	    prP2pBssInfo->ucBssIndex != prScanDoneMsg->ucBssIndex ||
+	    prAdapter->fgIsP2PRegistered == FALSE) {
 		DBGLOG(P2P, TRACE,
 			"P2P BSS Info is removed, break p2pFsmRunEventScanDone\n");
 
@@ -417,22 +422,34 @@ void p2pFsmRunEventScanDone(IN struct ADAPTER *prAdapter,
 
 	switch (prP2pBssInfo->eCurrentOPMode) {
 	case OP_MODE_P2P_DEVICE:
-		ASSERT(prP2pBssInfo->ucBssIndex == prAdapter->ucP2PDevBssIdx);
+		prDevFsmInfo = prAdapter->rWifiVar.prP2pDevFsmInfo;
+		if (prP2pBssInfo->ucBssIndex != prAdapter->ucP2PDevBssIdx ||
+		    !prDevFsmInfo || !prDevFsmInfo->fgIsInitialized ||
+		    prDevFsmInfo->ucBssIndex != prP2pBssInfo->ucBssIndex)
+			goto discard;
 		p2pDevFsmRunEventScanDone(prAdapter,
-			prMsgHdr,
-			prAdapter->rWifiVar.prP2pDevFsmInfo);
-		break;
+			prMsgHdr, prDevFsmInfo);
+		return;
 	case OP_MODE_INFRASTRUCTURE:
 	case OP_MODE_ACCESS_POINT:
-		ASSERT(prP2pBssInfo->ucBssIndex < prAdapter->ucP2PDevBssIdx);
+		if (prP2pBssInfo->ucBssIndex >= prAdapter->ucP2PDevBssIdx ||
+		    prP2pBssInfo->ucBssIndex >= prAdapter->ucHwBssIdNum ||
+		    prP2pBssInfo->u4PrivateData >= KAL_P2P_NUM)
+			goto discard;
+		prRoleFsmInfo = P2P_ROLE_INDEX_2_ROLE_FSM_INFO(prAdapter,
+			prP2pBssInfo->u4PrivateData);
+		if (!prRoleFsmInfo ||
+		    prRoleFsmInfo->ucRoleIndex != prP2pBssInfo->u4PrivateData ||
+		    prRoleFsmInfo->ucBssIndex != prP2pBssInfo->ucBssIndex)
+			goto discard;
 		p2pRoleFsmRunEventScanDone(prAdapter, prMsgHdr,
-			P2P_ROLE_INDEX_2_ROLE_FSM_INFO(prAdapter,
-				prP2pBssInfo->u4PrivateData));
-		break;
+			prRoleFsmInfo);
+		return;
 	default:
-		ASSERT(FALSE);
 		break;
 	}
+discard:
+	cnmMemFree(prAdapter, prMsgHdr);
 }				/* p2pFsmRunEventScanDone */
 
 void p2pFsmRunEventMgmtFrameTx(IN struct ADAPTER *prAdapter,

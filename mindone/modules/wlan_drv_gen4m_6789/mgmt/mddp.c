@@ -524,7 +524,6 @@ int32_t mddpNotifyWifiStatus(IN enum ENUM_MDDPW_DRV_INFO_STATUS status)
 		feature = gMddpWFunc.get_mddp_feature();
 
 	if (gMddpWFunc.notify_drv_info) {
-		int32_t ret;
 #if CFG_TRI_TX_RING
 		u32BufSize = sizeof(struct mddpw_drv_notify_info_t) +
 			sizeof(struct mddpw_drv_info_t) +
@@ -939,70 +938,64 @@ int32_t mddpMdNotifyInfo(struct mddpw_md_notify_info_t *prMdInfo)
 			}
 		}
 	} else if (prMdInfo->info_type == MDDPW_MD_INFO_DRV_EXCEPTION) {
-		struct wsvc_md_event_exception_t *event;
+		struct wsvc_md_event_exception_t event;
 
-		if (prMdInfo->buf_len != sizeof(
-				struct wsvc_md_event_exception_t)) {
-			DBGLOG(INIT, ERROR,
-				"Invalid args from MD, expect %u but %u\n",
-				sizeof(struct wsvc_md_event_exception_t),
-				prMdInfo->buf_len);
+		if (prMdInfo->buf_len < 1 + sizeof(event)) {
 			ret = -EINVAL;
 			goto exit;
 		}
-		event = (struct wsvc_md_event_exception_t *)
-				&(prMdInfo->buf[1]);
-		DBGLOG(INIT, WARN, "reason: %d, flag: %d, line: %d, func: %s\n",
-				event->u4RstReason,
-				event->u4RstFlag,
-				event->u4Line,
-				event->pucFuncName);
+		memcpy(&event, &prMdInfo->buf[1], sizeof(event));
+		DBGLOG(INIT, WARN, "reason: %d, flag: %d, line: %d, func: %.*s\n",
+				event.u4RstReason,
+				event.u4RstFlag,
+				event.u4Line,
+				(int)sizeof(event.pucFuncName), event.pucFuncName);
 		glSetRstReason(RST_MDDP_MD_TRIGGER_EXCEPTION);
-		GL_RESET_TRIGGER(prAdapter, event->u4RstFlag
+		GL_RESET_TRIGGER(prAdapter, event.u4RstFlag
 			| RST_FLAG_DO_CORE_DUMP);
 	} else if (prMdInfo->info_type == MDDPW_MD_EVENT_NOTIFY_MD_INFO_EMI) {
-		struct mddpw_get_drv_emi *prEmi =
-			(struct mddpw_get_drv_emi *)&(prMdInfo->buf[1]);
-		uint32_t u4Size = prEmi->emi_size;
+		uint32_t fields[2];
+		uint32_t u4Size;
 
-		if (u4Size > MD_MAX_EMI_SIZE)
-			u4Size = MD_MAX_EMI_SIZE;
-		DBGLOG(INIT, INFO, "emi_start_addr=0x%08x\n",
-		       prEmi->emi_start_addr);
-		DBGLOG_MEM32(INIT, INFO, prEmi->emi_payload, u4Size);
-		DBGLOG_MEM32(INIT, INFO, prMdInfo, 64);
-	} else if (prMdInfo->info_type == MDDPW_MD_EVENT_COMMUNICATION) {
-		struct wsvc_md_event_comm_t *event;
-
-		if (prMdInfo->buf_len != sizeof(
-				struct wsvc_md_event_comm_t)) {
-			DBGLOG(INIT, ERROR,
-				"Invalid args from MD, expect %u but %u\n",
-				sizeof(struct wsvc_md_event_comm_t),
-				prMdInfo->buf_len);
+		if (prMdInfo->buf_len < 1 + sizeof(fields)) {
 			ret = -EINVAL;
 			goto exit;
 		}
-		event = (struct wsvc_md_event_comm_t *)
-				&(prMdInfo->buf[1]);
+		memcpy(fields, &prMdInfo->buf[1], sizeof(fields));
+		u4Size = fields[1];
+		if (u4Size > MD_MAX_EMI_SIZE ||
+		    u4Size > prMdInfo->buf_len - 1 - sizeof(fields)) {
+			ret = -EINVAL;
+			goto exit;
+		}
+		DBGLOG(INIT, INFO, "emi_start_addr=0x%08x\n", fields[0]);
+		DBGLOG_MEM8(INIT, INFO, &prMdInfo->buf[1 + sizeof(fields)], u4Size);
+	} else if (prMdInfo->info_type == MDDPW_MD_EVENT_COMMUNICATION) {
+		struct wsvc_md_event_comm_t event;
+
+		if (prMdInfo->buf_len < 1 + sizeof(event)) {
+			ret = -EINVAL;
+			goto exit;
+		}
+		memcpy(&event, &prMdInfo->buf[1], sizeof(event));
 		DBGLOG(INIT, WARN,
-			"reason:%d, flag:%d, line:%d, func:%s, bssIdx:%d\n",
-				event->u4Reason,
-				event->u4RstFlag,
-				event->u4Line,
-				event->pucFuncName,
-				event->dump_payload[1]);
-		if (event->u4Reason == MD_TX_DATA_HANG) {
+			"reason:%d, flag:%d, line:%d, func:%.*s, bssIdx:%d\n",
+				event.u4Reason,
+				event.u4RstFlag,
+				event.u4Line,
+				(int)sizeof(event.pucFuncName), event.pucFuncName,
+				event.dump_payload[1]);
+		if (event.u4Reason == MD_TX_DATA_HANG) {
 			prAdapter->u4HifChkFlag |= HIF_CHK_TX_HANG;
 			prAdapter->u4HifChkFlag |= HIF_CHK_MD_TX_HANG;
 			prAdapter->ucMddpBssIndex =
-				(uint8_t) event->dump_payload[1];
+				(uint8_t) event.dump_payload[1];
 		} else {
 			glSetRstReason(RST_MDDP_MD_TRIGGER_EXCEPTION);
-			GL_RESET_TRIGGER(prAdapter, event->u4RstFlag
+			GL_RESET_TRIGGER(prAdapter, event.u4RstFlag
 				| RST_FLAG_DO_CORE_DUMP);
 		}
-		GL_RESET_TRIGGER(prAdapter, event->u4RstFlag);
+		GL_RESET_TRIGGER(prAdapter, event.u4RstFlag);
 	} else {
 		DBGLOG(INIT, ERROR, "unknown MD info type: %d\n",
 			prMdInfo->info_type);
@@ -1198,23 +1191,19 @@ void setMddpSupportRegister(IN struct ADAPTER *prAdapter)
 void mddpInit(void)
 {
 	struct device_node *np_chosen;
-	struct tag_bootmode *tag = NULL;
+	const struct tag_bootmode *tag;
+	int len;
 
 	np_chosen = of_find_node_by_path("/chosen");
 	if (!np_chosen)
 		np_chosen = of_find_node_by_path("/chosen@0");
 
-	if (!np_chosen)
-		return;
-
-	tag = (struct tag_bootmode *) of_get_property(np_chosen, "atag,boot",
-			NULL);
-
-	if (!tag)
-		return;
-
-	DBGLOG(INIT, INFO, "bootmode: 0x%x\n", tag->bootmode);
-	g_wifi_boot_mode = tag->bootmode;
+	if (np_chosen) {
+		tag = of_get_property(np_chosen, "atag,boot", &len);
+		if (tag && len >= sizeof(*tag))
+			g_wifi_boot_mode = tag->bootmode;
+		of_node_put(np_chosen);
+	}
 
 	mddpRegisterCb();
 }
@@ -1222,6 +1211,11 @@ void mddpInit(void)
 void mddpUninit(void)
 {
 	mddpUnregisterCb();
+}
+
+void mddpSetCallbacksReady(bool ready)
+{
+	mddp_drv_set_ready(&gMddpDrvConf, ready);
 }
 
 static void notifyMdCrash2FW(void)

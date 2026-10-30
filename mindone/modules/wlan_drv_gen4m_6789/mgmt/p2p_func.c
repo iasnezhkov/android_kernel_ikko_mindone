@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0 OR BSD-3-Clause
 /******************************************************************************
  *
  * This file is provided under a dual license.  When you use or
@@ -4036,6 +4037,9 @@ void p2pFuncValidateRxActionFrame(IN struct ADAPTER *prAdapter,
 		DBGLOG(P2P, ERROR, "Invalid parameter.\n");
 		return;
 	}
+	if (prSwRfb->pvHeader == NULL || prSwRfb->u2PacketLen <
+		OFFSET_OF(struct WLAN_ACTION_FRAME, ucActionDetails))
+		return;
 	prActFrame = (struct WLAN_ACTION_FRAME *) prSwRfb->pvHeader;
 
 	prP2pDevFsmInfo = prAdapter->rWifiVar.prP2pDevFsmInfo;
@@ -4066,8 +4070,10 @@ void p2pFuncValidateRxActionFrame(IN struct ADAPTER *prAdapter,
 				sizeof(struct WLAN_PUBLIC_VENDOR_ACTION_FRAME))
 			break;
 
-		WLAN_GET_FIELD_BE24(prActFrame->ucActionDetails, &u4Oui);
-		ucOuiType = *(prActFrame->ucActionDetails + 3);
+		prActPubVenFrame =
+			(struct WLAN_PUBLIC_VENDOR_ACTION_FRAME *) prActFrame;
+		WLAN_GET_FIELD_BE24(prActPubVenFrame->ucOUI, &u4Oui);
+		ucOuiType = prActPubVenFrame->ucSubType;
 		DBGLOG(P2P, TRACE, "Action: oui: 0x%x, type: 0x%x\n",
 			u4Oui, ucOuiType);
 
@@ -4075,9 +4081,6 @@ void p2pFuncValidateRxActionFrame(IN struct ADAPTER *prAdapter,
 			break;
 
 		if (ucOuiType == P2P_OUI_TYPE) {
-			prActPubVenFrame =
-				(struct WLAN_PUBLIC_VENDOR_ACTION_FRAME *)
-				prActFrame;
 			p2pProcessActionResponse(prAdapter,
 				prActPubVenFrame->ucPubSubType);
 			if (prActPubVenFrame->ucPubSubType == P2P_GO_NEG_REQ)

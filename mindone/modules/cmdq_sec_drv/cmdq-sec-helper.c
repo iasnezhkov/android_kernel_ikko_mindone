@@ -23,12 +23,12 @@ static s32 cmdq_sec_realloc_addr_list(struct cmdq_pkt *pkt, const u32 count)
 	if (count <= sec_data->addrMetadataMaxCount)
 		return 0;
 
-	curr = kcalloc(count, sizeof(*sec_data), GFP_KERNEL);
+	curr = kcalloc(count, sizeof(struct cmdq_sec_addr_meta), GFP_KERNEL);
 	if (!curr)
 		return -ENOMEM;
 	if (count && sec_data->addrMetadatas)
 		memcpy(curr, prev,
-			sizeof(*sec_data) * sec_data->addrMetadataMaxCount);
+			sizeof(struct cmdq_sec_addr_meta) * sec_data->addrMetadataMaxCount);
 	kfree(prev);
 
 	sec_data->addrMetadatas = (u64)curr;
@@ -176,6 +176,11 @@ s32 cmdq_sec_pkt_set_payload(struct cmdq_pkt *pkt, u8 idx,
 		return -EINVAL;
 	}
 
+	if (idx > CMDQ_IWC_MSG2) {
+		cmdq_err("payload index %u out of range", idx);
+		return -EINVAL;
+	}
+
 	if (!meta_size || !meta) {
 		cmdq_err("not allow empty size or buffer");
 		return -EINVAL;
@@ -271,8 +276,10 @@ s32 cmdq_sec_pkt_assign_metadata(struct cmdq_pkt *pkt,
 		return -ENOMEM;
 
 	memcpy(pkt_meta_array, meta_array, size);
+	kfree((void *)(unsigned long)data->addrMetadatas);
 	data->addrMetadatas = (unsigned long)pkt_meta_array;
 	data->addrMetadataCount = count;
+	data->addrMetadataMaxCount = count;
 
 	return 0;
 }

@@ -1,1 +1,0 @@
-../md_cooling_all/thermal_core.h

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 /*
  * aw87xxx.c  aw87xxx pa module
  *

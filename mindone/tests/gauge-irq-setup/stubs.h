@@ -1,3 +1,5 @@
+/* SPDX-License-Identifier: GPL-2.0 */
+/* SPDX-FileCopyrightText: 2026 The LineageOS Project */
 #include <assert.h>
 #include <errno.h>
 #include <limits.h>
@@ -25,7 +27,8 @@
 #define bm_err(...) ((void)0)
 #define bm_debug(...) ((void)0)
 #define pr_err(...) ((void)0)
-#define IS_ENABLED(option) 0
+#define CONFIG_PMIC_LBAT_SERVICE 1
+#define IS_ENABLED(option) option
 #define PTR_ERR(pointer) ((int)(intptr_t)(pointer))
 #define IS_ERR(pointer) ((uintptr_t)(pointer) >= (uintptr_t)-4095)
 #define IS_ERR_OR_NULL(pointer) (!(pointer) || IS_ERR(pointer))
@@ -79,7 +82,7 @@ struct mtk_gauge {
     void *regmap;
     struct mutex ops_lock;
     struct iio_channel *chan_bat_temp, *chan_bat_voltage, *chan_bif;
-    struct iio_channel *chan_ptim_bat_voltage, *chan_ptim_r;
+    struct iio_channel *chan_ptim_bat_voltage, *chan_ptim_r, *chan_ptim_sample;
     struct { int car_tune_value, r_fg_value; } hw_status;
     const int *attr;
     struct power_supply_desc psy_desc;
@@ -90,8 +93,10 @@ struct mtk_gauge {
     int (*sw_vbat_l_irq)(struct mtk_battery *);
 };
 struct battery_data { struct power_supply *psy; int bat_batt_temp; };
-struct fuel_gauge_custom_data { int car_tune_value; };
+struct fuel_gauge_custom_data { int car_tune_value, vbat2_det_voltage3, vbat2_det_voltage1, vbat2_det_voltage2, vbat2_det_time, vbat2_det_counter; };
+struct lbat_user { bool live; };
 struct mtk_battery {
+    struct lbat_user *lowbat_service;
     struct mtk_gauge *gauge;
     struct mtk_coulomb_service cs;
     struct { bool active; } algo;
@@ -126,12 +131,15 @@ static struct power_supply battery_supply, gauge_supply, bms_supply;
 static void *allocations[8];
 static int allocation_count;
 static int request_calls, free_calls, requested_live;
+static int property_hw_version;
 static int request_fail_at, request_errno, car_errno, hw_errno, hw_id;
 static int battery_thread_errno, battery_notifier_errno, battery_sysfs_errno;
 static int files_errno, wake_fail, notifier_errno, thread_fail, battery_psy_errno;
 static int gauge_psy_errno, group_errno, netlink_errno, mapping_errno;
 static int wake_live, notifier_live, worker_live, battery_worker_live, file_groups;
 static int thermal_live, supply_live, gauge_groups, netlink_live, misc_calls, activation_calls;
+static int lbat_release_calls, lbat_register_errno, lbat_debounce_errno, ptim_channel_errno;
+static struct lbat_user lbat;
 static bool kernel_algo;
 static struct mtk_gauge *active_gauge;
 static int hw_version_get(struct mtk_gauge *, struct mtk_gauge_sysfs_field_info *, int *);
@@ -163,6 +171,7 @@ static void devm_free_irq(struct device *device, int number, void *data)
     struct mtk_battery *gm = data;
     assert(device == &gm->gauge->pdev->dev && gm->gauge->irq_requested[number - 100]);
     assert(requested_live > 0);
+    assert(!lbat.live);
     free_calls++;
     requested_live--;
 }
@@ -176,6 +185,10 @@ static int regmap_read(void *regmap, int address, int *value)
 }
 static int gauge_get_property(int property, int *value)
 {
+    if (property == GAUGE_PROP_HW_VERSION && property_hw_version >= 0) {
+        *value = property_hw_version;
+        return 0;
+    }
     if (property == GAUGE_PROP_HW_VERSION)
         return hw_version_get(active_gauge, NULL, value);
     assert(property == GAUGE_PROP_COULOMB);
@@ -243,6 +256,32 @@ static irqreturn_t bat_temp_irq(int irq, void *data) { return 0; }
 static int nafg_irq_handler(struct mtk_battery *gm) { return 0; }
 static int sw_vbat_h_irq_handler(struct mtk_battery *gm) { return 0; }
 static int sw_vbat_l_irq_handler(struct mtk_battery *gm) { return 0; }
+static void fg_update_sw_low_battery_check(unsigned int threshold) {}
+static struct lbat_user *lbat_user_register(const char *name, unsigned int high,
+    unsigned int low1, unsigned int low2, void (*callback)(unsigned int))
+{
+    assert(!lbat.live && name && callback == fg_update_sw_low_battery_check);
+    if (lbat_register_errno)
+        return (void *)(intptr_t)lbat_register_errno;
+    lbat.live = true;
+    return &lbat;
+}
+static int lbat_user_set_debounce(struct lbat_user *user, unsigned int high_period,
+    unsigned int high_count, unsigned int low_period, unsigned int low_count)
+{
+    assert(user == &lbat && lbat.live);
+    return lbat_debounce_errno;
+}
+static void mtk_battery_lbat_release(struct mtk_battery *gm)
+{
+    assert(gm && gm->gauge && !worker_live && requested_live > 0);
+    lbat_release_calls++;
+    if (gm->lowbat_service) {
+        assert(gm->lowbat_service == &lbat && lbat.live);
+        gm->lowbat_service = NULL;
+        lbat.live = false;
+    }
+}
 static bool is_daemon_support(struct mtk_battery *gm) { return true; }
 static void mtk_battery_shutdown(struct mtk_battery *gm) {}
 static int mtk_battery_suspend(struct mtk_battery *gm, int state) { return 0; }
@@ -274,7 +313,12 @@ static void mtk_power_misc_init(struct mtk_battery *gm) { misc_calls++; }
 static bool is_recovery_mode(void) { return false; }
 static int battery_algo_init(struct mtk_battery *gm) { activation_calls++; return 0; }
 static struct power_supply *power_supply_get_by_name(const char *name) { return &bms_supply; }
-static struct iio_channel *devm_iio_channel_get(struct device *device, const char *name) { return &channel; }
+static struct iio_channel *devm_iio_channel_get(struct device *device, const char *name)
+{
+    if (!strcmp(name, "pmic_ptim_sample") && ptim_channel_errno)
+        return (void *)(intptr_t)ptim_channel_errno;
+    return &channel;
+}
 static void *devm_kzalloc(struct device *device, size_t size, int flags)
 {
     assert(allocation_count < 8);

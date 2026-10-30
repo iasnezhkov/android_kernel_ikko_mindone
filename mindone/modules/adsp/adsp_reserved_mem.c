@@ -182,7 +182,7 @@ int adsp_mem_device_probe(struct platform_device *pdev)
 		return ret;
 
 	for (id = 0; id < ADSP_NUMS_MEM_ID; id++) {
-		of_property_read_u32(pdev->dev.of_node,
+		ret = of_property_read_u32(pdev->dev.of_node,
 		      adsp_reserve_mblocks[id].name,
 		      &size);
 		if (!ret)
@@ -191,6 +191,8 @@ int adsp_mem_device_probe(struct platform_device *pdev)
 
 	/* assign to each memory block */
 	for (id = 0; id < ADSP_NUMS_MEM_ID; id++) {
+		if (adsp_reserve_mblocks[id].size == 0)
+			continue;
 		adsp_reserve_mblocks[id].phys_addr = mem->phys_addr + acc_size;
 		adsp_reserve_mblocks[id].virt_addr = mem->virt_addr + acc_size;
 		acc_size += ALIGN(adsp_reserve_mblocks[id].size, RSV_BLOCK_ALIGN);

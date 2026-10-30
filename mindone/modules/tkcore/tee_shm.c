@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0
 /*
  * Copyright (c) 2015-2018 TrustKernel Incorporated
  * All Rights Reserved.
@@ -845,7 +846,8 @@ static int tee_shm_db_get(struct tee *tee, struct tee_shm *shm, int fd,
 		goto free_sdb;
 	}
 
-	sdb->sgt = dma_buf_map_attachment(sdb->attach, DMA_NONE);
+	sdb->dir = dma_buf->ops->attach == __tee_shm_attach_dma_buf ? DMA_NONE : DMA_BIDIRECTIONAL;
+	sdb->sgt = dma_buf_map_attachment_unlocked(sdb->attach, sdb->dir);
 	if (IS_ERR_OR_NULL(sdb->sgt)) {
 		ret = PTR_ERR(sdb->sgt);
 		goto buf_detach;
@@ -867,7 +869,7 @@ static int tee_shm_db_get(struct tee *tee, struct tee_shm *shm, int fd,
 	goto exit;
 
 buf_unmap:
-	dma_buf_unmap_attachment(sdb->attach, sdb->sgt, DMA_NONE);
+	dma_buf_unmap_attachment_unlocked(sdb->attach, sdb->sgt, sdb->dir);
 buf_detach:
 	dma_buf_detach(dma_buf, sdb->attach);
 free_sdb:
@@ -978,7 +980,7 @@ void tkcore_shm_put(struct tee_context *ctx, struct tee_shm *shm)
 		sdb = shm->resv.sdb;
 		dma_buf = sdb->attach->dmabuf;
 
-		dma_buf_unmap_attachment(sdb->attach, sdb->sgt, DMA_NONE);
+		dma_buf_unmap_attachment_unlocked(sdb->attach, sdb->sgt, sdb->dir);
 		dma_buf_detach(dma_buf, sdb->attach);
 		dma_buf_put(dma_buf);
 

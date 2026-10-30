@@ -28,8 +28,8 @@
 #include <trace/hooks/cgroup.h>
 #include <trace/hooks/sys.h>
 
-#include <sched/sched.h>
-#include <binder_internal.h>
+#include <../kernel/sched/sched.h>
+#include <../drivers/android/binder_internal.h>
 #include <task_turbo.h>
 
 #define CREATE_TRACE_POINTS
@@ -348,7 +348,7 @@ static void probe_android_vh_alter_futex_plist_add(void *ignore, struct plist_no
 	int prev_pid = 0;
 	bool prev_turbo = 1;
 
-	if (!sub_feat_enable(SUB_FEAT_LOCK) &&
+	if (!sub_feat_enable(SUB_FEAT_LOCK) ||
 	    !is_turbo_task(current)) {
 		*already_on_hb = false;
 		return;
@@ -659,12 +659,16 @@ static void rwsem_list_add(struct task_struct *task,
 		struct list_head *pos = NULL;
 		struct list_head *n = NULL;
 		struct rwsem_waiter *waiter = NULL;
+		struct rwsem_waiter *entry_waiter;
 
 		/* insert turbo task pior to first non-turbo task */
+		entry_waiter = list_entry(entry, struct rwsem_waiter, list);
 		list_for_each_safe(pos, n, head) {
 			waiter = list_entry(pos,
 					struct rwsem_waiter, list);
 			if (!is_turbo_task(waiter->task)) {
+				entry_waiter->handoff_set = waiter->handoff_set;
+				waiter->handoff_set = false;
 				list_add(entry, waiter->list.prev);
 				return;
 			}
@@ -949,7 +953,8 @@ static int set_task_turbo_feats(const char *buf,
 	unsigned int val;
 
 	ret = kstrtouint(buf, 0, &val);
-
+	if (ret)
+		return ret;
 
 	spin_lock(&TURBO_SPIN_LOCK);
 	if (val == latency_turbo ||

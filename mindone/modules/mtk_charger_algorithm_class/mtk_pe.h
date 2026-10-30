@@ -105,7 +105,7 @@ struct mtk_pe {
 };
 
 extern int pe_hal_init_hardware(struct chg_alg_device *alg);
-extern int pe_hal_get_vbus(struct chg_alg_device *alg);
+extern int pe_hal_get_vbus(struct chg_alg_device *alg, int *vchr);
 extern int pe_hal_get_ibat(struct chg_alg_device *alg);
 extern int pe_hal_get_charging_current(struct chg_alg_device *alg,
 	enum chg_idx chgidx, u32 *ua);

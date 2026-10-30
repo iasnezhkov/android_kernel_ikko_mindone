@@ -323,18 +323,27 @@ int tcpci_set_vconn(struct tcpc_device *tcpc, int enable)
 {
 #if CONFIG_TCPC_SOURCE_VCONN
 	struct tcp_notify tcp_noti;
+	int ret;
 
-	if (tcpc->tcpc_source_vconn == enable)
+	if (!tcpc->tcpc_source_vconn_dirty &&
+	    tcpc->tcpc_source_vconn == enable)
 		return 0;
 
+	if (!tcpc->ops->set_vconn)
+		return -EOPNOTSUPP;
+	ret = tcpc->ops->set_vconn(tcpc, enable);
+	if (ret) {
+		tcpc->tcpc_source_vconn_dirty = true;
+		return ret < 0 ? ret : -EIO;
+	}
+
 	tcpc->tcpc_source_vconn = enable;
+	tcpc->tcpc_source_vconn_dirty = false;
 
 	tcp_noti.en_state.en = enable != 0;
 	tcpc_check_notify_time(tcpc, &tcp_noti,
 		TCP_NOTIFY_IDX_VBUS, TCP_NOTIFY_SOURCE_VCONN);
 
-	if (tcpc->ops->set_vconn)
-		return tcpc->ops->set_vconn(tcpc, enable);
 #endif	/* CONFIG_TCPC_SOURCE_VCONN */
 
 	return 0;

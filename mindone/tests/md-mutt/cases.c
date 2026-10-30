@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-2.0
+// SPDX-FileCopyrightText: 2026 The LineageOS Project
 static struct device fixture_device;
 static struct md_cooling_device devices[3];
 static struct thermal_cooling_device cooling[3];

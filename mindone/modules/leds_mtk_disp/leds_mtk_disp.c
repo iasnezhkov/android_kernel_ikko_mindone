@@ -13,10 +13,10 @@
 #include <linux/platform_device.h>
 #include <linux/slab.h>
 #include <leds-mtk.h>
+#include <gate_i2c.h>
 #include "../drivers/gpu/drm/mediatek/mediatek_v2/mtk_panel_ext.h"
 
 #include <linux/of_device.h>
-extern int __attribute__ ((weak)) _gate_ic_backlight_set(unsigned int brightness);
 
 #undef pr_fmt
 #define pr_fmt(fmt) KBUILD_MODNAME " %s(%d) :" fmt"\n", __func__, __LINE__

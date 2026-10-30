@@ -12,47 +12,11 @@
 #include <linux/usb/typec_mux.h>
 
 #include "inc/tcpci_typec.h"
-//prize add by lipengpeng 20220530 start
-#if 0
-//#if IS_ENABLED(CONFIG_MTK_CHARGER)
-//prize add by lipengpeng 20220530 end
-#include <charger_class.h>
-#endif /* CONFIG_MTK_CHARGER */
 
 #define RT_PD_MANAGER_VERSION	"1.0.8"
 
-struct typec_port {
-	unsigned int			id;
-	struct device			dev;
-	struct ida			mode_ids;
-
-	int				prefer_role;
-	enum typec_data_role		data_role;
-	enum typec_role			pwr_role;
-	enum typec_role			vconn_role;
-	enum typec_pwr_opmode		pwr_opmode;
-	enum typec_port_type		port_type;
-	struct mutex			port_type_lock;
-
-	enum typec_orientation		orientation;
-	struct typec_switch		*sw;
-	struct typec_mux		*mux;
-
-	const struct typec_capability	*cap;
-	const struct typec_operations   *ops;
-};
-
 struct rt_pd_manager_data {
 	struct device *dev;
-//prize add by lipengpeng 20220530 start	
-#if 0
-//#if IS_ENABLED(CONFIG_MTK_CHARGER)
-////prize add by lipengpeng 20220530 end
-	struct charger_device *chg_dev;
-#if CONFIG_WATER_DETECTION
-	struct power_supply *chg_psy;
-#endif /* CONFIG_WATER_DETECTION */
-#endif /* CONFIG_MTK_CHARGER */
 	struct tcpc_device *tcpc;
 	struct notifier_block pd_nb;
 #if CONFIG_WATER_DETECTION
@@ -65,6 +29,7 @@ struct rt_pd_manager_data {
 
 	struct typec_capability typec_caps;
 	struct typec_port *typec_port;
+	struct typec_mux *mux;
 	struct typec_partner *partner;
 	struct typec_partner_desc partner_desc;
 	struct usb_pd_identity partner_identity;
@@ -86,14 +51,6 @@ static int pd_tcp_notifier_call(struct notifier_block *nb,
 	enum typec_pwr_opmode opmode = TYPEC_PWR_MODE_USB;
 	uint32_t partner_vdos[VDO_MAX_NR];
 	struct typec_mux_state state;
-#if CONFIG_WATER_DETECTION
-//prize add by lipengpeng 20220530 start	
-#if 0
-//#if IS_ENABLED(CONFIG_MTK_CHARGER)
-////prize add by lipengpeng 20220530 end
-	union power_supply_propval val = {.intval = 0};
-#endif /* CONFIG_MTK_CHARGER */
-#endif /* CONFIG_WATER_DETECTION */
 
 	switch (event) {
 	case TCP_NOTIFY_SINK_VBUS:
@@ -104,7 +61,7 @@ static int pd_tcp_notifier_call(struct notifier_block *nb,
 
 		state.data = noti;
 		state.mode = TCP_NOTIFY_TYPEC_STATE;
-		typec_mux_set(rpmd->typec_port->mux, &state);
+		typec_mux_set(rpmd->mux, &state);
 
 		if (old_state == TYPEC_UNATTACHED &&
 		    (new_state == TYPEC_ATTACHED_SNK ||
@@ -298,12 +255,6 @@ static int pd_tcp_notifier_call(struct notifier_block *nb,
 	case TCP_NOTIFY_EXT_DISCHARGE:
 		dev_info(rpmd->dev, "%s ext discharge = %d\n",
 				    __func__, noti->en_state.en);
-//prize add by lipengpeng 20220530 start	
-#if 0
-//#if IS_ENABLED(CONFIG_MTK_CHARGER)
-////prize add by lipengpeng 20220530 end
-		charger_dev_enable_discharge(rpmd->chg_dev, noti->en_state.en);
-#endif /* CONFIG_MTK_CHARGER */
 		break;
 	case TCP_NOTIFY_PD_STATE:
 		dev_info(rpmd->dev, "%s pd state = %d\n",
@@ -344,30 +295,12 @@ static int pd_tcp_notifier_call(struct notifier_block *nb,
 				break;
 			dev_info(rpmd->dev, "%s Water is detected in KPOC\n",
 					    __func__);
-//prize add by lipengpeng 20220530 start	
-#if 0
-//#if IS_ENABLED(CONFIG_MTK_CHARGER)
-////prize add by lipengpeng 20220530 end
-			val.intval = 0;
-			power_supply_set_property(rpmd->chg_psy,
-						  POWER_SUPPLY_PROP_VOLTAGE_MAX,
-						  &val);
-#endif /* CONFIG_MTK_CHARGER */
 		} else {
 			usb_dpdm_pulldown(true);
 			if (!rpmd->tcpc_kpoc)
 				break;
 			dev_info(rpmd->dev, "%s Water is removed in KPOC\n",
 					    __func__);
-//prize add by lipengpeng 20220530 start	
-#if 0
-//#if IS_ENABLED(CONFIG_MTK_CHARGER)
-////prize add by lipengpeng 20220530 end
-			val.intval = 1;
-			power_supply_set_property(rpmd->chg_psy,
-						  POWER_SUPPLY_PROP_VOLTAGE_MAX,
-						  &val);
-#endif /* CONFIG_MTK_CHARGER */
 		}
 		break;
 #endif /* CONFIG_WATER_DETECTION */
@@ -378,12 +311,12 @@ static int pd_tcp_notifier_call(struct notifier_block *nb,
 	case TCP_NOTIFY_AMA_DP_HPD_STATE:
 		state.data = noti;
 		state.mode = TCP_NOTIFY_AMA_DP_HPD_STATE;
-		typec_mux_set(rpmd->typec_port->mux, &state);
+		typec_mux_set(rpmd->mux, &state);
 		break;
 	case TCP_NOTIFY_AMA_DP_STATE:
 		state.mode = TCP_NOTIFY_AMA_DP_STATE;
 		state.data = noti;
-		typec_mux_set(rpmd->typec_port->mux, &state);
+		typec_mux_set(rpmd->mux, &state);
 		break;
 	default:
 		break;
@@ -393,7 +326,7 @@ static int pd_tcp_notifier_call(struct notifier_block *nb,
 
 static int tcpc_typec_try_role(struct typec_port *port, int role)
 {
-	struct rt_pd_manager_data *rpmd = dev_get_drvdata(&port->dev);
+	struct rt_pd_manager_data *rpmd = typec_get_drvdata(port);
 	uint8_t typec_role = TYPEC_ROLE_UNKNOWN;
 
 	dev_info(rpmd->dev, "%s role = %d\n", __func__, role);
@@ -418,7 +351,7 @@ static int tcpc_typec_try_role(struct typec_port *port, int role)
 static int tcpc_typec_dr_set(struct typec_port *port, enum typec_data_role role)
 {
 	int ret = 0;
-	struct rt_pd_manager_data *rpmd = dev_get_drvdata(&port->dev);
+	struct rt_pd_manager_data *rpmd = typec_get_drvdata(port);
 	uint8_t data_role = tcpm_inquire_pd_data_role(rpmd->tcpc);
 	bool do_swap = false;
 
@@ -454,7 +387,7 @@ static int tcpc_typec_dr_set(struct typec_port *port, enum typec_data_role role)
 static int tcpc_typec_pr_set(struct typec_port *port, enum typec_role role)
 {
 	int ret = 0;
-	struct rt_pd_manager_data *rpmd = dev_get_drvdata(&port->dev);
+	struct rt_pd_manager_data *rpmd = typec_get_drvdata(port);
 	uint8_t power_role = tcpm_inquire_pd_power_role(rpmd->tcpc);
 	bool do_swap = false;
 
@@ -492,7 +425,7 @@ static int tcpc_typec_pr_set(struct typec_port *port, enum typec_role role)
 static int tcpc_typec_vconn_set(struct typec_port *port, enum typec_role role)
 {
 	int ret = 0;
-	struct rt_pd_manager_data *rpmd = dev_get_drvdata(&port->dev);
+	struct rt_pd_manager_data *rpmd = typec_get_drvdata(port);
 	uint8_t vconn_role = tcpm_inquire_pd_vconn_role(rpmd->tcpc);
 	bool do_swap = false;
 
@@ -527,7 +460,7 @@ static int tcpc_typec_vconn_set(struct typec_port *port, enum typec_role role)
 
 static int tcpc_typec_port_type_set(struct typec_port *port, enum typec_port_type type)
 {
-	struct rt_pd_manager_data *rpmd = dev_get_drvdata(&port->dev);
+	struct rt_pd_manager_data *rpmd = typec_get_drvdata(port);
 	bool as_sink = tcpc_typec_is_act_as_sink_role(rpmd->tcpc);
 	uint8_t typec_role = TYPEC_ROLE_UNKNOWN;
 
@@ -601,8 +534,18 @@ static int typec_init(struct rt_pd_manager_data *rpmd)
 		return -EINVAL;
 	}
 
+	rpmd->mux = typec_mux_get(rpmd->tcpc->dev.parent);
+	if (IS_ERR(rpmd->mux)) {
+		ret = PTR_ERR(rpmd->mux);
+		dev_notice(rpmd->dev, "%s typec mux get fail(%d)\n", __func__, ret);
+		rpmd->mux = NULL;
+		typec_unregister_port(rpmd->typec_port);
+		rpmd->typec_port = NULL;
+		return ret;
+	}
+
 	rpmd->partner_desc.identity = &rpmd->partner_identity;
-	return ret;
+	return 0;
 }
 
 static int rt_pd_manager_probe(struct platform_device *pdev)
@@ -617,27 +560,6 @@ static int rt_pd_manager_probe(struct platform_device *pdev)
 		return -ENOMEM;
 
 	rpmd->dev = &pdev->dev;
-
-//prize add by lipengpeng 20220530 start	
-#if 0
-//#if IS_ENABLED(CONFIG_MTK_CHARGER)
-////prize add by lipengpeng 20220530 end
-	rpmd->chg_dev = get_charger_by_name("primary_chg");
-	if (!rpmd->chg_dev) {
-		dev_notice(rpmd->dev, "%s get chg dev fail\n", __func__);
-		ret = -ENODEV;
-		goto err_get_chg_dev;
-	}
-
-#if CONFIG_WATER_DETECTION
-	rpmd->chg_psy = power_supply_get_by_name("mtk-master-charger");
-	if (!rpmd->chg_psy) {
-		dev_notice(rpmd->dev, "%s get chg psy fail\n", __func__);
-		ret = -ENODEV;
-		goto err_get_chg_psy;
-	}
-#endif /* CONFIG_WATER_DETECTION */
-#endif /* CONFIG_MTK_CHARGER */
 
 	rpmd->tcpc = tcpc_dev_get_by_name("type_c_port0");
 	if (!rpmd->tcpc) {
@@ -681,19 +603,10 @@ static int rt_pd_manager_probe(struct platform_device *pdev)
 	return 0;
 
 err_reg_tcpc_notifier:
+	typec_mux_put(rpmd->mux);
 	typec_unregister_port(rpmd->typec_port);
 err_init_typec:
 err_get_tcpc_dev:
-//prize add by lipengpeng 20220530 start	
-#if 0
-//#if IS_ENABLED(CONFIG_MTK_CHARGER)
-////prize add by lipengpeng 20220530 end
-#if CONFIG_WATER_DETECTION
-	power_supply_put(rpmd->chg_psy);
-err_get_chg_psy:
-#endif /* CONFIG_WATER_DETECTION */
-err_get_chg_dev:
-#endif /* CONFIG_MTK_CHARGER */
 	return ret;
 }
 
@@ -711,15 +624,8 @@ static void rt_pd_manager_remove(struct platform_device *pdev)
 		dev_notice(rpmd->dev, "%s unregister tcpc notifier fail(%d)\n",
 				      __func__, ret);
 
+	typec_mux_put(rpmd->mux);
 	typec_unregister_port(rpmd->typec_port);
-//prize add by lipengpeng 20220530 start	
-#if 0
-//#if IS_ENABLED(CONFIG_MTK_CHARGER)
-////prize add by lipengpeng 20220530 end
-#if CONFIG_WATER_DETECTION
-	power_supply_put(rpmd->chg_psy);
-#endif /* CONFIG_WATER_DETECTION */
-#endif /* CONFIG_MTK_CHARGER */
 
 }
 

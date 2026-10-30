@@ -1047,7 +1047,7 @@ unsigned long long fdvt_get_sec_iova(struct dma_buf *my_dma_buf,
 		return 0;
 	}
 	bufinfo->attach = attach;
-	sgt = dma_buf_map_attachment(attach, DMA_BIDIRECTIONAL);
+	sgt = dma_buf_map_attachment_unlocked(attach, DMA_BIDIRECTIONAL);
 	if (IS_ERR(sgt)) {
 		log_err("map failed, detach and return\n");
 		dma_buf_detach(my_dma_buf, attach);
@@ -1059,16 +1059,13 @@ unsigned long long fdvt_get_sec_iova(struct dma_buf *my_dma_buf,
 	return iova;
 }
 
-void *aie_get_va(struct dma_buf *my_dma_buf)
+void *aie_get_va(struct dma_buf *my_dma_buf, struct imem_buf_info *bufinfo)
 {
-	struct iosys_map map;
-	int vmap_ret = dma_buf_vmap(my_dma_buf, &map);
-
-	if (vmap_ret) {
+	if (dma_buf_vmap_unlocked(my_dma_buf, &bufinfo->map)) {
 		log_err("map failed\n");
 		return NULL;
 	}
-	return map.vaddr;
+	return bufinfo->map.vaddr;
 }
 
 void aie_result_dmabuf2fd(void)
@@ -1100,7 +1097,7 @@ static void fdvt_free_iova(struct imem_buf_info *bufinfo)
 {
 	if (bufinfo->iova) {
 		/*free iova*/
-		dma_buf_unmap_attachment(bufinfo->attach, bufinfo->sgt, DMA_BIDIRECTIONAL);
+		dma_buf_unmap_attachment_unlocked(bufinfo->attach, bufinfo->sgt, DMA_BIDIRECTIONAL);
 		dma_buf_detach(bufinfo->dmabuf, bufinfo->attach);
 		bufinfo->iova = 0;
 	}
@@ -1109,7 +1106,7 @@ static void fdvt_free_iova(struct imem_buf_info *bufinfo)
 static void aie_free_va(struct imem_buf_info *bufinfo)
 {
 	if (bufinfo->va) {
-		dma_buf_vunmap(bufinfo->dmabuf, bufinfo->va);
+		dma_buf_vunmap_unlocked(bufinfo->dmabuf, &bufinfo->map);
 		bufinfo->va = NULL;
 	}
 }
@@ -1635,7 +1632,7 @@ static bool mmu_get_dma_buffer(struct tee_mmu *mmu, int va)
 	if (IS_ERR(mmu->attach))
 		goto err_attach;
 
-	mmu->sgt = dma_buf_map_attachment(mmu->attach, DMA_BIDIRECTIONAL);
+	mmu->sgt = dma_buf_map_attachment_unlocked(mmu->attach, DMA_BIDIRECTIONAL);
 	if (IS_ERR(mmu->sgt))
 		goto err_map;
 	return true;
@@ -1652,7 +1649,7 @@ err_attach:
 static void mmu_release(struct tee_mmu *mmu)
 {
 	if (mmu->dma_buf) {
-		dma_buf_unmap_attachment(mmu->attach, mmu->sgt, DMA_BIDIRECTIONAL);
+		dma_buf_unmap_attachment_unlocked(mmu->attach, mmu->sgt, DMA_BIDIRECTIONAL);
 		dma_buf_detach(mmu->dma_buf, mmu->attach);
 		dma_buf_put(mmu->dma_buf);
 	}
@@ -2226,7 +2223,7 @@ static signed int config_secure_fdvt_hw(struct fdvt_config *basic_config,
 				return -1;
 			}
 			fdvt_sec_dma.FDResultBuf_MVA.va =
-						aie_get_va(fdvt_sec_dma.FDResultBuf_MVA.dmabuf);
+						aie_get_va(fdvt_sec_dma.FDResultBuf_MVA.dmabuf, &fdvt_sec_dma.FDResultBuf_MVA);
 			if (!fdvt_sec_dma.FDResultBuf_MVA.va) {
 				log_err("[Special memory] VA alloc error\n");
 				return -1;
@@ -4287,6 +4284,12 @@ static signed int FDVT_probe(struct platform_device *pDev)
 		return -ENXIO;
 	}
 
+	ret = dma_set_mask_and_coherent(&pDev->dev, DMA_BIT_MASK(34));
+	if (ret) {
+		dev_err(&pDev->dev, "dma mask: %d\n", ret);
+		return ret;
+	}
+
 	nr_fdvt_devs += 1;
 	_fdvt_dev = krealloc(fdvt_devs, sizeof(struct fdvt_device) *
 				nr_fdvt_devs, GFP_KERNEL);
@@ -4298,7 +4301,6 @@ static signed int FDVT_probe(struct platform_device *pDev)
 
 	FDVT_dev = &fdvt_devs[nr_fdvt_devs - 1];
 	FDVT_dev->dev = &pDev->dev;
-	dma_set_mask_and_coherent(FDVT_dev->dev, DMA_BIT_MASK(34));
 	/* iomap registers */
 	FDVT_dev->regs = of_iomap(pDev->dev.of_node, 0);
 	/* gISPSYS_Reg[nr_fdvt_devs - 1] = FDVT_dev->regs; */

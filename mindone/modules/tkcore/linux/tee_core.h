@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: GPL-2.0 */
 /*
  * Copyright (c) 2015-2018 TrustKernel Incorporated
  * All Rights Reserved.
@@ -23,6 +24,7 @@
 #include <linux/types.h>
 #include <linux/atomic.h>
 #include <linux/scatterlist.h>
+#include <linux/dma-direction.h>
 
 #include <linux/types.h>
 #include <linux/tee_client_api.h>
@@ -138,6 +140,7 @@ struct tee_session {
 struct tee_shm_dma_buf {
 	struct dma_buf_attachment *attach;
 	struct sg_table *sgt;
+	enum dma_data_direction dir;
 	bool tee_allocated;
 };
 

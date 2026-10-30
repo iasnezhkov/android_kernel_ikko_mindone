@@ -91,8 +91,12 @@ static bool prop_request(char *kbuf,
 	char prop[32];
 
 	/* retrieve prop/pll_name/arg from kbuf */
-	n = sscanf(kbuf, "%s %31s %x", prop, pll_name, &arg);
-		FHDBG("prop<%s>, pll_name<%s>, arg<%x>\n",
+	n = sscanf(kbuf, "%31s %31s %x", prop, pll_name, &arg);
+	if (n != 3) {
+		FHDBG("error input prop format\n");
+		return false;
+	}
+	FHDBG("prop<%s>, pll_name<%s>, arg<%x>\n",
 				prop, pll_name, arg);
 
 	/* get entry by pll_name */
@@ -121,11 +125,11 @@ static bool prop_request(char *kbuf,
 static ssize_t fh_ctrl_proc_write(struct file *file,
 				const char *buffer, size_t count, loff_t *data)
 {
-	int ret, n;
+	int n;
 	char kbuf[256];
 	char pll_name[32];
 	size_t len = 0;
-	unsigned int cmd, arg;
+	unsigned int cmd, arg = 0;
 	struct pll_dts *array = file->f_inode->i_private;
 
 	FHDBG("array<%lx>\n", (unsigned long)array);
@@ -138,9 +142,8 @@ static ssize_t fh_ctrl_proc_write(struct file *file,
 	if (count > 255)
 		count = 255;
 
-	ret = copy_from_user(kbuf, buffer, count);
-	if (ret < 0)
-		return -1;
+	if (copy_from_user(kbuf, buffer, count))
+		return -EFAULT;
 
 	kbuf[count] = '\0';
 

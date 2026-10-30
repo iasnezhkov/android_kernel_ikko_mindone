@@ -409,6 +409,7 @@ EXPORT_SYMBOL(mtk_ipi_send);
 int mtk_ipi_recv(struct mtk_ipi_device *ipidev, int ipi_id)
 {
 	struct mtk_mbox_pin_recv *pin;
+	int ret;
 
 	if (!ipidev->ipi_inited)
 		return IPI_DEV_ILLEGAL;
@@ -417,8 +418,9 @@ int mtk_ipi_recv(struct mtk_ipi_device *ipidev, int ipi_id)
 	if (!pin)
 		return IPI_UNAVAILABLE;
 
-	/* receive the ipi from ISR */
-	wait_for_completion_interruptible(&pin->notify);
+	ret = wait_for_completion_interruptible(&pin->notify);
+	if (ret)
+		return IPI_FAKE_SIGNAL;
 
 	ipi_monitor(ipidev, ipi_id, RECV_MSG);
 	ipidev->ipi_last_done = ipi_id;
@@ -585,8 +587,8 @@ int mtk_ipi_recv_reply(struct mtk_ipi_device *ipidev, int ipi_id,
 	else if (len == 0)
 		len = pin_s->msg_size;
 
-	/* recvice the IPI message*/
-	wait_for_completion_interruptible(&pin_r->notify);
+	if (wait_for_completion_interruptible(&pin_r->notify))
+		return IPI_FAKE_SIGNAL;
 
 	ipi_monitor(ipidev, ipi_id, RECV_MSG);
 

@@ -1,3 +1,5 @@
+<!-- SPDX-License-Identifier: GPL-2.0 -->
+<!-- SPDX-FileCopyrightText: 2026 The LineageOS Project -->
 # Porting this to another MT6789 device
 
 The method, in the order that worked. Most of the cost is in the first two steps; the rest
@@ -16,9 +18,9 @@ MediaTek keeps almost everything out of tree. Start from the device's shipped mo
 (`modules.load` in its `vendor_boot` ramdisk, and the equivalent list for `vendor_dlkm`): that is
 the exact set the vendor considered necessary, in the order they considered correct. Reproducing
 that list is a better goal than reproducing any particular source tree.
-[`mindone/vendor_boot.modules.load`](../mindone/vendor_boot.modules.load) and
-[`mindone/vendor_dlkm.modules.load`](../mindone/vendor_dlkm.modules.load) here are that list for
-this device, if you want to see the shape of one.
+`mindone/vendor_boot.modules.load` and
+`mindone/vendor_dlkm.modules.load` here are the adapted GKI/DDK lists for
+this board, with unused vendor modules removed and GKI providers accounted for.
 
 Then check your build against it by name. "No build failures" says nothing on its own: a set can
 build clean and still be missing modules the device actually loads — check the output against
@@ -35,20 +37,20 @@ that scans Makefiles for `obj-m` without expanding variables will not see them, 
 them as failures either, and will hand you a set that looks complete and has no Wi-Fi in it.
 That happened here twice.
 
-Not everything in the load list is out-of-tree. Here, 18 MediaTek platform drivers — `cfg80211`,
-`mac80211`, `clk-mt6789`, `pinctrl-mt6789`, `ufs-mediatek`, the DRM/dma-buf helpers among them —
-are `module_outs` of a Kleaf `kernel_build` that compiles them in-tree against the device's own
-config fragment, and 4 more (`rfkill`, `libarc4`, `zram`, `zsmalloc`) are unmodified GKI in-tree
-modules that need nothing device-specific at all. A set assembled only from out-of-tree driver
-output is missing the whole 802.11 stack among other things, which on the device looks like
-Wi-Fi never coming up rather than like a missing file.
+Not everything in the load list is out-of-tree. Here, five listed modules are
+`module_outs` of the device Kleaf `kernel_build`: `8250_mtk`, `cfg80211`,
+`drm_display_helper`, `drm_dma_helper` and `reset-ti-syscon`. Four more
+(`rfkill`, `libarc4`, `zram`, `zsmalloc`) come from the GKI prebuilt. Clocks,
+pinctrl and UFS are now DDK targets. Check actual providers and dependencies rather
+than assuming every module comes from the out-of-tree group.
 
-## 3. Build modules against your own kernel, never against a binary
+## 3. Build modules against the exact GKI prebuilt
 
-`modpost` resolves every symbol against `Module.symvers` at build time. That is the only step
-that will tell you a module cannot work, and it happens before you flash anything. Check three
-things per module: vermagic equals the target's `uname -r`, no unresolved symbols, no collision
-with a driver the kernel already builds in.
+Use Kleaf DDK with the matching GKI headers and symbol metadata. Here the base is
+`@gki_prebuilts//kernel_aarch64`, Google's `android16-6.12-2026-09_r10`, CI 16736897.
+`modpost` resolves imports at build time; the candidate gates then check ABI CRCs,
+providers, built-in collisions and Google symbol-list membership for the complete set.
+Do not add private kernel exports or a private symbol list to make an import pass.
 
 ## 4. Expect the ABI, not the code, to be the wall
 

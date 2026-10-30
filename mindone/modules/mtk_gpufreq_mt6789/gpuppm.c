@@ -2,45 +2,29 @@
 /*
  * Copyright (C) 2021 MediaTek Inc.
  */
-
-/**
- * @file    mtk_gpuppm.c
- * @brief   Performance power management for GPU-DVFS
- */
-
-/**
- * ===============================================
- * Include
- * ===============================================
- */
 #include <linux/mutex.h>
+#include <linux/random.h>
 
-#include <gpufreq_v2.h>
-#include <gpufreq_debug.h>
-#include <gpuppm.h>
-#include <gpufreq_common.h>
+#include <gpufreq_v2_legacy.h>
+#include <gpuppm_legacy.h>
+#include <gpufreq_common_legacy.h>
 #include <gpufreq_history_common.h>
 
-/**
- * ===============================================
- * Local Function Declaration
- * ===============================================
- */
 static void __gpuppm_sort_limit(enum gpufreq_target target);
 static int __gpuppm_limit_effective(enum gpufreq_target target);
 static int __gpuppm_convert_limit_to_idx(enum gpufreq_target target, enum gpuppm_limiter limiter,
 	int ceiling_info, int floor_info, int *ceiling_idx, int *floor_idx);
+static void __gpuppm_update_gpuppm_info(void);
 
-/**
- * ===============================================
- * Local Variable Definition
- * ===============================================
- */
 static DEFINE_MUTEX(gpuppm_lock);
+static struct gpuppm_status g_ppm;
+static unsigned int g_gpueb_support;
+static unsigned int g_stress_test;
+static unsigned int g_stress_direction;
+static int g_stress_oppidx;
+static struct gpufreq_shared_status *g_shared_status;
 static struct gpuppm_status g_gpu;
 static struct gpuppm_status g_stack;
-unsigned int g_gpueb_support;
-
 static struct gpuppm_limit_info g_gpu_limit_table[] = {
 	LIMITOP(LIMIT_SEGMENT, "SEGMENT", GPUPPM_PRIO_9,
 		GPUPPM_DEFAULT_IDX, LIMIT_ENABLE,
@@ -72,10 +56,68 @@ static struct gpuppm_limit_info g_gpu_limit_table[] = {
 	LIMITOP(LIMIT_APIBOOST, "APIBOOST", GPUPPM_PRIO_4,
 		GPUPPM_DEFAULT_IDX, LIMIT_ENABLE,
 		GPUPPM_DEFAULT_IDX, LIMIT_ENABLE),
-	LIMITOP(LIMIT_FPSGO, "FPSGO", GPUPPM_PRIO_4,
+	LIMITOP(LIMIT_POWERHAL, "POWERHAL", GPUPPM_PRIO_4,
+		GPUPPM_DEFAULT_IDX, LIMIT_ENABLE,
+		GPUPPM_DEFAULT_IDX, LIMIT_ENABLE),
+	LIMITOP(LIMIT_FIXCMD, "FIXCMD", GPUPPM_PRIO_4,
 		GPUPPM_DEFAULT_IDX, LIMIT_ENABLE,
 		GPUPPM_DEFAULT_IDX, LIMIT_ENABLE),
 };
+
+static struct gpuppm_limit_info g_limit_table[] = {
+	LIMITOP(LIMIT_SEGMENT, "SEGMENT", GPUPPM_PRIO_9,
+		GPUPPM_DEFAULT_IDX, LIMIT_ENABLE,
+		GPUPPM_DEFAULT_IDX, LIMIT_ENABLE),
+	LIMITOP(LIMIT_DEBUG, "DEBUG", GPUPPM_PRIO_8,
+		GPUPPM_DEFAULT_IDX, LIMIT_ENABLE,
+		GPUPPM_DEFAULT_IDX, LIMIT_ENABLE),
+	LIMITOP(LIMIT_THERMAL_AP, "THERMAL_AP", GPUPPM_PRIO_6,
+		GPUPPM_DEFAULT_IDX, LIMIT_ENABLE,
+		GPUPPM_DEFAULT_IDX, LIMIT_ENABLE),
+	LIMITOP(LIMIT_THERMAL_EB, "THERMAL_EB", GPUPPM_PRIO_6,
+		GPUPPM_DEFAULT_IDX, LIMIT_ENABLE,
+		GPUPPM_DEFAULT_IDX, LIMIT_ENABLE),
+	LIMITOP(LIMIT_SRAMRC, "SRAMRC", GPUPPM_PRIO_5,
+		GPUPPM_DEFAULT_IDX, LIMIT_ENABLE,
+		GPUPPM_DEFAULT_IDX, LIMIT_ENABLE),
+	LIMITOP(LIMIT_BATT_OC, "BATT_OC", GPUPPM_PRIO_4,
+		GPUPPM_DEFAULT_IDX, LIMIT_ENABLE,
+		GPUPPM_DEFAULT_IDX, LIMIT_ENABLE),
+	LIMITOP(LIMIT_BATT_PERCENT, "BATT_PERCENT", GPUPPM_PRIO_4,
+		GPUPPM_DEFAULT_IDX, LIMIT_ENABLE,
+		GPUPPM_DEFAULT_IDX, LIMIT_ENABLE),
+	LIMITOP(LIMIT_LOW_BATT, "LOW_BATT", GPUPPM_PRIO_4,
+		GPUPPM_DEFAULT_IDX, LIMIT_ENABLE,
+		GPUPPM_DEFAULT_IDX, LIMIT_ENABLE),
+	LIMITOP(LIMIT_PBM, "PBM", GPUPPM_PRIO_4,
+		GPUPPM_DEFAULT_IDX, LIMIT_ENABLE,
+		GPUPPM_DEFAULT_IDX, LIMIT_ENABLE),
+	LIMITOP(LIMIT_APIBOOST, "APIBOOST", GPUPPM_PRIO_3,
+		GPUPPM_DEFAULT_IDX, LIMIT_ENABLE,
+		GPUPPM_DEFAULT_IDX, LIMIT_ENABLE),
+	LIMITOP(LIMIT_POWERHAL, "POWERHAL", GPUPPM_PRIO_2,
+		GPUPPM_DEFAULT_IDX, LIMIT_ENABLE,
+		GPUPPM_DEFAULT_IDX, LIMIT_ENABLE),
+	LIMITOP(LIMIT_FIXCMD, "FIXCMD", GPUPPM_PRIO_2,
+		GPUPPM_DEFAULT_IDX, LIMIT_ENABLE,
+		GPUPPM_DEFAULT_IDX, LIMIT_ENABLE),
+};
+
+static struct gpuppm_platform_fp platform_ap_fp = {
+	.set_shared_status = gpuppm_set_shared_status,
+	.limited_commit = gpuppm_limited_commit,
+	.limited_dual_commit = gpuppm_limited_dual_commit,
+	.set_limit = gpuppm_set_limit,
+	.switch_limit = gpuppm_switch_limit,
+	.get_ceiling = gpuppm_get_ceiling,
+	.get_floor = gpuppm_get_floor,
+	.get_c_limiter = gpuppm_get_c_limiter,
+	.get_f_limiter = gpuppm_get_f_limiter,
+	.get_limit_table = gpuppm_get_limit_table,
+	.get_debug_limit_info = gpuppm_get_debug_limit_info,
+};
+
+static struct gpuppm_platform_fp platform_eb_fp = {};
 
 static struct gpuppm_limit_info g_stack_limit_table[] = {
 	LIMITOP(LIMIT_SEGMENT, "SEGMENT", GPUPPM_PRIO_9,
@@ -108,30 +150,14 @@ static struct gpuppm_limit_info g_stack_limit_table[] = {
 	LIMITOP(LIMIT_APIBOOST, "APIBOOST", GPUPPM_PRIO_4,
 		GPUPPM_DEFAULT_IDX, LIMIT_ENABLE,
 		GPUPPM_DEFAULT_IDX, LIMIT_ENABLE),
-	LIMITOP(LIMIT_FPSGO, "FPSGO", GPUPPM_PRIO_4,
+	LIMITOP(LIMIT_POWERHAL, "POWERHAL", GPUPPM_PRIO_4,
+		GPUPPM_DEFAULT_IDX, LIMIT_ENABLE,
+		GPUPPM_DEFAULT_IDX, LIMIT_ENABLE),
+	LIMITOP(LIMIT_FIXCMD, "FIXCMD", GPUPPM_PRIO_4,
 		GPUPPM_DEFAULT_IDX, LIMIT_ENABLE,
 		GPUPPM_DEFAULT_IDX, LIMIT_ENABLE),
 };
 
-static struct gpuppm_platform_fp platform_ap_fp = {
-	.limited_commit = gpuppm_limited_commit,
-	.set_limit = gpuppm_set_limit,
-	.switch_limit = gpuppm_switch_limit,
-	.get_ceiling = gpuppm_get_ceiling,
-	.get_floor = gpuppm_get_floor,
-	.get_c_limiter = gpuppm_get_c_limiter,
-	.get_f_limiter = gpuppm_get_f_limiter,
-	.get_limit_table = gpuppm_get_limit_table,
-	.get_debug_limit_info = gpuppm_get_debug_limit_info,
-};
-
-static struct gpuppm_platform_fp platform_eb_fp = {};
-
-/**
- * ===============================================
- * Function Definition
- * ===============================================
- */
 static void __gpuppm_sort_limit(enum gpufreq_target target)
 {
 	struct gpuppm_limit_info *limit_table = NULL;
@@ -162,40 +188,38 @@ static void __gpuppm_sort_limit(enum gpufreq_target target)
 		cur_floor = opp_num;
 	}
 
-	/* sort ceiling among valid limiters except SEGMENT  */
 	for (i = 1; i < LIMIT_NUM; i++) {
-		/* skip default value and check enable */
+
 		if (limit_table[i].ceiling != GPUPPM_DEFAULT_IDX &&
 			limit_table[i].ceiling != max_oppidx &&
 			limit_table[i].c_enable == LIMIT_ENABLE) {
-			/* use the largest ceiling with its limiter */
+
 			if (limit_table[i].ceiling > cur_ceiling) {
 				cur_ceiling = limit_table[i].ceiling;
 				cur_c_limiter = limit_table[i].limiter;
 			}
-			/* use the largest priority to cover all valid limiters */
+
 			if (limit_table[i].priority > cur_c_priority)
 				cur_c_priority = limit_table[i].priority;
 		}
 	}
-	/* sort floor among valid limiters except SEGMENT  */
+
 	for (i = 1; i < LIMIT_NUM; i++) {
-		/* skip default value and check enable */
+
 		if (limit_table[i].floor != GPUPPM_DEFAULT_IDX &&
 			limit_table[i].floor != min_oppidx &&
 			limit_table[i].f_enable == LIMIT_ENABLE) {
-			/* use the smallest floor with its limiter */
+
 			if (limit_table[i].floor < cur_floor) {
 				cur_floor = limit_table[i].floor;
 				cur_f_limiter = limit_table[i].limiter;
 			}
-			/* use the largest priority to cover all valid limiters */
+
 			if (limit_table[i].priority > cur_f_priority)
 				cur_f_priority = limit_table[i].priority;
 		}
 	}
 
-	/* if no valid limitation, use SEGMENT */
 	if (cur_ceiling == -1) {
 		cur_ceiling = limit_table[LIMIT_SEGMENT].ceiling;
 		cur_c_limiter = limit_table[LIMIT_SEGMENT].limiter;
@@ -207,22 +231,16 @@ static void __gpuppm_sort_limit(enum gpufreq_target target)
 		cur_f_priority = limit_table[LIMIT_SEGMENT].priority;
 	}
 
-	/* if limit interval with intersection */
 	if (cur_ceiling > cur_floor) {
 		GPUFREQ_LOGD("exist intersection in limited interval: [%d, %d]",
 			cur_ceiling, cur_floor);
-		/*
-		 * floor_priority > ceiling_priority: align floor
-		 * floor_priority < ceiling_priority: align ceiling
-		 * floor_priority = ceiling_priority: align ceiling
-		 */
+
 		if (cur_f_priority > cur_c_priority)
 			cur_ceiling = cur_floor;
 		else
 			cur_floor = cur_ceiling;
 	}
 
-	/* only update if both limiter of ceiling/floor are found */
 	if (cur_c_limiter != LIMIT_NUM && cur_f_limiter != LIMIT_NUM) {
 		GPUFREQ_LOGD("[%s ceiling] index: %d, limiter: %s, priority: %d",
 			(target == TARGET_STACK) ? "STACK" : "GPU",
@@ -273,123 +291,95 @@ static int __gpuppm_convert_limit_to_idx(enum gpufreq_target target, enum gpuppm
 {
 	int ret = GPUFREQ_SUCCESS;
 
-	switch (limiter)
-	{
-		case LIMIT_SEGMENT:
-			/* limit info: OPP index */
-			*ceiling_idx = ceiling_info;
-			*floor_idx = floor_info;
-			break;
-		case LIMIT_DEBUG:
-			/* limit info: OPP index */
-			*ceiling_idx = ceiling_info;
-			*floor_idx = floor_info;
-			break;
-		case LIMIT_THERMAL_AP:
-			/* limit info: freq */
-			if (ceiling_info > 0)
-				if (target == TARGET_STACK)
-					*ceiling_idx = __gpufreq_get_idx_by_fstack(
-						(unsigned int)ceiling_info);
-				else
-					*ceiling_idx = __gpufreq_get_idx_by_fgpu(
-						(unsigned int)ceiling_info);
+	switch (limiter) {
+	case LIMIT_SEGMENT:
+
+		*ceiling_idx = ceiling_info;
+		*floor_idx = floor_info;
+		break;
+	case LIMIT_DEBUG:
+
+		*ceiling_idx = ceiling_info;
+		*floor_idx = floor_info;
+		break;
+	case LIMIT_THERMAL_AP:
+
+		if (ceiling_info > 0) {
+			if (target == TARGET_STACK)
+				*ceiling_idx = __gpufreq_get_idx_by_fstack(
+					(unsigned int)ceiling_info);
 			else
-				*ceiling_idx = GPUPPM_RESET_IDX;
-			*floor_idx = GPUPPM_KEEP_IDX;
-			break;
-		case LIMIT_THERMAL_EB:
-			/* limit info: power */
-			if (ceiling_info > 0)
-				if (target == TARGET_STACK)
-					*ceiling_idx = __gpufreq_get_idx_by_pstack(
-						(unsigned int)ceiling_info);
-				else
-					*ceiling_idx = __gpufreq_get_idx_by_pgpu(
-						(unsigned int)ceiling_info);
+				*ceiling_idx = __gpufreq_get_idx_by_fgpu(
+					(unsigned int)ceiling_info);
+		} else
+			*ceiling_idx = GPUPPM_RESET_IDX;
+		*floor_idx = GPUPPM_KEEP_IDX;
+		break;
+	case LIMIT_THERMAL_EB:
+
+		*ceiling_idx = ceiling_info;
+		*floor_idx = GPUPPM_KEEP_IDX;
+		break;
+	case LIMIT_SRAMRC:
+
+		*ceiling_idx = GPUPPM_KEEP_IDX;
+		if (floor_info > 0) {
+			if (target == TARGET_STACK)
+				*floor_idx = __gpufreq_get_idx_by_vstack(
+					(unsigned int)floor_info);
 			else
-				*ceiling_idx = GPUPPM_RESET_IDX;
-			*floor_idx = GPUPPM_KEEP_IDX;
-			break;
-		case LIMIT_SRAMRC:
-			/* limit info: volt */
-			*ceiling_idx = GPUPPM_KEEP_IDX;
-			if (floor_info > 0)
-				if (target == TARGET_STACK)
-					*floor_idx = __gpufreq_get_idx_by_vstack(
-						(unsigned int)floor_info);
-				else
-					*floor_idx = __gpufreq_get_idx_by_vgpu(
-						(unsigned int)floor_info);
+				*floor_idx = __gpufreq_get_idx_by_vgpu(
+					(unsigned int)floor_info);
+		} else
+			*floor_idx = GPUPPM_RESET_IDX;
+		break;
+	case LIMIT_BATT_OC:
+
+		*ceiling_idx = __gpufreq_get_batt_oc_idx(ceiling_info);
+		*floor_idx = GPUPPM_KEEP_IDX;
+		break;
+	case LIMIT_BATT_PERCENT:
+
+		*ceiling_idx = __gpufreq_get_batt_percent_idx(ceiling_info);
+		*floor_idx = GPUPPM_KEEP_IDX;
+		break;
+	case LIMIT_LOW_BATT:
+
+		*ceiling_idx = __gpufreq_get_low_batt_idx(ceiling_info);
+		*floor_idx = GPUPPM_KEEP_IDX;
+		break;
+	case LIMIT_PBM:
+
+		if (ceiling_info > 0) {
+			if (target == TARGET_STACK)
+				*ceiling_idx = __gpufreq_get_idx_by_pstack(
+					(unsigned int)ceiling_info);
 			else
-				*floor_idx = GPUPPM_RESET_IDX;
-			break;
-		case LIMIT_BATT_OC:
-			/* limit info: freq */
-			if (ceiling_info > 0) {
-				if (target == TARGET_STACK)
-					*ceiling_idx = __gpufreq_get_idx_by_fstack(
-						(unsigned int)ceiling_info);
-				else
-					*ceiling_idx = __gpufreq_get_idx_by_fgpu(
-						(unsigned int)ceiling_info);
-			} else
-				*ceiling_idx = ceiling_info;
-			*floor_idx = GPUPPM_KEEP_IDX;
-			break;
-		case LIMIT_BATT_PERCENT:
-			/* limit info: freq */
-			if (ceiling_info > 0) {
-				if (target == TARGET_STACK)
-					*ceiling_idx = __gpufreq_get_idx_by_fstack(
-						(unsigned int)ceiling_info);
-				else
-					*ceiling_idx = __gpufreq_get_idx_by_fgpu(
-						(unsigned int)ceiling_info);
-			} else
-				*ceiling_idx = ceiling_info;
-			*floor_idx = GPUPPM_KEEP_IDX;
-			break;
-		case LIMIT_LOW_BATT:
-			/* limit info: freq */
-			if (ceiling_info > 0) {
-				if (target == TARGET_STACK)
-					*ceiling_idx = __gpufreq_get_idx_by_fstack(
-						(unsigned int)ceiling_info);
-				else
-					*ceiling_idx = __gpufreq_get_idx_by_fgpu(
-						(unsigned int)ceiling_info);
-			} else
-				*ceiling_idx = ceiling_info;
-			*floor_idx = GPUPPM_KEEP_IDX;
-			break;
-		case LIMIT_PBM:
-			/* limit info: power */
-			if (ceiling_info > 0)
-				if (target == TARGET_STACK)
-					*ceiling_idx = __gpufreq_get_idx_by_pstack(
-						(unsigned int)ceiling_info);
-				else
-					*ceiling_idx = __gpufreq_get_idx_by_pgpu(
-						(unsigned int)ceiling_info);
-			else
-				*ceiling_idx = GPUPPM_RESET_IDX;
-			*floor_idx = GPUPPM_KEEP_IDX;
-			break;
-		case LIMIT_APIBOOST:
-			/* limit info: OPP index */
-			*ceiling_idx = ceiling_info;
-			*floor_idx = floor_info;
-			break;
-		case LIMIT_FPSGO:
-			/* limit info: OPP index */
-			*ceiling_idx = ceiling_info;
-			*floor_idx = floor_info;
-			break;
-		default:
-			GPUFREQ_LOGE("invalid limiter: %d (EINVAL)", limiter);
-			ret = GPUFREQ_EINVAL;
-			break;
+				*ceiling_idx = __gpufreq_get_idx_by_pgpu(
+					(unsigned int)ceiling_info);
+		} else
+			*ceiling_idx = GPUPPM_RESET_IDX;
+		*floor_idx = GPUPPM_KEEP_IDX;
+		break;
+	case LIMIT_APIBOOST:
+
+		*ceiling_idx = ceiling_info;
+		*floor_idx = floor_info;
+		break;
+	case LIMIT_POWERHAL:
+
+		*ceiling_idx = ceiling_info;
+		*floor_idx = floor_info;
+		break;
+	case LIMIT_FIXCMD:
+
+		*ceiling_idx = ceiling_info;
+		*floor_idx = floor_info;
+		break;
+	default:
+		GPUFREQ_LOGE("invalid limiter: %d (EINVAL)", limiter);
+		ret = GPUFREQ_EINVAL;
+		break;
 	}
 
 	GPUFREQ_LOGD("[%s limiter: %d] ceiling_info: %d (idx: %d), floor_info: %d, (idx: %d)",
@@ -399,36 +389,33 @@ static int __gpuppm_convert_limit_to_idx(enum gpufreq_target target, enum gpuppm
 	return ret;
 }
 
-int gpuppm_get_ceiling(enum gpufreq_target target)
+static void __gpuppm_update_gpuppm_info(void)
 {
-	if (target == TARGET_STACK)
-		return g_stack.ceiling;
-	else
-		return g_gpu.ceiling;
+	unsigned int copy_size = 0;
+
+	if (!g_shared_status)
+		return;
+
+	g_shared_status->cur_ceiling = g_ppm.ceiling;
+	g_shared_status->cur_floor = g_ppm.floor;
+	g_shared_status->cur_c_limiter = g_ppm.c_limiter;
+	g_shared_status->cur_f_limiter = g_ppm.f_limiter;
+	g_shared_status->cur_c_priority = g_ppm.c_priority;
+	g_shared_status->cur_f_priority = g_ppm.f_priority;
+
+	copy_size = sizeof(struct gpuppm_limit_info) * LIMIT_NUM;
+	memcpy(g_shared_status->limit_table, g_limit_table, copy_size);
 }
 
-int gpuppm_get_floor(enum gpufreq_target target)
+void gpuppm_set_stress_test(unsigned int val)
 {
-	if (target == TARGET_STACK)
-		return g_stack.floor;
-	else
-		return g_gpu.floor;
-}
+	g_stress_test = val;
+	g_stress_oppidx = 0;
 
-unsigned int gpuppm_get_c_limiter(enum gpufreq_target target)
-{
-	if (target == TARGET_STACK)
-		return g_stack.c_limiter;
-	else
-		return g_gpu.c_limiter;
-}
+	GPUFREQ_LOGD("stress test mode: %d", g_stress_test);
 
-unsigned int gpuppm_get_f_limiter(enum gpufreq_target target)
-{
-	if (target == TARGET_STACK)
-		return g_stack.f_limiter;
-	else
-		return g_gpu.f_limiter;
+	if (g_shared_status)
+		g_shared_status->stress_test = g_stress_test;
 }
 
 const struct gpuppm_limit_info *gpuppm_get_limit_table(enum gpufreq_target target)
@@ -466,26 +453,48 @@ struct gpufreq_debug_limit_info gpuppm_get_debug_limit_info(enum gpufreq_target 
 	return limit_info;
 }
 
-struct gpufreq_debug_limit_info gpuppm_get_debug_limit_info_stack(void)
+int gpuppm_get_ceiling(void)
 {
-	struct gpufreq_debug_limit_info limit_info = {};
+	enum gpufreq_target target = TARGET_GPU;
 
-	mutex_lock(&gpuppm_lock);
+	if (target == TARGET_STACK)
+		return g_stack.ceiling;
+	else
+		return g_gpu.ceiling;
+}
 
-	limit_info.ceiling = g_stack.ceiling;
-	limit_info.c_limiter = g_stack.c_limiter;
-	limit_info.c_priority = g_stack.c_priority;
-	limit_info.floor = g_stack.floor;
-	limit_info.f_limiter = g_stack.f_limiter;
-	limit_info.f_priority = g_stack.f_priority;
+int gpuppm_get_floor(void)
+{
+	enum gpufreq_target target = TARGET_GPU;
 
-	mutex_unlock(&gpuppm_lock);
+	if (target == TARGET_STACK)
+		return g_stack.floor;
+	else
+		return g_gpu.floor;
+}
 
-	return limit_info;
+unsigned int gpuppm_get_c_limiter(void)
+{
+	enum gpufreq_target target = TARGET_GPU;
+
+	if (target == TARGET_STACK)
+		return g_stack.c_limiter;
+	else
+		return g_gpu.c_limiter;
+}
+
+unsigned int gpuppm_get_f_limiter(void)
+{
+	enum gpufreq_target target = TARGET_GPU;
+
+	if (target == TARGET_STACK)
+		return g_stack.f_limiter;
+	else
+		return g_gpu.f_limiter;
 }
 
 int gpuppm_set_limit(enum gpufreq_target target, enum gpuppm_limiter limiter,
-	int ceiling_info, int floor_info)
+	int ceiling_info, int floor_info, unsigned int instant_dvfs)
 {
 	struct gpuppm_limit_info *limit_table = NULL;
 	int opp_num = 0, ceiling_idx = 0, floor_idx = 0;
@@ -510,12 +519,11 @@ int gpuppm_set_limit(enum gpufreq_target target, enum gpuppm_limiter limiter,
 
 	mutex_lock(&gpuppm_lock);
 
-	/* convert input limit info to OPP index */
 	ret = __gpuppm_convert_limit_to_idx(target, limiter,
 		ceiling_info, floor_info, &ceiling_idx, &floor_idx);
 	if (unlikely(ret)) {
 		GPUFREQ_LOGE("fail to convert limit info to OPP index (%d)", ret);
-		goto done;
+		goto unlock;
 	}
 
 	if (ceiling_idx == GPUPPM_RESET_IDX || ceiling_idx == GPUPPM_DEFAULT_IDX)
@@ -528,12 +536,12 @@ int gpuppm_set_limit(enum gpufreq_target target, enum gpuppm_limiter limiter,
 	else if (floor_idx >= 0 && floor_idx < opp_num)
 		limit_table[limiter].floor = floor_idx;
 
-	/* update current limit status */
 	__gpuppm_sort_limit(target);
 
-	/* update current OPP if necessary */
-	ret = __gpuppm_limit_effective(target);
+	if (instant_dvfs)
+		ret = __gpuppm_limit_effective(target);
 
+unlock:
 	mutex_unlock(&gpuppm_lock);
 
 done:
@@ -543,7 +551,7 @@ done:
 }
 
 int gpuppm_switch_limit(enum gpufreq_target target, enum gpuppm_limiter limiter,
-	int c_enable, int f_enable)
+	int c_enable, int f_enable, unsigned int instant_dvfs)
 {
 	struct gpuppm_limit_info *limit_table = NULL;
 	int ret = GPUFREQ_SUCCESS;
@@ -571,11 +579,10 @@ int gpuppm_switch_limit(enum gpufreq_target target, enum gpuppm_limiter limiter,
 	else if (f_enable == LIMIT_DISABLE)
 		limit_table[limiter].f_enable = LIMIT_DISABLE;
 
-	/* update current limit status */
 	__gpuppm_sort_limit(target);
 
-	/* update current OPP if necessary */
-	ret = __gpuppm_limit_effective(target);
+	if (instant_dvfs)
+		ret = __gpuppm_limit_effective(target);
 
 	mutex_unlock(&gpuppm_lock);
 
@@ -593,7 +600,6 @@ int gpuppm_limited_commit(enum gpufreq_target target, int oppidx)
 
 	mutex_lock(&gpuppm_lock);
 
-	/* fit to limited interval */
 	if (target == TARGET_STACK) {
 		cur_ceiling = g_stack.ceiling;
 		cur_floor = g_stack.floor;
@@ -601,7 +607,6 @@ int gpuppm_limited_commit(enum gpufreq_target target, int oppidx)
 		cur_ceiling = g_gpu.ceiling;
 		cur_floor = g_gpu.floor;
 	}
-
 	if (oppidx < cur_ceiling)
 		limited_idx = cur_ceiling;
 	else if (oppidx > cur_floor)
@@ -609,11 +614,11 @@ int gpuppm_limited_commit(enum gpufreq_target target, int oppidx)
 	else
 		limited_idx = oppidx;
 
-	GPUFREQ_LOGD("[%s] restrict OPP index: (%d->%d), limited interval: [%d, %d]",
+	GPUFREQ_LOGD("restrict %s OPP index: (%d->%d), limited interval: [%d, %d]",
 		(target == TARGET_STACK) ? "STACK" : "GPU",
 		oppidx, limited_idx, cur_ceiling, cur_floor);
 
-#if GPUFREQ_HISTORY_COMMON_ENABLE
+#if GPUFREQ_HISTORY_ENABLE
 	gpufreq_set_history_target_opp(target, oppidx);
 #endif
 
@@ -629,8 +634,97 @@ int gpuppm_limited_commit(enum gpufreq_target target, int oppidx)
 	return ret;
 }
 
-int gpuppm_init(enum gpufreq_target target,
-	unsigned int gpueb_support, unsigned int sramrc_vsafe)
+int gpuppm_limited_dual_commit(int gpu_oppidx, int stack_oppidx)
+{
+	int limited_idx_gpu = 0, limited_idx_stack = 0;
+	int cur_ceiling = 0, cur_floor = 0, min_oppidx = 0;
+	int ret = GPUFREQ_SUCCESS;
+
+	GPUFREQ_TRACE_START("gpu_oppidx=%d, stack_oppidx=%d", gpu_oppidx, stack_oppidx);
+
+	mutex_lock(&gpuppm_lock);
+
+	cur_ceiling = g_ppm.ceiling;
+	cur_floor = g_ppm.floor;
+	min_oppidx = g_ppm.opp_num - 1;
+
+	if (g_stress_test == STRESS_RANDOM) {
+
+		get_random_bytes(&gpu_oppidx, sizeof(gpu_oppidx));
+		gpu_oppidx = gpu_oppidx < 0 ? (gpu_oppidx * -1) : gpu_oppidx;
+		gpu_oppidx = (gpu_oppidx % (cur_floor - cur_ceiling + 1)) + cur_ceiling;
+		stack_oppidx = gpu_oppidx;
+	} else if (g_stress_test == STRESS_TRAVERSE) {
+
+		gpu_oppidx = g_stress_oppidx;
+		gpu_oppidx = (gpu_oppidx % (cur_floor - cur_ceiling + 1)) + cur_ceiling;
+		stack_oppidx = gpu_oppidx;
+		if (gpu_oppidx == cur_ceiling)
+			g_stress_direction = SCALE_UP;
+		else if (gpu_oppidx == cur_floor)
+			g_stress_direction = SCALE_DOWN;
+		if (g_stress_direction == SCALE_UP)
+			g_stress_oppidx++;
+		else if (g_stress_direction == SCALE_DOWN)
+			g_stress_oppidx--;
+	} else if (g_stress_test == STRESS_MAX_MIN) {
+
+		gpu_oppidx = g_stress_oppidx;
+		stack_oppidx = gpu_oppidx;
+		g_stress_oppidx = g_stress_oppidx ? 0 : min_oppidx;
+	}
+
+	if (gpu_oppidx < cur_ceiling)
+		limited_idx_gpu = cur_ceiling;
+	else if (gpu_oppidx > cur_floor)
+		limited_idx_gpu = cur_floor;
+	else
+		limited_idx_gpu = gpu_oppidx;
+
+	if (stack_oppidx < cur_ceiling)
+		limited_idx_stack = cur_ceiling;
+	else if (stack_oppidx > cur_floor)
+		limited_idx_stack = cur_floor;
+	else
+		limited_idx_stack = stack_oppidx;
+
+	GPUFREQ_LOGD("restrict GPU/STACK OPP index: (%d->%d)/(%d->%d), limited interval: [%d, %d]",
+		gpu_oppidx, limited_idx_gpu, stack_oppidx, limited_idx_stack,
+		cur_ceiling, cur_floor);
+
+#if GPUFREQ_HISTORY_ENABLE
+	gpufreq_set_history_target_opp(TARGET_GPU, gpu_oppidx);
+	gpufreq_set_history_target_opp(TARGET_STACK, stack_oppidx);
+#endif
+
+	ret = __gpufreq_generic_commit_dual(limited_idx_gpu, limited_idx_stack, DVFS_FREE);
+
+	mutex_unlock(&gpuppm_lock);
+
+	GPUFREQ_TRACE_END();
+
+	return ret;
+}
+
+void gpuppm_set_shared_status(struct gpufreq_shared_status *shared_status)
+{
+	mutex_lock(&gpuppm_lock);
+
+	if (g_gpueb_support) {
+		if (shared_status)
+			g_shared_status = shared_status;
+		else
+			__gpufreq_abort("null gpufreq shared status: 0x%llx", shared_status);
+
+		if (g_shared_status) {
+			g_shared_status->stress_test = g_stress_test;
+			__gpuppm_update_gpuppm_info();
+		}
+	}
+	mutex_unlock(&gpuppm_lock);
+}
+
+int gpuppm_init(enum gpufreq_target target, unsigned int gpueb_support)
 {
 	int max_oppidx = 0, min_oppidx = 0, opp_num = 0;
 	int ret = GPUFREQ_SUCCESS;
@@ -639,23 +733,19 @@ int gpuppm_init(enum gpufreq_target target,
 
 	if (g_gpueb_support)
 		gpufreq_register_gpuppm_fp(&platform_eb_fp);
-	/* init only in AP mode */
+
 	else {
-		if (target == TARGET_STACK) {
+		if (target == TARGET_STACK){
 			opp_num = __gpufreq_get_opp_num_stack();
-			max_oppidx = 0;
-			min_oppidx = opp_num - 1;
 			g_stack.opp_num = opp_num;
 		} else {
 			opp_num = __gpufreq_get_opp_num_gpu();
-			max_oppidx = 0;
-			min_oppidx = opp_num - 1;
 			g_gpu.opp_num = opp_num;
 		}
+		max_oppidx = 0;
+		min_oppidx = opp_num - 1;
 
-		/* set basic limit at boot time */
-		gpuppm_set_limit(target, LIMIT_SEGMENT, max_oppidx, min_oppidx);
-		gpuppm_set_limit(target, LIMIT_SRAMRC, GPUPPM_KEEP_IDX, sramrc_vsafe);
+		gpuppm_set_limit(target, LIMIT_SEGMENT, max_oppidx, min_oppidx, false);
 
 		gpufreq_register_gpuppm_fp(&platform_ap_fp);
 	}

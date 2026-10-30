@@ -934,6 +934,20 @@ static netdev_tx_t eth_start_xmit(struct sk_buff *skb,
 				" skb->len:%d skb->data_len:%d\n",
 				req->length, dev->header_len,
 				skb->len, skb->data_len);
+		if (req->length + dev->header_len + skb->len > dev->tx_req_bufsize) {
+			unsigned int over = req->length + dev->header_len + skb->len -
+					    dev->tx_req_bufsize;
+
+			dev_kfree_skb_any(skb);
+			dev->net->stats.tx_dropped++;
+			spin_lock_irqsave(&dev->req_lock, flags);
+			list_add(&req->list, &dev->tx_reqs);
+			if (netif_queue_stopped(net))
+				netif_wake_queue(net);
+			spin_unlock_irqrestore(&dev->req_lock, flags);
+			U_ETHER_DBG("%s - tx dropped, %u bytes over the buffer\n", __func__, over);
+			return NETDEV_TX_OK;
+		}
 		/* Add RNDIS Header */
 		memcpy(req->buf + req->length, dev->port_usb->header,
 						dev->header_len);

@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: GPL-2.0 */
 
 #ifndef __SC8551_HEADER__
 #define __SC8551_HEADER__

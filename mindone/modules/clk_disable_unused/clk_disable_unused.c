@@ -39,7 +39,7 @@ static int disable_unused_probe(struct platform_device *pdev)
 	pm_runtime_get_sync(&pdev->dev);
 	for (i = 0; i < clk_con; i++) {
 		clk = of_clk_get(pdev->dev.of_node, i);
-		if (IS_ERR(clk)) {
+		if (IS_ERR_OR_NULL(clk)) {
 			long ret = PTR_ERR(clk);
 
 			if (ret == -EPROBE_DEFER)

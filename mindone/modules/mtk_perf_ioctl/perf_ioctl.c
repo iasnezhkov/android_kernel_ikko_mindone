@@ -554,7 +554,7 @@ static long xgff_ioctl_impl(struct file *filp,
 
 		break;
 	case XGFFRAME_END:
-		if (!xgff_frame_startend_fp) {
+		if (!xgff_frame_startend_fp || !xgff_frame_getdeplist_maxsize_fp) {
 			ret = -EAGAIN;
 			goto ret_ioctl;
 		}

@@ -123,6 +123,7 @@ struct _btif_buf_str_ {
 	 * For Rx: next write data(from FIFO) pointer
 	 */
 	unsigned int wr_idx;
+	unsigned int reset_gen;
 };
 
 /*---------------------------------------------------------------------------*/

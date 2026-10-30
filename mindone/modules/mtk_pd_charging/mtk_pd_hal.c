@@ -35,6 +35,7 @@
 #include <linux/cdev.h>
 #include <linux/delay.h>
 #include <linux/kernel.h>
+#include <linux/limits.h>
 #include <linux/init.h>
 #include <linux/types.h>
 #include <linux/wait.h>
@@ -186,13 +187,17 @@ static int get_pmic_vbus(int *vchr)
 
 	if (chg_psy == NULL)
 		chg_psy = power_supply_get_by_name("mtk_charger_type");
-	if (chg_psy == NULL) {
+	if (IS_ERR_OR_NULL(chg_psy)) {
 		pd_err("%s Couldn't get chg_psy\n", __func__);
-		ret = -1;
+		ret = chg_psy ? PTR_ERR(chg_psy) : -ENODEV;
 	} else {
 		ret = power_supply_get_property(chg_psy,
 			POWER_SUPPLY_PROP_VOLTAGE_NOW, &prop);
 	}
+	if (ret < 0)
+		return ret;
+	if (prop.intval < 0 || prop.intval > INT_MAX / 1000)
+		return -ERANGE;
 	*vchr = prop.intval * 1000;
 
 	pd_dbg("%s vbus:%d\n", __func__,
@@ -200,24 +205,30 @@ static int get_pmic_vbus(int *vchr)
 	return ret;
 }
 
-int pd_hal_get_vbus(struct chg_alg_device *alg)
+int pd_hal_get_vbus(struct chg_alg_device *alg, int *vchr)
 {
-	int ret = 0;
-	int vchr = 0;
+	int ret;
+	int value;
+	u32 primary;
 	struct pd_hal *hal;
 
-	if (alg == NULL)
+	if (!alg || !vchr)
 		return -EINVAL;
 	hal = chg_alg_dev_get_drv_hal_data(alg);
-
-	ret = charger_dev_get_vbus(hal->chg1_dev, &vchr);
+	if (IS_ERR_OR_NULL(hal))
+		return -ENODEV;
+	ret = charger_dev_get_vbus(hal->chg1_dev, &primary);
 	if (ret < 0) {
-		ret = get_pmic_vbus(&vchr);
+		ret = get_pmic_vbus(&value);
 		if (ret < 0)
-			pd_err("%s: get vbus failed: %d\n", __func__, ret);
+			return ret;
+	} else {
+		if (primary > INT_MAX)
+			return -ERANGE;
+		value = primary;
 	}
-
-	return vchr;
+	*vchr = value;
+	return 0;
 }
 
 int pd_hal_get_ibus(struct chg_alg_device *alg, int *ibus)
@@ -643,10 +654,13 @@ int pd_hal_get_uisoc(struct chg_alg_device *alg)
 
 	if (IS_ERR_OR_NULL(bat_psy)) {
 		pd_err("%s Couldn't get bat_psy\n", __func__);
+		pd->bat_psy = NULL;
+		ret = 50;
+	} else if (power_supply_get_property(bat_psy,
+			POWER_SUPPLY_PROP_CAPACITY, &prop) < 0) {
+		pd_err("%s Couldn't get battery capacity\n", __func__);
 		ret = 50;
 	} else {
-		ret = power_supply_get_property(bat_psy,
-			POWER_SUPPLY_PROP_CAPACITY, &prop);
 		ret = prop.intval;
 	}
 

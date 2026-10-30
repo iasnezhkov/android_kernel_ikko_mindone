@@ -4,7 +4,6 @@
  */
 
 #include <drm/drm_fourcc.h>
-#include "mindone_log.h"
 #include <linux/clk.h>
 #include <linux/sched.h>
 #include <linux/sched/clock.h>
@@ -267,7 +266,6 @@ static inline struct mtk_disp_rdma *comp_to_rdma(struct mtk_ddp_comp *comp)
 }
 
 int disp_met_set(void *data, u64 val);
-extern int mindone_vb_watch;
 
 static irqreturn_t mtk_disp_rdma_irq_handler(int irq, void *dev_id)
 {
@@ -294,22 +292,14 @@ static irqreturn_t mtk_disp_rdma_irq_handler(int irq, void *dev_id)
 	IF_DEBUG_IRQ_TS(find_work,
 		priv->ddp_comp.ts_works[work_id].irq_time, i)
 
-	if (mindone_vb_watch)
-		MINDONE_PR("MINDONE-VB: rdma-irq enter\n");
 	if (mtk_drm_top_clk_isr_get("rdma_irq") == false) {
-		if (mindone_vb_watch)
-			MINDONE_PR("MINDONE-VB: rdma-irq clk-gate-fail\n");
 		DDPIRQ("%s, top clk off\n", __func__);
 		return IRQ_NONE;
 	}
 	IF_DEBUG_IRQ_TS(find_work,
 		priv->ddp_comp.ts_works[work_id].irq_time, i)
 
-	if (mindone_vb_watch)
-		MINDONE_PR("MINDONE-VB: rdma-irq pre-readl\n");
 	val = readl(rdma->regs + DISP_REG_RDMA_INT_STATUS);
-	if (mindone_vb_watch)
-		MINDONE_PR("MINDONE-VB: rdma-irq post-readl val=0x%x\n", val);
 	if (!val) {
 		ret = IRQ_NONE;
 		goto out;
@@ -524,8 +514,6 @@ static irqreturn_t mtk_disp_rdma_irq_handler(int irq, void *dev_id)
 	ret = IRQ_HANDLED;
 
 out:
-	if (mindone_vb_watch)
-		MINDONE_PR("MINDONE-VB: rdma-irq exit ret=%d\n", ret);
 	mtk_drm_top_clk_isr_put("rdma_irq");
 	IF_DEBUG_IRQ_TS(find_work,
 		priv->ddp_comp.ts_works[work_id].irq_time, i)

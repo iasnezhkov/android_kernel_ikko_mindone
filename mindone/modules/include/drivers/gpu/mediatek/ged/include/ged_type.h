@@ -2,7 +2,6 @@
 /*
  * Copyright (c) 2019 MediaTek Inc.
  */
-
 #ifndef __GED_TYPE_H__
 #define __GED_TYPE_H__
 
@@ -15,6 +14,7 @@
 #define GED_ERROR_CMD_NOT_PROCESSED	  6
 #define GED_ERROR_INVALID_PARAMS      7
 #define GED_ERROR_INTENTIONAL_BLOCK   8
+#define GED_ERROR_VENDOR_NOT_SUPPORT  9
 #define GED_ERROR                     int
 
 #define GED_HANDLE                    void*
@@ -52,7 +52,6 @@
 #define GED_INFO_SIZE            20
 #define GED_INFO                 int
 
-
 #define GED_DVFS_VSYNC_OFFSET_DEBUG_CLEAR_EVENT	         0
 #define GED_DVFS_VSYNC_OFFSET_FORCE_ON                   1
 #define GED_DVFS_VSYNC_OFFSET_FORCE_OFF                  2
@@ -70,7 +69,6 @@
 #define GED_DVFS_VSYNC_OFFSET_DHWC_EVENT                 14
 #define GED_DVFS_VSYNC_OFFSET_SWITCH_CMD                 int
 
-
 #define GED_VSYNC_SW_EVENT	0
 #define GED_VSYNC_HW_EVENT	1
 #define GED_VSYNC_TYPE      int
@@ -84,17 +82,19 @@ enum {
 	GAS_CATEGORY_OTHERS,
 };
 
+#define MT6985W_CZA_SEGMENT 0
+#define MT6985W_TCZA_SEGMENT 1
+#define NO_SEGMENT 0xFF
 
 #define	GED_BOOST_GPU_FREQ_LEVEL_MAX  100
 #define GED_BOOST_GPU_FREQ_LEVEL      int
 
 #define GED_BRIDGE_IN_LOGBUF_SIZE     320
 
-	/* bit 0~7 reserved for internal used */
 #define GED_RESVERED                  0xFF
-	/* log with a prefix kernel time */
+
 #define GED_LOG_ATTR_TIME             0x100
-	/* log with a prefix user time, pid, tid */
+
 #define GED_LOG_ATTR_TIME_TPT         0x200
 
 struct GED_DVFS_UM_QUERY_PACK {

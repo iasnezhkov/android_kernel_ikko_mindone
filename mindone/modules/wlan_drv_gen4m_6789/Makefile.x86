@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: GPL-2.0
 # Makefile.x86: Makefile for Linux PC
 # You can build specific .ko name by assiging the "MTK_COMBO_CHIP" and "hif" parameters
 # hif = pcie or sdio or usb

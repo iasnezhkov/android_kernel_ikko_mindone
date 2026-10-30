@@ -3,8 +3,10 @@
  * Copyright (c) 2021 MediaTek Inc.
  */
 
+#include <linux/bitops.h>
 #include <linux/clk.h>
 #include <linux/component.h>
+#include <linux/math64.h>
 #include <linux/of_device.h>
 #include <linux/of_irq.h>
 #include <linux/platform_device.h>
@@ -149,6 +151,7 @@ static int g_rgb_matrix[DISP_CCORR_TOTAL][3][3] = {
 		{0, 1024, 0},
 		{0, 0, 1024}
 	} };
+static s64 g_ccorr_color_offset[DISP_CCORR_TOTAL][3];
 static struct DRM_DISP_CCORR_COEF_T g_multiply_matrix_coef;
 static int g_disp_ccorr_without_gamma;
 static int g_disp_ccorr_temp_linear;
@@ -180,12 +183,6 @@ static struct mtk_ddp_comp *ccorr1_default_comp;
 static int disp_ccorr_write_coef_reg(struct mtk_ddp_comp *comp,
 	struct cmdq_pkt *handle, int lock);
 /* static void ccorr_dump_reg(void); */
-
-enum CCORR_IOCTL_CMD {
-	SET_CCORR = 0,
-	SET_INTERRUPT,
-	BYPASS_CCORR
-};
 
 struct mtk_disp_ccorr {
 	struct mtk_ddp_comp ddp_comp;
@@ -334,6 +331,8 @@ static int disp_ccorr_write_coef_reg(struct mtk_ddp_comp *comp,
 		if (((g_prim_ccorr_force_linear && (disp_ccorr_linear&0x01)) ||
 			(g_prim_ccorr_pq_nonlinear && (disp_ccorr_linear == 0x0))) &&
 			(disp_ccorr_number == 1)) {
+			if (g_prim_ccorr_force_linear && (disp_ccorr_linear & 0x01))
+				g_disp_ccorr_without_gamma = g_disp_ccorr_temp_linear;
 			disp_ccorr_multiply_3x3(ccorr->coef, g_ccorr_color_matrix[id],
 				temp_matrix);
 			disp_ccorr_multiply_3x3(temp_matrix, g_rgb_matrix[id],
@@ -349,9 +348,31 @@ static int disp_ccorr_write_coef_reg(struct mtk_ddp_comp *comp,
 		}
 		ccorr = multiply_matrix;
 
-		ccorr->offset[0] = g_disp_ccorr_coef[id]->offset[0];
-		ccorr->offset[1] = g_disp_ccorr_coef[id]->offset[1];
-		ccorr->offset[2] = g_disp_ccorr_coef[id]->offset[2];
+		if (g_prim_ccorr_force_linear && (disp_ccorr_linear & 0x01) &&
+			(disp_ccorr_number == 1)) {
+			for (i = 0; i < 3; i++) {
+				s64 sum = 0;
+				s64 offset = sign_extend32(g_disp_ccorr_coef[id]->offset[i] &
+					CCORR_COLOR_OFFSET_MASK, 25);
+
+				for (j = 0; j < 3; j++) {
+					int coef = g_disp_ccorr_coef[id]->coef[i][j] &
+						ccorr_fullbit_mask;
+
+					if (coef > ccorr_max_positive)
+						coef -= ccorr_offset_base << 2;
+					sum += coef * g_ccorr_color_offset[id][j];
+				}
+				offset += div_s64(sum, ccorr_offset_base);
+				ccorr->offset[i] = clamp_t(s64, offset,
+					-(1LL << 25), (1LL << 25) - 1) &
+					CCORR_COLOR_OFFSET_MASK;
+			}
+		} else {
+			ccorr->offset[0] = g_disp_ccorr_coef[id]->offset[0];
+			ccorr->offset[1] = g_disp_ccorr_coef[id]->offset[1];
+			ccorr->offset[2] = g_disp_ccorr_coef[id]->offset[2];
+		}
 	//}
 
 // For 6885 need to left shift one bit
@@ -489,7 +510,7 @@ static void disp_ccorr_set_interrupt(struct mtk_ddp_comp *comp,
 		g_old_pq_backlight = g_pq_backlight;
 	else
 		mtk_crtc_user_cmd(&(comp->mtk_crtc->base), comp,
-			SET_INTERRUPT, &enabled);
+			CCORR_SET_INTERRUPT, &enabled);
 }
 
 static void disp_ccorr_clear_irq_only(struct mtk_ddp_comp *comp)
@@ -785,6 +806,9 @@ int disp_ccorr_set_color_matrix(struct mtk_ddp_comp *comp,
 			DDPPR_ERR("%s: no memory\n", __func__);
 			return -EFAULT;
 		}
+		memset(ccorr, 0, sizeof(*ccorr));
+		for (i = 0; i < 3; i++)
+			ccorr->coef[i][i] = ccorr_offset_base;
 		g_disp_ccorr_coef[id] = ccorr;
 	}
 
@@ -863,9 +887,16 @@ int disp_ccorr_set_color_matrix(struct mtk_ddp_comp *comp,
 		need_offset = false;
 */
 
-	g_disp_ccorr_coef[id]->offset[0] = (matrix[12] << 1) << ccorr_offset_mask;
-	g_disp_ccorr_coef[id]->offset[1] = (matrix[13] << 1) << ccorr_offset_mask;
-	g_disp_ccorr_coef[id]->offset[2] = (matrix[14] << 1) << ccorr_offset_mask;
+	if (g_prim_ccorr_force_linear && (disp_ccorr_linear & 0x01) &&
+		(disp_ccorr_number == 1)) {
+		for (i = 0; i < 3; i++)
+			g_ccorr_color_offset[id][i] = (s64)matrix[12 + i] *
+				(1U << (ccorr_offset_mask + 1));
+	} else {
+		g_disp_ccorr_coef[id]->offset[0] = (matrix[12] << 1) << ccorr_offset_mask;
+		g_disp_ccorr_coef[id]->offset[1] = (matrix[13] << 1) << ccorr_offset_mask;
+		g_disp_ccorr_coef[id]->offset[2] = (matrix[14] << 1) << ccorr_offset_mask;
+	}
 
 	//if only ccorr0 hw exist and aosp forece linear or
 	//pq force nonlinear,id should be 0, g_disp_ccorr_coef
@@ -973,6 +1004,8 @@ int mtk_drm_ioctl_set_ccorr(struct drm_device *dev, void *data,
 	if (m_new_pq_persist_property[DISP_PQ_CCORR_SILKY_BRIGHTNESS]) {
 
 		ret = mtk_crtc_user_cmd(crtc, comp, SET_CCORR, data);
+		if (ret)
+			return ret;
 
 		if ((ccorr_config->silky_bright_flag) == 1 &&
 			ccorr_config->FinalBacklight != 0) {
@@ -1262,7 +1295,7 @@ static int mtk_ccorr_user_cmd(struct mtk_ddp_comp *comp,
 	}
 	break;
 
-	case SET_INTERRUPT:
+	case CCORR_SET_INTERRUPT:
 	{
 		struct mtk_disp_ccorr *ccorr = comp_to_ccorr(comp);
 
@@ -1440,6 +1473,65 @@ static const struct component_ops mtk_disp_ccorr_component_ops = {
 	.bind	= mtk_disp_ccorr_bind,
 	.unbind = mtk_disp_ccorr_unbind,
 };
+
+int mtk_ccorr_get_debug_info(struct mtk_ddp_comp *comp, char *buf, int size)
+{
+	unsigned int id, coef[3][3], reg[5];
+	unsigned long flags;
+	const char *cache = "busy", *hw = "busy";
+	bool cached = false, powered = false;
+	int i, n = 0;
+
+	if (!comp || size <= 0)
+		return 0;
+
+	id = index_of_ccorr(comp->id);
+	if (mutex_trylock(&g_ccorr_global_lock)) {
+		cache = g_disp_ccorr_coef[id] ? "valid" : "unset";
+		if (g_disp_ccorr_coef[id]) {
+			memcpy(coef, g_disp_ccorr_coef[id]->coef, sizeof(coef));
+			cached = true;
+		}
+		mutex_unlock(&g_ccorr_global_lock);
+	}
+
+	if (spin_trylock_irqsave(&g_ccorr_clock_lock, flags)) {
+		powered = atomic_read(&g_ccorr_is_clock_on[id]);
+		hw = powered ? "on" : "off";
+		if (powered)
+			for (i = 0; i < ARRAY_SIZE(reg); i++)
+				reg[i] = readl(comp->regs + CCORR_REG(i));
+		spin_unlock_irqrestore(&g_ccorr_clock_lock, flags);
+	}
+
+	n += scnprintf(buf + n, size - n, "CCORR%u cache=%s hw=%s\n",
+		id, cache, hw);
+	if (cached)
+		for (i = 0; i < 3; i++)
+			n += scnprintf(buf + n, size - n,
+				"CCORR%u cache[%d]=%u %u %u\n", id, i,
+				coef[i][0], coef[i][1], coef[i][2]);
+	if (powered) {
+		n += scnprintf(buf + n, size - n,
+			"CCORR%u regs[080..090]=%08x %08x %08x %08x %08x\n",
+			id, reg[0], reg[1], reg[2], reg[3], reg[4]);
+		for (i = 0; i < 3; i++) {
+			unsigned int j, row[3];
+
+			for (j = 0; j < 3; j++) {
+				unsigned int k = i * 3 + j;
+
+				row[j] = (reg[k / 2] >> ((k & 1) ? 0 : 16)) &
+					CCORR_13BIT_MASK;
+			}
+			n += scnprintf(buf + n, size - n,
+				"CCORR%u hw[%d]=%u %u %u\n", id, i,
+				row[0], row[1], row[2]);
+		}
+	}
+
+	return n;
+}
 
 void mtk_ccorr_dump(struct mtk_ddp_comp *comp)
 {

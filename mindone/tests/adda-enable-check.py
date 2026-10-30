@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: GPL-2.0
+# SPDX-FileCopyrightText: 2026 The LineageOS Project
 import argparse
 from pathlib import Path
 import re
@@ -16,10 +18,13 @@ def function(source, name):
 def main():
     root = Path(__file__).resolve().parents[1]
     parser = argparse.ArgumentParser(description="Check ADDA hw_params preserves DAPM playback enable")
-    parser.add_argument("--source", type=Path, default=root / "modules/snd_soc_mt6789_afe/mt6789-dai-adda.c")
+    parser.add_argument("kernel_tree", type=Path, nargs="?", default=root.parent)
+    parser.add_argument("--source", type=Path)
     parser.add_argument("--scenario", choices=("initial", "reroute", "all"), default="all")
     args = parser.parse_args()
-    source = args.source.read_text()
+    root = args.kernel_tree.resolve() / "mindone"
+    source_path = args.source or root / "modules/snd_soc_mt6789_afe/mt6789-dai-adda.c"
+    source = source_path.read_text()
     header = root / "modules/snd_soc_mt6789_afe/mt6789-reg.h"
     common = (root / "modules/include/sound/soc/mediatek/common/mtk-base-afe.h").read_text()
     tokens = ("UL_IIR_SW", "AUDIO_SDM_LEVEL_NORMAL", "AUDIO_SDM_2ND",

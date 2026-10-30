@@ -15,7 +15,7 @@
 
 #include <trace/hooks/fpsimd.h>
 #include <trace/hooks/cgroup.h>
-#include <sched/sched.h>
+#include <../kernel/sched/sched.h>
 #include "cpuqos_v3.h"
 #include "cpuqos_sys_common.h"
 

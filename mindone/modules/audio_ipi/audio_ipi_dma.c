@@ -1329,6 +1329,9 @@ static int hal_dma_push(
 	if (msg_queue == NULL || p_ipi_msg == NULL || p_idx_msg == NULL)
 		return -EFAULT;
 
+	if (msg_queue->tmp_buf_d2k == NULL)
+		return -EFAULT;
+
 	if (sizeof(struct ipi_msg_t) >= MAX_DSP_DMA_WRITE_SIZE)
 		return -EFAULT;
 
@@ -1428,6 +1431,9 @@ static int hal_dma_front(
 			msg_queue, pp_ipi_msg, p_idx_msg);
 		return -EFAULT;
 	}
+
+	if (msg_queue->tmp_buf_k2h == NULL)
+		return -EFAULT;
 
 	*pp_ipi_msg = NULL;
 	*p_idx_msg = 0xFFFFFFFF;
@@ -1629,6 +1635,9 @@ size_t audio_ipi_dma_msg_read(void __user *buf, size_t count)
 		return 0;
 	}
 
+
+	if (msg_queue->tmp_buf_k2h == NULL)
+		return 0;
 
 	/* wait until element pushed */
 	retval = hal_dma_get_queue_msg(msg_queue, &p_ipi_msg, &idx_msg);

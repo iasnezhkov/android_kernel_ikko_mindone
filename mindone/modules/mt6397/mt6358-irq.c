@@ -67,28 +67,28 @@ static struct irq_top_t mt6366_ints[] = {
 };
 
 
-static struct pmic_irq_data mt6357_irqd = {
+static const struct pmic_irq_data mt6357_irqd = {
 	.num_top = ARRAY_SIZE(mt6357_ints),
 	.num_pmic_irqs = MT6357_IRQ_NR,
 	.top_int_status_reg = MT6357_TOP_INT_STATUS0,
 	.pmic_ints = mt6357_ints,
 };
 
-static struct pmic_irq_data mt6358_irqd = {
+static const struct pmic_irq_data mt6358_irqd = {
 	.num_top = ARRAY_SIZE(mt6358_ints),
 	.num_pmic_irqs = MT6358_IRQ_NR,
 	.top_int_status_reg = MT6358_TOP_INT_STATUS0,
 	.pmic_ints = mt6358_ints,
 };
 
-static struct pmic_irq_data mt6359p_irqd = {
+static const struct pmic_irq_data mt6359p_irqd = {
 	.num_top = ARRAY_SIZE(mt6359p_ints),
 	.num_pmic_irqs = MT6359P_IRQ_NR,
 	.top_int_status_reg = MT6359P_TOP_INT_STATUS0,
 	.pmic_ints = mt6359p_ints,
 };
 
-static struct pmic_irq_data mt6366_irqd = {
+static const struct pmic_irq_data mt6366_irqd = {
 	.num_top = ARRAY_SIZE(mt6366_ints),
 	.num_pmic_irqs = MT6366_IRQ_NR,
 	.top_int_status_reg = MT6358_TOP_INT_STATUS0,
@@ -159,17 +159,15 @@ static void pmic_irq_sync_unlock(struct irq_data *data)
 	mutex_unlock(&chip->irqlock);
 }
 
-static struct mt6397_chip *mindone_resync_chip;
-
 static int mindone_pmic_irq_pm_event(struct notifier_block *nb,
 				     unsigned long event, void *unused)
 {
-	struct mt6397_chip *chip = READ_ONCE(mindone_resync_chip);
+	struct mt6397_chip *chip = container_of(nb, struct mt6397_chip, pm_nb);
 	struct pmic_irq_data *irqd;
 	unsigned int top_gp, j, bit, hw, base, lim, en_reg, val;
 	int ret, healed = 0, failed = 0;
 
-	if (event != PM_POST_SUSPEND || !chip)
+	if (event != PM_POST_SUSPEND)
 		return NOTIFY_DONE;
 
 	irqd = chip->irq_data;
@@ -222,9 +220,34 @@ static int mindone_pmic_irq_pm_event(struct notifier_block *nb,
 	return NOTIFY_DONE;
 }
 
-static struct notifier_block mindone_resync_nb = {
-	.notifier_call = mindone_pmic_irq_pm_event,
-};
+static void mindone_pmic_irq_unregister(void *data)
+{
+	struct mt6397_chip *chip = data;
+
+	unregister_pm_notifier(&chip->pm_nb);
+}
+
+static void mindone_pmic_irq_wake_disable(void *data)
+{
+	struct mt6397_chip *chip = data;
+
+	disable_irq_wake(chip->irq);
+}
+
+static void mindone_pmic_irq_domain_remove(void *data)
+{
+	struct mt6397_chip *chip = data;
+	struct pmic_irq_data *irqd = chip->irq_data;
+	unsigned int hwirq, virq;
+
+	for (hwirq = 0; hwirq < irqd->num_pmic_irqs; hwirq++) {
+		virq = irq_find_mapping(chip->irq_domain, hwirq);
+		if (virq)
+			irq_dispose_mapping(virq);
+	}
+	irq_domain_remove(chip->irq_domain);
+	chip->irq_domain = NULL;
+}
 
 static struct irq_chip mt6358_irq_chip = {
 	.name = "mt6358-irq",
@@ -332,23 +355,24 @@ static const struct irq_domain_ops mt6358_irq_domain_ops = {
 int mt6358_irq_init(struct mt6397_chip *chip)
 {
 	int i, j, ret;
+	const struct pmic_irq_data *template;
 	struct pmic_irq_data *irqd;
 
 	switch (chip->chip_id) {
 	case MT6357_CHIP_ID:
-		chip->irq_data = &mt6357_irqd;
+		template = &mt6357_irqd;
 		break;
 
 	case MT6358_CHIP_ID:
-		chip->irq_data = &mt6358_irqd;
+		template = &mt6358_irqd;
 		break;
 
 	case MT6359P_CHIP_ID:
-		chip->irq_data = &mt6359p_irqd;
+		template = &mt6359p_irqd;
 		break;
 
 	case MT6366_CHIP_ID:
-		chip->irq_data = &mt6366_irqd;
+		template = &mt6366_irqd;
 		break;
 
 	default:
@@ -356,8 +380,11 @@ int mt6358_irq_init(struct mt6397_chip *chip)
 		return -ENODEV;
 	}
 
+	irqd = devm_kmemdup(chip->dev, template, sizeof(*irqd), GFP_KERNEL);
+	if (!irqd)
+		return -ENOMEM;
+	chip->irq_data = irqd;
 	mutex_init(&chip->irqlock);
-	irqd = chip->irq_data;
 	irqd->enable_hwirq = devm_kcalloc(chip->dev,
 					  irqd->num_pmic_irqs,
 					  sizeof(*irqd->enable_hwirq),
@@ -392,6 +419,11 @@ int mt6358_irq_init(struct mt6397_chip *chip)
 		return -ENODEV;
 	}
 
+	ret = devm_add_action_or_reset(chip->dev,
+				       mindone_pmic_irq_domain_remove, chip);
+	if (ret)
+		return ret;
+
 	ret = devm_request_threaded_irq(chip->dev, chip->irq, NULL,
 					mt6358_irq_handler, IRQF_ONESHOT,
 					mt6358_irq_chip.name, chip);
@@ -401,10 +433,21 @@ int mt6358_irq_init(struct mt6397_chip *chip)
 		return ret;
 	}
 
-	enable_irq_wake(chip->irq);
+	ret = enable_irq_wake(chip->irq);
+	if (!ret) {
+		ret = devm_add_action_or_reset(chip->dev,
+					       mindone_pmic_irq_wake_disable, chip);
+		if (ret)
+			return ret;
+	} else {
+		dev_warn(chip->dev, "Failed to enable IRQ wake: %d\n", ret);
+	}
 
-	WRITE_ONCE(mindone_resync_chip, chip);
-	register_pm_notifier(&mindone_resync_nb);
+	chip->pm_nb.notifier_call = mindone_pmic_irq_pm_event;
+	ret = register_pm_notifier(&chip->pm_nb);
+	if (ret)
+		return ret;
 
-	return ret;
+	return devm_add_action_or_reset(chip->dev,
+					mindone_pmic_irq_unregister, chip);
 }

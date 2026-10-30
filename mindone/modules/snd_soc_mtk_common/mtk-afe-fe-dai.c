@@ -425,6 +425,7 @@ int mtk_afe_fe_hw_free(struct snd_pcm_substream *substream,
 	struct snd_soc_pcm_runtime *rtd = substream->private_data;
 	struct snd_soc_dai *cpu_dai = snd_soc_rtd_to_cpu(rtd, 0);
 	struct mtk_base_afe_memif *memif = &afe->memif[cpu_dai->id];
+	unsigned int reg;
 	int ret = 0;
 
 	dev_info(afe->dev,
@@ -436,6 +437,24 @@ int mtk_afe_fe_hw_free(struct snd_pcm_substream *substream,
 		 substream->runtime->dma_area,
 		 substream->runtime->dma_bytes,
 		 memif->vow_barge_in_enable);
+
+	if (memif->data->enable_reg >= 0 &&
+	    memif->data->enable_shift >= 0 &&
+	    memif->data->enable_shift < 32) {
+		ret = regmap_read(afe->regmap, memif->data->enable_reg, &reg);
+		if (ret) {
+			dev_err(afe->dev, "%s: %s(%d) enable state read failed %d\n",
+				__func__, memif->data->name, cpu_dai->id, ret);
+		} else if (reg & BIT(memif->data->enable_shift)) {
+			dev_err(afe->dev, "%s: %s(%d) was not disabled before being freed\n",
+				__func__, memif->data->name, cpu_dai->id);
+			ret = mtk_memif_set_disable(afe, cpu_dai->id);
+			if (ret)
+				dev_err(afe->dev, "%s: %s(%d) disable failed %d\n",
+					__func__, memif->data->name, cpu_dai->id, ret);
+		}
+		ret = 0;
+	}
 
 #if IS_ENABLED(CONFIG_SND_SOC_MTK_AUDIO_DSP)
 	ret = afe_pcm_ipi_to_dsp(AUDIO_DSP_TASK_PCM_HWFREE,
@@ -656,9 +675,13 @@ int mtk_afe_suspend(struct snd_soc_component *component)
 			devm_kcalloc(dev, afe->reg_back_up_list_num,
 				     sizeof(unsigned int), GFP_KERNEL);
 
-	for (i = 0; i < afe->reg_back_up_list_num; i++)
-		regmap_read(regmap, afe->reg_back_up_list[i],
-			    &afe->reg_back_up[i]);
+	if (!afe->reg_back_up) {
+		dev_dbg(dev, "%s no reg_backup\n", __func__);
+	} else {
+		for (i = 0; i < afe->reg_back_up_list_num; i++)
+			regmap_read(regmap, afe->reg_back_up_list[i],
+				    &afe->reg_back_up[i]);
+	}
 
 	afe->suspended = true;
 	pm_runtime_force_suspend(dev);
@@ -686,12 +709,13 @@ int mtk_afe_resume(struct snd_soc_component *component)
 
 	pm_runtime_force_resume(dev);
 
-	if (!afe->reg_back_up)
+	if (!afe->reg_back_up) {
 		dev_dbg(dev, "%s no reg_backup\n", __func__);
-
-	for (i = 0; i < afe->reg_back_up_list_num; i++)
-		mtk_regmap_write(regmap, afe->reg_back_up_list[i],
-				 afe->reg_back_up[i]);
+	} else {
+		for (i = 0; i < afe->reg_back_up_list_num; i++)
+			mtk_regmap_write(regmap, afe->reg_back_up_list[i],
+					 afe->reg_back_up[i]);
+	}
 
 	afe->suspended = false;
 	return 0;

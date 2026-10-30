@@ -5,28 +5,6 @@
 
 #include <drm/drm_framebuffer.h>
 
-#include <linux/moduleparam.h>
-int mindone_accept_modifiers = 1;
-module_param(mindone_accept_modifiers, int, 0644);
-MODULE_PARM_DESC(mindone_accept_modifiers, "1 = accept MediaTek private plane modifiers");
-unsigned long mindone_mod_accepted;
-module_param(mindone_mod_accepted, ulong, 0444);
-unsigned long mindone_mod_rejected;
-module_param(mindone_mod_rejected, ulong, 0444);
-
-
-#include <linux/moduleparam.h>
-int mindone_no_rgb332_skip;
-module_param(mindone_no_rgb332_skip, int, 0644);
-MODULE_PARM_DESC(mindone_no_rgb332_skip, "1 = do not skip plane update on RGB332");
-unsigned long mindone_rgb332_hits;
-module_param(mindone_rgb332_hits, ulong, 0444);
-MODULE_PARM_DESC(mindone_rgb332_hits, "how many plane updates hit the RGB332 gate");
-unsigned long mindone_plane_updates;
-module_param(mindone_plane_updates, ulong, 0444);
-MODULE_PARM_DESC(mindone_plane_updates, "how many plane updates reached the gate at all");
-
-#include "mindone_log.h"
 #include <drm/drm_atomic.h>
 #include <drm/drm_atomic_helper.h>
 #include <drm/drm_plane_helper.h>
@@ -173,13 +151,15 @@ static struct mtk_drm_property mtk_plane_property[PLANE_PROP_MAX] = {
 	{DRM_MODE_PROP_ATOMIC, "DIM_COLOR", 0, UINT_MAX, 0},
 	{DRM_MODE_PROP_ATOMIC, "IS_MML", 0, UINT_MAX, 0},
 	{DRM_MODE_PROP_ATOMIC, "MML_SUBMIT", 0, ULONG_MAX, 0},
+	{DRM_MODE_PROP_ATOMIC, "OVL_CSC_SET_BRIGHTNESS", 0, ULONG_MAX, 0},
+	{DRM_MODE_PROP_ATOMIC, "OVL_CSC_SET_COLORTRANSFORM", 0, ULONG_MAX, 0},
+	{DRM_MODE_PROP_ATOMIC, "DIRTY_ROI_NUM", 0, ULONG_MAX, 0},
 };
 
 static void mtk_plane_reset(struct drm_plane *plane)
 {
 	struct mtk_plane_state *state;
 
-	MINDONE_PR("MINDONE-AC: plane-reset begin plane=%d\n", plane->index);
 	if (plane->state) {
 		__drm_atomic_helper_plane_destroy_state(plane->state);
 
@@ -188,7 +168,6 @@ static void mtk_plane_reset(struct drm_plane *plane)
 	} else {
 		state = kzalloc(sizeof(*state), GFP_KERNEL);
 		if (!state) {
-			MINDONE_PR("MINDONE-AC: plane-reset end (alloc-fail)\n");
 			return;
 		}
 		plane->state = &state->base;
@@ -197,7 +176,6 @@ static void mtk_plane_reset(struct drm_plane *plane)
 	state->prop_val[PLANE_PROP_PLANE_ALPHA] = 0xFF;
 	state->base.plane = plane;
 	state->pending.format = DRM_FORMAT_RGB565;
-	MINDONE_PR("MINDONE-AC: plane-reset end\n");
 }
 
 static struct drm_plane_state *
@@ -206,10 +184,8 @@ mtk_plane_duplicate_state(struct drm_plane *plane)
 	struct mtk_plane_state *old_state = to_mtk_plane_state(plane->state);
 	struct mtk_plane_state *state;
 
-	MINDONE_PR("MINDONE-AC: plane-dup-state begin plane=%d\n", plane->index);
 	state = kzalloc(sizeof(*state), GFP_KERNEL);
 	if (!state) {
-		MINDONE_PR("MINDONE-AC: plane-dup-state end ret=NULL (alloc-fail)\n");
 		return NULL;
 	}
 
@@ -228,7 +204,6 @@ mtk_plane_duplicate_state(struct drm_plane *plane)
 	state->comp_state = old_state->comp_state;
 	state->crtc = old_state->crtc;
 
-	MINDONE_PR("MINDONE-AC: plane-dup-state end ret=%px\n", &state->base);
 	return &state->base;
 }
 
@@ -237,11 +212,9 @@ static void mtk_drm_plane_destroy_state(struct drm_plane *plane,
 {
 	struct mtk_plane_state *s;
 
-	MINDONE_PR("MINDONE-AC: plane-destroy-state begin plane=%d\n", plane->index);
 	s = to_mtk_plane_state(state);
 	__drm_atomic_helper_plane_destroy_state(state);
 	kfree(s);
-	MINDONE_PR("MINDONE-AC: plane-destroy-state end\n");
 }
 
 static int mtk_plane_atomic_set_property(struct drm_plane *plane,
@@ -254,10 +227,8 @@ static int mtk_plane_atomic_set_property(struct drm_plane *plane,
 	int ret = 0;
 	int i;
 
-	MINDONE_PR("MINDONE-AC: plane-set-prop begin plane=%d\n", plane->index);
 	if (!mtk_plane) {
 		DDPPR_ERR("%s:%d mtk plane is null\n", __func__, __LINE__);
-		MINDONE_PR("MINDONE-AC: plane-set-prop end ret=-EINVAL (null-plane)\n");
 		return -EINVAL;
 	}
 
@@ -265,14 +236,12 @@ static int mtk_plane_atomic_set_property(struct drm_plane *plane,
 		if (mtk_plane->plane_property[i] == property) {
 			plane_state->prop_val[i] = val;
 			DDPDBG("set property:%s %llu\n", property->name, val);
-			MINDONE_PR("MINDONE-AC: plane-set-prop end ret=%d\n", ret);
 			return ret;
 		}
 	}
 
 	DDPPR_ERR("%s:%d fail to set property:%s %d\n", property->name,
 		  (unsigned int)val, __func__, __LINE__);
-	MINDONE_PR("MINDONE-AC: plane-set-prop end ret=-EINVAL (not-found)\n");
 	return -EINVAL;
 }
 
@@ -286,10 +255,8 @@ static int mtk_plane_atomic_get_property(struct drm_plane *plane,
 	int ret = 0;
 	int i;
 
-	MINDONE_PR("MINDONE-AC: plane-get-prop begin plane=%d\n", plane->index);
 	if (!mtk_plane) {
 		DDPPR_ERR("%s:%d mtk plane is null\n", __func__, __LINE__);
-		MINDONE_PR("MINDONE-AC: plane-get-prop end ret=-EINVAL (null-plane)\n");
 		return -EINVAL;
 	}
 
@@ -297,7 +264,6 @@ static int mtk_plane_atomic_get_property(struct drm_plane *plane,
 		if (mtk_plane->plane_property[i] == property) {
 			*val = plane_state->prop_val[i];
 			DDPINFO("get property:%s %lld\n", property->name, *val);
-			MINDONE_PR("MINDONE-AC: plane-get-prop end ret=%d\n", ret);
 			return ret;
 		}
 	}
@@ -305,7 +271,6 @@ static int mtk_plane_atomic_get_property(struct drm_plane *plane,
 	DDPPR_ERR("%s:%d fail to get property:%s %p\n", __func__, __LINE__,
 			property->name, val);
 
-	MINDONE_PR("MINDONE-AC: plane-get-prop end ret=-EINVAL (not-found)\n");
 	return -EINVAL;
 }
 
@@ -314,30 +279,13 @@ static bool mtk_plane_format_mod_supported(struct drm_plane *plane,
 {
 	uint64_t known = (uint64_t)(MTK_FMT_PREMULTIPLIED | MTK_FMT_SECURE);
 
-	if (!mindone_accept_modifiers) {
-		mindone_mod_rejected++;
-		return modifier == DRM_FORMAT_MOD_LINEAR;
-	}
-
-	if (modifier == DRM_FORMAT_MOD_LINEAR) {
-		mindone_mod_accepted++;
+	if (modifier == DRM_FORMAT_MOD_LINEAR)
 		return true;
-	}
 
 	/* vendor half is opaque to us; only the private flag bits must be known */
-	if ((modifier & ~known & 0x00ffffffffffffffULL) == 0) {
-		mindone_mod_accepted++;
-		if ((mindone_mod_accepted & 0xff) == 1)
-			pr_debug("MINDONE-MOD: accepted fmt=0x%08x modifier=0x%llx (n=%lu)\n",
-				  format, (unsigned long long)modifier,
-				  mindone_mod_accepted);
+	if ((modifier & ~known & 0x00ffffffffffffffULL) == 0)
 		return true;
-	}
 
-	mindone_mod_rejected++;
-	if ((mindone_mod_rejected & 0x3f) == 1)
-		pr_notice("MINDONE-MOD: REJECTED fmt=0x%08x modifier=0x%llx (n=%lu)\n",
-			  format, (unsigned long long)modifier, mindone_mod_rejected);
 	return false;
 }
 
@@ -357,31 +305,34 @@ static int mtk_plane_atomic_check(struct drm_plane *plane,
 				  struct drm_atomic_state *state)
 {
 	struct drm_plane_state *new_state = drm_atomic_get_new_plane_state(state, plane);
+	struct mtk_plane_state *mtk_state = to_mtk_plane_state(new_state);
 	struct drm_framebuffer *fb = new_state->fb;
 	struct drm_crtc_state *crtc_state;
 	struct mtk_drm_private *private = plane->dev->dev_private;
 	struct mtk_drm_crtc *mtk_crtc;
 
-	MINDONE_PR("MINDONE-AC: plane-atomic-check begin plane=%d\n", plane->index);
+	if (mtk_state->prop_val[PLANE_PROP_OVL_CSC_SET_BRIGHTNESS] ||
+	    mtk_state->prop_val[PLANE_PROP_OVL_CSC_SET_COLORTRANSFORM]) {
+		DDPPR_ERR("plane %u: OVL_CSC_SET_BRIGHTNESS and OVL_CSC_SET_COLORTRANSFORM support only 0\n",
+			  plane->base.id);
+		return -EINVAL;
+	}
+
 	if (!fb) {
-		MINDONE_PR("MINDONE-AC: plane-atomic-check end ret=0 (no-fb)\n");
 		return 0;
 	}
 
 	if (!mtk_fb_get_gem_obj(fb) && fb->format->format != DRM_FORMAT_C8) {
 		DRM_DEBUG_KMS("buffer is null\n");
-		MINDONE_PR("MINDONE-AC: plane-atomic-check end ret=-EFAULT\n");
 		return -EFAULT;
 	}
 
 	if (!new_state->crtc) {
-		MINDONE_PR("MINDONE-AC: plane-atomic-check end ret=0 (no-crtc)\n");
 		return 0;
 	}
 
 	crtc_state = drm_atomic_get_crtc_state(state, new_state->crtc);
 	if (IS_ERR_OR_NULL(crtc_state)) {
-		MINDONE_PR("MINDONE-AC: plane-atomic-check end ret=err (bad-crtc-state)\n");
 		return PTR_ERR(crtc_state);
 	}
 
@@ -412,12 +363,10 @@ static int mtk_plane_atomic_check(struct drm_plane *plane,
 	}
 
 	if (mtk_drm_helper_get_opt(private->helper_opt, MTK_DRM_OPT_RPO)) {
-		MINDONE_PR("MINDONE-AC: plane-atomic-check end (rpo-scaling)\n");
 		return drm_atomic_helper_check_plane_state(
 			new_state, crtc_state, MTK_DRM_PLANE_SCALING_MIN,
 			MTK_DRM_PLANE_SCALING_MAX, true, true);
 	} else {
-		MINDONE_PR("MINDONE-AC: plane-atomic-check end (no-scaling)\n");
 		return drm_atomic_helper_check_plane_state(
 			new_state, crtc_state, DRM_PLANE_NO_SCALING,
 			DRM_PLANE_NO_SCALING, true, true);
@@ -487,10 +436,7 @@ static void mtk_plane_atomic_update(struct drm_plane *plane,
 	bool skip_update = 0;
 	int crtc_index = 0;
 
-	MINDONE_PR("MINDONE-AC: plane-atomic-update begin plane=%d crtc=%px\n",
-		plane->index, crtc);
 	if (!crtc) {
-		MINDONE_PR("MINDONE-AC: plane-atomic-update end (no-crtc)\n");
 		return;
 	}
 
@@ -499,7 +445,6 @@ static void mtk_plane_atomic_update(struct drm_plane *plane,
 	crtc_index = drm_crtc_index(crtc);
 
 	if ((!fb) || (mtk_crtc->ddp_mode == DDP_NO_USE)) {
-		MINDONE_PR("MINDONE-AC: plane-atomic-update end crtc=%d (no-fb-or-ddp)\n", crtc_index);
 		return;
 	}
 
@@ -598,35 +543,19 @@ static void mtk_plane_atomic_update(struct drm_plane *plane,
 
 	if (!mtk_crtc->sec_on && state->pending.is_sec) {
 		DDPMSG("receive sec buffer in non-sec mode\n");
-		MINDONE_PR("MINDONE-AC: plane-atomic-update end crtc=%d (sec-mismatch)\n", crtc_index);
 		return;
 	}
 
 	if (state->pending.enable)
 		atomic_set(&mtk_crtc->already_config, 1);
 
-	mindone_plane_updates++;
-	if (state->pending.format == DRM_FORMAT_RGB332) {
-		mindone_rgb332_hits++;
-		if ((mindone_rgb332_hits & 0x3f) == 1)
-			pr_debug("MINDONE-P332: fmt=0x%08x plane=%d skip=%d hits=%lu of %lu\n",
-				  state->pending.format, plane->index,
-				  mindone_no_rgb332_skip ? 0 : 1,
-				  mindone_rgb332_hits, mindone_plane_updates);
-		if (!mindone_no_rgb332_skip)
-			skip_update = 1;
-	} else if ((mindone_plane_updates & 0x3f) == 1) {
-		pr_debug("MINDONE-P332: OTHER fmt=0x%08x plane=%d updates=%lu\n",
-			  state->pending.format, plane->index, mindone_plane_updates);
-	}
+	if (state->pending.format == DRM_FORMAT_RGB332)
+		skip_update = 1;
 	/* workaround for skip plane update when hwc set crtc */
 	if (skip_update == 0) {
-		MINDONE_PR("MINDONE-AC: plane-atomic-update step pre-crtc-plane-update crtc=%d\n", crtc_index);
 		mtk_drm_crtc_plane_update(crtc, plane, state);
-		MINDONE_PR("MINDONE-AC: plane-atomic-update step post-crtc-plane-update\n");
 	}
 
-	MINDONE_PR("MINDONE-AC: plane-atomic-update end crtc=%d\n", crtc_index);
 }
 
 static void mtk_plane_atomic_disable(struct drm_plane *plane,
@@ -634,7 +563,6 @@ static void mtk_plane_atomic_disable(struct drm_plane *plane,
 {
 	struct mtk_plane_state *state = to_mtk_plane_state(plane->state);
 
-	MINDONE_PR("MINDONE-AC: plane-atomic-disable begin plane=%d\n", plane->index);
 	state->pending.enable = false;
 	wmb(); /* Make sure the above parameter is set before update */
 	state->pending.dirty = true;
@@ -652,7 +580,6 @@ static void mtk_plane_atomic_disable(struct drm_plane *plane,
 	} else
 		mtk_drm_crtc_plane_disable(state->crtc, plane, state);
 #endif
-	MINDONE_PR("MINDONE-AC: plane-atomic-disable end\n");
 }
 
 static int mtk_plane_prepare_fb(struct drm_plane *plane,
@@ -671,6 +598,7 @@ static const struct drm_plane_helper_funcs mtk_plane_helper_funcs = {
 static void mtk_plane_attach_property(struct mtk_drm_plane *plane)
 {
 	struct drm_device *dev = plane->base.dev;
+	struct mtk_drm_private *private = dev->dev_private;
 	struct drm_property *prop;
 	static struct drm_property *mtk_prop[PLANE_PROP_MAX];
 	struct mtk_drm_property *plane_prop;
@@ -695,6 +623,9 @@ static void mtk_plane_attach_property(struct mtk_drm_plane *plane)
 	}
 
 	for (i = 0; i < PLANE_PROP_MAX; i++) {
+		if (i >= PLANE_PROP_OVL_CSC_SET_BRIGHTNESS &&
+		    private->data->mmsys_id != MMSYS_MT6789)
+			continue;
 		prop = plane->plane_property[i];
 		plane_prop = &(mtk_plane_property[i]);
 		if (!prop) {

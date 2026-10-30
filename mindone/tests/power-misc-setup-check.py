@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: GPL-2.0
+# SPDX-FileCopyrightText: 2026 The LineageOS Project
 import argparse
 from pathlib import Path
 import re
@@ -47,6 +49,7 @@ def build(tree):
     for filename, name in FUNCTIONS:
         text += function(sources[filename], name)
     cases = (HERE/'gauge-irq-setup/cases.c').read_text()
+    cases = replace(cases, 'static void reset(void)\n{', 'static void reset(void)\n{\n    memset(&power_supply_notifier, 0, sizeof(power_supply_notifier));')
     text += replace(cases, 'int main(void)', 'static int prior_regression_main(void)')
     text += 'static int activate_805(struct mtk_battery *gm) { int cmd=805; int ret; switch(cmd) {\n'
     text += activation_case(sources['mtk_battery_daemon.c'])
@@ -92,6 +95,9 @@ def main():
         else:
             mutated = replace(source, before, after)
         variants.append((name, mutated, barrier_after in source))
+    for name, target, before, after in runpy.run_path(str(HERE/'gauge-irq-setup-check.py'))['LIFECYCLE_MUTATIONS']:
+        original = function(source, target)
+        variants.append((name, replace(source, original, replace(original, before, after)), barrier_after in source))
     if barrier_after in source:
         checkpoint = '\tif (!smp_load_acquire(&gm->is_probe_done))\n\t\treturn -EAGAIN;\n'
         variants.append(('bypass-probe-completion', replace(source, checkpoint, ''), True))

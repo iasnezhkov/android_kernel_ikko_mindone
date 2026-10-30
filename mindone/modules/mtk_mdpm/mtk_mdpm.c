@@ -435,6 +435,10 @@ void init_md1_section_level(u32 *share_mem)
 
 			index = get_shm_idx(j, section_shift[i], false);
 			offset = section_shift[i] % 32;
+			if (index < 0 || index >= SHARE_MEM_SIZE) {
+				pr_notice("%s out of bounds, index:%d\n", __func__, index);
+				return;
+			}
 			mem[index] |= mdpm_tx_pwr[j].rfhw->section[i] << offset;
 		}
 	}

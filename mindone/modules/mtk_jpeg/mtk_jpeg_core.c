@@ -603,10 +603,9 @@ static void mtk_jpeg_prepare_dvfs(struct mtk_jpeg_dev *jpeg)
 	int ret = 0;
 	struct dev_pm_opp *opp = 0;
 	unsigned long freq = 0;
-	int i = 0;
 
 	pr_debug("prepare dvfs +\n");
-	ret = dev_pm_opp_of_add_table(jpeg->dev);
+	ret = devm_pm_opp_of_add_table(jpeg->dev);
 	if (ret < 0) {
 		pr_info("Failed to get opp table (%d)\n", ret);
 		return;
@@ -614,20 +613,18 @@ static void mtk_jpeg_prepare_dvfs(struct mtk_jpeg_dev *jpeg)
 
 	jpeg->jpegenc_reg = devm_regulator_get(jpeg->dev,
 						"dvfsrc-vcore");
-	if (jpeg->jpegenc_reg == 0) {
-		pr_info("Failed to get regulator\n");
+	if (IS_ERR(jpeg->jpegenc_reg)) {
+		pr_info("Failed to get regulator %ld\n", PTR_ERR(jpeg->jpegenc_reg));
+		jpeg->jpegenc_reg = NULL;
 		return;
 	}
 
-	jpeg->freq_cnt = dev_pm_opp_get_opp_count(jpeg->dev);
-	freq = 0;
-	pr_debug("jpeg->freq_cnt %d\n", jpeg->freq_cnt);
-	while (!IS_ERR(opp =
-		dev_pm_opp_find_freq_ceil(jpeg->dev, &freq))) {
-		jpeg->freqs[i] = freq;
-	pr_debug("i %d freq %lu\n", i, freq);
-	freq++;
-		i++;
+	jpeg->freq_cnt = 0;
+	while (jpeg->freq_cnt < MTK_JPEG_MAX_FREQ &&
+	       !IS_ERR(opp = dev_pm_opp_find_freq_ceil(jpeg->dev, &freq))) {
+		jpeg->freqs[jpeg->freq_cnt++] = freq;
+		pr_debug("freq[%d] %lu\n", jpeg->freq_cnt - 1, freq);
+		freq++;
 		dev_pm_opp_put(opp);
 	}
 	pr_debug("prepare dvfs -\n");
@@ -729,11 +726,15 @@ static void mtk_jpeg_dvfs_begin(struct mtk_jpeg_ctx *ctx)
 	unsigned long active_freq = 0;
 	struct mtk_jpeg_dev *jpeg = ctx->jpeg;
 
+	if (!jpeg->freq_cnt)
+		return;
 	active_freq = jpeg->freqs[jpeg->freq_cnt - 1];
 
-	if (jpeg->jpegenc_reg != 0) {
+	if (jpeg->jpegenc_reg) {
 		opp = dev_pm_opp_find_freq_ceil(jpeg->dev,
 					&active_freq);
+		if (IS_ERR(opp))
+			return;
 		volt = dev_pm_opp_get_voltage(opp);
 		dev_pm_opp_put(opp);
 
@@ -757,11 +758,15 @@ static void mtk_jpeg_dvfs_end(struct mtk_jpeg_ctx *ctx)
 	struct mtk_jpeg_dev *jpeg = ctx->jpeg;
 
 	pr_debug("%s  ++\n", __func__);
+	if (!jpeg->freq_cnt)
+		return;
 	active_freq = jpeg->freqs[0];
 
-	if (jpeg->jpegenc_reg != 0) {
+	if (jpeg->jpegenc_reg) {
 		opp = dev_pm_opp_find_freq_ceil(jpeg->dev,
 					&active_freq);
+		if (IS_ERR(opp))
+			return;
 		volt = dev_pm_opp_get_voltage(opp);
 		dev_pm_opp_put(opp);
 

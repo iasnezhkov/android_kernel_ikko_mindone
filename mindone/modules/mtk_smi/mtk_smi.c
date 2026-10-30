@@ -430,10 +430,11 @@ int mtk_smi_larb_get(struct device *larbdev)
 	if (ret < 0) {
 		dev_notice(larbdev, "Unable to enable SMI LARB%d. ret:%d\n",
 			larb->larbid, ret);
-		pm_runtime_put_sync(larbdev);
+		atomic_dec(&larb->smi.api_ref_count);
+		return ret;
 	}
 
-	return (ret < 0) ? ret : 0;
+	return 0;
 }
 EXPORT_SYMBOL_GPL(mtk_smi_larb_get);
 

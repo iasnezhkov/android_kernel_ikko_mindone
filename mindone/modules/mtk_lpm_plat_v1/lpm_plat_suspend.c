@@ -506,6 +506,9 @@ static int lpm_s2idle_barrier(void)
 	if (!drv)
 		return -1;
 
+	if (drv->state_count < 2)
+		return -1;
+
 	i = drv->state_count - 1;
 	if (strcmp(drv->states[i].name, S2IDLE_STATE_NAME))
 		return -1;

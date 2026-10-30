@@ -2,7 +2,6 @@
 /*
  * Copyright (c) 2019 MediaTek Inc.
  */
-
 #ifndef __GED_BRIDGE_ID_H__
 #define __GED_BRIDGE_ID_H__
 
@@ -28,10 +27,6 @@ struct GED_BRIDGE_PACKAGE_32 {
 
 #define GPU_TUNER_BUF_NAME_LEN 128
 
-/*****************************************************************************
- *  IOCTL values.
- *****************************************************************************/
-
 #define GED_MAGIC 'g'
 
 #define GED_IO(INDEX)    _IO(GED_MAGIC, INDEX, struct GED_BRIDGE_PACKAGE)
@@ -41,9 +36,6 @@ struct GED_BRIDGE_PACKAGE_32 {
 #define GED_IOWR_32(INDEX)  _IOWR(GED_MAGIC, INDEX, struct GED_BRIDGE_PACKAGE_32)
 #define GED_GET_BRIDGE_ID(X)  _IOC_NR(X)
 
-/******************************************************************************
- *  IOCTL Commands
- ******************************************************************************/
 #define GED_BRIDGE_COMMAND_LOG_BUF_GET        0
 #define GED_BRIDGE_COMMAND_LOG_BUF_WRITE      1
 #define GED_BRIDGE_COMMAND_LOG_BUF_RESET      2
@@ -61,6 +53,7 @@ struct GED_BRIDGE_PACKAGE_32 {
 #define GED_BRIDGE_COMMAND_HINT_FORCE_MDP     14
 #define GED_BRIDGE_COMMAND_QUERY_DVFS_FREQ_PRED   15
 #define GED_BRIDGE_COMMAND_QUERY_GPU_DVFS_INFO    16
+#define GED_BRIDGE_COMMAND_HINT_FRAME_INFO    17
 
 #define GED_BRIDGE_COMMAND_GE_ALLOC           100
 #define GED_BRIDGE_COMMAND_GE_GET             101
@@ -107,6 +100,8 @@ struct GED_BRIDGE_PACKAGE_32 {
 	GED_IOWR(GED_BRIDGE_COMMAND_QUERY_DVFS_FREQ_PRED)
 #define GED_BRIDGE_IO_QUERY_GPU_DVFS_INFO \
 	GED_IOWR(GED_BRIDGE_COMMAND_QUERY_GPU_DVFS_INFO)
+#define GED_BRIDGE_IO_HINT_FRAME_INFO \
+	GED_IOWR(GED_BRIDGE_COMMAND_HINT_FRAME_INFO)
 
 #define GED_BRIDGE_IO_GE_ALLOC \
 	GED_IOWR(GED_BRIDGE_COMMAND_GE_ALLOC)
@@ -127,179 +122,106 @@ struct GED_BRIDGE_PACKAGE_32 {
 #define GED_BRIDGE_IO_CREATE_TIMELINE \
 	GED_IOWR(GED_BRIDGE_COMMAND_CREATE_TIMELINE)
 
-/******************************************************************************
- *  LOG_BUF_GET
- ******************************************************************************/
-
 #define GED_LOG_BUF_NAME_LENGTH 64
 
-/* Bridge in structure for LOG_BUF_GET */
 struct GED_BRIDGE_IN_LOGBUFGET {
 	char acName[GED_LOG_BUF_NAME_LENGTH];
 };
 
-
-/* Bridge out structure for LOG_BUF_GETC */
 struct GED_BRIDGE_OUT_LOGBUFGET {
 	GED_ERROR eError;
 	GED_LOG_BUF_HANDLE hLogBuf;
 };
 
-/******************************************************************************
- *  LOG_BUF_WRITE
- ******************************************************************************/
-
-/* Bridge in structure for LOG_BUF_WRITE */
 struct GED_BRIDGE_IN_LOGBUFWRITE {
 	GED_LOG_BUF_HANDLE hLogBuf;
 	int attrs;
 	char acLogBuf[GED_BRIDGE_IN_LOGBUF_SIZE];
 };
 
-/* Bridge out structure for LOG_BUF_WRITE */
 struct GED_BRIDGE_OUT_LOGBUFWRITE {
 	GED_ERROR eError;
 };
 
-/******************************************************************************
- *  LOG_BUF_RESET
- ******************************************************************************/
-
-/* Bridge in structure for LOG_BUF_RESET */
 struct GED_BRIDGE_IN_LOGBUFRESET {
 	GED_LOG_BUF_HANDLE hLogBuf;
 };
 
-/* Bridge out structure for LOG_BUF_RESET */
 struct GED_BRIDGE_OUT_LOGBUFRESET {
 	GED_ERROR eError;
 };
 
-/******************************************************************************
- *  BOOST GPU FREQ
- ******************************************************************************/
-
-/* Bridge in structure for LOG_BUF_WRITE */
 struct GED_BRIDGE_IN_BOOSTGPUFREQ {
 	GED_BOOST_GPU_FREQ_LEVEL eGPUFreqLevel;
 };
 
-/* Bridge out structure for LOG_BUF_WRITE */
 struct GED_BRIDGE_OUT_BOOSTGPUFREQ {
 	GED_ERROR eError;
 };
 
-/*****************************************************************************
- *  MONITOR 3D FENCE
- *****************************************************************************/
-
-/* Bridge in structure for MONITOR3DFENCE */
 struct GED_BRIDGE_IN_MONITOR3DFENCE {
 	int fd;
 	int pid;
 	int timeouts;
-	int dump_flag; // 1:dump 0:not_dump
+	int dump_flag;
 	GED_SWD_FENCE_TYPE eType;
 };
 
-/* Bridge out structure for MONITOR3DFENCE */
 struct GED_BRIDGE_OUT_MONITOR3DFENCE {
 	GED_ERROR eError;
 };
 
-/*****************************************************************************
- *  QUERY INFO
- *****************************************************************************/
-
-/* Bridge in structure for QUERY INFO*/
 struct GED_BRIDGE_IN_QUERY_INFO {
 	GED_INFO eType;
 };
 
-
-/* Bridge out structure for QUERY INFO*/
 struct GED_BRIDGE_OUT_QUERY_INFO {
 	uint64_t   retrieve;
 };
 
-/*****************************************************************************
- *  NOTIFY VSYNC
- *****************************************************************************/
-
-/* Bridge in structure for VSYNCEVENT */
 struct GED_BRIDGE_IN_NOTIFY_VSYNC {
 	GED_VSYNC_TYPE eType;
 };
 
-/* Bridge out structure for VSYNCEVENT */
 struct GED_BRIDGE_OUT_NOTIFY_VSYNC {
 	struct GED_DVFS_UM_QUERY_PACK sQueryData;
 	GED_ERROR eError;
 };
 
-/*****************************************************************************
- *  DVFS PROBE
- *****************************************************************************/
-
-/* Bridge in structure for DVFS_PROBE */
 struct GED_BRIDGE_IN_DVFS_PROBE {
 	int          pid;
 };
 
-/* Bridge out structure for DVFS_PROBE */
 struct GED_BRIDGE_OUT_DVFS_PROBE {
 	GED_ERROR eError;
 };
 
-/*****************************************************************************
- *  DVFS UM RETURN
- *****************************************************************************/
-
-/* Bridge in structure for DVFS_UM_RETURN */
 struct GED_BRIDGE_IN_DVFS_UM_RETURN {
 	uint64_t gpu_tar_freq;
 	bool bFallback;
 };
 
-/* Bridge out structure for DVFS_UM_RETURN */
 struct GED_BRIDGE_OUT_DVFS_UM_RETURN {
 	GED_ERROR eError;
 };
 
-/*****************************************************************************
- *  EVENT NOTIFY
- *****************************************************************************/
-
-/* Bridge in structure for EVENT_NOTIFY */
 struct GED_BRIDGE_IN_EVENT_NOTIFY {
 	GED_DVFS_VSYNC_OFFSET_SWITCH_CMD eEvent;
 	bool bSwitch;
 };
 
-/* Bridge out structure for EVENT_NOTIFY */
 struct GED_BRIDGE_OUT_EVENT_NOTIFY {
 	GED_ERROR eError;
 };
 
-/*****************************************************************************
- *  WAIT HW VSync
- *****************************************************************************/
-
-/* Bridge in structure for creation */
 struct GED_BRIDGE_IN_WAIT_HW_VSYNC {
 	int tid;
 };
 
-/* Bridge out structure for creation */
 struct GED_BRIDGE_OUT_WAIT_HW_VSYNC {
 	GED_ERROR eError;
 };
 
-/*****************************************************************************
- *  GPU_TIMESTAMP
- *****************************************************************************/
-
-/* Bridge in structure for creation */
 struct GED_BRIDGE_IN_GPU_TIMESTAMP {
 	int pid;
 	uint64_t ullWnd;
@@ -309,15 +231,10 @@ struct GED_BRIDGE_IN_GPU_TIMESTAMP {
 	int isSF;
 };
 
-/* Bridge out structure for creation */
 struct GED_BRIDGE_OUT_GPU_TIMESTAMP {
 	GED_ERROR eError;
 	int is_ged_kpi_enabled;
 };
-
-/*****************************************************************************
- *  QUERY_TARGET_FPS (for FRR20)
- *****************************************************************************/
 
 struct GED_BRIDGE_IN_QUERY_TARGET_FPS {
 	int pid;
@@ -329,9 +246,6 @@ struct GED_BRIDGE_OUT_QUERY_TARGET_FPS {
 	int fps;
 };
 
-/******************************************************************************
- *  BOOST GPU FREQ
- ******************************************************************************/
 struct GED_BRIDGE_IN_GPU_HINT_TO_CPU {
 	int32_t i32BridgeFD;
 	int32_t tid;
@@ -340,34 +254,25 @@ struct GED_BRIDGE_IN_GPU_HINT_TO_CPU {
 
 struct GED_BRIDGE_OUT_GPU_HINT_TO_CPU {
 	GED_ERROR eError;
-	int32_t boost_flag; // 1:boost 0:not_boost
+	int32_t boost_flag;
 	int32_t boost_value;
 };
 
-/******************************************************************************
- *  HINT VIDEO CODEC FORCE MDP
- ******************************************************************************/
 struct GED_BRIDGE_IN_HINT_FORCE_MDP {
 	int32_t i32BridgeFD;
-	int32_t hint; /* 1: Do MDP, 0: No MDP, -1: No overwrite */
+	int32_t hint;
 };
 
 struct GED_BRIDGE_OUT_HINT_FORCE_MDP {
 	GED_ERROR eError;
-	int32_t mdp_flag; /* 1: Do MDP, 0: No MDP */
+	int32_t mdp_flag;
 };
 
-/******************************************************************************
- *  QEURY DVFS GPU_FREQ PREDICTION
- ******************************************************************************/
 struct GED_BRIDGE_IN_QUERY_DVFS_FREQ_PRED {
 	int32_t pid;
 	int32_t hint;
 };
 
-/*****************************************************************************
- *  Hint frequency calculated by DVFS
- *****************************************************************************/
 struct GED_BRIDGE_OUT_QUERY_DVFS_FREQ_PRED {
 	GED_ERROR eError;
 	int gpu_freq_cur;
@@ -375,18 +280,12 @@ struct GED_BRIDGE_OUT_QUERY_DVFS_FREQ_PRED {
 	int gpu_freq_dvfs_pred;
 };
 
-/******************************************************************************
- *  QEURY DVFS GPU_FREQ PREDICTION
- ******************************************************************************/
 struct GED_BRIDGE_IN_QUERY_GPU_DVFS_INFO {
 	int32_t pid;
 	int32_t hint;
 	int32_t gift_ratio;
 };
 
-/*****************************************************************************
- *  Hint DVFS related INFOs
- *****************************************************************************/
 struct GED_BRIDGE_OUT_QUERY_GPU_DVFS_INFO {
 	GED_ERROR eError;
 	int gpu_freq_cur;
@@ -398,100 +297,102 @@ struct GED_BRIDGE_OUT_QUERY_GPU_DVFS_INFO {
 	int gpu_time;
 };
 
-/*****************************************************************************
- *  GE - gralloc_extra functions
- *****************************************************************************/
+struct GED_BRIDGE_IN_HINT_FRAME_INFO {
+	uint64_t BBQ_id;
+	int32_t target_fps;
+	int32_t target_fps_margin;
+	int32_t enable;
+	uint32_t cmd;
+	int32_t pid;
+	int32_t tid;
+	uint64_t core;
+	bool	 by_mask;
+	int32_t reserved1;
+	int32_t reserved2;
+	int32_t reserved3;
+	int32_t reserved4;
+};
 
-/* Bridge in structure for GE_ALLOC */
+struct GED_BRIDGE_OUT_HINT_FRAME_INFO {
+	GED_ERROR eError;
+	int32_t mainHead_fps_v;
+	int32_t mainHead_fps_gpu;
+	uint64_t mainHead_BQ_ID;
+};
+
+enum {
+	GED_FRAME_INFO_TARGET_FPS,
+	GED_FRAME_INFO_MC,
+};
+
 struct GED_BRIDGE_IN_GE_ALLOC {
 	int region_num;
 	uint32_t region_sizes[];
 };
 
-/* Bridge out structure for GE_ALLOC */
 struct GED_BRIDGE_OUT_GE_ALLOC {
 	int ge_fd;
 	GED_ERROR eError;
 };
 
-/* Bridge in structure for GE_GET */
 struct GED_BRIDGE_IN_GE_GET {
 	int ge_fd;
 	int region_id;
-	/* Here uint32_* means that the unit is 32bit.
-	 * For example: uint32_offset 1 => offset 4 bytes
-	 */
+
 	int uint32_offset;
 	int uint32_size;
 };
 
-/* Bridge out structure for GE_GET */
 struct GED_BRIDGE_OUT_GE_GET {
 	GED_ERROR eError;
 	uint32_t data[];
 };
 
-/* Bridge in structure for GE_SET */
 struct GED_BRIDGE_IN_GE_SET {
 	int ge_fd;
 	int region_id;
-	/* Here uint32_* means that the unit is 32bit.
-	 * For example: uint32_offset 1 => offset 4 bytes
-	 */
+
 	int uint32_offset;
 	int uint32_size;
 	uint32_t data[];
 };
 
-/* Bridge out structure for GE_SET */
 struct GED_BRIDGE_OUT_GE_SET {
 	GED_ERROR eError;
 };
 
-/* Bridge in structure for GE_INFO */
 struct GED_BRIDGE_IN_GE_INFO {
 	int ge_fd;
 };
 
-/* Bridge out structure for GE_INFO */
 struct GED_BRIDGE_OUT_GE_INFO {
 	uint64_t unique_id;
 	GED_ERROR eError;
 };
 
-/* Bridge in structure for GPU_TUNER_STATUS */
 struct GED_BRIDGE_IN_GPU_TUNER_STATUS {
 	char name[GPU_TUNER_BUF_NAME_LEN];
 };
 
-/* Bridge out structure for GPU_TUNER_STATUS */
 struct GED_BRIDGE_OUT_GPU_TUNER_STATUS {
 	int feature;
 };
 
-/* Bridge in structure for CREATE_TIMELINE */
 struct GED_BRIDGE_IN_CREATE_TIMELINE {
 	char name[GED_LOG_BUF_NAME_LENGTH];
 };
 
-/* Bridge out structure for CREATE_TIMELINE */
 struct GED_BRIDGE_OUT_CREATE_TIMELINE {
 	int timeline_fd;
 };
 
-/*****************************************************************************
- *  DMABUF - dma-buf functions
- *****************************************************************************/
-
 #define DMABUF_NAME_LEN 48
 
-/* Bridge in structure for DMABUF_SET_NAME */
 struct GED_BRIDGE_IN_DMABUF_SET_NAME {
 	int32_t share_fd;
 	char name[DMABUF_NAME_LEN];
 };
 
-/* Bridge out structure for DMABUF_SET_NAME */
 struct GED_BRIDGE_OUT_DMABUF_SET_NAME {
 	GED_ERROR eError;
 };

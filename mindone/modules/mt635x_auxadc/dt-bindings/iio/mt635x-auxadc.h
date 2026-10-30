@@ -34,8 +34,10 @@
 #define AUXADC_VIN6				0x18
 #define AUXADC_VIN7				0x19
 
+#define AUXADC_IMP_SAMPLE			0x1a
+
 #define AUXADC_CHAN_MIN				AUXADC_BATADC
-#define AUXADC_CHAN_MAX				AUXADC_VIN7
+#define AUXADC_CHAN_MAX				AUXADC_IMP_SAMPLE
 
 #define ADC_PURES_100K				(0)
 #define ADC_PURES_30K				(1)

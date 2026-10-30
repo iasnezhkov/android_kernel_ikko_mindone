@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-2.0
+// SPDX-FileCopyrightText: 2026 The LineageOS Project
 static void fresh_activation(void)
 {
 	struct mtk_battery gm = {0};

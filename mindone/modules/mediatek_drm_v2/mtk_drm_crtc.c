@@ -7,64 +7,8 @@
 #include <linux/vmalloc.h>
 
 #include <linux/moduleparam.h>
-unsigned long mindone_cpu_calls;
-module_param(mindone_cpu_calls, ulong, 0444);
-MODULE_PARM_DESC(mindone_cpu_calls, "entries into mtk_drm_crtc_plane_update");
-unsigned long mindone_cpu_skipcfg;
-module_param(mindone_cpu_skipcfg, ulong, 0444);
-MODULE_PARM_DESC(mindone_cpu_skipcfg, "of those, with CRTC_PROP_SKIP_CONFIG set");
-unsigned long mindone_cpu_noenable;
-module_param(mindone_cpu_noenable, ulong, 0444);
-MODULE_PARM_DESC(mindone_cpu_noenable, "of those, with pending.enable == 0");
-unsigned long mindone_cpu_passed;
-module_param(mindone_cpu_passed, ulong, 0444);
-MODULE_PARM_DESC(mindone_cpu_passed, "of those, that reached the configuration body");
-unsigned long mindone_rif_calls;
-module_param(mindone_rif_calls, ulong, 0444);
-MODULE_PARM_DESC(mindone_rif_calls, "entries into mtk_crtc_release_input_layer_fence");
-unsigned long mindone_lostid_recovered;
-module_param(mindone_lostid_recovered, ulong, 0444);
-MODULE_PARM_DESC(mindone_lostid_recovered, "lost LYE_IDX commits recovered via last valid lyeblob");
-unsigned long mindone_lostid_released;
-module_param(mindone_lostid_released, ulong, 0444);
-MODULE_PARM_DESC(mindone_lostid_released, "lost LYE_IDX commits where all layer fences were force-released");
-unsigned long mindone_lostid_pf;
-module_param(mindone_lostid_pf, ulong, 0444);
-MODULE_PARM_DESC(mindone_lostid_pf, "lost LYE_IDX commits where present fences were force-released");
-unsigned long mindone_emptycb_pf;
-module_param(mindone_emptycb_pf, ulong, 0444);
-MODULE_PARM_DESC(mindone_emptycb_pf, "empty-commit cmdq callbacks where present fences were caught up");
-unsigned long mindone_emptycb_layers;
-module_param(mindone_emptycb_layers, ulong, 0444);
-MODULE_PARM_DESC(mindone_emptycb_layers, "empty-commit cmdq callbacks where all layer fences were released");
-unsigned long mindone_lostid_skipped;
-module_param(mindone_lostid_skipped, ulong, 0444);
-MODULE_PARM_DESC(mindone_lostid_skipped, "lost LYE_IDX commits with no valid lyeblob to fall back on");
-unsigned long mindone_fencefix_resync;
-module_param(mindone_fencefix_resync, ulong, 0444);
-MODULE_PARM_DESC(mindone_fencefix_resync, "times cur_fence <= slot last_fence (resynced)");
-unsigned long mindone_rif_pwroff;
-module_param(mindone_rif_pwroff, ulong, 0444);
-MODULE_PARM_DESC(mindone_rif_pwroff, "of those, early-returned on power_state == false");
+#include <linux/ratelimit.h>
 
-unsigned long mindone_rif_release_when_off = 1;
-module_param(mindone_rif_release_when_off, ulong, 0644);
-MODULE_PARM_DESC(mindone_rif_release_when_off,
-	"release layer fences even when power_state == false (1) or vendor early-return (0)");
-unsigned long mindone_rif_forced;
-module_param(mindone_rif_forced, ulong, 0444);
-MODULE_PARM_DESC(mindone_rif_forced, "fence releases done while power_state == false");
-unsigned long mindone_rif_last_fence;
-module_param(mindone_rif_last_fence, ulong, 0444);
-MODULE_PARM_DESC(mindone_rif_last_fence, "layer0 fence_idx from last non-early-return call");
-unsigned long mindone_rif_last_sub;
-module_param(mindone_rif_last_sub, ulong, 0444);
-MODULE_PARM_DESC(mindone_rif_last_sub, "layer0 subtractor from last non-early-return call");
-unsigned long mindone_rif_last_rel;
-module_param(mindone_rif_last_rel, ulong, 0444);
-MODULE_PARM_DESC(mindone_rif_last_rel, "layer0 (fence_idx - subtractor) from last non-early-return call");
-
-#include "mindone_log.h"
 #include <asm/barrier.h>
 #include <drm/drm_atomic.h>
 #include <drm/drm_atomic_helper.h>
@@ -157,6 +101,10 @@ static struct mtk_drm_property mtk_crtc_property[CRTC_PROP_MAX] = {
 	{DRM_MODE_PROP_ATOMIC, "MSYNC2_0_ENABLE", 0, UINT_MAX, 0},
 	{DRM_MODE_PROP_ATOMIC, "SKIP_CONFIG", 0, UINT_MAX, 0},
 	{DRM_MODE_PROP_ATOMIC, "OVL_DSI_SEQ", 0, UINT_MAX, 0},
+	{DRM_MODE_PROP_ATOMIC, "PARTIAL_UPDATE_ENABLE", 0, UINT_MAX, 0},
+	{DRM_MODE_PROP_ATOMIC, "DYNAMIC_WCG_OFF", 0, UINT_MAX, 0},
+	{DRM_MODE_PROP_ATOMIC, "WCG_BY_COLOR_MODE", 0, ULONG_MAX, 0},
+	{DRM_MODE_PROP_ATOMIC, "AOSP_CCORR_LINEAR", 0, 1, 0},
 };
 
 static struct cmdq_pkt *sb_cmdq_handle;
@@ -233,7 +181,6 @@ static void mtk_drm_crtc_reset(struct drm_crtc *crtc)
 {
 	struct mtk_crtc_state *state;
 
-	MINDONE_PR("MINDONE-AC: crtc-reset begin crtc=%d\n", drm_crtc_index(crtc));
 	if (crtc->state) {
 		__drm_atomic_helper_crtc_destroy_state(crtc->state);
 
@@ -242,14 +189,12 @@ static void mtk_drm_crtc_reset(struct drm_crtc *crtc)
 	} else {
 		state = kzalloc(sizeof(*state), GFP_KERNEL);
 		if (!state) {
-			MINDONE_PR("MINDONE-AC: crtc-reset end (alloc-fail)\n");
 			return;
 		}
 		crtc->state = &state->base;
 	}
 
 	state->base.crtc = crtc;
-	MINDONE_PR("MINDONE-AC: crtc-reset end\n");
 }
 
 static int mtk_drm_wait_blank(struct mtk_drm_crtc *mtk_crtc,
@@ -711,17 +656,14 @@ mtk_drm_crtc_duplicate_state(struct drm_crtc *crtc)
 {
 	struct mtk_crtc_state *state, *old_state;
 
-	MINDONE_PR("MINDONE-AC: crtc-dup-state begin crtc=%px\n", crtc);
 	state = kzalloc(sizeof(*state), GFP_KERNEL);
 	if (!state) {
-		MINDONE_PR("MINDONE-AC: crtc-dup-state end ret=NULL (alloc-fail)\n");
 		return NULL;
 	}
 
 	if (!crtc) {
 		DDPPR_ERR("NULL crtc\n");
 		kfree(state);
-		MINDONE_PR("MINDONE-AC: crtc-dup-state end ret=NULL (null-crtc)\n");
 		return NULL;
 	}
 
@@ -748,9 +690,10 @@ mtk_drm_crtc_duplicate_state(struct drm_crtc *crtc)
 				old_state->prop_val[CRTC_PROP_DISP_MODE_IDX];
 		state->prop_val[CRTC_PROP_PRES_FENCE_IDX] =
 			old_state->prop_val[CRTC_PROP_PRES_FENCE_IDX];
+		state->prop_val[CRTC_PROP_PARTIAL_UPDATE_ENABLE] =
+			old_state->prop_val[CRTC_PROP_PARTIAL_UPDATE_ENABLE];
 	}
 
-	MINDONE_PR("MINDONE-AC: crtc-dup-state end ret=%px\n", &state->base);
 	return &state->base;
 }
 
@@ -759,12 +702,10 @@ static void mtk_drm_crtc_destroy_state(struct drm_crtc *crtc,
 {
 	struct mtk_crtc_state *s;
 
-	MINDONE_PR("MINDONE-AC: crtc-destroy-state begin crtc=%d\n", drm_crtc_index(crtc));
 	s = to_mtk_crtc_state(state);
 
 	__drm_atomic_helper_crtc_destroy_state(state);
 	kfree(s);
-	MINDONE_PR("MINDONE-AC: crtc-destroy-state end\n");
 }
 
 static int mtk_drm_crtc_set_property(struct drm_crtc *crtc,
@@ -779,26 +720,25 @@ static int mtk_drm_crtc_set_property(struct drm_crtc *crtc,
 	int ret = 0;
 	int i;
 
-	MINDONE_PR("MINDONE-AC: crtc-set-prop begin crtc=%d prop=%s\n", index, property->name);
 	if (index < 0) {
-		MINDONE_PR("MINDONE-AC: crtc-set-prop end ret=-EINVAL (bad-index)\n");
 		return -EINVAL;
 	}
 
 	for (i = 0; i < CRTC_PROP_MAX; i++) {
 		if (private->crtc_property[index][i] == property) {
+			if (i == CRTC_PROP_WCG_BY_COLOR_MODE &&
+			    val != (uint64_t)(int64_t)(int32_t)val)
+				return -EINVAL;
 			crtc_state->prop_val[i] = (unsigned int)val;
 			DDPINFO("crtc:%d set property:%s %d\n",
 					index, property->name,
 					(unsigned int)val);
-			MINDONE_PR("MINDONE-AC: crtc-set-prop end ret=%d\n", ret);
 			return ret;
 		}
 	}
 
 	DDPPR_ERR("fail to set property:%s %d\n", property->name,
 		  (unsigned int)val);
-	MINDONE_PR("MINDONE-AC: crtc-set-prop end ret=-EINVAL (not-found)\n");
 	return -EINVAL;
 }
 
@@ -814,23 +754,21 @@ static int mtk_drm_crtc_get_property(struct drm_crtc *crtc,
 	int index = drm_crtc_index(crtc);
 	int i;
 
-	MINDONE_PR("MINDONE-AC: crtc-get-prop begin crtc=%d prop=%s\n", index, property->name);
 	if (index < 0) {
 		DDPPR_ERR("%s invalid crtc index\n", __func__);
-		MINDONE_PR("MINDONE-AC: crtc-get-prop end ret=-EINVAL (bad-index)\n");
 		return -EINVAL;
 	}
 	for (i = 0; i < CRTC_PROP_MAX; i++) {
 		if (private->crtc_property[index][i] == property) {
 			*val = crtc_state->prop_val[i];
+			if (i == CRTC_PROP_WCG_BY_COLOR_MODE)
+				*val = (uint64_t)(int64_t)(int32_t)*val;
 			DDPINFO("get property:%s %lld\n", property->name, *val);
-			MINDONE_PR("MINDONE-AC: crtc-get-prop end ret=%d\n", ret);
 			return ret;
 		}
 	}
 
 	DDPPR_ERR("fail to get property:%s %p\n", property->name, val);
-	MINDONE_PR("MINDONE-AC: crtc-get-prop end ret=-EINVAL (not-found)\n");
 	return -EINVAL;
 }
 
@@ -878,13 +816,60 @@ static void mtk_drm_crtc_lfr_update(struct drm_crtc *crtc,
 	mtk_ddp_comp_io_cmd(output_comp, cmdq_handle, DSI_LFR_UPDATE, NULL);
 }
 
+static int mtk_drm_crtc_atomic_check(struct drm_crtc *crtc,
+				     struct drm_atomic_state *state)
+{
+	struct drm_crtc_state *crtc_state = drm_atomic_get_new_crtc_state(state, crtc);
+	struct mtk_crtc_state *new_state = to_mtk_crtc_state(crtc_state);
+	struct mtk_drm_private *private = crtc->dev->dev_private;
+	const struct disp_ccorr_config *config;
+	struct drm_mtk_ccorr_caps caps;
+	struct drm_property_blob *blob;
+	unsigned int blob_id = new_state->prop_val[CRTC_PROP_COLOR_TRANSFORM];
+	int unity, i, ret = 0;
+
+	if (private->data->mmsys_id != MMSYS_MT6789 ||
+	    new_state->prop_val[CRTC_PROP_AOSP_CCORR_LINEAR] || !blob_id)
+		return 0;
+
+	blob = drm_property_lookup_blob(crtc->dev, blob_id);
+	if (!blob) {
+		pr_err_ratelimited("CRTC %u: invalid COLOR_TRANSFORM blob %u\n",
+				   crtc->base.id, blob_id);
+		return -EINVAL;
+	}
+
+	if (blob->length != sizeof(*config)) {
+		pr_err_ratelimited("CRTC %u: invalid COLOR_TRANSFORM blob size %zu\n",
+				   crtc->base.id, blob->length);
+		ret = -EINVAL;
+		goto out;
+	}
+
+	config = blob->data;
+	mtk_get_ccorr_caps(&caps);
+	unity = caps.ccorr_bit == 12 ? 1024 : 2048;
+	for (i = 0; i < 15; i++) {
+		if (i % 4 == 3)
+			continue;
+		if (config->color_matrix[i] != (i % 5 == 0 ? unity : 0)) {
+			pr_err_ratelimited("CRTC %u: nonidentity COLOR_TRANSFORM requires AOSP_CCORR_LINEAR=1\n",
+					   crtc->base.id);
+			ret = -EINVAL;
+			break;
+		}
+	}
+
+out:
+	drm_property_blob_put(blob);
+	return ret;
+}
+
 static bool mtk_drm_crtc_mode_fixup(struct drm_crtc *crtc,
 				    const struct drm_display_mode *mode,
 				    struct drm_display_mode *adjusted_mode)
 {
-	MINDONE_PR("MINDONE-AC: crtc-mode-fixup begin crtc=%d\n", drm_crtc_index(crtc));
 	/* Nothing to do here, but this callback is mandatory. */
-	MINDONE_PR("MINDONE-AC: crtc-mode-fixup end ret=true\n");
 	return true;
 }
 
@@ -892,14 +877,11 @@ static void mtk_drm_crtc_mode_set_nofb(struct drm_crtc *crtc)
 {
 	struct mtk_crtc_state *state = to_mtk_crtc_state(crtc->state);
 
-	MINDONE_PR("MINDONE-AC: crtc-mode-set-nofb begin crtc=%d w=%d h=%d\n",
-		drm_crtc_index(crtc), crtc->mode.hdisplay, crtc->mode.vdisplay);
 	state->pending_width = crtc->mode.hdisplay;
 	state->pending_height = crtc->mode.vdisplay;
 	state->pending_vrefresh = drm_mode_vrefresh(&crtc->mode);
 	wmb(); /* Make sure the above parameters are set before update */
 	state->pending_config = true;
-	MINDONE_PR("MINDONE-AC: crtc-mode-set-nofb end\n");
 }
 
 static int mtk_crtc_enable_vblank_thread(void *data)
@@ -928,9 +910,6 @@ static int mtk_crtc_enable_vblank_thread(void *data)
 	return 0;
 }
 
-static int mindone_skip_enable_vblank;
-module_param(mindone_skip_enable_vblank, int, 0444);
-
 int mtk_drm_crtc_enable_vblank(struct drm_crtc *crtc)
 {
 	struct drm_device *drm = crtc->dev;
@@ -939,19 +918,11 @@ int mtk_drm_crtc_enable_vblank(struct drm_crtc *crtc)
 	struct mtk_drm_crtc *mtk_crtc = to_mtk_crtc(priv->crtc[pipe]);
 	struct mtk_ddp_comp *comp = mtk_crtc_get_comp(&mtk_crtc->base, 0, 0);
 
-	MINDONE_PR("MINDONE-RT: enable-vblank pipe=%u enabled=%d\n", pipe, mtk_crtc->enabled);
-	MINDONE_PR("MINDONE-AC: crtc-enable-vblank begin pipe=%u\n", pipe);
-	if (mindone_skip_enable_vblank) {
-		MINDONE_PR("MINDONE-VB: enable-vblank SKIPPED (skip=1) pipe=%u\n", pipe);
-		MINDONE_PR("MINDONE-AC: crtc-enable-vblank end ret=0 (skip=1)\n");
-		return 0;
-	}
 	mtk_crtc->vblank_en = 1;
 
 	if (!mtk_crtc->enabled) {
 		CRTC_MMP_MARK(pipe, enable_vblank, 0xFFFFFFFF,
 			0xFFFFFFFF);
-		MINDONE_PR("MINDONE-AC: crtc-enable-vblank end ret=0 (not-enabled)\n");
 		return 0;
 	}
 
@@ -968,7 +939,6 @@ int mtk_drm_crtc_enable_vblank(struct drm_crtc *crtc)
 	CRTC_MMP_MARK(pipe, enable_vblank, (unsigned long)comp,
 			(unsigned long)&mtk_crtc->base);
 
-	MINDONE_PR("MINDONE-AC: crtc-enable-vblank end ret=0\n");
 	return 0;
 }
 
@@ -1366,14 +1336,12 @@ void mtk_drm_crtc_disable_vblank(struct drm_crtc *crtc)
 	struct mtk_drm_crtc *mtk_crtc = to_mtk_crtc(priv->crtc[pipe]);
 	struct mtk_ddp_comp *comp = mtk_crtc_get_comp(&mtk_crtc->base, 0, 0);
 
-	MINDONE_PR("MINDONE-AC: crtc-disable-vblank begin pipe=%u\n", pipe);
 	DDPINFO("%s\n", __func__);
 
 	mtk_crtc->vblank_en = 0;
 
 	CRTC_MMP_MARK(pipe, disable_vblank, (unsigned long)comp,
 			(unsigned long)&mtk_crtc->base);
-	MINDONE_PR("MINDONE-AC: crtc-disable-vblank end\n");
 }
 
 bool mtk_crtc_get_vblank_timestamp(struct drm_crtc *crtc,
@@ -1383,9 +1351,7 @@ bool mtk_crtc_get_vblank_timestamp(struct drm_crtc *crtc,
 {
 	struct mtk_drm_crtc *mtk_crtc = to_mtk_crtc(crtc);
 
-	MINDONE_PR("MINDONE-AC: crtc-vblank-ts begin crtc=%d\n", drm_crtc_index(crtc));
 	*vblank_time = timespec64_to_ktime(mtk_crtc->vblank_time);
-	MINDONE_PR("MINDONE-AC: crtc-vblank-ts end ret=true\n");
 	return true;
 }
 
@@ -1546,6 +1512,7 @@ int mtk_crtc_user_cmd(struct drm_crtc *crtc, struct mtk_ddp_comp *comp,
 	struct DRM_DISP_CCORR_COEF_T *ccorr_config;
 
 	int index = 0;
+	int ret;
 
 	if (!mtk_crtc) {
 		DDPPR_ERR("%s:%d, invalid crtc:0x%p\n",
@@ -1578,6 +1545,8 @@ int mtk_crtc_user_cmd(struct drm_crtc *crtc, struct mtk_ddp_comp *comp,
 		DDPINFO("%s:%d, slepted\n", __func__, __LINE__);
 		CRTC_MMP_EVENT_END(index, user_cmd, 0, 2);
 		DDP_MUTEX_UNLOCK(&mtk_crtc->lock, __func__, __LINE__);
+		if (mtk_ddp_comp_get_type(comp->id) == MTK_DISP_CCORR && cmd == SET_CCORR)
+			return -EAGAIN;
 		return 0;
 	}
 
@@ -1609,9 +1578,17 @@ int mtk_crtc_user_cmd(struct drm_crtc *crtc, struct mtk_ddp_comp *comp,
 	CRTC_MMP_MARK(index, user_cmd, user_cmd_cnt, 2);
 
 	/* set user command */
-	if (comp && comp->funcs && comp->funcs->user_cmd && !comp->blank_mode)
-		comp->funcs->user_cmd(comp, cmdq_handle, cmd, (void *)params);
-	else {
+	if (comp && comp->funcs && comp->funcs->user_cmd && !comp->blank_mode) {
+		ret = comp->funcs->user_cmd(comp, cmdq_handle, cmd, (void *)params);
+		if (ret < 0 && cmd == SET_CCORR &&
+			mtk_ddp_comp_get_type(comp->id) == MTK_DISP_CCORR) {
+			cmdq_pkt_destroy(cmdq_handle);
+			kfree(cb_data);
+			CRTC_MMP_EVENT_END(index, user_cmd, 0, 0);
+			DDP_MUTEX_UNLOCK(&mtk_crtc->lock, __func__, __LINE__);
+			return ret;
+		}
+	} else {
 		DDPPR_ERR("%s:%d, invalid comp:(0x%p,0x%p)\n",
 				__func__, __LINE__, comp, comp->funcs);
 		CRTC_MMP_MARK(index, user_cmd, 0, 4);
@@ -1626,7 +1603,7 @@ int mtk_crtc_user_cmd(struct drm_crtc *crtc, struct mtk_ddp_comp *comp,
 	if (m_new_pq_persist_property[DISP_PQ_CCORR_SILKY_BRIGHTNESS]) {
 		if (((comp->id == DDP_COMPONENT_CCORR1) ||
 			((drm_ccorr_caps.ccorr_linear & 0x1) &&
-			(comp->id == DDP_COMPONENT_CCORR0))) && cmd == 0) {
+			(comp->id == DDP_COMPONENT_CCORR0))) && cmd == SET_CCORR) {
 			ccorr_config = params;
 			if (ccorr_config->silky_bright_flag == 1 &&
 				ccorr_config->FinalBacklight != sb_backlight) {
@@ -3434,7 +3411,13 @@ unsigned int mtk_crtc_get_idle_interval(struct drm_crtc *crtc, unsigned int fps)
 	/*calculate the timeout to enter idle in ms*/
 	if (idle_interval > 50)
 		return 0;
-	idle_interval = (3 * 1000) / fps + 1;
+	if (fps > 90)
+		idle_interval = (4 * 1000) / fps + 1;
+	else
+		idle_interval = (3 * 1000) / fps + 1;
+
+	if (idle_interval > 50)
+		idle_interval = 50;
 
 	DDPMSG("[fps]:%s,[fps->idle interval][%d fps->%d ms]\n",
 		__func__, fps, idle_interval);
@@ -3885,14 +3868,8 @@ static void mtk_crtc_update_ddp_state(struct drm_crtc *crtc,
 						last = it;
 			}
 			if (!last) {
-				mindone_lostid_skipped++;
 				break;
 			}
-			mindone_lostid_recovered++;
-			if ((mindone_lostid_recovered & 0x1f) == 1)
-				pr_notice("MINDONE-LOSTID: recovered prop=%u using lye_idx=%u n=%lu skipped=%lu\n",
-					  prop_lye_idx, last->lye_idx,
-					  mindone_lostid_recovered, mindone_lostid_skipped);
 			lyeblob_ids = last;
 			mtk_crtc_disp_mode_switch_begin(crtc, old_crtc_state, crtc_state,
 							cmdq_handle);
@@ -3907,10 +3884,8 @@ static void mtk_crtc_update_ddp_state(struct drm_crtc *crtc,
 
 				for (li = 0; li < to_mtk_crtc(crtc)->layer_nr; li++)
 					mtk_release_layer_fence(sid, li);
-				mindone_lostid_released++;
 				mtk_drm_suspend_release_present_fence(crtc->dev->dev, index);
 				mtk_drm_suspend_release_sf_present_fence(crtc->dev->dev, index);
-				mindone_lostid_pf++;
 				mindone_fence_wd_kick_all(sid);
 				mindone_pf_wd_kick(crtc->dev, index, false);
 				mindone_pf_wd_kick(crtc->dev, index, true);
@@ -4571,22 +4546,8 @@ static void mtk_crtc_release_input_layer_fence(
 	struct drm_crtc *crtc, int session_id)
 {
 	struct mtk_drm_crtc *mtk_crtc = to_mtk_crtc(crtc);
-	struct mtk_drm_private *priv = mtk_crtc->base.dev->dev_private;
 	int i;
 	unsigned int fence_idx = 0;
-	unsigned int mindone_id = drm_crtc_index(crtc);
-
-	mindone_rif_calls++;
-	/* fence release already during suspend */
-	if (priv->power_state == false) {
-		mindone_rif_pwroff++;
-		if ((mindone_rif_pwroff & 0x3f) == 1)
-			pr_notice("MINDONE-RIF: pwroff calls=%lu pwroff=%lu id=%u\n",
-				  mindone_rif_calls, mindone_rif_pwroff, mindone_id);
-		if (!mindone_rif_release_when_off)
-			return;
-		mindone_rif_forced++;
-	}
 
 	for (i = 0; i < mtk_crtc->layer_nr; i++) {
 		unsigned int subtractor = 0;
@@ -4601,16 +4562,6 @@ static void mtk_crtc_release_input_layer_fence(
 		if (drm_crtc_index(crtc) == 2)
 			DDPINFO("%d, fence_idx:%d, subtractor:%d\n",
 					i, fence_idx, subtractor);
-		if (i == 0 && mindone_id == 0) {
-			mindone_rif_last_fence = fence_idx;
-			mindone_rif_last_sub = subtractor;
-			mindone_rif_last_rel = fence_idx - subtractor;
-			if ((mindone_rif_calls & 0x3f) == 1)
-				pr_debug("MINDONE-RIF: calls=%lu pwroff=%lu id=%u layer_nr=%d fence0=%u sub0=%u rel0=%u\n",
-					  mindone_rif_calls, mindone_rif_pwroff, mindone_id,
-					  mtk_crtc->layer_nr, fence_idx, subtractor,
-					  fence_idx - subtractor);
-		}
 		mtk_release_fence(session_id, i, fence_idx - subtractor);
 	}
 }
@@ -4882,7 +4833,6 @@ static void ddp_cmdq_cb(struct cmdq_cb_data data)
 			atomic_read(&priv->crtc_present[id]), 0);
 		mtk_release_sf_present_fence(session_id,
 			atomic_read(&priv->crtc_sf_present[id]));
-		mindone_emptycb_pf++;
 		mindone_fence_wd_kick_all(session_id);
 		mindone_pf_wd_kick(mtk_crtc->base.dev, id, false);
 		mindone_pf_wd_kick(mtk_crtc->base.dev, id, true);
@@ -4891,7 +4841,6 @@ static void ddp_cmdq_cb(struct cmdq_cb_data data)
 
 			for (li = 0; li < mtk_crtc->layer_nr; li++)
 				mtk_release_layer_fence(session_id, li);
-			mindone_emptycb_layers++;
 		}
 	}
 
@@ -5108,9 +5057,6 @@ static void ddp_cmdq_cb_blocking(struct mtk_cmdq_cb_data *cb_data)
 #endif
 #endif
 
-static int mindone_skip_ovl_busy_read;
-module_param(mindone_skip_ovl_busy_read, int, 0444);
-
 static void mtk_crtc_ddp_config(struct drm_crtc *crtc)
 {
 	struct mtk_drm_crtc *mtk_crtc = to_mtk_crtc(crtc);
@@ -5137,14 +5083,7 @@ static void mtk_crtc_ddp_config(struct drm_crtc *crtc)
 		DDPPR_ERR("%s invalid comp\n", __func__);
 		return;
 	}
-	MINDONE_PR("MINDONE-DISP: pre-ovl-busy-read comp=%px regs=%px\n", comp, comp->regs);
-	if (mindone_skip_ovl_busy_read) {
-		ovl_is_busy = 0;
-		MINDONE_PR("MINDONE-DISP: ovl-busy-read SKIPPED (skip=1)\n");
-	} else {
-		ovl_is_busy = readl(comp->regs) & 0x1UL;
-	}
-	MINDONE_PR("MINDONE-DISP: post-ovl-busy-read val=%u\n", ovl_is_busy);
+	ovl_is_busy = readl(comp->regs) & 0x1UL;
 	if (ovl_is_busy == 0x1UL)
 		return;
 
@@ -5468,12 +5407,10 @@ static void cmdq_pkt_wait_te(struct cmdq_pkt *cmdq_handle,
 
 void mtk_crtc_start_trig_loop(struct drm_crtc *crtc)
 {
-	MINDONE_PR("MINDONE-DISP: trig-loop-setup begin crtc=%px\n", crtc);
 #ifdef DRM_CMDQ_DISABLE
 	DDPINFO("%s+\n", __func__);
 	return;
 #else
-	int ret = 0;
 	struct cmdq_pkt *cmdq_handle;
 	struct mtk_drm_crtc *mtk_crtc = to_mtk_crtc(crtc);
 	unsigned long crtc_id = (unsigned long)drm_crtc_index(crtc);
@@ -5748,8 +5685,7 @@ void mtk_crtc_start_trig_loop(struct drm_crtc *crtc)
 		}
 	}
 	cmdq_pkt_finalize_loop(cmdq_handle);
-	ret = cmdq_pkt_flush_async(cmdq_handle, trig_done_cb, (void *)crtc_id);
-	MINDONE_PR("MINDONE-DISP: trig-loop-setup end ret=%d\n", ret);
+	cmdq_pkt_flush_async(cmdq_handle, trig_done_cb, (void *)crtc_id);
 
 	mtk_crtc_clear_wait_event(crtc);
 #endif
@@ -6941,14 +6877,10 @@ void mtk_drm_crtc_enable(struct drm_crtc *crtc, bool skip_esd)
 	struct mtk_ddp_comp *output_comp = NULL;
 	int en = 1;
 
-	MINDONE_PR("MINDONE-RT: crtc-enable begin crtc=%d enabled=%d ddp_mode=%d\n",
-		crtc_id, mtk_crtc->enabled, mtk_crtc->ddp_mode);
-
 	CRTC_MMP_EVENT_START(crtc_id, enable,
 			mtk_crtc->enabled, 0);
 
 	if (mtk_crtc->enabled) {
-		MINDONE_PR("MINDONE-RT: crtc-enable SKIP crtc=%d (already enabled)\n", crtc_id);
 		CRTC_MMP_MARK(crtc_id, enable, 0, 0);
 		DDPINFO("crtc%d skip %s\n", crtc_id, __func__);
 #ifdef SHARE_WROT_SRAM
@@ -6979,14 +6911,10 @@ void mtk_drm_crtc_enable(struct drm_crtc *crtc, bool skip_esd)
 
 	if (disp_helper_get_stage() == DISP_HELPER_STAGE_NORMAL) {
 		/* 1. power on mtcmos */
-		MINDONE_PR("MINDONE-RT: crtc-enable pre-top-clk crtc=%d\n", crtc_id);
 		mtk_drm_top_clk_prepare_enable(crtc->dev);
-		MINDONE_PR("MINDONE-RT: crtc-enable post-top-clk crtc=%d\n", crtc_id);
 
 		/* 2. prepare modules would be used in this CRTC */
-		MINDONE_PR("MINDONE-RT: crtc-enable pre-ddp-prepare crtc=%d\n", crtc_id);
 		mtk_crtc_ddp_prepare(mtk_crtc);
-		MINDONE_PR("MINDONE-RT: crtc-enable post-ddp-prepare crtc=%d\n", crtc_id);
 	}
 
 	mtk_gce_backup_slot_restore(mtk_crtc, __func__);
@@ -7271,10 +7199,6 @@ void mtk_drm_crtc_atomic_resume(struct drm_crtc *crtc,
 	struct mtk_drm_private *priv = crtc->dev->dev_private;
 	struct mtk_drm_crtc *mtk_crtc0 = to_mtk_crtc(priv->crtc[0]);
 
-	MINDONE_PR("MINDONE-RT: atomic-resume begin crtc=%d enabled=%d\n",
-		index, mtk_crtc->enabled);
-	MINDONE_PR("MINDONE-AC: crtc-atomic-resume begin crtc=%d\n", index);
-
 	/* When open VDS path switch feature, After VDS created,
 	 * VDS will call setcrtc, So atomic commit will be called,
 	 * but OVL0_2L is in use by main disp, So we need to skip
@@ -7285,7 +7209,6 @@ void mtk_drm_crtc_atomic_resume(struct drm_crtc *crtc,
 		if (atomic_read(&mtk_crtc0->already_config) &&
 			(!priv->vds_path_switch_done)) {
 			DDPMSG("Switch vds: VDS need skip first crtc enable\n");
-			MINDONE_PR("MINDONE-AC: crtc-atomic-resume end crtc=%d (vds-skip)\n", index);
 			return;
 		} else if (!atomic_read(&mtk_crtc0->already_config)) {
 			DDPMSG("Switch vds: VDS no need skip as crtc0 disable\n");
@@ -7303,11 +7226,7 @@ void mtk_drm_crtc_atomic_resume(struct drm_crtc *crtc,
 	/*update interface when connector is changed*/
 	if (of_property_read_bool(priv->mmsys_dev->of_node, "enable_output_int_switch"))
 		mtk_drm_crtc_update_interface(crtc, old_crtc_state->state);
-	MINDONE_PR("MINDONE-AC: crtc-atomic-resume step pre-crtc-enable\n");
 	mtk_drm_crtc_enable(crtc, false);
-	MINDONE_PR("MINDONE-AC: crtc-atomic-resume end crtc=%d\n", index);
-	MINDONE_PR("MINDONE-RT: atomic-resume end crtc=%d enabled=%d\n",
-		index, mtk_crtc->enabled);
 
 	CRTC_MMP_EVENT_END(index, resume,
 			mtk_crtc->enabled, 0);
@@ -7645,15 +7564,8 @@ void mtk_crtc_first_enable_ddp_config(struct mtk_drm_crtc *mtk_crtc)
 		mtk_crtc_set_dirty(mtk_crtc);
 }
 
-static int mindone_skip_first_enable;
-module_param(mindone_skip_first_enable, int, 0444);
-
 void mtk_drm_crtc_first_enable(struct drm_crtc *crtc)
 {
-	if (mindone_skip_first_enable) {
-		MINDONE_PR("MINDONE-DRM: controller first-enable SKIPPED\n");
-		return;
-	}
 	struct mtk_drm_crtc *mtk_crtc = to_mtk_crtc(crtc);
 	unsigned int crtc_id = drm_crtc_index(&mtk_crtc->base);
 	struct mtk_drm_private *priv = crtc->dev->dev_private;
@@ -7870,7 +7782,6 @@ void mtk_drm_crtc_suspend(struct drm_crtc *crtc)
 	struct mtk_drm_crtc *mtk_crtc = to_mtk_crtc(crtc);
 	int index = drm_crtc_index(crtc);
 
-	MINDONE_PR("MINDONE-AC: crtc-suspend begin crtc=%d enabled=%d\n", index, mtk_crtc->enabled);
 	CRTC_MMP_EVENT_START(index, suspend,
 			mtk_crtc->enabled, 0);
 
@@ -7896,7 +7807,6 @@ void mtk_drm_crtc_suspend(struct drm_crtc *crtc)
 	/* release wakelock */
 	mtk_drm_crtc_wk_lock(crtc, 0, __func__, __LINE__);
 
-	MINDONE_PR("MINDONE-AC: crtc-suspend end crtc=%d\n", index);
 	CRTC_MMP_EVENT_END(index, suspend,
 			mtk_crtc->enabled, 0);
 }
@@ -8881,7 +8791,6 @@ static void mtk_drm_crtc_atomic_begin(struct drm_crtc *crtc,
 	unsigned int msync_fps_record[60];
 	static unsigned int position;
 
-	MINDONE_PR("MINDONE-AC: crtc-atomic-begin begin crtc=%d\n", index);
 	/* When open VDS path switch feature, we will resume VDS crtc
 	 * in it's second atomic commit, and the crtc will be resumed
 	 * one time.
@@ -8924,9 +8833,7 @@ static void mtk_drm_crtc_atomic_begin(struct drm_crtc *crtc,
 				state->prop_val[CRTC_PROP_MSYNC2_0_ENABLE],
 				mtk_crtc->msync2.msync_disabled);
 
-	MINDONE_PR("MINDONE-AC: crtc-atomic-begin step gce-commit-begin\n");
 	state->cmdq_handle = mtk_crtc_gce_commit_begin(crtc, old_crtc_state, state, true);
-	MINDONE_PR("MINDONE-AC: crtc-atomic-begin step post-gce-commit-begin\n");
 	CRTC_MMP_MARK(index, atomic_begin, (unsigned long)state->cmdq_handle, 0);
 
 	/*Msync 2.0: add cmds to cfg thread*/
@@ -8996,7 +8903,6 @@ static void mtk_drm_crtc_atomic_begin(struct drm_crtc *crtc,
 	}
 
 end:
-	MINDONE_PR("MINDONE-AC: crtc-atomic-begin end crtc=%d\n", index);
 	CRTC_MMP_EVENT_END(index, atomic_begin,
 			(unsigned long)mtk_crtc->event,
 			(unsigned long)state->base.event);
@@ -9154,7 +9060,7 @@ void mtk_drm_crtc_plane_disable(struct drm_crtc *crtc, struct drm_plane *plane,
 #ifndef DRM_CMDQ_DISABLE
 	unsigned int v = crtc->state->adjusted_mode.vdisplay;
 	unsigned int h = crtc->state->adjusted_mode.hdisplay;
-	unsigned int last_fence, cur_fence, sub;
+	unsigned int cur_fence, sub;
 	dma_addr_t addr;
 #endif
 	struct cmdq_pkt *cmdq_handle = state->cmdq_handle;
@@ -9226,20 +9132,11 @@ void mtk_drm_crtc_plane_disable(struct drm_crtc *crtc, struct drm_plane *plane,
 		}
 	}
 #ifndef DRM_CMDQ_DISABLE
-	last_fence = *(unsigned int *)mtk_get_gce_backup_slot_va(mtk_crtc,
-		       DISP_SLOT_CUR_CONFIG_FENCE(mtk_get_plane_slot_idx(mtk_crtc, plane_index)));
 	cur_fence = plane_state->pending.prop_val[PLANE_PROP_NEXT_BUFF_IDX];
 
 	addr = mtk_get_gce_backup_slot_pa(mtk_crtc,
 		DISP_SLOT_CUR_CONFIG_FENCE(mtk_get_plane_slot_idx(mtk_crtc, plane_index)));
 	if (cur_fence != -1) {
-		if (cur_fence <= last_fence) {
-			mindone_fencefix_resync++;
-			if ((mindone_fencefix_resync & 0x1f) == 1)
-				pr_notice("MINDONE-FENCEFIX: resync plane=%u cur=%d last=%u n=%lu\n",
-					  plane_index, cur_fence, last_fence,
-					  mindone_fencefix_resync);
-		}
 		cmdq_pkt_write(cmdq_handle, mtk_crtc->gce_obj.base, addr,
 			       cur_fence, ~0);
 	}
@@ -9278,18 +9175,8 @@ void mtk_drm_crtc_plane_update(struct drm_crtc *crtc, struct drm_plane *plane,
 		DDPINFO("%s+ plane_id:%d, comp_id:%d, comp_id:%d\n", __func__,
 			plane->index, comp->id, plane_state->comp_state.comp_id);
 
-	mindone_cpu_calls++;
-	if (need_skip)
-		mindone_cpu_skipcfg++;
-	if (!plane_state->pending.enable)
-		mindone_cpu_noenable++;
-	if ((mindone_cpu_calls & 0x3f) == 1)
-		pr_debug("MINDONE-CPU: calls=%lu skipcfg=%lu noenable=%lu passed=%lu (need_skip=%d enable=%d)\n",
-			  mindone_cpu_calls, mindone_cpu_skipcfg, mindone_cpu_noenable,
-			  mindone_cpu_passed, need_skip, plane_state->pending.enable);
-
 	if (plane_state->pending.enable && !need_skip) {
-		mindone_cpu_passed++;
+
 		mtk_dprec_mmp_dump_ovl_layer(plane_state);
 		if (mtk_crtc->is_dual_pipe) {
 			comp = mtk_crtc_get_plane_comp(crtc, plane_state);
@@ -10154,7 +10041,6 @@ static void mtk_drm_crtc_atomic_flush(struct drm_crtc *crtc,
 	int flush_count = 0;
 	unsigned int retry_count = 0;
 
-	MINDONE_PR("MINDONE-AC: crtc-atomic-flush begin crtc=%d\n", index);
 	CRTC_MMP_EVENT_START(index, atomic_flush, (unsigned long)crtc_state,
 			(unsigned long)old_crtc_state);
 	if (mtk_crtc->ddp_mode == DDP_NO_USE) {
@@ -10465,7 +10351,6 @@ end:
 #ifdef DRM_CMDQ_DISABLE
 	trigger_without_cmdq(crtc);
 #endif
-	MINDONE_PR("MINDONE-AC: crtc-atomic-flush end crtc=%d\n", index);
 	CRTC_MMP_EVENT_END(index, atomic_flush, (unsigned long)crtc_state,
 			(unsigned long)old_crtc_state);
 	mtk_drm_trace_end();
@@ -10494,6 +10379,7 @@ static const struct drm_crtc_funcs mtk_crtc_funcs = {
 static const struct drm_crtc_helper_funcs mtk_crtc_helper_funcs = {
 	.mode_fixup = mtk_drm_crtc_mode_fixup,
 	.mode_set_nofb = mtk_drm_crtc_mode_set_nofb,
+	.atomic_check = mtk_drm_crtc_atomic_check,
 	.atomic_enable = mtk_drm_crtc_atomic_resume,
 	.disable = mtk_drm_crtc_suspend,
 	.atomic_begin = mtk_drm_crtc_atomic_begin,
@@ -10531,6 +10417,16 @@ static void mtk_drm_crtc_attach_property(struct drm_crtc *crtc)
 	}
 
 	for (i = 0; i < CRTC_PROP_MAX; i++) {
+		if (i >= CRTC_PROP_PARTIAL_UPDATE_ENABLE &&
+		    private->data->mmsys_id != MMSYS_MT6789)
+			continue;
+		if (i == CRTC_PROP_PARTIAL_UPDATE_ENABLE &&
+		    mtk_crtc_is_frame_trigger_mode(crtc))
+			continue;
+		if ((i == CRTC_PROP_DYNAMIC_WCG_OFF ||
+		     i == CRTC_PROP_WCG_BY_COLOR_MODE) &&
+		    mtk_drm_helper_get_opt(private->helper_opt, MTK_DRM_OPT_OVL_WCG))
+			continue;
 		prop = private->crtc_property[index][i];
 		crtc_prop = &(mtk_crtc_property[i]);
 		DDPINFO("%s:%d prop:%p\n", __func__, __LINE__, prop);
@@ -12014,9 +11910,6 @@ int mtk_drm_get_msync_params_ioctl(struct drm_device *dev, void *data,
 	return 0;
 }
 
-unsigned long mindone_pf_timeout_fired;
-module_param(mindone_pf_timeout_fired, ulong, 0444);
-MODULE_PARM_DESC(mindone_pf_timeout_fired, "present fences force-released by kernel timeout");
 unsigned int mindone_pf_timeout_ms = 500;
 module_param(mindone_pf_timeout_ms, uint, 0644);
 MODULE_PARM_DESC(mindone_pf_timeout_ms, "present fence timeout in ms, 0 = disabled");
@@ -12031,7 +11924,6 @@ struct mindone_pf_wd {
 static struct mindone_pf_wd mindone_pf_wd_tbl[MAX_CRTC][2];
 extern unsigned long mindone_empty_commit_jiffies;
 extern unsigned int mindone_wd_window_ms;
-extern unsigned long mindone_wd_gated;
 static inline bool mindone_pf_wd_armed(void)
 {
 	return mindone_empty_commit_jiffies &&
@@ -12057,16 +11949,11 @@ static void mindone_pf_wd_fn(struct work_struct *w)
 	if (!li || !li->timeline)
 		return;
 	if (!mindone_pf_wd_armed()) {
-		mindone_wd_gated++;
 		return;
 	}
 	cur = li->timeline->value;
 	if (cur < target) {
 		mindone_empty_commit_jiffies = jiffies;
-		mindone_pf_timeout_fired++;
-		if ((mindone_pf_timeout_fired & 0xf) == 1)
-			pr_notice("MINDONE-PFWD: %s timeline %u < issued %u — force release (n=%lu)\n",
-				  wd->sf ? "sf-present" : "present", cur, target, mindone_pf_timeout_fired);
 		if (wd->sf)
 			mtk_release_sf_present_fence(session_id, target);
 		else

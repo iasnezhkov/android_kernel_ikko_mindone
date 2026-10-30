@@ -1,3 +1,5 @@
+/* SPDX-License-Identifier: GPL-2.0 */
+/* SPDX-FileCopyrightText: 2026 The LineageOS Project */
 #include <assert.h>
 #include <errno.h>
 #include <pthread.h>
@@ -14,6 +16,7 @@
 #define PTR_ERR(a) ((int)(intptr_t)(a))
 #define PAGE_SIZE 4096
 #define DEFINE_MUTEX(name) struct fixture_mutex name = { .native = PTHREAD_MUTEX_INITIALIZER }
+#define smp_load_acquire(pointer) __atomic_load_n((pointer), __ATOMIC_ACQUIRE)
 #define dev_info(...) ((void)0)
 #define pr_info(...) ((void)0)
 #define pr_notice(...) ((void)0)
@@ -59,8 +62,23 @@ static void mutex_unlock(struct fixture_mutex *mutex) {
 }
 #endif
 struct thermal_cooling_device { void *devdata; };
+struct srcu_struct { int readers; };
+struct srcu_notifier_head { struct srcu_struct srcu; };
+static int srcu_read_lock(struct srcu_struct *srcu) {
+    assert(srcu->readers == 0);
+    srcu->readers++;
+    return 0;
+}
+static void srcu_read_unlock(struct srcu_struct *srcu, int index) {
+    assert(index == 0 && srcu->readers == 1);
+    srcu->readers--;
+}
 struct charger_ops;
-struct charger_device { const struct charger_ops *ops; int cc, iin, cc_errno, iin_errno; };
+struct charger_device {
+    const struct charger_ops *ops;
+    struct srcu_notifier_head evt_nh;
+    int cc, iin, cc_errno, iin_errno;
+};
 struct chg_alg_device { int state; };
 #define ALG_RUNNING 1
 #define EPROBE_DEFER 517

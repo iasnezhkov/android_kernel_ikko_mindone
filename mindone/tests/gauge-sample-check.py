@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: GPL-2.0
+# SPDX-FileCopyrightText: 2026 The LineageOS Project
 import argparse
 import csv
 import hashlib
@@ -5,6 +7,7 @@ import json
 import math
 from pathlib import Path
 import re
+import runpy
 import sys
 import uuid
 
@@ -151,10 +154,13 @@ def evaluate(samples, provenance=None):
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Check one saved off-cable gauge window; missing mode, provenance or raw measurements never pass")
+    parser = argparse.ArgumentParser(description="Check a saved off-cable TSV window, or run synthetic host regressions when given a kernel tree; missing mode, provenance or raw measurements never pass")
     parser.add_argument("samples", type=Path)
     parser.add_argument("--provenance", type=Path)
     args = parser.parse_args()
+    if args.samples.is_dir() and (args.samples / "mindone/tests/gauge-sample-check-test.py").is_file() and args.provenance is None:
+        runpy.run_path(str(args.samples / "mindone/tests/gauge-sample-check-test.py"))["main"]()
+        return 0
     try:
         provenance = json.loads(args.provenance.read_text()) if args.provenance else None
         if provenance is not None and not isinstance(provenance, dict):

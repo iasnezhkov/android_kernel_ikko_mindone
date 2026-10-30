@@ -2526,7 +2526,7 @@ static struct pmic_wrapper_type pwrap_mt6789 = {
 	.int1_en_all = 0,
 	.spi_w = PWRAP_MAN_CMD_SPI_WRITE,
 	.wdt_src = PWRAP_WDT_SRC_MASK_ALL,
-	.caps = PWRAP_CAP_ARB,
+	.caps = PWRAP_CAP_ARB | PWRAP_CAP_ULPOSC_CLK,
 	.init_reg_clock = pwrap_common_init_reg_clock,
 	.init_soc_specific = NULL,
 };
@@ -2780,47 +2780,48 @@ static int pwrap_probe(struct platform_device *pdev)
 	if (IS_ERR(wrp->clk_spi)) {
 		dev_notice(wrp->dev, "failed to get clock: %ld\n",
 			PTR_ERR(wrp->clk_spi));
-	} else {
-		ret = clk_prepare_enable(wrp->clk_spi);
-		if (ret)
-			dev_notice(wrp->dev, "failed to enable clock: %ld\n",
-				PTR_ERR(wrp->clk_spi));
+		return PTR_ERR(wrp->clk_spi);
 	}
 
 	wrp->clk_wrap = devm_clk_get(wrp->dev, "wrap");
 	if (IS_ERR(wrp->clk_wrap)) {
 		dev_notice(wrp->dev, "failed to get clock: %ld\n",
 			PTR_ERR(wrp->clk_wrap));
-	} else {
-		ret = clk_prepare_enable(wrp->clk_wrap);
-		if (ret)
-			dev_notice(wrp->dev, "failed to enable clock: %ld\n",
-				PTR_ERR(wrp->clk_wrap));
+		return PTR_ERR(wrp->clk_wrap);
 	}
 
-	if (!HAS_CAP(wrp->master->caps, PWRAP_CAP_ARB_V2) &&
-		!HAS_CAP(wrp->master->caps, PWRAP_CAP_MONITOR_V1)) {
+	if (HAS_CAP(wrp->master->caps, PWRAP_CAP_ULPOSC_CLK)) {
 		wrp->clk_ulposc = devm_clk_get(wrp->dev, "ulposc");
 		if (IS_ERR(wrp->clk_ulposc)) {
 			dev_notice(wrp->dev, "failed to get clock: %ld\n",
 				PTR_ERR(wrp->clk_ulposc));
-		} else {
-			ret = clk_prepare_enable(wrp->clk_ulposc);
-			if (ret)
-				dev_notice(wrp->dev, "failed to enable clock: %ld\n",
-					PTR_ERR(wrp->clk_ulposc));
+			return PTR_ERR(wrp->clk_ulposc);
 		}
 
 		wrp->clk_ulposc_osc = devm_clk_get(wrp->dev, "ulposc_osc");
 		if (IS_ERR(wrp->clk_ulposc_osc)) {
 			dev_notice(wrp->dev, "failed to get clock: %ld\n",
 				PTR_ERR(wrp->clk_ulposc_osc));
-		} else {
-			ret = clk_prepare_enable(wrp->clk_ulposc_osc);
-			if (ret)
-				dev_notice(wrp->dev, "failed to enable clock: %ld\n",
-					PTR_ERR(wrp->clk_ulposc_osc));
+			return PTR_ERR(wrp->clk_ulposc_osc);
 		}
+	}
+
+	ret = clk_prepare_enable(wrp->clk_spi);
+	if (ret)
+		return ret;
+
+	ret = clk_prepare_enable(wrp->clk_wrap);
+	if (ret)
+		goto err_out_wrap;
+
+	if (HAS_CAP(wrp->master->caps, PWRAP_CAP_ULPOSC_CLK)) {
+		ret = clk_prepare_enable(wrp->clk_ulposc);
+		if (ret)
+			goto err_out_ulposc;
+
+		ret = clk_prepare_enable(wrp->clk_ulposc_osc);
+		if (ret)
+			goto err_out_ulposc_osc;
 	}
 
 	/* Enable internal dynamic clock */
@@ -2892,25 +2893,28 @@ static int pwrap_probe(struct platform_device *pdev)
 	if (irq < 0) {
 		dev_notice(&pdev->dev,
 			"Failed to get pwrap irq, irq = %d\n", irq);
-	} else {
-		ret = devm_request_irq(wrp->dev, irq, pwrap_interrupt,
+		ret = irq;
+		goto err_out;
+	}
+	ret = devm_request_irq(wrp->dev, irq, pwrap_interrupt,
 				IRQF_TRIGGER_HIGH, "mt-pmic-pwrap", wrp);
-		if (ret)
-			dev_notice(&pdev->dev,
-				"Failed to register pwrap irq, ret = %d\n", ret);
+	if (ret) {
+		dev_notice(&pdev->dev,
+			"Failed to register pwrap irq, ret = %d\n", ret);
+		goto err_out;
 	}
 
 	wrp->regmap = devm_regmap_init(wrp->dev, NULL, wrp, wrp->slave->regmap);
 	if (IS_ERR(wrp->regmap)) {
 		dev_notice(&pdev->dev, "regmap init fail\n");
 		ret = PTR_ERR(wrp->regmap);
-		goto err_out;
+		goto err_out_irq;
 	}
 
 	ret = of_platform_populate(np, NULL, NULL, wrp->dev);
 	if (ret) {
 		dev_notice(wrp->dev, "failed to create child devices at %pOF\n", np);
-		goto err_out;
+		goto err_out_depopulate;
 	}
 
 	/* Write Test */
@@ -2919,19 +2923,29 @@ static int pwrap_probe(struct platform_device *pdev)
 	    pwrap_read(wrp, wrp->slave->dew_regs[PWRAP_DEW_WRITE_TEST],
 		       &rdata) ||
 	    (rdata != PWRAP_DEW_WRITE_TEST_VAL)) {
-			dev_notice(wrp->dev, "pwrap read/write fail rdata=0x%x\n",
-				rdata);
-			return -EFAULT;
+		dev_notice(wrp->dev, "pwrap read/write fail rdata=0x%x\n",
+			rdata);
+		ret = -EFAULT;
+		goto err_out_depopulate;
 	} else {
 		dev_notice(wrp->dev, "pwrap read/write test pass\n");
 	}
 	pr_info("pwrap probe success............\n");
 	return 0;
 
+err_out_depopulate:
+	of_platform_depopulate(wrp->dev);
+err_out_irq:
+	devm_free_irq(wrp->dev, irq, wrp);
 err_out:
-	clk_disable_unprepare(wrp->clk_ulposc_osc);
-	clk_disable_unprepare(wrp->clk_ulposc);
+	if (HAS_CAP(wrp->master->caps, PWRAP_CAP_ULPOSC_CLK))
+		clk_disable_unprepare(wrp->clk_ulposc_osc);
+err_out_ulposc_osc:
+	if (HAS_CAP(wrp->master->caps, PWRAP_CAP_ULPOSC_CLK))
+		clk_disable_unprepare(wrp->clk_ulposc);
+err_out_ulposc:
 	clk_disable_unprepare(wrp->clk_wrap);
+err_out_wrap:
 	clk_disable_unprepare(wrp->clk_spi);
 
 	return ret;

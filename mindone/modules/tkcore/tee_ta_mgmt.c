@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0
 /*
  * Copyright (c) 2015-2018 TrustKernel Incorporated
  * All Rights Reserved.
@@ -18,7 +19,7 @@
 #include <linux/mm.h>
 
 #include <linux/tee_ioc.h>
-#include "tee_core.h"
+#include "linux/tee_core.h"
 
 #include "tee_ta_mgmt.h"
 #include "tee_shm.h"

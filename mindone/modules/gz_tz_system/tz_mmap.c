@@ -71,6 +71,11 @@ long _map_user_pages(struct MTIOMMU_PIN_RANGE_T *pinRange, unsigned long uaddr,
 		do {
 			unsigned long *pfns = (void *)pages;
 
+			if (write && !(vma->vm_flags & VM_WRITE)) {
+				res = -EACCES;
+				goto out;
+			}
+
 			while (res < nr_pages
 			       && uaddr + PAGE_SIZE <= vma->vm_end) {
 				struct follow_pfnmap_args args = {

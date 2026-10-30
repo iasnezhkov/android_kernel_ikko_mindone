@@ -6,7 +6,6 @@
 #include <drm/drm_framebuffer.h>
 #include <drm/drm_modeset_helper.h>
 #include <drm/drm_mode_config.h>
-#include "mindone_log.h"
 #include <drm/drm_fourcc.h>
 #include <drm/drm_crtc_helper.h>
 #include <drm/drm_fb_helper.h>
@@ -216,14 +215,11 @@ mtk_drm_mode_fb_create(struct drm_device *dev, struct drm_file *file,
 	unsigned int size, bpp;
 	int ret;
 
-	MINDONE_PR("MINDONE-AC: fb-create begin fmt=0x%x w=%u h=%u\n",
-		cmd->pixel_format, cmd->width, cmd->height);
 	if (cmd->pixel_format == DRM_FORMAT_C8)
 		goto fb_init;
 
 	gem = drm_gem_object_lookup(file, cmd->handles[0]);
 	if (!gem) {
-		MINDONE_PR("MINDONE-AC: fb-create end ret=err (no-gem)\n");
 		return ERR_PTR(-ENOENT);
 	}
 
@@ -258,11 +254,9 @@ fb_init:
 		goto unreference;
 	}
 
-	MINDONE_PR("MINDONE-AC: fb-create end ret=0 fb=%px\n", mtk_fb);
 	return &mtk_fb->base;
 
 unreference:
-	MINDONE_PR("MINDONE-AC: fb-create end ret=%d (unreference)\n", ret);
 	drm_gem_object_put(gem);
 	return ERR_PTR(ret);
 }

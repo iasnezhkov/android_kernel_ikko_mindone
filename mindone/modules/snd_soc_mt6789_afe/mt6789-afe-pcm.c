@@ -8,6 +8,7 @@
 
 #include <linux/delay.h>
 #include <linux/dma-mapping.h>
+#include <linux/mm.h>
 #include <linux/module.h>
 #include <linux/of.h>
 #include <linux/of_address.h>
@@ -3224,6 +3225,30 @@ static int mt6789_afe_component_probe(struct snd_soc_component *component)
 	return 0;
 }
 
+static int mt6789_afe_pcm_mmap(struct snd_soc_component *component,
+			     struct snd_pcm_substream *substream,
+			     struct vm_area_struct *vma)
+{
+	struct mtk_base_afe *afe = snd_soc_component_get_drvdata(component);
+	struct mtk_audio_sram *sram = afe->sram;
+	struct snd_pcm_runtime *runtime = substream->runtime;
+	size_t mapped = PAGE_ALIGN(runtime->dma_bytes);
+
+	if (!sram || runtime->dma_addr < sram->phys_addr ||
+	    runtime->dma_addr - sram->phys_addr >= sram->size)
+		return snd_pcm_lib_default_mmap(substream, vma);
+
+	if (!sram->block_size || !IS_ALIGNED(sram->block_size, PAGE_SIZE) ||
+	    !PAGE_ALIGNED(runtime->dma_addr) ||
+	    mapped > sram->size - (runtime->dma_addr - sram->phys_addr))
+		return -EINVAL;
+
+	memset(runtime->dma_area + runtime->dma_bytes, 0,
+	       mapped - runtime->dma_bytes);
+	vma->vm_page_prot = pgprot_writecombine(vma->vm_page_prot);
+	return vm_iomap_memory(vma, runtime->dma_addr, mapped);
+}
+
 static const struct snd_soc_component_driver mt6789_afe_component = {
 	.name = AFE_PCM_NAME,
 	.probe = mt6789_afe_component_probe,
@@ -3232,6 +3257,7 @@ static const struct snd_soc_component_driver mt6789_afe_component = {
 	.open = mtk_afe_pcm_open,
 	.pointer = mtk_afe_pcm_pointer,
 	.copy = mtk_afe_pcm_copy_user,
+	.mmap = mt6789_afe_pcm_mmap,
 };
 
 static ssize_t mt6789_debug_read_reg(char *buffer, int size, struct mtk_base_afe *afe)

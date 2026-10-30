@@ -29,6 +29,7 @@ static void adapter_device_release(struct device *dev)
 {
 	struct adapter_device *adapter_dev = to_adapter_device(dev);
 
+	srcu_cleanup_notifier_head(&adapter_dev->evt_nh);
 	kfree(adapter_dev);
 }
 
@@ -224,7 +225,7 @@ struct adapter_device *adapter_device_register(const char *name,
 	adapter_dev->dev.class = adapter_class;
 	adapter_dev->dev.parent = parent;
 	adapter_dev->dev.release = adapter_device_release;
-	dev_set_name(&adapter_dev->dev, name);
+	dev_set_name(&adapter_dev->dev, "%s", name);
 	dev_set_drvdata(&adapter_dev->dev, devdata);
 
 	/* Copy properties */
@@ -234,7 +235,7 @@ struct adapter_device *adapter_device_register(const char *name,
 	}
 	rc = device_register(&adapter_dev->dev);
 	if (rc) {
-		kfree(adapter_dev);
+		put_device(&adapter_dev->dev);
 		return ERR_PTR(rc);
 	}
 	adapter_dev->ops = ops;

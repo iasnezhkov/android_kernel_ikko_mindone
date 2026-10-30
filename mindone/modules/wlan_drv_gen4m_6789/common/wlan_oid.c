@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0 OR BSD-3-Clause
 /*******************************************************************************
  *
  * This file is provided under a dual license.  When you use or
@@ -12970,8 +12971,9 @@ wlanoidSetP2pMode(IN struct ADAPTER *prAdapter,
 		}
 
 	} else {
-		if (prAdapter->fgIsP2PRegistered)
-			p2pRemove(prAdapter->prGlueInfo);
+		if (prAdapter->fgIsP2PRegistered &&
+		    !p2pRemove(prAdapter->prGlueInfo))
+			status = WLAN_STATUS_FAILURE;
 
 	}
 
@@ -13985,6 +13987,14 @@ wlanoidPacketKeepAlive(IN struct ADAPTER *prAdapter,
 		DBGLOG(OID, WARN, "Too short length %u\n", u4SetBufferLen);
 		return WLAN_STATUS_BUFFER_TOO_SHORT;
 	}
+
+	if (!pvSetBuffer)
+		return WLAN_STATUS_INVALID_DATA;
+	prPacket = pvSetBuffer;
+	if (prPacket->enable &&
+	    (prPacket->u2IpPktLen <= 0 ||
+	     (uint16_t)prPacket->u2IpPktLen > sizeof(prPacket->pIpPkt)))
+		return WLAN_STATUS_INVALID_DATA;
 
 	prPacket = (struct PARAM_PACKET_KEEPALIVE_T *)
 		   kalMemAlloc(sizeof(struct PARAM_PACKET_KEEPALIVE_T),

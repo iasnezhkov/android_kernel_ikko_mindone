@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0 OR BSD-3-Clause
 /******************************************************************************
  *
  * This file is provided under a dual license.  When you use or
@@ -532,10 +533,10 @@ static ssize_t procDriverCmdWrite(struct file *file, const char __user *buffer,
 {
 	uint8_t *pucProcBuf = kalMemZAlloc(PROC_MAX_BUF_SIZE, VIR_MEM_TYPE);
 	uint32_t u4CopySize = PROC_MAX_BUF_SIZE;
-	struct GLUE_INFO *prGlueInfo = g_prGlueInfo_proc;
+	struct GLUE_INFO *prGlueInfo;
 	int32_t i4Ret = 0;
 
-	if (buffer == NULL || pucProcBuf == NULL || prGlueInfo == NULL) {
+	if (buffer == NULL || pucProcBuf == NULL) {
 		i4Ret = 0;
 		goto freeBuf;
 	}
@@ -550,8 +551,16 @@ static ssize_t procDriverCmdWrite(struct file *file, const char __user *buffer,
 	pucProcBuf[u4CopySize] = '\0';
 
 	if (kalStrLen(pucProcBuf) > 0) {
-		priv_driver_cmds(prGlueInfo->prDevHandler, pucProcBuf,
-			kalStrLen(pucProcBuf));
+		rtnl_lock();
+		prGlueInfo = g_prGlueInfo_proc;
+		if (prGlueInfo && prGlueInfo->prDevHandler)
+			i4Ret = priv_driver_cmds(prGlueInfo->prDevHandler,
+				pucProcBuf, kalStrLen(pucProcBuf));
+		else
+			i4Ret = -ENODEV;
+		rtnl_unlock();
+		if (i4Ret < 0)
+			goto freeBuf;
 	}
 
 	i4Ret = u4CopySize;

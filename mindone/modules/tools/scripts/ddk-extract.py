@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: GPL-2.0
+# SPDX-FileCopyrightText: 2026 The LineageOS Project
 import os, glob, json, shlex, collections
 ROOT = os.path.expanduser('~/opt/kernel/mindone/modules')
 KSRC = os.path.expanduser('~/opt/kernel')

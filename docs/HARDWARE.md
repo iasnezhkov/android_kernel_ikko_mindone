@@ -1,3 +1,5 @@
+<!-- SPDX-License-Identifier: GPL-2.0 -->
+<!-- SPDX-FileCopyrightText: 2026 The LineageOS Project -->
 # Hardware
 
 ## SoC
@@ -8,36 +10,42 @@ Linux 5.10 (the `android12-5.10` line, on Android 15); this tree is 6.12.
 
 ## What works
 
-Boots to `boot_completed` in ~21 s. Sound (speaker, headset, Bluetooth, microphone), voice calls
-and mobile data, Wi-Fi, Bluetooth, NFC, camera, fingerprint, USB, charging, suspend/resume.
+Earlier builds booted to `boot_completed` in ~21 s and demonstrated audio, calls, data,
+Wi-Fi, Bluetooth, NFC, camera, fingerprint, USB, charging and suspend/resume.
 
 **Camera.** Both logical cameras of the flip module; the main IMX766 sensor's full 4096×3072
 mode, brought up faster through burst I2C writes and chunked EEPROM calibration reads.
 
-**Wi-Fi.** The IPv6-only address-buffer allocation bug is fixed, and address-list encoding
-includes IPv6 neighbor solicitation offload. Independent IPv4/IPv6 multicast RXFILTER policy
+**Wi-Fi.** The IPv6-only allocation bug is fixed; address/mask pairs use the correct IPv4
+stride, and IPv6 changes while suspended schedule offload refresh. The framework alone
+owns firmware suspend policy; no per-cycle PM notifier rewrites it. Independent IPv4/IPv6 multicast RXFILTER policy
 is supported during suspend with the matching reviewed firmware; the accepted pair passed
-allow/block/restore and unicast controls. APF remains disabled. See the
+allow/block/restore and unicast controls. APF v4 is enabled with a 2048-byte program limit. See the
 [firmware pairing requirements](../README.md#wi-fi-firmware-pairing) and the
-[companion device repository](../../../../android_device_ikko_mindone/blob/lineage-23.2/docs/BLOBS.md).
-These checks do not establish battery-life savings or universal network interoperability.
+companion device repository's `docs/BLOBS.md`.
 
 **Video.** Hardware decode and encode through the stateful V4L2 driver (`mtk_vcodec`), behind an
-open Codec2 HAL.
+open Codec2 HAL. The MT6789 driver advertises HEVC Main/Main10 and VP9 Profile 0
+through read-only profile controls.
 
-**Graphics.** MDP.
+**Flash and autofocus.** The stock GPIO flashlight is selected; LM3643 did not answer
+on i2c-6 and remains non-shipping. GPIO157 stays with fingerprint reset. `mainaf`
+sets the DW9800W actuator address to `0x0c` before initialization and checks one-byte
+register-address writes correctly.
 
-**Thermal.** A kernel-owned skin-temperature zone at 46 °C, bound to CPU/GPU cooling in
-`mindone_thermal`.
+**Battery sampling.** The PTIM v1 command returns a coherent sample with acquisition
+status to the requesting socket without taking over the stock GM30 daemon registration.
+The companion ROM ships a shadow gauge consumer alongside the production fuel gauge.
 
-## What does not
+**Graphics.** Mali r54p1 and MDP. The donor composer contract includes hardware vsync,
+idle kicks, seven atomic properties and MDP-only capability reporting; unsupported
+MML functions and colour matrices are refused.
 
-| | |
-|---|---|
-| **RPMB** | Hardware-backed key storage is unfinished — the replay-protected block fails its MAC check. Storage falls back safely; boot and normal use are unaffected. |
-| **60 Hz panel mode** | Exists on a branch, held back: the panel reports no physical size, so the second mode reaches apps at dpi 0. |
-| **High-speed capture** | 120 fps not reached. |
-| **HDR** | Not implemented. |
+**Thermal.** Device-tree zones: CPU and GPU passive trips and a 46 °C skin trip on the board
+NTC, cooling through cpufreq and Mali devfreq.
+
+**Display.** The panel driver reports its physical size (67.06 x 77.00 mm) and
+offers a VFP-only 60 Hz mode beside the 96 Hz default.
 
 ## Things that cost real work
 
@@ -54,8 +62,10 @@ not — which inverts the usual debugging instinct.
 **`boot.img` needs a gzipped kernel.** A raw `Image` is refused by the bootloader without a
 word: no console, no pstore, no slot change.
 
-**Virtual A/B uses shared logical-partition storage.** Signed partial OTAs through
-`update_engine` can target the inactive slot while snapshots preserve the running system.
+**Virtual A/B uses shared logical-partition storage.** Deliver the paired `boot`,
+`vendor_boot`, `vendor_dlkm`, `system_dlkm` and DTBO in a full signed ROM as described
+by the companion device repository's `docs/FLASHING.md`. Updates through `update_engine`
+can target the inactive slot while snapshots preserve the running system.
 Direct writes to `super` are not an equivalent update path. After snapshot merge, the former
 slot is not necessarily an independent rollback even when both boot slots still exist. Check
 slot-success metadata and snapshot state before updating, and keep the kernel and module set

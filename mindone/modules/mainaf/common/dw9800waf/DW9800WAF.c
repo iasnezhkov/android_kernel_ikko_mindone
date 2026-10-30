@@ -45,7 +45,7 @@ static int i2c_read(u8 a_u2Addr, u8 *a_puBuff)
 	char puReadCmd[1] = { (char)(a_u2Addr) };
 
 	i4RetValue = i2c_master_send(g_pstAF_I2Cclient, puReadCmd, 1);
-	if (i4RetValue != 2) {
+	if (i4RetValue != 1) {
 		LOG_INF(" I2C write failed!!\n");
 		return -1;
 	}
@@ -280,6 +280,7 @@ int DW9800WAF_SetI2Cclient(struct i2c_client *pstAF_I2Cclient,
 	spinlock_t *pAF_SpinLock, int *pAF_Opened)
 {
 	g_pstAF_I2Cclient = pstAF_I2Cclient;
+	g_pstAF_I2Cclient->addr = AF_I2C_SLAVE_ADDR >> 1;
 	g_pAF_SpinLock = pAF_SpinLock;
 	g_pAF_Opened = pAF_Opened;
 

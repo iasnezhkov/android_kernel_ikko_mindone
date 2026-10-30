@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0 OR BSD-3-Clause
 /******************************************************************************
  *
  * This file is provided under a dual license.  When you use or
@@ -5562,8 +5563,14 @@ skipLabel:
 	/* decide how many channel setting */
 	pcContOld = pcContCur;
 	while (pcContCur <= pcContEnd) {
-		if ((*pcContCur) == '[')
+		if ((*pcContCur) == '[') {
+			if (ucSettingCount == 0xff) {
+				DBGLOG(RLM, ERROR,
+				       "power ctrl channel setting count exceeds 255\n");
+				return NULL;
+			}
 			ucSettingCount++;
+		}
 		pcContCur++;
 	}
 
@@ -5574,7 +5581,7 @@ skipLabel:
 	}
 
 	/* allocate memory for control element */
-	u4MemSize += (ucSettingCount == 1) ? 0 : (ucSettingCount - 1) *
+	u4MemSize += ucSettingCount *
 			sizeof(struct TX_PWR_CTRL_CHANNEL_SETTING);
 	prCurElement = (struct TX_PWR_CTRL_ELEMENT *)kalMemAlloc(
 					u4MemSize, VIR_MEM_TYPE);
@@ -6093,9 +6100,7 @@ void _txPwrCtrlDeleteElement(struct ADAPTER *prAdapter,
 					ucSettingCount =
 						prCurElement->settingCount;
 						u4MemSize2 = u4MemSize +
-						((ucSettingCount == 1) ? 0 :
-						(ucSettingCount - 1) *
-						u4SettingSize);
+						ucSettingCount * u4SettingSize;
 					kalMemFree(prCurElement, VIR_MEM_TYPE,
 						u4MemSize2);
 				}
@@ -6328,8 +6333,7 @@ void txPwrCtrlUninit(struct ADAPTER *prAdapter)
 			if (prCurElement) {
 				ucSettingCount = prCurElement->settingCount;
 					u4MemSize2 = u4MemSize +
-					((ucSettingCount <= 1) ? 0 :
-					(ucSettingCount - 1) * u4SettingSize);
+					ucSettingCount * u4SettingSize;
 				kalMemFree(prCurElement,
 					VIR_MEM_TYPE, u4MemSize2);
 			}

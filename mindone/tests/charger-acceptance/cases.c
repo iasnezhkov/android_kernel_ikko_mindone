@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-2.0
+// SPDX-FileCopyrightText: 2026 The LineageOS Project
 static int recording_provider(struct power_supply *psy, enum power_supply_property property,
                               const union power_supply_propval *value) {
     assert(calls < (int)ARRAY_SIZE(call_property));

@@ -1,9 +1,12 @@
+# SPDX-License-Identifier: GPL-2.0
+# SPDX-FileCopyrightText: 2026 The LineageOS Project
 load(
     "//build/kernel/kleaf:kernel.bzl",
+    "ddk_headers",
     "dtbo",
-    "kernel_abi",
     "kernel_build",
     "kernel_compile_commands",
+    "kernel_dtstree",
     "kernel_images",
     "kernel_modules_install",
 )
@@ -13,42 +16,51 @@ package(default_visibility = ["//visibility:public"])
 _MINDONE_IN_TREE_MODULES = [
     "8250_mtk.ko",
     "cfg80211.ko",
-    "clk-mediatek.ko",
-    "clk-mt6789.ko",
-    "deferred-free-helper.ko",
     "drm_display_helper.ko",
     "drm_dma_helper.ko",
     "industrialio-triggered-buffer.ko",
     "kfifo_buf.ko",
     "mac80211.ko",
-    "mtk-eint.ko",
-    "page_pool.ko",
-    "phy-mtk-ufs.ko",
-    "pinctrl-mt6789.ko",
-    "pinctrl-mtk-common-v2.ko",
-    "pinctrl-paris.ko",
     "reset-ti-syscon.ko",
-    "ufs-mediatek.ko",
 ]
+
+ddk_headers(
+    name = "mindone_dt_bindings_common",
+    hdrs = glob(["dts/include/dt-bindings/**/*.h"]),
+    includes = ["dts/include"],
+)
+
+kernel_dtstree(
+    name = "mindone_dts",
+    srcs = glob([
+        "dts/Makefile",
+        "dts/*.dts",
+        "dts/*.dtsi",
+        "dts/*.dtso",
+        "dts/include/**/*.h",
+    ]),
+    makefile = "dts/Makefile",
+)
 
 kernel_build(
     name = "mindone",
     srcs = ["//common:kernel_aarch64_sources"],
     outs = [
-        "arch/arm64/boot/dts/mediatek/mindone.dtb",
-        "arch/arm64/boot/dts/mediatek/mindone-overlay.dtbo",
+        "mindone.dtb",
+        "mindone-overlay.dtbo",
     ],
     arch = "arm64",
-    base_kernel = "//common:kernel_aarch64",
+    base_kernel = "@gki_prebuilts//kernel_aarch64",
     ddk_module_headers = ["//common:all_headers_aarch64"],
     defconfig = "//common:arch/arm64/configs/gki_defconfig",
-    kmi_symbol_list = "//common:gki/aarch64/symbols/mindone",
-    trim_nonlisted_kmi = True,
+    dtstree = ":mindone_dts",
+    kconfig_ext = "Kconfig.ext",
+    trim_nonlisted_kmi = False,
     pre_defconfig_fragments = ["mindone.fragment"],
     make_goals = [
         "modules",
-        "mediatek/mindone.dtb",
-        "mediatek/mindone-overlay.dtbo",
+        "mindone.dtb",
+        "mindone-overlay.dtbo",
     ],
     makefile = "//common:Makefile",
     module_outs = _MINDONE_IN_TREE_MODULES,
@@ -77,12 +89,6 @@ dtbo(
     name = "mindone_dtbo",
     srcs = [":mindone/mindone-overlay.dtbo"],
     kernel_build = ":mindone",
-)
-
-kernel_abi(
-    name = "mindone_abi",
-    kernel_build = ":mindone",
-    kernel_modules = ["//common/mindone/modules:mindone_modules"],
 )
 
 kernel_compile_commands(

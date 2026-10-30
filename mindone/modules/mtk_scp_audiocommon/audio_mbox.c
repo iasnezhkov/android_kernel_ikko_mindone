@@ -79,7 +79,10 @@ int audio_mbox_send(void *msg, unsigned int wait)
 	}
 
 	/* TODO : maybe move to audio_ipi_queue */
-	scp_awake_lock((void *)SCP_A_ID);
+	if (scp_awake_lock((void *)SCP_A_ID)) {
+		mutex_unlock(&pin_send->mutex_send);
+		return MBOX_PLT_ERR;
+	}
 
 	if (mtk_mbox_check_send_irq(mbdev, pin_send->mbox, pin_send->pin_index)) {
 		ret = MBOX_PIN_BUSY;
@@ -126,7 +129,9 @@ static int scp_audio_mbox_dev_probe(struct platform_device *pdev)
 		goto EXIT;
 	}
 
-	enable_irq_wake(mbdev->info_table[mbox].irq_num);
+	ret = enable_irq_wake(mbdev->info_table[mbox].irq_num);
+	if (ret)
+		goto EXIT;
 	mutex_init(&audio_mbox_pin_send[0].mutex_send);
 
 	ret = misc_register(&mdev);

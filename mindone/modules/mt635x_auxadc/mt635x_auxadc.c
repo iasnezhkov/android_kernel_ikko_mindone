@@ -37,6 +37,8 @@
 #define IMP_VOLT_FULL			18000
 #define IMP_POLL_DELAY_US		1000
 #define IMP_STOP_DELAY_US		150
+#define IMIX_R_MIN_MOHM			100
+#define IMIX_R_CALI_CNT			2
 
 struct mt635x_auxadc_device {
 	unsigned int chip_id;
@@ -48,6 +50,9 @@ struct mt635x_auxadc_device {
 	const struct auxadc_info *info;
 	int imp_vbat;
 	int imix_r;
+	bool imp_cleanup_pending;
+	bool load_cleanup_pending;
+	int load_cleanup_error;
 };
 
 /*
@@ -115,6 +120,12 @@ static struct auxadc_channels auxadc_chans[] = {
 		.info_mask = BIT(IIO_CHAN_INFO_RAW),
 		.ch_name = "IMIX_R",
 		.has_regs = false,
+	},
+	[AUXADC_IMP_SAMPLE] = {
+		.type = IIO_VOLTAGE,
+		.info_mask = BIT(IIO_CHAN_INFO_RAW) | BIT(IIO_CHAN_INFO_SCALE),
+		.ch_name = "IMP_SAMPLE",
+		.res = 15,
 	},
 };
 
@@ -530,12 +541,107 @@ static void mt6357_imp_stop(struct mt635x_auxadc_device *adc_dev)
 #define MT6358_IMP_AUTORPT_EN_MASK	BIT(15)
 #define MT6358_IMP_CLR_MASK		(BIT(14) | BIT(7))
 #define MT6358_IMP_IRQ_RDY_BIT		BIT(8)
+#define MT6358_IMP_FGADC_R_CON0		0xd88
+
+static int mt6358_imp_conv(struct mt635x_auxadc_device *adc_dev,
+	int *vbat, int *ibat);
+
+static int mt6358_imp_cleanup(struct mt635x_auxadc_device *adc_dev)
+{
+	unsigned int value;
+	int ret = 0, step;
+
+	adc_dev->imp_cleanup_pending = true;
+	step = regmap_update_bits(adc_dev->regmap, MT6358_AUXADC_IMP0,
+		MT6358_IMP_CLR_MASK, MT6358_IMP_CLR_MASK);
+	if (step && !ret)
+		ret = step;
+	step = regmap_update_bits(adc_dev->regmap, MT6358_AUXADC_IMP0,
+		MT6358_IMP_CLR_MASK, 0);
+	if (step && !ret)
+		ret = step;
+	step = regmap_update_bits(adc_dev->regmap, MT6358_AUXADC_IMP1,
+		MT6358_IMP_AUTORPT_EN_MASK, 0);
+	if (step && !ret)
+		ret = step;
+	step = regmap_update_bits(adc_dev->regmap, MT6358_AUXADC_DCM_CON,
+		MT6358_IMP_CK_SW_MASK, 0);
+	if (step && !ret)
+		ret = step;
+	step = regmap_read(adc_dev->regmap, MT6358_AUXADC_IMP0, &value);
+	if (!step && (value & MT6358_IMP_CLR_MASK))
+		step = -EIO;
+	if (step && !ret)
+		ret = step;
+	step = regmap_read(adc_dev->regmap, MT6358_AUXADC_IMP1, &value);
+	if (!step && (value & MT6358_IMP_AUTORPT_EN_MASK))
+		step = -EIO;
+	if (step && !ret)
+		ret = step;
+	step = regmap_read(adc_dev->regmap, MT6358_AUXADC_DCM_CON, &value);
+	if (!step && (value & MT6358_IMP_CK_SW_MASK))
+		step = -EIO;
+	if (step && !ret)
+		ret = step;
+	if (!ret)
+		adc_dev->imp_cleanup_pending = false;
+	return ret;
+}
+
+static int mt6358_imp_sample(struct mt635x_auxadc_device *adc_dev,
+	int *vbat, int *ibat)
+{
+	unsigned int voltage, current_raw, ready;
+	int ret, cleanup;
+
+	if (adc_dev->info->imp_conv != mt6358_imp_conv)
+		return -EOPNOTSUPP;
+	ret = mt6358_imp_cleanup(adc_dev);
+	if (ret)
+		return ret;
+	ret = regmap_read(adc_dev->regmap, MT6358_AUXADC_IMP0, &ready);
+	if (ret)
+		return ret;
+	if (ready & MT6358_IMP_IRQ_RDY_BIT)
+		return -EIO;
+	adc_dev->imp_cleanup_pending = true;
+	ret = regmap_update_bits(adc_dev->regmap, MT6358_AUXADC_DCM_CON,
+		MT6358_IMP_CK_SW_MASK, MT6358_IMP_CK_SW_MASK);
+	if (ret)
+		goto stop;
+	ret = regmap_update_bits(adc_dev->regmap, MT6358_AUXADC_IMP1,
+		MT6358_IMP_AUTORPT_EN_MASK, MT6358_IMP_AUTORPT_EN_MASK);
+	if (ret)
+		goto stop;
+	ret = auxadc_imp_poll_timeout(adc_dev->regmap, MT6358_AUXADC_IMP0,
+		ready, ready & MT6358_IMP_IRQ_RDY_BIT,
+		IMP_POLL_DELAY_US, AUXADC_TIMEOUT_US);
+	if (ret)
+		goto stop;
+	ret = regmap_read(adc_dev->regmap, MT6358_AUXADC_ADC28, &voltage);
+stop:
+	cleanup = mt6358_imp_cleanup(adc_dev);
+	if (ret || cleanup)
+		return ret ? ret : cleanup;
+	ret = regmap_read(adc_dev->regmap, MT6358_IMP_FGADC_R_CON0, &current_raw);
+	if (ret)
+		return ret;
+	*vbat = voltage & GENMASK(14, 0);
+	*ibat = current_raw & GENMASK(15, 0);
+	return 0;
+}
 
 static int mt6358_imp_conv(struct mt635x_auxadc_device *adc_dev,
 			   int *vbat, int *ibat)
 {
 	int ret, val = 0;
 	bool is_timeout = false;
+
+	if (adc_dev->imp_cleanup_pending) {
+		ret = mt6358_imp_cleanup(adc_dev);
+		if (ret)
+			return ret;
+	}
 
 	/* start conversion */
 	regmap_update_bits(adc_dev->regmap, MT6358_AUXADC_DCM_CON,
@@ -695,6 +801,118 @@ static void disable_dummy_load(struct mt635x_auxadc_device *adc_dev)
 	}
 }
 
+static int mt6358_disable_dummy_load(struct mt635x_auxadc_device *adc_dev)
+{
+	unsigned int value;
+	int i, ret = 0, step;
+
+	for (i = 0; i < adc_dev->info->num_dis_isink_setting; i++) {
+		step = regmap_update_bits(adc_dev->regmap,
+			adc_dev->info->dis_isink_setting[i][0],
+			adc_dev->info->dis_isink_setting[i][1],
+			adc_dev->info->dis_isink_setting[i][2]);
+		if (!ret)
+			ret = step;
+	}
+	step = regmap_read(adc_dev->regmap, MT6358_ISINK_EN_CTRL_SMPL, &value);
+	if (!step && (value & 0x303))
+		step = -EIO;
+	adc_dev->load_cleanup_pending = !!step;
+	adc_dev->load_cleanup_error = step;
+	return ret ? ret : step;
+}
+
+static int mt6358_recover_dummy_load(struct mt635x_auxadc_device *adc_dev)
+{
+	if (adc_dev->load_cleanup_pending)
+		return mt6358_disable_dummy_load(adc_dev);
+	return 0;
+}
+
+static int mt6358_enable_dummy_load(struct mt635x_auxadc_device *adc_dev)
+{
+	int i, ret;
+
+	adc_dev->load_cleanup_pending = true;
+	adc_dev->load_cleanup_error = -EIO;
+	for (i = 0; i < adc_dev->info->num_en_isink_setting; i++) {
+		ret = regmap_update_bits(adc_dev->regmap,
+			adc_dev->info->en_isink_setting[i][0],
+			adc_dev->info->en_isink_setting[i][1],
+			adc_dev->info->en_isink_setting[i][2]);
+		if (ret)
+			return ret;
+	}
+	return 0;
+}
+
+static int mt6358_rac_voltage(int raw, int *voltage)
+{
+	const struct auxadc_channels *channel = &auxadc_chans[AUXADC_IMP];
+	s64 value;
+
+	if (!channel->r_ratio[0] || !channel->r_ratio[1] ||
+	    channel->res > 30 || raw < 0 || (unsigned int)raw >= BIT(channel->res))
+		return -ERANGE;
+	value = div_s64((s64)raw * channel->r_ratio[0] * IMP_VOLT_FULL,
+		channel->r_ratio[1]);
+	value >>= channel->res;
+	if (value > INT_MAX)
+		return -ERANGE;
+	*voltage = value;
+	return 0;
+}
+
+static int mt6358_get_rac(struct mt635x_auxadc_device *adc_dev)
+{
+	int vbat_1, vbat_2, ibat_1, ibat_2, raw;
+	int ret, cleanup, retries = 0;
+	s64 voltage_delta, current_delta;
+
+	ret = mt6358_recover_dummy_load(adc_dev);
+	if (ret)
+		return ret;
+	do {
+		ret = adc_dev->info->imp_conv(adc_dev, &raw, &ibat_1);
+		if (ret)
+			return ret < 0 ? ret : -EIO;
+		ret = mt6358_rac_voltage(raw, &vbat_1);
+		if (ret)
+			return ret;
+		ret = mt6358_enable_dummy_load(adc_dev);
+		if (ret)
+			goto disable;
+		msleep(50);
+		ret = adc_dev->info->imp_conv(adc_dev, &raw, &ibat_2);
+		if (!ret)
+			ret = mt6358_rac_voltage(raw, &vbat_2);
+		else if (ret > 0)
+			ret = -EIO;
+	disable:
+		cleanup = mt6358_disable_dummy_load(adc_dev);
+		if (cleanup)
+			dev_err(adc_dev->dev, "RAC load cleanup failed: %d, measurement: %d\n",
+				cleanup, ret);
+		if (ret || cleanup)
+			return ret ? ret : cleanup;
+		voltage_delta = (s64)vbat_1 - vbat_2;
+		current_delta = (s64)ibat_2 - ibat_1;
+		ret = -ENODATA;
+		if (current_delta >= 700 && current_delta <= 1200 &&
+		    voltage_delta >= 40 && voltage_delta <= 2000) {
+			ret = div_s64(voltage_delta * 1000, current_delta);
+			if (ret < 50)
+				ret = -ENODATA;
+		}
+		if (ret == -ENODATA)
+			dev_notice(adc_dev->dev,
+				"RAC rejected: attempt=%d v1=%d v2=%d i1=%d i2=%d dv=%lld di=%lld\n",
+				retries + 1, vbat_1, vbat_2, ibat_1, ibat_2,
+				(long long)voltage_delta, (long long)current_delta);
+	} while (ret == -ENODATA && ++retries < 3);
+	return ret;
+}
+
 static int auxadc_get_rac(struct mt635x_auxadc_device *adc_dev)
 {
 	int vbat_1 = 0, vbat_2 = 0;
@@ -702,6 +920,8 @@ static int auxadc_get_rac(struct mt635x_auxadc_device *adc_dev)
 	int rac = 0, ret = 0;
 	int retry_count = 0;
 
+	if (adc_dev->info->imp_conv == mt6358_imp_conv)
+		return mt6358_get_rac(adc_dev);
 	do {
 		/* Trigger ADC PTIM mode to get VBAT and current */
 		if (adc_dev->info->imp_conv)
@@ -750,6 +970,26 @@ static int auxadc_get_rac(struct mt635x_auxadc_device *adc_dev)
 	return ret;
 }
 
+static int auxadc_bootstrap_imix_r(struct mt635x_auxadc_device *adc_dev)
+{
+	int i, rac, total = 0;
+
+	lockdep_assert_held(&adc_dev->lock);
+	if (adc_dev->imix_r || adc_dev->info->imp_conv != mt6358_imp_conv)
+		return 0;
+	for (i = 0; i < IMIX_R_CALI_CNT; i++) {
+		rac = auxadc_get_rac(adc_dev);
+		if (rac < 0)
+			return rac;
+		total += rac;
+	}
+	rac = total / IMIX_R_CALI_CNT;
+	if (rac <= IMIX_R_MIN_MOHM)
+		return -ENODATA;
+	adc_dev->imix_r = rac;
+	return 0;
+}
+
 static int auxadc_get_uisoc(void)
 {
 	struct power_supply *psy;
@@ -762,6 +1002,7 @@ static int auxadc_get_uisoc(void)
 
 	ret = power_supply_get_property(psy, POWER_SUPPLY_PROP_CAPACITY,
 					&prop);
+	power_supply_put(psy);
 	if (ret || prop.intval < 0)
 		return -EINVAL;
 	else
@@ -825,11 +1066,30 @@ static int mt635x_auxadc_read_raw(struct iio_dev *indio_dev,
 	int auxadc_out = 0, imp_current = 0;
 	int ret;
 
+	if (chan->channel == AUXADC_IMP_SAMPLE && mask == IIO_CHAN_INFO_SCALE) {
+		auxadc_chan = &auxadc_chans[AUXADC_IMP_SAMPLE];
+		if (!auxadc_chan->r_ratio[0] || !auxadc_chan->r_ratio[1])
+			return -EINVAL;
+		*val = auxadc_chan->r_ratio[0] * VOLT_FULL;
+		*val2 = auxadc_chan->r_ratio[1] << auxadc_chan->res;
+		return IIO_VAL_FRACTIONAL;
+	}
+	if (chan->channel == AUXADC_IMP_SAMPLE && mask != IIO_CHAN_INFO_RAW)
+		return -EINVAL;
+
 	mutex_lock(&adc_dev->lock);
 	pm_stay_awake(adc_dev->dev);
 
+	if (chan->channel == AUXADC_IMP || chan->channel == AUXADC_IMP_SAMPLE) {
+		ret = mt6358_recover_dummy_load(adc_dev);
+		if (ret)
+			goto err;
+	}
 	auxadc_chan = &auxadc_chans[chan->channel];
 	switch (chan->channel) {
+	case AUXADC_IMP_SAMPLE:
+		ret = mt6358_imp_sample(adc_dev, &auxadc_out, &imp_current);
+		break;
 	case AUXADC_IMP:
 		if (adc_dev->info->imp_conv)
 			ret = adc_dev->info->imp_conv(adc_dev,
@@ -838,6 +1098,9 @@ static int mt635x_auxadc_read_raw(struct iio_dev *indio_dev,
 			ret = -EINVAL;
 		break;
 	case AUXADC_IMIX_R:
+		ret = auxadc_bootstrap_imix_r(adc_dev);
+		if (ret)
+			goto err;
 		auxadc_out = adc_dev->imix_r;
 		ret = 0;
 		break;
@@ -850,8 +1113,6 @@ static int mt635x_auxadc_read_raw(struct iio_dev *indio_dev,
 		break;
 	}
 
-	pm_relax(adc_dev->dev);
-	mutex_unlock(&adc_dev->lock);
 	if (ret < 0)
 		goto err;
 
@@ -875,13 +1136,16 @@ static int mt635x_auxadc_read_raw(struct iio_dev *indio_dev,
 		ret = IIO_VAL_INT;
 		break;
 	default:
-		return -EINVAL;
+		ret = -EINVAL;
+		goto err;
 	}
-	if (chan->channel == AUXADC_IMP) {
+	if (chan->channel == AUXADC_IMP || chan->channel == AUXADC_IMP_SAMPLE) {
 		*val2 = imp_current;
 		ret = IIO_VAL_INT_MULTIPLE;
 	}
 err:
+	pm_relax(adc_dev->dev);
+	mutex_unlock(&adc_dev->lock);
 	return ret;
 }
 
@@ -1256,13 +1520,12 @@ void auxadc_set_cali_fn(int channel,
 }
 #endif
 
-#define	IMIX_R_MIN_MOHM		100
-#define	IMIX_R_CALI_CNT		2
 static int auxadc_cali_imix_r(struct mt635x_auxadc_device *adc_dev)
 {
 	static int pre_uisoc = 101;
 	int cur_uisoc = auxadc_get_uisoc();
 	int i, imix_r_avg = 0, rac_val[IMIX_R_CALI_CNT];
+	bool checked = adc_dev->info->imp_conv == mt6358_imp_conv;
 
 	if (!get_mtk_gauge_psy()) {
 		pr_debug("%s gauge disabled, skip\n",
@@ -1274,13 +1537,16 @@ static int auxadc_cali_imix_r(struct mt635x_auxadc_device *adc_dev)
 			__func__, pre_uisoc, cur_uisoc);
 		return 0;
 	}
-	pre_uisoc = cur_uisoc;
+	if (!checked)
+		pre_uisoc = cur_uisoc;
 	for (i = 0; i < IMIX_R_CALI_CNT; i++) {
 		rac_val[i] = auxadc_get_rac(adc_dev);
-		imix_r_avg += rac_val[i];
 		if (rac_val[i] < 0)
-			return -EIO;
+			return checked ? rac_val[i] : -EIO;
+		imix_r_avg += rac_val[i];
 	}
+	if (checked)
+		pre_uisoc = cur_uisoc;
 	imix_r_avg = imix_r_avg / IMIX_R_CALI_CNT;
 	pr_info("[%s] %d,%d,ravg:%d\n",
 		__func__, rac_val[0], rac_val[1], imix_r_avg);
@@ -1325,11 +1591,24 @@ static int mt635x_auxadc_resume(struct device *dev)
 
 static int mt635x_auxadc_suspend_late(struct device *dev)
 {
-	auxadc_cali_imix_r(dev_get_drvdata(dev));
+	struct mt635x_auxadc_device *adc_dev = dev_get_drvdata(dev);
+	int ret = 0, load_ret, cali_ret = 0;
+
+	mutex_lock(&adc_dev->lock);
+	load_ret = mt6358_recover_dummy_load(adc_dev);
+	if (adc_dev->imp_cleanup_pending)
+		ret = mt6358_imp_cleanup(adc_dev);
+	if (!ret && !load_ret)
+		cali_ret = auxadc_cali_imix_r(adc_dev);
+	if (load_ret || cali_ret)
+		dev_warn(dev, "RAC calibration failed: %d\n", load_ret ? load_ret : cali_ret);
+	if (!ret && adc_dev->load_cleanup_pending)
+		ret = adc_dev->load_cleanup_error;
 #if AUXADC_DEBUG
 	mt635x_bat_temp_cali(NULL, -1, -1);
 #endif
-	return 0;
+	mutex_unlock(&adc_dev->lock);
+	return ret;
 }
 
 static const struct dev_pm_ops mt635x_auxadc_pm_ops = {
@@ -1356,9 +1635,10 @@ static int auxadc_get_data_from_dt(struct mt635x_auxadc_device *adc_dev,
 		dev_notice(adc_dev->dev,
 			"invalid channel number %d in node:%s\n",
 			*channel, node->name);
-		return ret;
+		return -EINVAL;
 	}
-	if (*channel >= ARRAY_SIZE(auxadc_chans)) {
+	if (*channel >= ARRAY_SIZE(auxadc_chans) ||
+	    !auxadc_chans[*channel].ch_name) {
 		dev_notice(adc_dev->dev, "channel number %d in node:%s not exists\n",
 			   *channel, node->name);
 		return -EINVAL;
@@ -1368,6 +1648,10 @@ static int auxadc_get_data_from_dt(struct mt635x_auxadc_device *adc_dev,
 	auxadc_chan = &auxadc_chans[*channel];
 
 	ret = of_property_read_u32_array(node, "resistance-ratio", val_arr, 2);
+	if (*channel == AUXADC_IMP_SAMPLE &&
+	    (ret || !val_arr[0] || !val_arr[1] ||
+	     val_arr[0] > U8_MAX || val_arr[1] > U8_MAX))
+		return -EINVAL;
 	if (!ret) {
 		auxadc_chan->r_ratio[0] = val_arr[0];
 		auxadc_chan->r_ratio[1] = val_arr[1];

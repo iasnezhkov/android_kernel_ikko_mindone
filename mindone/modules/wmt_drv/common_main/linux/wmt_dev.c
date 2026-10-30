@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0
 /*
  * Copyright (C) 2016 MediaTek Inc.
  *
@@ -273,6 +274,11 @@ static VOID wmt_pwr_on_off_handler(struct work_struct *work)
 	INT32 desync = 0;
 
 	WMT_DBG_FUNC("wmt_pwr_on_off_handler start to run\n");
+
+	if (wmt_dev_is_close()) {
+		WMT_INFO_FUNC("skip while phone is going to shutdown.\n");
+		return;
+	}
 
 	/* Update blank off status before wmt power off */
 	if (wmt_dev_get_blank_state() == 0) {

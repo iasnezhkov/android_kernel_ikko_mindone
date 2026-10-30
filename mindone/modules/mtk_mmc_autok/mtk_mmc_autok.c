@@ -5,7 +5,6 @@
 
 #include "mtk-mmc-autok.h"
 #include "mtk-mmc.h"
-#include "../core/card.h"
 
 #define MSDC_CLKTXDLY		0
 #define MSDC_PB0_DEFAULT_VAL		0x403C0007

@@ -28,6 +28,7 @@ int lbat_user_modify_thd_ext_locked(struct lbat_user *user, unsigned int *thd_vo
 int lbat_user_set_debounce(struct lbat_user *user,
 			   unsigned int hv_deb_prd, unsigned int hv_deb_times,
 			   unsigned int lv_deb_prd, unsigned int lv_deb_times);
+void lbat_user_unregister(struct lbat_user *user);
 unsigned int lbat_read_raw(void);
 unsigned int lbat_read_volt(void);
 #else
@@ -49,6 +50,9 @@ static inline int lbat_user_set_debounce(struct lbat_user *user,
 			   unsigned int lv_deb_prd, unsigned int lv_deb_times)
 {
 	return 0;
+}
+static inline void lbat_user_unregister(struct lbat_user *user)
+{
 }
 static inline unsigned int lbat_read_raw(void)
 {

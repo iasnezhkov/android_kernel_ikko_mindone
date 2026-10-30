@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-2.0
+// SPDX-FileCopyrightText: 2026 The LineageOS Project
 static struct mtk_battery setup(bool active, int cached)
 {
 	error = publications = poweroffs = daemon_events = kernel_events = 0;

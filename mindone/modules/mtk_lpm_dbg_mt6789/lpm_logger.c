@@ -246,38 +246,40 @@ static void suspend_spm_rsc_req_check
 #undef AVOID_OVERFLOW
 #define AVOID_OVERFLOW (0xF0000000)
 static u32 is_blocked_cnt;
+static bool is_blocked_reported;
 	char log_buf[LOG_BUF_SIZE] = { 0 };
 	int log_size = 0;
 	u32 is_no_blocked = 0;
 	u32 req_sta_0, req_sta_1, req_sta_4;
 	u32 src_req;
 
-	if (is_blocked_cnt >= AVOID_OVERFLOW)
-		is_blocked_cnt = 0;
-
 	/* Check if ever enter deepest System LPM */
 	is_no_blocked = wakesta->debug_flag & 0x2;
 
-	/* Check if System LPM ever is blocked over 10 times */
-	if (!is_no_blocked)
-		is_blocked_cnt++;
-	else
+	if (!is_no_blocked) {
+		if (is_blocked_cnt < AVOID_OVERFLOW)
+			is_blocked_cnt++;
+	} else {
 		is_blocked_cnt = 0;
+		is_blocked_reported = false;
+	}
 
-	if (is_blocked_cnt < IS_BLOCKED_OVER_TIMES)
+	if (is_blocked_cnt < IS_BLOCKED_OVER_TIMES || is_blocked_reported)
 		return;
 
 	if (!lpm_spm_base)
 		return;
 
-	/* Show who is blocking system LPM */
+	is_blocked_reported = true;
+
 	log_size += scnprintf(log_buf + log_size,
 		LOG_BUF_SIZE - log_size,
-		"suspend warning:(OneShot) System LPM is blocked by ");
+		"suspend warning:(OneShot) deepest System LPM missed (streak=%u); "
+		"post-resume requesters: ", is_blocked_cnt);
 
-	req_sta_0 = plat_mmio_read(SRC_REQ_STA_0);
-	req_sta_1 = plat_mmio_read(SRC_REQ_STA_1);
-	req_sta_4 = plat_mmio_read(SRC_REQ_STA_4);
+	req_sta_0 = wakesta->req_sta0;
+	req_sta_1 = wakesta->req_sta1;
+	req_sta_4 = wakesta->req_sta4;
 
 	if (req_sta_0 & 0xFFF)
 		log_size += scnprintf(log_buf + log_size,
@@ -319,7 +321,7 @@ static u32 is_blocked_cnt;
 		log_size += scnprintf(log_buf + log_size,
 			LOG_BUF_SIZE - log_size, "apu ");
 
-	src_req = plat_mmio_read(SPM_SRC_REQ);
+	src_req = wakesta->src_req;
 	if (src_req & 0x9B) {
 		dump_lp_cond();
 		log_size += scnprintf(log_buf + log_size,

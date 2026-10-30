@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-2.0
+// SPDX-FileCopyrightText: 2026 The LineageOS Project
 static struct mtk_battery gm;
 static struct mtk_gauge gauge;
 static struct gauge_consumer plus;

@@ -96,8 +96,10 @@ static void mtk_vdec_sec_dc_unmap_dmabuf(void *mem_priv)
 	}
 
 	if (buf->vaddr) {
+		struct iosys_map map = IOSYS_MAP_INIT_VADDR(buf->vaddr);
+
 		mtk_v4l2_err("dmabuf buffer vaddr not null\n");
-		dma_buf_vunmap(buf->db_attach->dmabuf, buf->vaddr);
+		dma_buf_vunmap_unlocked(buf->db_attach->dmabuf, &map);
 		buf->vaddr = NULL;
 	}
 
@@ -1675,7 +1677,7 @@ static int vidioc_vdec_qbuf(struct file *file, void *priv,
 				ctx->input_max_ts);
 		}
 	} else {
-		if (buf->reserved == 0xFFFFFFFF)
+		if (buf->reserved == 0xFFFFFFFF || buf->reserved == 0)
 			mtkbuf->general_user_fd = -1;
 		else
 			mtkbuf->general_user_fd = (int)buf->reserved;
@@ -1689,13 +1691,15 @@ static int vidioc_vdec_qbuf(struct file *file, void *priv,
 		mtk_v4l2_debug(4, "[%d] No need for Cache clean, buf->index:%d. mtkbuf:%p",
 			ctx->id, buf->index, mtkbuf);
 		mtkbuf->flags |= NO_CAHCE_CLEAN;
-	}
+	} else
+		mtkbuf->flags &= ~NO_CAHCE_CLEAN;
 
 	if (buf->flags & V4L2_BUF_FLAG_NO_CACHE_INVALIDATE) {
 		mtk_v4l2_debug(4, "[%d] No need for Cache invalidate, buf->index:%d. mtkbuf:%p",
 			ctx->id, buf->index, mtkbuf);
 		mtkbuf->flags |= NO_CAHCE_INVALIDATE;
-	}
+	} else
+		mtkbuf->flags &= ~NO_CAHCE_INVALIDATE;
 
 	return v4l2_m2m_qbuf(file, ctx->m2m_ctx, buf);
 }
@@ -2403,6 +2407,7 @@ static int vb2ops_vdec_buf_prepare(struct vb2_buffer *vb)
 					__func__,
 					mtkbuf->frame_buffer.dma_general_buf);
 
+				mtkbuf->frame_buffer.dma_general_buf = 0;
 				mtk_vdec_queue_error_event(ctx);
 				return -EINVAL;
 			}
@@ -2410,14 +2415,25 @@ static int vb2ops_vdec_buf_prepare(struct vb2_buffer *vb)
 			mtkbuf->frame_buffer.buf_att = dma_buf_attach(
 				mtkbuf->frame_buffer.dma_general_buf,
 				ctx->m2m_ctx->out_q_ctx.q.dev);
-				/* use  vcp & vcu compatible access device */
+			if (IS_ERR(mtkbuf->frame_buffer.buf_att)) {
+				mtk_v4l2_err("dma_buf_attach fail %ld.\n",
+					PTR_ERR(mtkbuf->frame_buffer.buf_att));
+				dma_buf_put(mtkbuf->frame_buffer.dma_general_buf);
+				mtkbuf->frame_buffer.dma_general_buf = 0;
+				mtkbuf->frame_buffer.buf_att = NULL;
+				return -EINVAL;
+			}
 			mtkbuf->frame_buffer.sgt =
-				dma_buf_map_attachment(mtkbuf->frame_buffer.buf_att, DMA_TO_DEVICE);
+				dma_buf_map_attachment_unlocked(mtkbuf->frame_buffer.buf_att, DMA_TO_DEVICE);
 			if (IS_ERR_OR_NULL(mtkbuf->frame_buffer.sgt)) {
 				mtk_v4l2_err("dma_buf_map_attachment fail %ld.\n",
 					PTR_ERR(mtkbuf->frame_buffer.sgt));
 				dma_buf_detach(mtkbuf->frame_buffer.dma_general_buf,
 					mtkbuf->frame_buffer.buf_att);
+				dma_buf_put(mtkbuf->frame_buffer.dma_general_buf);
+				mtkbuf->frame_buffer.dma_general_buf = 0;
+				mtkbuf->frame_buffer.buf_att = NULL;
+				mtkbuf->frame_buffer.sgt = NULL;
 				return -EINVAL;
 			}
 			mtkbuf->frame_buffer.dma_general_addr =
@@ -2441,7 +2457,7 @@ static int vb2ops_vdec_buf_prepare(struct vb2_buffer *vb)
 			buf_att = dma_buf_attach(vb->planes[0].dbuf,
 				&ctx->dev->plat_dev->dev);
 
-			sgt = dma_buf_map_attachment(buf_att, DMA_TO_DEVICE);
+			sgt = dma_buf_map_attachment_unlocked(buf_att, DMA_TO_DEVICE);
 			if (IS_ERR_OR_NULL(sgt)) {
 				mtk_v4l2_err("dma_buf_map_attachment fail %ld.\n", PTR_ERR(sgt));
 				dma_buf_detach(vb->planes[0].dbuf, buf_att);
@@ -2449,7 +2465,7 @@ static int vb2ops_vdec_buf_prepare(struct vb2_buffer *vb)
 			}
 			mtk_dma_sync_sg_range(sgt, &ctx->dev->plat_dev->dev,
 				vb->planes[0].bytesused, DMA_TO_DEVICE);
-			dma_buf_unmap_attachment(buf_att, sgt, DMA_TO_DEVICE);
+			dma_buf_unmap_attachment_unlocked(buf_att, sgt, DMA_TO_DEVICE);
 
 			src_mem.dma_addr = vb2_dma_contig_plane_dma_addr(vb, 0);
 			src_mem.size = (size_t)vb->planes[0].bytesused;
@@ -2469,18 +2485,26 @@ static int vb2ops_vdec_buf_prepare(struct vb2_buffer *vb)
 
 				buf_att = dma_buf_attach(vb->planes[plane].dbuf,
 					&ctx->dev->plat_dev->dev);
-				sgt = dma_buf_map_attachment(buf_att,
+				sgt = dma_buf_map_attachment_unlocked(buf_att,
 					DMA_TO_DEVICE);
 				if (IS_ERR_OR_NULL(sgt)) {
 					mtk_v4l2_err("dma_buf_map_attachment fail %ld.\n", PTR_ERR(sgt));
 					dma_buf_detach(vb->planes[plane].dbuf, buf_att);
+					if (mtkbuf->frame_buffer.dma_general_buf) {
+						dma_buf_unmap_attachment_unlocked(mtkbuf->frame_buffer.buf_att,
+							mtkbuf->frame_buffer.sgt, DMA_TO_DEVICE);
+						dma_buf_detach(mtkbuf->frame_buffer.dma_general_buf,
+							mtkbuf->frame_buffer.buf_att);
+						dma_buf_put(mtkbuf->frame_buffer.dma_general_buf);
+						mtkbuf->frame_buffer.dma_general_buf = 0;
+					}
 					return -EINVAL;
 				}
 				dma_sync_sg_for_device(&ctx->dev->plat_dev->dev,
 					sgt->sgl,
 					sgt->orig_nents,
 					DMA_TO_DEVICE);
-				dma_buf_unmap_attachment(buf_att,
+				dma_buf_unmap_attachment_unlocked(buf_att,
 					sgt, DMA_TO_DEVICE);
 
 				dst_mem.fb_base[plane].dma_addr =
@@ -2835,7 +2859,7 @@ static void vb2ops_vdec_buf_finish(struct vb2_buffer *vb)
 	mtkbuf = container_of(vb2_v4l2, struct mtk_video_dec_buf, vb);
 
 	if (mtkbuf->frame_buffer.dma_general_buf != 0) {
-		dma_buf_unmap_attachment(mtkbuf->frame_buffer.buf_att,
+		dma_buf_unmap_attachment_unlocked(mtkbuf->frame_buffer.buf_att,
 			mtkbuf->frame_buffer.sgt, DMA_TO_DEVICE);
 		dma_buf_detach(mtkbuf->frame_buffer.dma_general_buf,
 			mtkbuf->frame_buffer.buf_att);
@@ -2860,7 +2884,7 @@ static void vb2ops_vdec_buf_finish(struct vb2_buffer *vb)
 
 			buf_att = dma_buf_attach(vb->planes[plane].dbuf,
 				&ctx->dev->plat_dev->dev);
-			sgt = dma_buf_map_attachment(buf_att, DMA_FROM_DEVICE);
+			sgt = dma_buf_map_attachment_unlocked(buf_att, DMA_FROM_DEVICE);
 			if (IS_ERR_OR_NULL(sgt)) {
 				mtk_v4l2_err("dma_buf_map_attachment fail %ld.\n", PTR_ERR(sgt));
 				dma_buf_detach(vb->planes[plane].dbuf, buf_att);
@@ -2868,7 +2892,7 @@ static void vb2ops_vdec_buf_finish(struct vb2_buffer *vb)
 			}
 			dma_sync_sg_for_cpu(&ctx->dev->plat_dev->dev, sgt->sgl,
 				sgt->orig_nents, DMA_FROM_DEVICE);
-			dma_buf_unmap_attachment(buf_att, sgt, DMA_FROM_DEVICE);
+			dma_buf_unmap_attachment_unlocked(buf_att, sgt, DMA_FROM_DEVICE);
 
 			dst_mem.fb_base[plane].dma_addr =
 				vb2_dma_contig_plane_dma_addr(vb, plane);

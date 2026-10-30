@@ -181,6 +181,7 @@ static void bootprof_bootloader(void)
 		pr_info("BOOTPROF: pl=%d, bl2ext=%d ,lk=%d, logo=%d, tfa=%d, sec_os=%d, gz=%d\n",
 			bf_pl_t, bf_bl2ext_t, bf_lk_t, bf_logo_t, bf_tfa_t,
 			bf_sec_os_t,  bf_gz_t);
+		of_node_put(node);
 	}
 }
 

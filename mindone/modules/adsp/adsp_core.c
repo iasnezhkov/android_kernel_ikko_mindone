@@ -181,7 +181,7 @@ enum adsp_ipi_status adsp_push_message(enum adsp_ipi_id id, void *buf,
 	if (ipi_queue_send_msg_handler)
 		ret = ipi_queue_send_msg_handler(core_id, id, buf, len, wait_ms);
 	else
-		ret = adsp_send_message(id, buf, len, wait_ms, core_id);
+		return adsp_send_message(id, buf, len, wait_ms, core_id);
 
 	return (ret == 0) ? ADSP_IPI_DONE : ADSP_IPI_ERROR;
 }
@@ -193,6 +193,7 @@ enum adsp_ipi_status adsp_send_message(enum adsp_ipi_id id, void *buf,
 {
 	struct adsp_priv *pdata = NULL;
 	struct mtk_ipi_msg msg;
+	int ret = 0, retval = ADSP_IPI_DONE;
 
 	if (core_id >= get_adsp_core_total() || !buf)
 		return ADSP_IPI_ERROR;
@@ -214,7 +215,19 @@ enum adsp_ipi_status adsp_send_message(enum adsp_ipi_id id, void *buf,
 	msg.ipihd.reserved = 0xdeadbeef;
 	msg.data = buf;
 
-	return adsp_mbox_send(pdata->send_mbox, &msg, wait);
+	ret = adsp_mbox_send(pdata->send_mbox, &msg, wait);
+
+	if ((id == ADSP_IPI_DVFS_SUSPEND) && (ret != MBOX_DONE))
+		set_adsp_state(pdata, ADSP_RUNNING);
+
+	if (ret == MBOX_DONE)
+		retval = ADSP_IPI_DONE;
+	else if (ret == MBOX_PIN_BUSY)
+		retval = ADSP_IPI_BUSY;
+	else
+		retval = ADSP_IPI_ERROR;
+
+	return retval;
 }
 EXPORT_SYMBOL(adsp_send_message);
 

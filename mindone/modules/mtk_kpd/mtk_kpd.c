@@ -425,7 +425,7 @@ static int kpd_get_dts_info(struct mtk_keypad *keypad,
 		return ret;
 	}
 
-	ret = of_property_read_u32(node, "mediatek, use-extend-type",
+	ret = of_property_read_u32(node, "mediatek,use-extend-type",
 		&keypad->use_extend_type);
 	if (ret) {
 		pr_err("read mediatek,use-extend-type error.\n");

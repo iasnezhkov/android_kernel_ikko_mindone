@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: GPL-2.0 OR BSD-3-Clause */
 /******************************************************************************
  *
  * This file is provided under a dual license.  When you use or
@@ -138,7 +139,7 @@ extern bool fgIsTxPowerDecreased;
 	(GLUE_FLAG_HALT | GLUE_FLAG_SUB_MOD_MULTICAST | \
 	GLUE_FLAG_TX_CMD_DONE | GLUE_FLAG_TXREQ | GLUE_FLAG_TIMEOUT | \
 	GLUE_FLAG_FRAME_FILTER | GLUE_FLAG_OID | GLUE_FLAG_RX | \
-	GLUE_FLAG_SER_TIMEOUT | GLUE_FLAG_DISABLE_PERF)
+	GLUE_FLAG_SER_TIMEOUT | GLUE_FLAG_DISABLE_PERF | GLUE_FLAG_FWK_BLACKLIST)
 
 #define GLUE_FLAG_HIF_PROCESS \
 	(GLUE_FLAG_HALT | GLUE_FLAG_INT | GLUE_FLAG_HIF_TX | \
@@ -153,6 +154,7 @@ extern bool fgIsTxPowerDecreased;
 #else
 /* All flags for single thread driver */
 #define GLUE_FLAG_TX_PROCESS  0xFFFFFFFF
+#define GLUE_FLAG_MAIN_PROCESS GLUE_FLAG_TX_PROCESS
 #endif
 
 #define PERF_MON_INIT_BIT       (0)
@@ -1556,6 +1558,18 @@ void kalWowProcess(IN struct GLUE_INFO *prGlueInfo,
 #endif
 
 int main_thread(void *data);
+void kalFwkBlacklistInit(struct GLUE_INFO *glue);
+int kalFwkBlacklistResetGlue(struct GLUE_INFO *glue);
+int kalFwkBlacklistOwnerStart(struct GLUE_INFO *glue);
+int kalFwkBlacklistRoleBegin(struct GLUE_INFO *glue);
+int kalFwkBlacklistRoleEnd(struct GLUE_INFO *glue);
+void kalFwkBlacklistClose(struct GLUE_INFO *glue);
+void kalFwkBlacklistOwnerDrain(struct GLUE_INFO *glue);
+void kalFwkBlacklistCallerDrain(struct GLUE_INFO *glue);
+int kalFwkBlacklistSubmit(struct GLUE_INFO *glue, uint32_t count,
+	const uint8_t bssid[][PARAM_MAC_ADDR_LEN]);
+int kalScanRequestSsidStatus(const struct cfg80211_scan_request *request);
+int kalFwkBlacklistGetEnabled(struct GLUE_INFO *glue, bool *enabled);
 
 #if CFG_SUPPORT_MULTITHREAD
 int hif_thread(void *data);

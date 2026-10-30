@@ -1,0 +1,10 @@
+/* SPDX-License-Identifier: GPL-2.0 */
+#ifndef _UAPI_KBASE_MODEL_LINUX_H_
+#define _UAPI_KBASE_MODEL_LINUX_H_
+
+#define MODEL_LINUX_JOB_IRQ (0x1 << 0)
+#define MODEL_LINUX_GPU_IRQ (0x1 << 1)
+#define MODEL_LINUX_MMU_IRQ (0x1 << 2)
+#define MODEL_LINUX_IRQ_MASK (MODEL_LINUX_JOB_IRQ | MODEL_LINUX_GPU_IRQ | MODEL_LINUX_MMU_IRQ)
+
+#endif

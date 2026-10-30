@@ -638,7 +638,7 @@ void trusty_enqueue_nop(struct device *dev, struct trusty_nop *nop, int cpu)
 	s = platform_get_drvdata(to_platform_device(dev));
 
 	preempt_disable();
-	if (cpu_possible(cpu))
+	if (cpu >= 0 && cpu_possible(cpu))
 		nop_ti = per_cpu_ptr(s->nop_tasks_info, cpu);
 	else
 		nop_ti = this_cpu_ptr(s->nop_tasks_info);
@@ -702,6 +702,8 @@ static int trusty_task_nop(void *data)
 	trusty_info(s->dev, "tee%d/%s_%d ->\n", s->tee_id, __func__, idx);
 
 	while (!kthread_should_stop()) {
+		int current_cpu;
+
 		wait_for_completion_interruptible_timeout(&nop_ti->run, timeout);
 
 		if (nop_ti->idx >= 0) {
@@ -711,7 +713,10 @@ static int trusty_task_nop(void *data)
 		} else
 			break;
 
-		if (unlikely(smp_processor_id() != idx)) {
+		preempt_disable();
+		current_cpu = smp_processor_id();
+		preempt_enable();
+		if (unlikely(current_cpu != idx)) {
 			/* self migrate */
 			if (cpu_online(idx)) {
 				struct cpumask cpu_mask;

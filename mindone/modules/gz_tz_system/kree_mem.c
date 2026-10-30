@@ -469,6 +469,9 @@ static TZ_RESULT kree_register_sharedmem(KREE_SESSION_HANDLE session,
 
 	mutex_unlock(shared_mem_mutex);	/* FIXME: should be removed */
 
+	if (ret == TZ_RESULT_SUCCESS && p[3].value.a == 0)
+		ret = TZ_RESULT_ERROR_BAD_STATE;
+
 	if (ret != TZ_RESULT_SUCCESS) {
 		*mem_handle = 0;
 		return ret;

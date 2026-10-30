@@ -15,6 +15,7 @@
 #include <linux/printk.h>
 #include <linux/types.h>
 #include <linux/module.h>
+#include <linux/mutex.h>
 #include <linux/platform_device.h>
 #include <linux/of_platform.h>
 #include <linux/pm_opp.h>
@@ -82,6 +83,7 @@ struct pm_qos_request isp_qos;
 
 static struct device *mmdvfsDev;
 static struct regulator *mmdvfsRegulator;
+static DEFINE_MUTEX(cam_qos_lock);
 #else
 #ifndef EP_STAGE
 	struct mmdvfs_pm_qos_request isp_qos;
@@ -837,10 +839,13 @@ static struct dev_pm_opp *mindone_opp_by_volt(struct device *dev, long u_volt)
 unsigned int mtk_dfs_get_cur_freq(void)
 {
 	unsigned long freq = 0;
-	int volt = regulator_get_voltage(mmdvfsRegulator);
-	struct dev_pm_opp *opp =
-		mindone_opp_by_volt(mmdvfsDev, volt);
+	struct dev_pm_opp *opp;
+	int volt;
 
+	if (!mmdvfsRegulator || !mmdvfsDev)
+		return 0;
+	volt = regulator_get_voltage(mmdvfsRegulator);
+	opp = mindone_opp_by_volt(mmdvfsDev, volt);
 	if (IS_ERR(opp))
 		LOG_NOTICE("Error get current freq fail\n");
 	else {
@@ -853,6 +858,8 @@ unsigned int mtk_dfs_get_cur_freq(void)
 
 #define mtk_dfs_clr()	do { \
 	int volt = 0, ret = 0; \
+	if (!mmdvfsRegulator) \
+		break; \
 	ret = regulator_set_voltage(mmdvfsRegulator, volt, INT_MAX);\
 	if (ret) \
 		LOG_NOTICE("Error: E_CLK_UPDATE fail\n"); \
@@ -861,9 +868,13 @@ unsigned int mtk_dfs_get_cur_freq(void)
 #define mtk_dfs_update(clk)	do { \
 	struct dev_pm_opp *opp; \
 	int volt = 0, ret = 0; \
+	if (!mmdvfsRegulator || !mmdvfsDev) \
+		break; \
 	opp = dev_pm_opp_find_freq_ceil(mmdvfsDev, &clk); \
 	if (IS_ERR(opp)) \
 		opp = dev_pm_opp_find_freq_floor(mmdvfsDev, &clk); \
+	if (IS_ERR(opp)) \
+		break; \
 	volt = dev_pm_opp_get_voltage(opp); \
 	dev_pm_opp_put(opp); \
 	ret = regulator_set_voltage(mmdvfsRegulator, volt, INT_MAX);\
@@ -888,6 +899,12 @@ int ISP_SetPMQOS(
 	if (module > ISP_IRQ_TYPE_INT_CAM_C_ST) {
 		LOG_NOTICE("supported only to CAM_C\n");
 		return 1;
+	}
+
+	mutex_lock(&cam_qos_lock);
+	if (!mmdvfsDev || !mmdvfsRegulator) {
+		Ret = -ENODEV;
+		goto out;
 	}
 
 	switch (cmd) {
@@ -961,7 +978,7 @@ int ISP_SetPMQOS(
 		*pvalue = target_clk = 624;
 
 		LOG_DBG("1:DFS Clk_0:%d\n", pvalue[0]);
-		return 1;
+		Ret = 1;
 #else
 		unsigned int num_available, i = 0;
 		u32 *speeds = NULL;
@@ -1036,7 +1053,7 @@ int ISP_SetPMQOS(
 		}
 		LOG_INF("%s", str);
 
-		return (int)num_available;
+		Ret = (int)num_available;
 #endif
 		}
 		break;
@@ -1070,6 +1087,8 @@ int ISP_SetPMQOS(
 		break;
 	}
 
+out:
+	mutex_unlock(&cam_qos_lock);
 	return Ret;
 }
 EXPORT_SYMBOL_GPL(ISP_SetPMQOS);
@@ -1086,6 +1105,12 @@ int SV_SetPMQOS(
 	    (module > ISP_IRQ_TYPE_INT_CAMSV_END_ST)) {
 		LOG_NOTICE("supported only to SV0 to SV7\n");
 		return 1;
+	}
+
+	mutex_lock(&cam_qos_lock);
+	if (!mmdvfsDev || !mmdvfsRegulator) {
+		Ret = -ENODEV;
+		goto out;
 	}
 
 	switch (cmd) {
@@ -1178,7 +1203,7 @@ int SV_SetPMQOS(
 		*pvalue = target_clk = 624;
 
 		LOG_DBG("1:DFS Clk_0:%d\n", pvalue[0]);
-		return 1;
+		Ret = 1;
 #else
 		unsigned int num_available, i = 0;
 		u32 *speeds = NULL;
@@ -1231,7 +1256,7 @@ int SV_SetPMQOS(
 		for (i = 0 ; i < num_available; i++)
 			LOG_INF("2:DFS Clk_%d:%d MHz\n", i, pvalue[i]);
 
-		return (int)num_available;
+		Ret = (int)num_available;
 #endif
 	}
 		break;
@@ -1245,6 +1270,8 @@ int SV_SetPMQOS(
 		Ret = -1;
 		break;
 	}
+out:
+	mutex_unlock(&cam_qos_lock);
 	return Ret;
 }
 EXPORT_SYMBOL_GPL(SV_SetPMQOS);
@@ -1377,17 +1404,42 @@ static void cam_qos_parse_m4u_port(struct platform_device *pdev)
 
 static int cam_qos_probe(struct platform_device *pdev)
 {
+#ifndef EP_STAGE
+	struct regulator *reg;
+	int ret;
+#endif
+
 	LOG_INF("CAM QOS probe.\n");
 #ifndef EP_STAGE
-	dev_pm_opp_of_add_table(&pdev->dev);
+	ret = devm_pm_opp_of_add_table(&pdev->dev);
+	if (ret)
+		return dev_err_probe(&pdev->dev, ret, "opp table\n");
+	reg = devm_regulator_get(&pdev->dev, "dvfsrc-vcore");
+	if (IS_ERR(reg))
+		return dev_err_probe(&pdev->dev, PTR_ERR(reg), "dvfsrc-vcore\n");
+#endif
+
+	mutex_lock(&cam_qos_lock);
+#ifndef EP_STAGE
 	mmdvfsDev = &pdev->dev;
-	mmdvfsRegulator = devm_regulator_get(&pdev->dev, "dvfsrc-vcore");
+	mmdvfsRegulator = reg;
 #endif
 
 	/* parse m4u port from dts. */
 	cam_qos_parse_m4u_port(pdev);
+	mutex_unlock(&cam_qos_lock);
 
 	return 0;
+}
+
+static void cam_qos_remove(struct platform_device *pdev)
+{
+	mutex_lock(&cam_qos_lock);
+	if (mmdvfsDev == &pdev->dev) {
+		mmdvfsDev = NULL;
+		mmdvfsRegulator = NULL;
+	}
+	mutex_unlock(&cam_qos_lock);
 }
 
 static const struct of_device_id of_match_cam_qos[] = {
@@ -1397,6 +1449,7 @@ static const struct of_device_id of_match_cam_qos[] = {
 
 static struct platform_driver cam_qos_drv = {
 	.probe = cam_qos_probe,
+	.remove = cam_qos_remove,
 	.driver = {
 		.name = "cam_qos",
 		.of_match_table = of_match_cam_qos,

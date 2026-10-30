@@ -114,12 +114,12 @@ int scp_awake_lock(void *_scp_id)
 	/* scp lock awake success*/
 	if (ret != -1)
 		*scp_awake_count = *scp_awake_count + 1;
+	spin_unlock_irqrestore(&scp_awake_spinlock, spin_flags);
 
 	if (ret == -1) {
 		pr_notice("%s: awake %s fail..\n", __func__, core_id);
 #if SCP_RECOVERY_SUPPORT
-		if (atomic_read(&scp_reset_status) == RESET_STATUS_STOP) {
-			scp_set_reset_status();
+		if (scp_claim_reset()) {
 			pr_notice("%s: start to reset scp...\n", __func__);
 
 #if SCP_RESERVED_MEM && IS_ENABLED(CONFIG_OF_RESERVED_MEM)
@@ -138,8 +138,6 @@ int scp_awake_lock(void *_scp_id)
 			pr_notice("%s: scp resetting\n", __func__);
 #endif
 	}
-
-	spin_unlock_irqrestore(&scp_awake_spinlock, spin_flags);
 
 	return ret;
 }
@@ -217,12 +215,12 @@ int scp_awake_unlock(void *_scp_id)
 		if (*scp_awake_count > 0)
 			*scp_awake_count = *scp_awake_count - 1;
 	}
+	spin_unlock_irqrestore(&scp_awake_spinlock, spin_flags);
 
 	if (ret == -1) {
 		pr_notice("%s: awake %s fail..\n", __func__, core_id);
 #if SCP_RECOVERY_SUPPORT
-		if (atomic_read(&scp_reset_status) == RESET_STATUS_STOP) {
-			scp_set_reset_status();
+		if (scp_claim_reset()) {
 			pr_notice("%s: start to reset scp...\n", __func__);
 
 #if SCP_RESERVED_MEM && IS_ENABLED(CONFIG_OF_RESERVED_MEM)
@@ -241,10 +239,6 @@ int scp_awake_unlock(void *_scp_id)
 			pr_notice("%s: scp resetting\n", __func__);
 #endif
 	}
-
-
-	/* spinlock context safe */
-	spin_unlock_irqrestore(&scp_awake_spinlock, spin_flags);
 
 	return ret;
 }

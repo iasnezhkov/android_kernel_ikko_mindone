@@ -1,3 +1,5 @@
+/* SPDX-License-Identifier: GPL-2.0 */
+/* SPDX-FileCopyrightText: 2026 The LineageOS Project */
 #include <stddef.h>
 struct blocking_notifier_head { struct notifier_block *head; int rwsem; };
 static struct blocking_notifier_head power_supply_notifier;

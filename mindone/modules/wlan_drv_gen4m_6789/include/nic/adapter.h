@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: GPL-2.0 OR BSD-3-Clause */
 /******************************************************************************
  *
  * This file is provided under a dual license.  When you use or
@@ -824,6 +825,7 @@ struct WIFI_VAR {
 	uint8_t uc6GBandwidthMode;	/* 20/40M or 20M only *//* Not used */
 	/* Support AP Selection */
 	struct LINK_MGMT rBlackList;
+	u_int8_t fgAisBlacklistInitialized;
 #if CFG_SUPPORT_MBO
 	struct PARAM_BSS_DISALLOWED_LIST rBssDisallowedList;
 #endif

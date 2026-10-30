@@ -20,6 +20,7 @@ struct md_pt_priv {
 	u32 max_lv;
 	u32 *reduce_tx;
 	u32 *threshold;
+	struct lbat_user *lbat_user;
 };
 
 static struct md_pt_priv md_pt_info[POWER_THROTTLING_TYPE_MAX] = {
@@ -108,7 +109,7 @@ static void md_pt_over_current_cb(enum BATTERY_OC_LEVEL_TAG level)
 	}
 }
 #endif
-static void md_limit_default_setting(struct device *dev, enum md_pt_type type)
+static int md_limit_default_setting(struct device *dev, enum md_pt_type type)
 {
 	struct device_node *np = dev->of_node;
 	int i, max_lv, ret;
@@ -123,8 +124,10 @@ static void md_limit_default_setting(struct device *dev, enum md_pt_type type)
 		max_lv = 0;
 	pt_info_p->max_lv = max_lv;
 	if (!pt_info_p->max_lv)
-		return;
-	pt_info_p->reduce_tx = kcalloc(pt_info_p->max_lv, sizeof(u32), GFP_KERNEL);
+		return 0;
+	pt_info_p->reduce_tx = devm_kcalloc(dev, pt_info_p->max_lv, sizeof(u32), GFP_KERNEL);
+	if (!pt_info_p->reduce_tx)
+		return -ENOMEM;
 	pt_info_p->reduce_tx[0] = MD_TX_REDUCE;
 	if (type == LBAT_POWER_THROTTLING) {
 		ret = of_property_read_u32(np, "lbat_md_reduce_tx", &pt_info_p->reduce_tx[0]);
@@ -137,6 +140,7 @@ static void md_limit_default_setting(struct device *dev, enum md_pt_type type)
 	}
 	for (i = 1; i < pt_info_p->max_lv; i++)
 		memcpy(&pt_info_p->reduce_tx[i], &pt_info_p->reduce_tx[0], sizeof(u32));
+	return 0;
 }
 
 static int parse_md_limit_table(struct device *dev)
@@ -150,14 +154,16 @@ static int parse_md_limit_table(struct device *dev)
 		pt_info_p = &md_pt_info[i];
 		ret = of_property_read_u32(np, pt_info_p->max_lv_name, &num);
 		if (ret < 0) {
-			md_limit_default_setting(dev, i);
+			ret = md_limit_default_setting(dev, i);
+			if (ret)
+				return ret;
 			continue;
 		} else if (num <= 0 || num > pt_info_p->max_lv) {
 			pt_info_p->max_lv = 0;
 			continue;
 		}
 		pt_info_p->max_lv = num;
-		pt_info_p->reduce_tx = kcalloc(pt_info_p->max_lv, sizeof(u32), GFP_KERNEL);
+		pt_info_p->reduce_tx = devm_kcalloc(dev, pt_info_p->max_lv, sizeof(u32), GFP_KERNEL);
 		if (!pt_info_p->reduce_tx)
 			return -ENOMEM;
 		for (j = 0; j < pt_info_p->max_lv; j++) {
@@ -178,7 +184,7 @@ static int parse_md_limit_table(struct device *dev)
 				continue;
 			}
 
-			pt_info_p->threshold = kcalloc(num, sizeof(u32), GFP_KERNEL);
+			pt_info_p->threshold = devm_kcalloc(dev, num, sizeof(u32), GFP_KERNEL);
 			if (!pt_info_p->threshold)
 				return -ENOMEM;
 
@@ -186,7 +192,7 @@ static int parse_md_limit_table(struct device *dev)
 				pt_info_p->threshold, num);
 			if (ret) {
 				pr_notice("get lbat-dedicate-volts error %d\n", ret);
-				kfree(pt_info_p->threshold);
+				devm_kfree(dev, pt_info_p->threshold);
 				pt_info_p->threshold = NULL;
 				continue;
 			}
@@ -207,8 +213,13 @@ static int mtk_md_power_throttling_probe(struct platform_device *pdev)
 		struct md_pt_priv *priv = &md_pt_info[LBAT_POWER_THROTTLING];
 
 		if (priv->threshold) {
-			lbat_user_register_ext("md pa dedicate throttle", priv->threshold,
+			priv->lbat_user = lbat_user_register_ext("md pa dedicate throttle", priv->threshold,
 				priv->max_lv + 1, md_lbat_dedicate_callback);
+			if (IS_ERR_OR_NULL(priv->lbat_user)) {
+				ret = priv->lbat_user ? PTR_ERR(priv->lbat_user) : -ENODEV;
+				priv->lbat_user = NULL;
+				return ret;
+			}
 			pr_info("%s: dedicate voltge throttle\n", __func__);
 		} else {
 			register_low_battery_notify(&md_pt_low_battery_cb, LOW_BATTERY_PRIO_MD);
@@ -223,7 +234,9 @@ static int mtk_md_power_throttling_probe(struct platform_device *pdev)
 }
 static void mtk_md_power_throttling_remove(struct platform_device *pdev)
 {
-	return;
+#if IS_ENABLED(CONFIG_MTK_LOW_BATTERY_POWER_THROTTLING)
+	lbat_user_unregister(xchg(&md_pt_info[LBAT_POWER_THROTTLING].lbat_user, NULL));
+#endif
 }
 static const struct of_device_id md_power_throttling_of_match[] = {
 	{ .compatible = "mediatek,md-power-throttling", },

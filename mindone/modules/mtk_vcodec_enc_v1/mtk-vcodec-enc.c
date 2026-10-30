@@ -88,8 +88,10 @@ static void mtk_venc_sec_dc_unmap_dmabuf(void *mem_priv)
 	}
 
 	if (buf->vaddr) {
+		struct iosys_map map = IOSYS_MAP_INIT_VADDR(buf->vaddr);
+
 		mtk_v4l2_err("dmabuf buffer vaddr not null\n");
-		dma_buf_vunmap(buf->db_attach->dmabuf, buf->vaddr);
+		dma_buf_vunmap_unlocked(buf->db_attach->dmabuf, &map);
 		buf->vaddr = NULL;
 	}
 
@@ -1677,13 +1679,15 @@ static int vidioc_venc_qbuf(struct file *file, void *priv,
 		mtk_v4l2_debug(4, "[%d] No need for Cache clean, buf->index:%d. mtkbuf:%p",
 		   ctx->id, buf->index, mtkbuf);
 		mtkbuf->flags |= NO_CAHCE_CLEAN;
-	}
+	} else
+		mtkbuf->flags &= ~NO_CAHCE_CLEAN;
 
 	if (buf->flags & V4L2_BUF_FLAG_NO_CACHE_INVALIDATE) {
 		mtk_v4l2_debug(4, "[%d] No need for Cache invalidate, buf->index:%d. mtkbuf:%p",
 		   ctx->id, buf->index, mtkbuf);
 		mtkbuf->flags |= NO_CAHCE_INVALIDATE;
-	}
+	} else
+		mtkbuf->flags &= ~NO_CAHCE_INVALIDATE;
 
 	mtkbuf->frm_buf.has_qpmap = 0;
 	mtkbuf->frm_buf.has_meta = 0;
@@ -1704,7 +1708,7 @@ static int vidioc_venc_qbuf(struct file *file, void *priv,
 
 		mtkbuf->frm_buf.buf_att = dma_buf_attach(mtkbuf->frm_buf.meta_dma,
 			&ctx->dev->plat_dev->dev);
-		mtkbuf->frm_buf.sgt = dma_buf_map_attachment(mtkbuf->frm_buf.buf_att,
+		mtkbuf->frm_buf.sgt = dma_buf_map_attachment_unlocked(mtkbuf->frm_buf.buf_att,
 			DMA_TO_DEVICE);
 		if (IS_ERR_OR_NULL(mtkbuf->frm_buf.sgt)) {
 			mtk_v4l2_err("dma_buf_map_attachment fail %ld.\n",
@@ -1736,7 +1740,7 @@ static int vidioc_venc_qbuf(struct file *file, void *priv,
 
 		mtkbuf->frm_buf.qpmap_dma_att = dma_buf_attach(mtkbuf->frm_buf.qpmap_dma,
 			dev);
-		mtkbuf->frm_buf.qpmap_sgt = dma_buf_map_attachment(mtkbuf->frm_buf.qpmap_dma_att,
+		mtkbuf->frm_buf.qpmap_sgt = dma_buf_map_attachment_unlocked(mtkbuf->frm_buf.qpmap_dma_att,
 			DMA_TO_DEVICE);
 		if (IS_ERR_OR_NULL(mtkbuf->frm_buf.qpmap_sgt)) {
 			mtk_v4l2_err("dma_buf_map_attachment fail %ld.\n",
@@ -1777,7 +1781,7 @@ static int vidioc_venc_qbuf(struct file *file, void *priv,
 
 		meta_buf_att = dma_buf_attach(mtkbuf->frm_buf.metabuffer_dma,
 			dev);
-		meta_sgt = dma_buf_map_attachment(meta_buf_att, DMA_TO_DEVICE);
+		meta_sgt = dma_buf_map_attachment_unlocked(meta_buf_att, DMA_TO_DEVICE);
 		if (IS_ERR_OR_NULL(meta_sgt)) {
 			mtk_v4l2_err("dma_buf_map_attachment fail %ld.\n", PTR_ERR(meta_sgt));
 			dma_buf_detach(mtkbuf->frm_buf.metabuffer_dma, meta_buf_att);
@@ -1789,12 +1793,12 @@ static int vidioc_venc_qbuf(struct file *file, void *priv,
 		//check required size before doing va mapping
 		if (mtkbuf->frm_buf.metabuffer_dma->size < sizeof(struct metadata_info)) {
 			mtk_v4l2_err("V4L2_BUF_FLAG_HAS_META dma size check failed");
-			dma_buf_unmap_attachment(meta_buf_att, meta_sgt, DMA_TO_DEVICE);
+			dma_buf_unmap_attachment_unlocked(meta_buf_att, meta_sgt, DMA_TO_DEVICE);
 			dma_buf_detach(mtkbuf->frm_buf.metabuffer_dma, meta_buf_att);
 			dma_buf_put(mtkbuf->frm_buf.metabuffer_dma);
 			return -EINVAL;
 		}
-		if (!dma_buf_vmap(mtkbuf->frm_buf.metabuffer_dma, &meta_map))
+		if (!dma_buf_vmap_unlocked(mtkbuf->frm_buf.metabuffer_dma, &meta_map))
 			meta_va = meta_map.is_iomem ? NULL : meta_map.vaddr;
 
 		mtk_v4l2_debug(2, "V4L2_BUF_FLAG_HAS_META  buf->reserved:%d dma_buf=%p, DMA=%lx",
@@ -1805,7 +1809,7 @@ static int vidioc_venc_qbuf(struct file *file, void *priv,
 			meta_info = (struct metadata_info *)meta_va;
 		} else {
 			mtk_v4l2_err("V4L2_BUF_FLAG_HAS_META meta_va is NULL");
-			dma_buf_unmap_attachment(meta_buf_att, meta_sgt, DMA_TO_DEVICE);
+			dma_buf_unmap_attachment_unlocked(meta_buf_att, meta_sgt, DMA_TO_DEVICE);
 			dma_buf_detach(mtkbuf->frm_buf.metabuffer_dma, meta_buf_att);
 			dma_buf_put(mtkbuf->frm_buf.metabuffer_dma);
 			return -EINVAL;
@@ -1850,7 +1854,7 @@ static int vidioc_venc_qbuf(struct file *file, void *priv,
 
 					qpmap_buf_att = dma_buf_attach(mtkbuf->frm_buf.qpmap_dma,
 						dev);
-					qpmap_meta_sgt = dma_buf_map_attachment(qpmap_buf_att,
+					qpmap_meta_sgt = dma_buf_map_attachment_unlocked(qpmap_buf_att,
 						DMA_TO_DEVICE);
 					if (IS_ERR_OR_NULL(qpmap_meta_sgt)) {
 						mtk_v4l2_err("dma_buf_map_attachment fail %ld.\n",
@@ -1863,7 +1867,7 @@ static int vidioc_venc_qbuf(struct file *file, void *priv,
 					mtkbuf->frm_buf.qpmap_dma_addr =
 						sg_dma_address(qpmap_meta_sgt->sgl);
 					mtkbuf->frm_buf.has_qpmap = 1;
-					dma_buf_unmap_attachment(qpmap_buf_att,
+					dma_buf_unmap_attachment_unlocked(qpmap_buf_att,
 						qpmap_meta_sgt, DMA_TO_DEVICE);
 					dma_buf_detach(mtkbuf->frm_buf.qpmap_dma, qpmap_buf_att);
 					mtk_v4l2_debug(2, "[%d] Have Qpmap fd, buf->index:%d. qpmap_dma:%p, fd:%u",
@@ -1882,8 +1886,8 @@ static int vidioc_venc_qbuf(struct file *file, void *priv,
 				}
 			}
 		}
-		dma_buf_vunmap(mtkbuf->frm_buf.metabuffer_dma, &meta_map);
-		dma_buf_unmap_attachment(meta_buf_att, meta_sgt, DMA_TO_DEVICE);
+		dma_buf_vunmap_unlocked(mtkbuf->frm_buf.metabuffer_dma, &meta_map);
+		dma_buf_unmap_attachment_unlocked(meta_buf_att, meta_sgt, DMA_TO_DEVICE);
 		dma_buf_detach(mtkbuf->frm_buf.metabuffer_dma, meta_buf_att);
 	}
 
@@ -2103,7 +2107,7 @@ static int vb2ops_venc_buf_prepare(struct vb2_buffer *vb)
 			buf_att = dma_buf_attach(vb->planes[i].dbuf,
 				&ctx->dev->plat_dev->dev);
 			buf_att->dma_map_attrs |= DMA_ATTR_SKIP_CPU_SYNC;
-			sgt = dma_buf_map_attachment(buf_att, DMA_TO_DEVICE);
+			sgt = dma_buf_map_attachment_unlocked(buf_att, DMA_TO_DEVICE);
 			if (IS_ERR_OR_NULL(sgt)) {
 				mtk_v4l2_err("dma_buf_map_attachment fail %ld.\n", PTR_ERR(sgt));
 				dma_buf_detach(vb->planes[i].dbuf, buf_att);
@@ -2113,7 +2117,7 @@ static int vb2ops_venc_buf_prepare(struct vb2_buffer *vb)
 				sgt->sgl,
 				sgt->orig_nents,
 				DMA_TO_DEVICE);
-			dma_buf_unmap_attachment(buf_att, sgt, DMA_TO_DEVICE);
+			dma_buf_unmap_attachment_unlocked(buf_att, sgt, DMA_TO_DEVICE);
 
 			src_mem.dma_addr = vb2_dma_contig_plane_dma_addr(vb, i);
 			src_mem.size = (size_t)(vb->planes[i].bytesused -
@@ -2155,7 +2159,7 @@ static void vb2ops_venc_buf_finish(struct vb2_buffer *vb)
 			buf_att = dma_buf_attach(vb->planes[0].dbuf,
 				&ctx->dev->plat_dev->dev);
 			buf_att->dma_map_attrs |= DMA_ATTR_SKIP_CPU_SYNC;
-			sgt = dma_buf_map_attachment(buf_att, DMA_FROM_DEVICE);
+			sgt = dma_buf_map_attachment_unlocked(buf_att, DMA_FROM_DEVICE);
 			if (IS_ERR_OR_NULL(sgt)) {
 				mtk_v4l2_err("dma_buf_map_attachment fail %ld.\n", PTR_ERR(sgt));
 				dma_buf_detach(vb->planes[0].dbuf, buf_att);
@@ -2164,7 +2168,7 @@ static void vb2ops_venc_buf_finish(struct vb2_buffer *vb)
 			mtk_dma_sync_sg_range(sgt, &ctx->dev->plat_dev->dev,
 				 ROUND_N(vb->planes[0].bytesused, 64), DMA_FROM_DEVICE);
 
-			dma_buf_unmap_attachment(buf_att, sgt, DMA_FROM_DEVICE);
+			dma_buf_unmap_attachment_unlocked(buf_att, sgt, DMA_FROM_DEVICE);
 
 			dst_mem.dma_addr = vb2_dma_contig_plane_dma_addr(vb, 0);
 			dst_mem.size = (size_t)vb->planes[0].bytesused;
@@ -2183,7 +2187,7 @@ static void vb2ops_venc_buf_finish(struct vb2_buffer *vb)
 			"dma_buf_put dma_buf=%p, DMA=%lx",
 			mtkbuf->frm_buf.meta_dma,
 			(unsigned long)mtkbuf->frm_buf.meta_addr);
-		dma_buf_unmap_attachment(mtkbuf->frm_buf.buf_att,
+		dma_buf_unmap_attachment_unlocked(mtkbuf->frm_buf.buf_att,
 			mtkbuf->frm_buf.sgt, DMA_TO_DEVICE);
 		dma_buf_detach(mtkbuf->frm_buf.meta_dma, mtkbuf->frm_buf.buf_att);
 		dma_buf_put(mtkbuf->frm_buf.meta_dma);
@@ -2205,7 +2209,7 @@ static void vb2ops_venc_buf_finish(struct vb2_buffer *vb)
 			mtkbuf->frm_buf.qpmap_dma,
 			(unsigned long)mtkbuf->frm_buf.qpmap_dma_addr);
 		if (mtkbuf->frm_buf.qpmap_sgt != NULL) {
-			dma_buf_unmap_attachment(mtkbuf->frm_buf.qpmap_dma_att,
+			dma_buf_unmap_attachment_unlocked(mtkbuf->frm_buf.qpmap_dma_att,
 			mtkbuf->frm_buf.qpmap_sgt, DMA_TO_DEVICE);
 			dma_buf_detach(mtkbuf->frm_buf.qpmap_dma, mtkbuf->frm_buf.qpmap_dma_att);
 		}

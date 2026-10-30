@@ -9,9 +9,7 @@
 
 #include <linux/module.h>
 #include <linux/scmi_protocol.h>
-#include <common.h>
-#include "protocols.h"
-#include <notify.h>
+#include "scmi-kmi.h"
 
 #include "protocol.h"
 
@@ -226,10 +224,15 @@ static const struct scmi_protocol_events tinysys_protocol_events = {
 
 static int scmi_tinysys_protocol_init(const struct scmi_protocol_handle *ph)
 {
+	int ret;
 	u32 version;
 	struct scmi_tinysys_info *pinfo;
 
-	ph->xops->version_get(ph, &version);
+	ret = ph->xops->version_get(ph, &version);
+	if (ret) {
+		dev_err(ph->dev, "version get fail, %d\n", ret);
+		return ret;
+	}
 
 	dev_dbg(ph->dev, "Tinysys Protocol Version %d.%d\n",
 		PROTOCOL_REV_MAJOR(version), PROTOCOL_REV_MINOR(version));
@@ -238,7 +241,9 @@ static int scmi_tinysys_protocol_init(const struct scmi_protocol_handle *ph)
 	if (!pinfo)
 		return -ENOMEM;
 
-	scmi_tinysys_attributes_get(ph, pinfo);
+	ret = scmi_tinysys_attributes_get(ph, pinfo);
+	if (ret)
+		dev_warn(ph->dev, "attributes get fail, %d: no source count\n", ret);
 
 	pinfo->version = version;
 

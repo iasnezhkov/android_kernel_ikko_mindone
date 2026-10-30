@@ -30,6 +30,7 @@
 #define POWER_UVLO_VOLT_LEVEL		2600
 #define IMAX_MAX_VALUE			5500
 #define DLPT_NOTIFY_FAST_UISOC		30
+#define DLPT_IMIX_R_RETRY_INTERVAL	(20 * HZ)
 #define	DLPT_VOLT_MIN			3100
 static int isThreeLevel;
 
@@ -148,6 +149,8 @@ struct dlpt_priv {
 	/* Imix */
 	int imix;
 	int imix_r;
+	unsigned long imix_r_retry_at;
+	bool imix_r_retry_pending;
 	/* others */
 	int is_power_path_supported;
 	int is_isense_supported;
@@ -176,15 +179,31 @@ static struct dlpt_callback_table dlptcb_tb[DLPTCB_MAX_NUM] = { {0} };
 static void update_dlpt_imix_r(void)
 {
 	int ret = 0;
+	int imix_r = 0;
 
 	if (!PTR_ERR_OR_ZERO(dlpt.chan_imix_r)) {
-		ret = iio_read_channel_raw(dlpt.chan_imix_r, &dlpt.imix_r);
-		if (ret < 0) {
-			pr_notice("[%s] iio_read_channel_raw error\n", __func__);
+		ret = iio_read_channel_raw(dlpt.chan_imix_r, &imix_r);
+		if (ret < 0 || imix_r <= 0) {
+			pr_notice_once("[%s] imix_r unavailable, ret=%d value=%d\n",
+				       __func__, ret, imix_r);
 			return;
 		}
+		dlpt.imix_r = imix_r;
 	}
 	pr_debug("[dlpt] imix_r=%d\n", dlpt.imix_r);
+}
+
+static void retry_dlpt_imix_r(void)
+{
+	if (dlpt.imix_r != 0)
+		return;
+	if (dlpt.imix_r_retry_pending &&
+	    time_before(jiffies, dlpt.imix_r_retry_at))
+		return;
+
+	dlpt.imix_r_retry_pending = true;
+	dlpt.imix_r_retry_at = jiffies + DLPT_IMIX_R_RETRY_INTERVAL;
+	update_dlpt_imix_r();
 }
 
 static int dlpt_adc_chan_init(struct platform_device *pdev)
@@ -467,6 +486,8 @@ static int dlpt_notify_handler(void *unused)
 
 		cur_ui_soc = dlpt_get_uisoc();
 
+		if (!dlpt_get_rgs_chrdet())
+			retry_dlpt_imix_r();
 		if (dlpt.imix_r == 0)
 			pr_debug("[DLPT] imix_r==0, skip\n");
 		else if (!get_mtk_gauge_psy())
@@ -671,8 +692,8 @@ static int __maybe_unused dlpt_resume(struct device *d)
 {
 	mutex_lock(&dlpt.notify_lock);
 	dlpt.suspend_flag = false;
-	mutex_unlock(&dlpt.notify_lock);
 	update_dlpt_imix_r();
+	mutex_unlock(&dlpt.notify_lock);
 	wake_up_interruptible(&dlpt.notify_waiter);
 	return 0;
 }

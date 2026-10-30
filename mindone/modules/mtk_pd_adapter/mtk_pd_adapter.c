@@ -778,7 +778,7 @@ static int mtk_pd_adapter_probe(struct platform_device *pdev)
 	info->adapter_dev = adapter_device_register(info->adapter_dev_name,
 		&pdev->dev, info, &adapter_ops, NULL);
 	if (IS_ERR_OR_NULL(info->adapter_dev)) {
-		ret = PTR_ERR(info->adapter_dev);
+		ret = info->adapter_dev ? PTR_ERR(info->adapter_dev) : -ENODEV;
 		goto err_register_adapter_dev;
 	}
 
@@ -803,6 +803,7 @@ static int mtk_pd_adapter_probe(struct platform_device *pdev)
 		goto err_get_tcpc_dev;
 	}
 
+	platform_set_drvdata(pdev, info);
 	return 0;
 
 err_get_tcpc_dev:
@@ -815,7 +816,14 @@ err_register_adapter_dev:
 
 static void mtk_pd_adapter_remove(struct platform_device *dev)
 {
-	return;
+	struct mtk_pd_adapter_info *info = platform_get_drvdata(dev);
+
+	if (!info)
+		return;
+	unregister_tcp_dev_notifier(info->tcpc, &info->pd_nb,
+				    TCP_NOTIFY_TYPE_USB | TCP_NOTIFY_TYPE_MISC |
+				    TCP_NOTIFY_TYPE_VBUS);
+	adapter_device_unregister(info->adapter_dev);
 }
 
 static void mtk_pd_adapter_shutdown(struct platform_device *dev)

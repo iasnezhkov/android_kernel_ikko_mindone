@@ -117,6 +117,7 @@ struct mddpw_get_drv_emi {
  */
 void mddpInit(void);
 void mddpUninit(void);
+void mddpSetCallbacksReady(bool ready);
 int32_t mddpMdNotifyInfo(struct mddpw_md_notify_info_t *prMdInfo);
 int32_t mddpChangeState(enum mddp_state_e event, void *buf, uint32_t *buf_len);
 int32_t mddpGetMdStats(IN struct net_device *prDev);

@@ -1,1 +1,0 @@
-../include/drivers/clk/mediatek/clk-mtk.h

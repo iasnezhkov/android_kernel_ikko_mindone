@@ -20,7 +20,7 @@
 #include <linux/component.h>
 #include <linux/of_device.h>
 #include <linux/extcon.h>
-#include <../../../extcon/extcon.h>
+#include <linux/extcon-provider.h>
 #include <linux/kthread.h>
 #include <linux/errno.h>
 #include <linux/pm_runtime.h>
@@ -4074,7 +4074,6 @@ static int mtk_drm_dp_probe(struct platform_device *pdev)
 		DPTXERR("Couldn't allocate dptx extcon device\n");
 		return PTR_ERR(dptx_extcon);
 	}
-	dptx_extcon->dev.init_name = "dp_audio";
 	ret = devm_extcon_dev_register(&pdev->dev, dptx_extcon);
 	if (ret) {
 		pr_debug("failed to register dptx extcon: %d\n", ret);

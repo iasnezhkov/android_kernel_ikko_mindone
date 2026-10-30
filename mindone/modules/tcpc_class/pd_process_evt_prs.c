@@ -199,7 +199,13 @@ static inline bool pd_process_timer_msg(
 
 	case PD_TIMER_SOURCE_TRANSITION:
 		pd_dpm_prs_enable_power_source(pd_port, false);
+		pd_enable_pe_state_timer(pd_port, PD_TIMER_SOURCE_SWAP_STANDBY);
 		return false;
+
+	case PD_TIMER_SOURCE_SWAP_STANDBY:
+		return PE_MAKE_STATE_TRANSIT_SINGLE(
+			PE_PRS_SRC_SNK_TRANSITION_TO_OFF,
+			PE_PRS_SRC_HARD_RESET);
 
 	default:
 		return false;

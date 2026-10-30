@@ -1,16 +1,20 @@
+<!-- SPDX-License-Identifier: GPL-2.0 -->
+<!-- SPDX-FileCopyrightText: 2026 The LineageOS Project -->
 # Drivers
 
-`mindone/modules/` holds 278 `ddk_module` targets (3,257 `.c`/`.h` files) in a single
-`mindone/modules/BUILD.bazel` — there is no per-module `Makefile` any more. The device's shipped
-set is 296 modules, split across two files: 275 come from those 278 targets (three more are
-defined but not shipped: `mindone_thermal_hook.ko`, `mtk_scp_vow.ko`, `mtk_vow.ko`); 17 are
-MediaTek platform drivers Kleaf compiles in-tree as `module_outs` of the `mindone` `kernel_build`
-in `mindone/BUILD.bazel` (`clk-mt6789`, `pinctrl-mt6789`, `ufs-mediatek`, the DRM/dma-buf
-helpers, `8250_mtk`, `cfg80211`, `mac80211`, …; an 18th, `phy-mtk-ufs.ko`, is defined there but
-not currently shipped); the last 4 (`libarc4`, `rfkill`, `zram`, `zsmalloc`) are unmodified
-`kernel_aarch64` in-tree modules. This split is measured directly against today's `BUILD.bazel`
-files and load lists — see the Inventory section below for why a count in prose otherwise goes
-stale.
+`mindone/modules/` declares 280 `ddk_module` targets in
+`mindone/modules/BUILD.bazel`; the `mindone_modules` group selects 253.
+The normal boot load lists contain 262 modules:
+253 DDK outputs, five device in-tree outputs (`8250_mtk`, `cfg80211`,
+`drm_display_helper`, `drm_dma_helper`, `reset-ti-syscon`) and four GKI modules
+(`libarc4`, `rfkill`, `zram`, `zsmalloc`). Eight in-tree outputs are declared in
+`mindone/BUILD.bazel`; three are not in those lists. The base is Google's
+`android16-6.12-2026-09_r10` prebuilt, CI 16736897.
+
+Mali kbase is **r54p1** in the M28 and later sets; earlier sets used r32p1.
+The `mali_kbase_mt6789` target now builds `mali_kbase_r54/`.
+CPU capacity information comes from `mtk_cpu_capacity`; `sugov_ext` is removed.
+Pair this set with a ROM that selects the standard `schedutil` governor.
 
 MediaTek SoCs put almost everything outside the kernel proper: display, camera, audio DSP,
 Wi-Fi/BT, sensors, thermal, charging, the cellular modem interface. None of it is upstream, and
@@ -19,25 +23,30 @@ MT6789 family and corrected where they were wrong for this board.
 
 ## Inventory
 
-[`../mindone/modules/MODULES.tsv`](../mindone/modules/MODULES.tsv) lists every tracked module:
+`mindone/modules/MODULES.tsv` lists every tracked module:
 kernel module name, `.ko` filename, which boot stage ships it (first-stage ramdisk /
 `vendor_dlkm` / recovery) and the build subdirectory. It is generated — regenerate it from a
-build pass rather than editing by hand. It predates the 2026-09-22..24 GKI-mixed-build cleanup
-(its own header says regenerated 2026-09-15), so treat its per-module detail as a starting point
-to check rather than the current split; the split above is measured against today's tree.
+build pass rather than editing by hand.
 
-Trees outside the shipped 296 are superseded, recovery-only, or still under evaluation.
+The four unused AF wrappers `subaf`, `sub2af`, `main2af` and `main3af` retain
+DDK definitions but are removed from `mindone_modules` and the combined and vendor-DLKM load lists.
+`mainaf` remains selected for the main camera actuator. In the companion ROM,
+`libarc4` moves from `vendor_dlkm` to `system_dlkm`; its vendor list consequently
+contains 235 entries, while this kernel's vendor request list contains 236.
 
 ## Load order
 
-[`../mindone/vendor_boot.modules.load`](../mindone/vendor_boot.modules.load) (29 modules, the
-first-stage ramdisk set) and [`../mindone/vendor_dlkm.modules.load`](../mindone/vendor_dlkm.modules.load)
-(267, the rest) are the real list the device loads, in order — 296 modules, no overlap between the
+`mindone/vendor_boot.modules.load` (26 modules, the
+first-stage ramdisk set) and `mindone/vendor_dlkm.modules.load`
+(236, the rest) request 262 modules, with no overlap between the
 two files. Both are wired directly into the `mindone_images` `kernel_images` target in
-`mindone/BUILD.bazel`, so a Kleaf build stages them in that order by construction. For recovery
+`mindone/BUILD.bazel`, which selects their requested staging lists. For recovery
 there is a third, shorter list:
-[`../mindone/vendor_boot.modules.load.recovery`](../mindone/vendor_boot.modules.load.recovery)
-(148).
+`mindone/vendor_boot.modules.load.recovery`
+(131). Counts exclude empty and comment lines. The combined
+`mindone/modules/modules.load` has 262 entries and the same set as the two normal boot
+lists. Recovery uses `modules_recovery_list` in `mindone/BUILD.bazel`. These are
+requested staging lists.
 
 The order matters. Several modules hold devices other modules depend on, and
 getting it wrong rarely looks like a module failure — it looks like some unrelated device's
@@ -49,20 +58,21 @@ No single upstream per module. Most combine an ACK driver skeleton with device-s
 worked out against this hardware. Where a file was adapted from a specific vendor source, the
 origin is stated in a banner at the top of that file.
 
-Files that arrived with MediaTek's dual GPL-2.0/BSD header keep it unchanged. Files carrying a
-non-redistributable vendor notice were removed rather than published: the tree is checked to
-contain none.
+Files that arrived with MediaTek's dual GPL-2.0/BSD header keep it unchanged.
+The gen4m driver uses our GPL-2.0 header `mindone_wsys_cmd.h` with only the interface
+definitions it needs, replacing `wsys_cmd_handler_fw.h`.
 
 ## Comments
 
-Comments explain why the code differs from the vendor original, because that difference is
-usually the whole point of the file. English only.
+Do not add explanatory comments to code. Keep license headers and inherited upstream
+comments; put reasoning and evidence in commit messages or documentation.
 
 ## Gates
 
 | Tool | Checks |
 |---|---|
-| `mindone_abi` (Kleaf target) | every symbol in `gki/aarch64/symbols/mindone` against `gki/aarch64/abi.stg` on every build — this is what gates the shipped set today |
-| `kocheck.py` | the same class of check (vermagic, `module_layout` CRC, per-symbol CRC and provider) against a `Module.symvers`, for local verification outside Kleaf |
+| Google symbol-list gate (candidate tooling) | compiled external imports against Google's `gki/aarch64/symbols/*` lists, after resolving module-to-module exports; no private mindone list |
+| `modcheck` (candidate tooling) | ABI CRCs, symbol providers, built-in collisions and load-order checks against the exact set's kernel metadata |
+| `kocheck.py` | vermagic, `module_layout` CRC, per-symbol CRC and provider against a `Module.symvers`, for local verification outside Kleaf |
 | `tree-lint.py` | source hygiene: no foreign device names or paths in published code, no Cyrillic, comment length |
 | `extpathcheck.py` | no driver gains a new source path outside this repository (current debt: 0) |

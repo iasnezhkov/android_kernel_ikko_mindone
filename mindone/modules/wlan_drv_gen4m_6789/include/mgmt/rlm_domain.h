@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: GPL-2.0 OR BSD-3-Clause */
 /******************************************************************************
  *
  * This file is provided under a dual license.  When you use or
@@ -71,7 +72,7 @@
  *  E X T E R N A L   R E F E R E N C E S
  *******************************************************************************
  */
- #include "wsys_cmd_handler_fw.h"
+ #include "mindone_wsys_cmd.h"
 
 /*******************************************************************************
  *   C O N S T A N T S
@@ -867,7 +868,7 @@ struct TX_PWR_CTRL_ELEMENT {
 #if CFG_SUPPORT_DYNAMIC_PWR_LIMIT_ANT_TAG
 	struct TX_PWR_CTRL_ANT_SETTING aiPwrAnt[POWER_ANT_TAG_NUM];
 #endif
-	struct TX_PWR_CTRL_CHANNEL_SETTING rChlSettingList[1];
+	struct TX_PWR_CTRL_CHANNEL_SETTING rChlSettingList[];
 	/* always keep it the last one. */
 };
 

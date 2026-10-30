@@ -1,8 +1,4 @@
-// SPDX-License-Identifier: GPL-2.0
-/*
- * Copyright (C) 2021 MediaTek Inc.
- */
-
+/* SPDX-License-Identifier: GPL-2.0 */
 #undef TRACE_SYSTEM
 #define TRACE_SYSTEM gpu_hardstop
 
@@ -46,14 +42,12 @@ TRACE_EVENT(gpu_hardstop,
 		__entry->stack_volt == 0, __entry->stack_vsram == 0
 	)
 );
-#endif /* _TRACE_EVENT_GPU_HARDSTOP_H */
+#endif
 
 #undef TRACE_INCLUDE_PATH
 #define TRACE_INCLUDE_PATH .
 
 #undef TRACE_INCLUDE_FILE
-/*
- * TRACE_INCLUDE_FILE is not needed if the filename and TRACE_SYSTEM are equal
- */
+
 #define TRACE_INCLUDE_FILE gpu_hardstop
 #include <trace/define_trace.h>

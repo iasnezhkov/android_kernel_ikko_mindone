@@ -351,13 +351,13 @@ static void __init lpm_plat_bootmode_check_init(void)
 	else {
 		tag = (struct tag_bootmode *)of_get_property(boot_node,
 							     "atag,boot", NULL);
-		if (!tag)
+		if (!tag) {
 			pr_info("%s: failed to get atag,boot\n", __func__);
-		else {
-			pr_info("%s: size:0x%x tag:0x%x bootmode:0x%x boottype:0x%x\n",
-			       __func__, tag->size, tag->tag,
-			       tag->bootmode, tag->boottype);
+			return;
 		}
+		pr_info("%s: size:0x%x tag:0x%x bootmode:0x%x boottype:0x%x\n",
+		       __func__, tag->size, tag->tag,
+		       tag->bootmode, tag->boottype);
 		if (tag->bootmode == 8)
 			is_kpoc = true;
 		lpm_smc_cpu_pm(BOOTMODE_TO_CPU_PM, MT_LPM_SMC_ACT_SET, is_kpoc, 0);

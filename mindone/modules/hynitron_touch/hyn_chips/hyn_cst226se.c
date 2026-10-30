@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0
 #include "../hyn_core.h"
 #include "cst226se_fw.h"
 

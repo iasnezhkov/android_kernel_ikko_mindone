@@ -5362,13 +5362,13 @@ static int dpmaif_syssuspend(void)
 	return dpmaif_suspend(dpmaif_ctrl->hif_id);
 }
 
-static void dpmaif_sysresume(void)
+static int dpmaif_sysresume(void)
 {
 	if (dpmaif_ctrl->dpmaif_state != HIFDPMAIF_STATE_PWRON &&
 		dpmaif_ctrl->dpmaif_state != HIFDPMAIF_STATE_EXCEPTION)
-		return;
+		return 0;
 
-	dpmaif_resume(dpmaif_ctrl->hif_id);
+	return dpmaif_resume(dpmaif_ctrl->hif_id);
 }
 
 int ccci_dpmaif_suspend_noirq_v1(struct device *dev)
@@ -5390,6 +5390,7 @@ int ccci_dpmaif_suspend_noirq_v1(struct device *dev)
 int ccci_dpmaif_resume_noirq_v1(struct device *dev)
 {
 	struct arm_smccc_res res;
+	int ret;
 
 	g_resume_cnt++;
 
@@ -5407,11 +5408,11 @@ int ccci_dpmaif_resume_noirq_v1(struct device *dev)
 	if ((!res.a0) && (res.a1 == WAKE_SRC_HIF_DPMAIF))
 		arch_atomic_set(&dpmaif_ctrl->wakeup_src, 1);
 
-	dpmaif_sysresume();
+	ret = dpmaif_sysresume();
 
 	atomic_set(&dpmaif_ctrl->suspend_flag, 0);
 
-	return 0;
+	return ret;
 }
 
 int ccci_dpmaif_hif_init_v1(struct platform_device *pdev)

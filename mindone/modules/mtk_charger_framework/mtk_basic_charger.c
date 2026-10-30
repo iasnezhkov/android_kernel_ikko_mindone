@@ -156,6 +156,52 @@ static bool support_fast_charging(struct mtk_charger *info)
 	return ret;
 }
 
+static int usb_sdp_limit(struct mtk_charger *info)
+{
+	union power_supply_propval val;
+	int rp;
+
+	if (info->chr_type != POWER_SUPPLY_TYPE_USB ||
+	    info->usb_type != POWER_SUPPLY_USB_TYPE_SDP)
+		return -1;
+	if (info->pd_type != MTK_PD_CONNECT_NONE &&
+	    info->pd_type != MTK_PD_CONNECT_TYPEC_ONLY_SNK)
+		return -1;
+	if (info->pd_type == MTK_PD_CONNECT_TYPEC_ONLY_SNK) {
+		rp = adapter_dev_get_property(info->pd_adapter, TYPEC_RP_LEVEL);
+		if (rp == 1500 || rp == 3000)
+			return -1;
+	}
+	if (IS_ERR_OR_NULL(info->chg_psy) ||
+	    power_supply_get_property(info->chg_psy,
+			POWER_SUPPLY_PROP_INPUT_CURRENT_LIMIT, &val))
+		return 100000;
+	return clamp(val.intval, 0, 500000);
+}
+
+void mtk_usb_sdp_update(struct mtk_charger *info)
+{
+	u32 input;
+	int limit = usb_sdp_limit(info);
+	int ret;
+
+	if (limit < 0) {
+		if (!info->usb_input_suspended)
+			return;
+		limit = 100000;
+	} else if (!info->usb_input_suspended && limit >= 100000) {
+		ret = charger_dev_get_input_current(info->chg1_dev, &input);
+		if (!ret && input <= limit)
+			return;
+	}
+	ret = charger_dev_set_input_current(info->chg1_dev, limit);
+	if (ret) {
+		chr_err("%s: input limit failed: %d\n", __func__, ret);
+		return;
+	}
+	info->usb_input_suspended = limit < 100000;
+}
+
 static bool select_charging_current_limit(struct mtk_charger *info,
 	struct chg_limit_setting *setting)
 {
@@ -163,6 +209,7 @@ static bool select_charging_current_limit(struct mtk_charger *info,
 	bool is_basic = false;
 	u32 ichg1_min = 0, aicr1_min = 0;
 	int ret;
+	int usb_limit = usb_sdp_limit(info);
 	// drv add by liuruiqian for temp limit current,20240731 start
 	int battery_ntc;
 	union power_supply_propval prop;
@@ -250,12 +297,13 @@ static bool select_charging_current_limit(struct mtk_charger *info,
 		is_basic = true;
 	}
 
-	if (support_fast_charging(info))
+	if (usb_limit < 0 && support_fast_charging(info))
 		is_basic = false;
 	else {
 		is_basic = true;
 		/* AICL */
-		if (!info->disable_aicl && pdata->input_current_limit_by_aicl == -1)
+		if (usb_limit < 0 && !info->disable_aicl &&
+		    pdata->input_current_limit_by_aicl == -1)
 			charger_dev_run_aicl(info->chg1_dev,
 				&pdata->input_current_limit_by_aicl);
 		if (info->enable_dynamic_mivr) {
@@ -291,17 +339,19 @@ static bool select_charging_current_limit(struct mtk_charger *info,
 			&& info->chr_type == POWER_SUPPLY_TYPE_USB)
 			chr_debug("USBIF & STAND_HOST skip current check\n");
 		else {
-				if (info->sw_jeita.sm == TEMP_T0_TO_T1) {
-					pdata->input_current_limit = 500000;
-					pdata->charging_current_limit = 500000;//prize start
-				}
-				else if (info->sw_jeita.sm == TEMP_T1_TO_T2) {
-					pdata->input_current_limit = 1320000;
-					pdata->charging_current_limit = 1320000;
-				}
-				else if (info->sw_jeita.sm == TEMP_T3_TO_T4) {
-					pdata->input_current_limit = 1500000;
-					pdata->charging_current_limit = 1500000;
+				int jeita_limit = -1;
+
+				if (info->sw_jeita.sm == TEMP_T0_TO_T1)
+					jeita_limit = 500000;
+				else if (info->sw_jeita.sm == TEMP_T1_TO_T2)
+					jeita_limit = 1320000;
+				else if (info->sw_jeita.sm == TEMP_T3_TO_T4)
+					jeita_limit = 1500000;
+				if (jeita_limit > 0) {
+					pdata->input_current_limit =
+						min(pdata->input_current_limit, jeita_limit);
+					pdata->charging_current_limit =
+						min(pdata->charging_current_limit, jeita_limit);
 				}
 			}
 
@@ -422,6 +472,15 @@ static bool select_charging_current_limit(struct mtk_charger *info,
 // drv mod by liuruiqian for battery_ntc charge limit 20240726 start
 
 done:
+	if (usb_limit >= 0) {
+		pdata->input_current_limit =
+			min(pdata->input_current_limit, usb_limit);
+		pdata->charging_current_limit =
+			min(pdata->charging_current_limit, usb_limit);
+		setting->input_current_limit1 = pdata->input_current_limit;
+		setting->charging_current_limit1 = pdata->charging_current_limit;
+		is_basic = true;
+	}
 
 	ret = charger_dev_get_min_charging_current(info->chg1_dev, &ichg1_min);
 	if (ret != -EOPNOTSUPP && pdata->charging_current_limit < ichg1_min) {
@@ -632,7 +691,7 @@ static int do_algorithm(struct mtk_charger *info)
 static int enable_charging(struct mtk_charger *info,
 						bool en)
 {
-	int i;
+	int i, ret, first_error = 0;
 	struct chg_alg_device *alg;
 
 
@@ -643,16 +702,18 @@ static int enable_charging(struct mtk_charger *info,
 			alg = info->alg[i];
 			if (alg == NULL)
 				continue;
-			chg_alg_stop_algo(alg);
+			ret = chg_alg_stop_algo(alg);
+			if (ret && !first_error)
+				first_error = ret;
 		}
-		charger_dev_enable(info->chg1_dev, false);
-		charger_dev_do_event(info->chg1_dev, EVENT_DISCHARGE, 0);
-	} else {
-		charger_dev_enable(info->chg1_dev, true);
-		charger_dev_do_event(info->chg1_dev, EVENT_RECHARGE, 0);
 	}
 
-	return 0;
+	ret = charger_dev_enable(info->chg1_dev, en);
+	if (ret)
+		return first_error ? first_error : ret;
+	ret = charger_dev_do_event(info->chg1_dev,
+			en ? EVENT_RECHARGE : EVENT_DISCHARGE, 0);
+	return first_error ? first_error : ret;
 }
 
 static int charger_dev_event(struct notifier_block *nb, unsigned long event,
@@ -754,7 +815,7 @@ static int dvchg2_dev_event(struct notifier_block *nb, unsigned long event,
 			    void *data)
 {
 	struct mtk_charger *info =
-		container_of(nb, struct mtk_charger, dvchg1_nb);
+		container_of(nb, struct mtk_charger, dvchg2_nb);
 	int alg_evt = to_alg_notify_evt(event);
 
 	chr_info("%s %ld", __func__, event);

@@ -1298,12 +1298,16 @@ static int rt1711_get_message(struct tcpc_device *tcpc, uint32_t *payload,
 		if (rv < 0)
 			break;
 		now = rt1711_i2c_read8(tcpc, TCPC_V10_REG_RX_BYTE_CNT);
-		if (now < 0)
+		if (now < 0) {
+			rv = now;
 			break;
+		}
 		cur_cnt = now;
 		if(cur_cnt >3)
 			cur_cnt -=3;
     }while(cur_cnt != cnt && ++tries < 5);
+	if (rv >= 0 && tries >= 5)
+		rv = -EAGAIN;
 //prize add by lipengpeng 20220729 end 	 
 	/* Read complete, clear RX status alert bit */
 	tcpci_alert_status_clear(tcpc, alert_rx);

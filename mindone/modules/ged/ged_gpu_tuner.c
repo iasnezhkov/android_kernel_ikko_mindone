@@ -2,7 +2,6 @@
 /*
  * Copyright (c) 2019 MediaTek Inc.
  */
-
 #include "ged_gpu_tuner.h"
 #include "ged_base.h"
 #include "ged_log.h"
@@ -144,7 +143,6 @@ static struct GED_GPU_TUNER_ITEM *_ged_gpu_tuner_find_item_by_package_name(
 		return NULL;
 }
 
-//-----------------------------------------------------------------------------
 static ssize_t dump_status_show(struct kobject *kobj,
 		struct kobj_attribute *attr,
 		char *buf)
@@ -183,17 +181,12 @@ static ssize_t dump_status_show(struct kobject *kobj,
 }
 
 static KOBJ_ATTR_RO(dump_status);
-//-----------------------------------------------------------------------------
+
 static ssize_t custom_hint_set_store(struct kobject *kobj,
 		struct kobj_attribute *attr,
 		const char *buf, size_t count)
 {
 #define NUM_TOKEN 3
-	/*
-	 *  This proc node accept only: [PACKAGE NAME][CMD][VALUE]
-	 *  for ex: "packagename anisotropic_disable 1"
-	 *
-	 */
 
 	char acBuffer[GED_SYSFS_MAX_BUFF_SIZE] = {0};
 	int index[NUM_TOKEN] = {0};
@@ -288,7 +281,7 @@ static ssize_t custom_hint_set_show(struct kobject *kobj,
 }
 
 static KOBJ_ATTR_RW(custom_hint_set);
-//-----------------------------------------------------------------------------
+
 static ssize_t debug_store(struct kobject *kobj, struct kobj_attribute *attr,
 		const char *buf, size_t count)
 {
@@ -327,7 +320,6 @@ static ssize_t debug_show(struct kobject *kobj, struct kobj_attribute *attr,
 }
 
 static KOBJ_ATTR_RW(debug);
-//-----------------------------------------------------------------------------
 
 GED_ERROR ged_gpu_get_stauts_by_packagename(
 		char *packagename,
@@ -420,7 +412,6 @@ GED_ERROR ged_gpu_tuner_hint_set(
 		item->status.feature |= gpu_tuner_status.status.feature;
 		item->status.value |= eFeature;
 		item->status.value |= gpu_tuner_status.status.feature;
-
 
 		if (find == false) {
 			INIT_LIST_HEAD(&item->List);

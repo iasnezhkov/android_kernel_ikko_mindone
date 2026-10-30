@@ -297,7 +297,7 @@ static void soc_handler(struct work_struct *work)
 	if (ret)
 		return;
 	temp = val.intval / 10;
-	if (soc > 100 || soc <= 0) {
+	if (soc > 100 || soc < 0) {
 		pr_info("%s:%d return\n", __func__, __LINE__);
 		return;
 	}

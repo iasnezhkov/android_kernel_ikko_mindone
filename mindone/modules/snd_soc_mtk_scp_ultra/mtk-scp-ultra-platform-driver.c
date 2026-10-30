@@ -70,6 +70,16 @@ static int usnd_scp_recover_event(struct notifier_block *this,
 				  unsigned long event,
 				  void *ptr)
 {
+	struct mtk_base_scp_ultra *scp_ultra;
+	struct mtk_base_afe *afe;
+	const struct mtk_base_irq_data *irq_data_dl;
+	const struct mtk_base_irq_data *irq_data_ul;
+	int memif_dl_id;
+	int memif_ul_id;
+	int irq_id_dl;
+	int irq_id_ul;
+	int ret;
+
 	switch (event) {
 	case SCP_EVENT_READY: {
 		pr_info("%s(), SCP_EVENT_READY\n", __func__);
@@ -79,6 +89,47 @@ static int usnd_scp_recover_event(struct notifier_block *this,
 	case SCP_EVENT_STOP:
 		ultra_SetScpRecoverStatus(true);
 		pr_info("%s(), SCP_EVENT_STOP\n", __func__);
+		scp_ultra = get_scp_ultra_base();
+		if (!scp_ultra || scp_ultra->usnd_state != SCP_ULTRA_STATE_START)
+			break;
+		afe = get_afe_base();
+		if (!afe || !afe->dev || !afe->regmap ||
+		    !afe->memif || !afe->irqs)
+			break;
+		memif_dl_id = scp_ultra->ultra_mem.ultra_dl_memif_id;
+		memif_ul_id = scp_ultra->ultra_mem.ultra_ul_memif_id;
+		if (memif_dl_id < 0 || memif_dl_id >= afe->memif_size ||
+		    memif_ul_id < 0 || memif_ul_id >= afe->memif_size)
+			break;
+		if (!afe->memif[memif_dl_id].data ||
+		    !afe->memif[memif_ul_id].data)
+			break;
+		irq_id_dl = afe->memif[memif_dl_id].irq_usage;
+		irq_id_ul = afe->memif[memif_ul_id].irq_usage;
+		if (irq_id_dl < 0 || irq_id_dl >= afe->irqs_size ||
+		    irq_id_ul < 0 || irq_id_ul >= afe->irqs_size)
+			break;
+		irq_data_dl = afe->irqs[irq_id_dl].irq_data;
+		irq_data_ul = afe->irqs[irq_id_ul].irq_data;
+		if (!irq_data_dl || !irq_data_ul)
+			break;
+		ret = pm_runtime_get_sync(afe->dev);
+		if (ret < 0) {
+			pm_runtime_put_noidle(afe->dev);
+			pr_info("%s() AFE runtime resume failed: %d\n", __func__, ret);
+			break;
+		}
+		ultra_memif_set_disable_hw_sema(afe, memif_dl_id);
+		ultra_memif_set_disable_hw_sema(afe, memif_ul_id);
+		ultra_irq_set_disable_hw_sema(afe, irq_data_dl, memif_dl_id);
+		ultra_irq_set_disable_hw_sema(afe, irq_data_ul, memif_ul_id);
+		regmap_write(afe->regmap, irq_data_dl->irq_clr_reg,
+			     1 << irq_data_dl->irq_clr_shift);
+		regmap_write(afe->regmap, irq_data_ul->irq_clr_reg,
+			     1 << irq_data_ul->irq_clr_shift);
+		set_afe_dl_irq_target(false);
+		set_afe_ul_irq_target(false);
+		pm_runtime_put(afe->dev);
 		break;
 	}
 	return NOTIFY_DONE;
@@ -353,13 +404,17 @@ static int mtk_scp_ultra_engine_state_set(struct snd_kcontrol *kcontrol,
 		afe->memif[scp_ultra_memif_dl_id].scp_ultra_enable = false;
 		afe->memif[scp_ultra_memif_ul_id].scp_ultra_enable = false;
 
-		ultra_ipi_send(AUDIO_TASK_USND_MSG_ID_OFF,
-			       false,
-			       0,
-			       NULL,
-			       ULTRA_IPI_NEED_ACK);
+		ret_val = ultra_ipi_send(AUDIO_TASK_USND_MSG_ID_OFF,
+					false,
+					0,
+					NULL,
+					ULTRA_IPI_NEED_ACK);
 		scp_deregister_feature(ULTRA_FEATURE_ID);
 		aud_wake_unlock(ultra_suspend_lock);
+		if (ret_val == 0) {
+			pr_info("%s() set state off failed\n", __func__);
+			return -1;
+		}
 		return 0;
 	case SCP_ULTRA_STATE_START:
 		pm_runtime_get_sync(afe->dev);

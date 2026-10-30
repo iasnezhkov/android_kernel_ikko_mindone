@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0 OR BSD-3-Clause
 /*******************************************************************************
  *
  * This file is provided under a dual license.  When you use or
@@ -203,47 +204,68 @@ static int netdev_event(struct notifier_block *nb,
 
 }
 #endif
-#if 0				/* CFG_SUPPORT_PASSPOINT */
+#if CFG_ENABLE_NET_DEV_NOTIFY && IS_ENABLED(CONFIG_IPV6)
+static void wlan_update_net_address(struct work_struct *work);
+static DECLARE_DELAYED_WORK(net_address_work, wlan_update_net_address);
+static DEFINE_SPINLOCK(net_address_lock);
+static bool net_address_stopping = true;
+#endif
+
+void wlanScheduleNetAddrUpdate(unsigned long delay)
+{
+#if CFG_ENABLE_NET_DEV_NOTIFY && IS_ENABLED(CONFIG_IPV6)
+	unsigned long flags;
+
+	spin_lock_irqsave(&net_address_lock, flags);
+	if (!net_address_stopping)
+		mod_delayed_work(system_wq, &net_address_work, delay);
+	spin_unlock_irqrestore(&net_address_lock, flags);
+#endif
+}
+
+#if CFG_ENABLE_NET_DEV_NOTIFY && IS_ENABLED(CONFIG_IPV6)
+static void wlan_update_net_address(struct work_struct *work)
+{
+	struct GLUE_INFO *prGlueInfo;
+	struct net_device *prDev;
+	uint32_t i;
+
+	if (READ_ONCE(net_address_stopping))
+		return;
+	if (!rtnl_trylock()) {
+		wlanScheduleNetAddrUpdate(HZ);
+		return;
+	}
+	prGlueInfo = wlanGetGlueInfo();
+	if (READ_ONCE(net_address_stopping) || !prGlueInfo ||
+	    !READ_ONCE(prGlueInfo->u4ReadyFlag) ||
+	    !READ_ONCE(prGlueInfo->fgIsInSuspendMode))
+		goto out;
+
+	for (i = 0; i < BSS_DEFAULT_NUM; i++) {
+		prDev = wlanGetNetDev(prGlueInfo, i);
+		if (prDev && prDev->reg_state == NETREG_REGISTERED)
+			kalSetNetAddressFromInterface(prGlueInfo, prDev, TRUE);
+	}
+out:
+	rtnl_unlock();
+}
+
 static int net6dev_event(struct notifier_block *nb,
 			 unsigned long notification, void *ptr)
 {
-	struct inet6_ifaddr *ifa = (struct inet6_ifaddr *)ptr;
+	struct inet6_ifaddr *ifa = ptr;
 	struct net_device *prDev = ifa->idev->dev;
-	struct GLUE_INFO *prGlueInfo = NULL;
 
-	if (prDev == NULL) {
-		DBGLOG(REQ, INFO, "net6dev_event: device is empty.\n");
+	if (notification != NETDEV_UP && notification != NETDEV_DOWN)
 		return NOTIFY_DONE;
-	}
-
-	if ((strncmp(prDev->name, "p2p", 3) != 0)
-	    && (strncmp(prDev->name, "wlan", 4) != 0)) {
-		DBGLOG(REQ, INFO, "net6dev_event: xxx\n");
-		return NOTIFY_DONE;
-	}
-
-	if (strncmp(prDev->name, "p2p", 3) == 0) {
-		/* because we store the address of prGlueInfo in p2p's private
-		 * date of net device
-		 */
-		/* *((P_GLUE_INFO_T *) netdev_priv(
-		 *        prGlueInfo->prP2PInfo[0]->prDevHandler)) = prGlueInfo;
-		 */
-		prGlueInfo = *((struct GLUE_INFO **) netdev_priv(prDev));
-	} else {		/* wlan0 */
-		prGlueInfo = (struct GLUE_INFO *) netdev_priv(prDev);
-	}
-
-	if (prGlueInfo == NULL) {
-		DBGLOG(REQ, INFO, "netdev_event: prGlueInfo is empty.\n");
-		return NOTIFY_DONE;
-	}
-	/* printk(KERN_INFO "[net6dev_event] IPV6_DAD is unlock now!!\n"); */
-	prGlueInfo->fgIs6Dad = FALSE;
+	if (prDev && (!strncmp(prDev->name, "p2p", 3) ||
+		      !strncmp(prDev->name, "wlan", 4)))
+		wlanScheduleNetAddrUpdate(0);
 
 	return NOTIFY_DONE;
 }
-#endif /* CFG_SUPPORT_PASSPOINT */
+#endif
 
 #if 1       /* unused  */
 static struct notifier_block inetaddr_notifier = {
@@ -251,20 +273,26 @@ static struct notifier_block inetaddr_notifier = {
 };
 #endif
 
-#if 0				/* CFG_SUPPORT_PASSPOINT */
+#if CFG_ENABLE_NET_DEV_NOTIFY && IS_ENABLED(CONFIG_IPV6)
 static struct notifier_block inet6addr_notifier = {
 	.notifier_call = net6dev_event,
 };
-#endif /* CFG_SUPPORT_PASSPOINT */
+#endif
 
 void wlanRegisterInetAddrNotifier(void)
 {
 #if CFG_ENABLE_NET_DEV_NOTIFY
+#if IS_ENABLED(CONFIG_IPV6)
+	unsigned long flags;
+#endif
 
 	register_inetaddr_notifier(&inetaddr_notifier);
-#if 0				/* CFG_SUPPORT_PASSPOINT */
+#if IS_ENABLED(CONFIG_IPV6)
+	spin_lock_irqsave(&net_address_lock, flags);
+	WRITE_ONCE(net_address_stopping, false);
+	spin_unlock_irqrestore(&net_address_lock, flags);
 	register_inet6addr_notifier(&inet6addr_notifier);
-#endif /* CFG_SUPPORT_PASSPOINT */
+#endif
 
 #endif
 }
@@ -272,11 +300,17 @@ void wlanRegisterInetAddrNotifier(void)
 void wlanUnregisterInetAddrNotifier(void)
 {
 #if CFG_ENABLE_NET_DEV_NOTIFY
+#if IS_ENABLED(CONFIG_IPV6)
+	unsigned long flags;
+
+	spin_lock_irqsave(&net_address_lock, flags);
+	WRITE_ONCE(net_address_stopping, true);
+	spin_unlock_irqrestore(&net_address_lock, flags);
+	unregister_inet6addr_notifier(&inet6addr_notifier);
+	cancel_delayed_work_sync(&net_address_work);
+#endif
 
 	unregister_inetaddr_notifier(&inetaddr_notifier);
-#if 0				/* CFG_SUPPORT_PASSPOINT */
-	unregister_inetaddr_notifier(&inet6addr_notifier);
-#endif /* CFG_SUPPORT_PASSPOINT */
 
 #endif
 }

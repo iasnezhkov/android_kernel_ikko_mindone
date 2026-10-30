@@ -283,7 +283,9 @@ static ssize_t dcm_state_store(struct kobject *kobj,
 			dcm_dump_state(mask);
 			common_dcm_ops->dump_regs();
 		} else if (!strcmp(cmd, "debug")) {
-			if (mask == 0) {
+			if (!common_dcm_ops->set_debug_mode) {
+				dcm_pr_info("dcm debug mode is not supported\n");
+			} else if (mask == 0) {
 				dcm_debug = 0;
 				common_dcm_ops->set_debug_mode(dcm_debug);
 			} else if (mask == 1) {
@@ -338,8 +340,8 @@ int mt_dcm_common_init(void)
 	int default_state;
 	int err = 0;
 	/*dcm_pr_info("[%s]: dcm common init\n", __func__);*/
-	if (common_dcm_ops == NULL) {
-		dcm_pr_notice("[%s] dcm common ops null\n",
+	if (common_dcm_ops == NULL || common_dcm_array == NULL) {
+		dcm_pr_notice("[%s] dcm common ops or array is null\n",
 					__func__);
 		return -1;
 	}

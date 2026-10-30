@@ -1876,7 +1876,6 @@ static int dma_heap_oom_notify(struct notifier_block *nb,
 	pr_info("%s in\n", __func__);
 
 	if (oom_time - last_oom_time < OOM_DUMP_INTERVAL) {
-		last_oom_time = oom_time;
 		pr_info("%s: less than %dms since last dump, return\n",
 			__func__, OOM_DUMP_INTERVAL);
 		return 0;
@@ -1899,15 +1898,17 @@ static int __init mtk_dma_heap_debug(void)
 
 	pr_info("GM-T %s\n", __func__);
 
-	oom_nb_status = register_oom_notifier(&dma_heap_oom_nb);
-	if (oom_nb_status)
-		pr_info("register_oom_notifier failed:%d\n", oom_nb_status);
-
 	ret = dma_buf_init_procfs();
 	if (ret) {
 		pr_info("%s fail\n", __func__);
+		proc_remove(dma_heap_proc_root);
+		dma_heap_proc_root = NULL;
 		return ret;
 	}
+
+	oom_nb_status = register_oom_notifier(&dma_heap_oom_nb);
+	if (oom_nb_status)
+		pr_info("register_oom_notifier failed:%d\n", oom_nb_status);
 
 #if IS_ENABLED(CONFIG_MTK_HANG_DETECT) && \
 		IS_ENABLED(CONFIG_MTK_HANG_DETECT_DB) && \

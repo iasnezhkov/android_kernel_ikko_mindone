@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-2.0
+// SPDX-FileCopyrightText: 2026 The LineageOS Project
 static void setup(void)
 {
     assert(MD_THROTTLING_COOLER_LV_COMMAND == TMC_CTRL_CMD_COOLER_LV);

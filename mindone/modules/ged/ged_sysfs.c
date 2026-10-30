@@ -2,7 +2,6 @@
 /*
  * Copyright (C) 2020 MediaTek Inc.
  */
-
 #include "ged_sysfs.h"
 #include "ged_base.h"
 
@@ -29,7 +28,7 @@ GED_ERROR ged_sysfs_create_dir(struct kobject *parent,
 
 	return GED_OK;
 }
-// --------------------------------------------------
+
 void ged_sysfs_remove_dir(struct kobject **ppsKobj)
 {
 	if (ppsKobj == NULL)
@@ -37,7 +36,7 @@ void ged_sysfs_remove_dir(struct kobject **ppsKobj)
 	kobject_put(*ppsKobj);
 	*ppsKobj = NULL;
 }
-// --------------------------------------------------
+
 GED_ERROR ged_sysfs_create_file(struct kobject *parent,
 		struct kobj_attribute *kobj_attr)
 {
@@ -52,7 +51,7 @@ GED_ERROR ged_sysfs_create_file(struct kobject *parent,
 
 	return GED_OK;
 }
-// --------------------------------------------------
+
 void ged_sysfs_remove_file(struct kobject *parent,
 		struct kobj_attribute *kobj_attr)
 {
@@ -61,7 +60,7 @@ void ged_sysfs_remove_file(struct kobject *parent,
 	parent = (parent != NULL) ? parent : ged_kobj;
 	sysfs_remove_file(parent, &(kobj_attr->attr));
 }
-// --------------------------------------------------
+
 GED_ERROR ged_sysfs_init(void)
 {
 	ged_kobj = kobject_create_and_add(GED_SYSFS_DIR_NAME,
@@ -74,7 +73,7 @@ GED_ERROR ged_sysfs_init(void)
 
 	return GED_OK;
 }
-// --------------------------------------------------
+
 void ged_sysfs_exit(void)
 {
 	kobject_put(ged_kobj);

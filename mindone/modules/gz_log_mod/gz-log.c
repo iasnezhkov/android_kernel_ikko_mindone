@@ -727,11 +727,13 @@ static int trusty_gz_send_ktime(struct platform_device *pdev)
 	uint64_t diff_all;
 	uint32_t diff_msb;
 	uint32_t diff_lsb;
+	uint64_t cnt_mhz;
 
+	cnt_mhz = div_u64(arch_timer_get_cntfrq(), 1000000);
 	current_ktime = sched_clock();
 	current_cnt = __arch_counter_get_cntvct();
 
-	diff_all = current_cnt - div_u64((13 * current_ktime), 1000);
+	diff_all = current_cnt - div_u64(cnt_mhz * current_ktime, 1000);
 	diff_msb = (diff_all >> 32);
 	diff_lsb = (diff_all & U32_MAX);
 
@@ -857,6 +859,8 @@ static int trusty_gz_log_probe(struct platform_device *pdev)
 	}
 #endif
 
+	init_waitqueue_head(&gls->gz_log_wq);
+	atomic_set(&gls->gz_log_event_count, 0);
 	gls->call_notifier.notifier_call = trusty_log_call_notify;
 	ret = trusty_call_notifier_register(gls->trusty_dev,
 					       &gls->call_notifier);
@@ -873,8 +877,6 @@ static int trusty_gz_log_probe(struct platform_device *pdev)
 		dev_info(&pdev->dev, "failed to register panic notifier\n");
 		goto error_panic_notifier;
 	}
-	init_waitqueue_head(&gls->gz_log_wq);
-	atomic_set(&gls->gz_log_event_count, 0);
 	atomic_set(&gls->readable, 1);
 	platform_set_drvdata(pdev, gls);
 

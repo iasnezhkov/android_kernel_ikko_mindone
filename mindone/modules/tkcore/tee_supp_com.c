@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0
 /*
  * Copyright (c) 2015-2018 TrustKernel Incorporated
  * All Rights Reserved.
@@ -24,7 +25,7 @@
 #include <linux/device.h>
 
 #include "tee_shm.h"
-#include "tee_core.h"
+#include "linux/tee_core.h"
 #include "tee_supp_com.h"
 
 enum teec_rpc_result tee_supp_cmd(struct tee *tee,

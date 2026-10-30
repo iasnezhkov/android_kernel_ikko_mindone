@@ -139,9 +139,9 @@ static int generic_open(struct inode *inode, struct file *file)
 		return ret;
 	inst_p = kmalloc(sizeof(struct tfa_debug_instance),
 		GFP_KERNEL);
-	if (IS_ERR(inst_p)) {
+	if (!inst_p) {
 		file->private_data = NULL;
-		pr_notice("Fail to kmalloc:%ld\n", PTR_ERR(inst_p));
+		pr_notice("Fail to kmalloc\n");
 		return -ENOMEM;
 	}
 	init_waitqueue_head(&inst_p->waitq);
@@ -288,8 +288,10 @@ static ssize_t runtime_log_read(struct file *file,
 		if ((file->f_flags & O_NONBLOCK) &&
 			is_runtime_empty_for_read(file))
 			return -EAGAIN;
-		wait_event_ret = wait_event_timeout(inst_p->waitq,
+		wait_event_ret = wait_event_interruptible_timeout(inst_p->waitq,
 			!is_runtime_empty_for_read(file), HZ);
+		if (wait_event_ret < 0)
+			return wait_event_ret;
 		if (wait_event_ret != 0)
 			break;
 		if (atomic_read(&info.release_log))

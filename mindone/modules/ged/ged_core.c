@@ -1,8 +1,4 @@
 // SPDX-License-Identifier: GPL-2.0
-/*
- * Copyright (c) 2019 MediaTek Inc.
- */
-
 #include <linux/kernel.h>
 #include <linux/module.h>
 #include "ged.h"
@@ -10,7 +6,6 @@
 
 void (*ged_vsync_notifier_fp)(void);
 EXPORT_SYMBOL(ged_vsync_notifier_fp);
-
 
 void ged_notification(GED_NOTIFICATION_TYPE eType)
 {
@@ -45,13 +40,9 @@ unsigned int ged_get_cur_fps(void)
 }
 
 #ifndef MTK_GPU_DVFS
-/*
- * Below code segment are fake gpufreq API set
- */
+
 #include "ged_gpufreq.h"
-/****************************
- * MTK GPUFREQ API
- ****************************/
+
 unsigned int mt_gpufreq_get_cur_freq_index(void)
 {
 	return 0;

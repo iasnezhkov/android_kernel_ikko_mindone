@@ -1,3 +1,5 @@
+<!-- SPDX-License-Identifier: GPL-2.0 -->
+<!-- SPDX-FileCopyrightText: 2026 The LineageOS Project -->
 # Out-of-tree drivers
 
 339 driver trees, 5 638 sources, 290 modules in the device's shipped set.

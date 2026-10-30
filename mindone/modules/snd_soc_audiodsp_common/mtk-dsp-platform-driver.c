@@ -535,6 +535,7 @@ static bool mtk_dsp_check_exception(struct mtk_base_dsp *dsp,
 	if (ipi_msg && ipi_msg->param2 == ADSP_DL_CONSUME_RESET) {
 		pr_info("%s() %s adsp reset\n", __func__, task_name);
 		RingBuf_Reset(&dsp->dsp_mem[id].ring_buf);
+		dsp->dsp_mem[id].underflowed = true;
 		snd_pcm_period_elapsed(dsp->dsp_mem[id].substream);
 		return true;
 	}
@@ -962,6 +963,7 @@ static int mtk_dsp_pcm_hw_prepare(struct snd_soc_component *component,
 	RingBuf_Reset(&dsp_mem->ring_buf);
 	RingBuf_Bridge_Reset(&adsp_buf->aud_buffer.buf_bridge);
 	RingBuf_Bridge_Reset(&dsp_mem->adsp_work_buf.aud_buffer.buf_bridge);
+	dsp_mem->underflowed = 0;
 
 	ret = set_audiobuffer_threshold(adsp_buf, substream);
 	if (ret < 0)
@@ -1067,6 +1069,9 @@ static int mtk_dsp_pcm_copy_dl(struct snd_pcm_substream *substream,
 			   &dsp_mem->adsp_buf.aud_buffer.buf_bridge);
 #endif
 
+	if (dsp_mem->underflowed)
+		return -EPIPE;
+
 	if (substream->runtime->status->state == SNDRV_PCM_STATE_XRUN) {
 		pr_info_ratelimited("%s() %s state[%d]\n",
 				    __func__, task_name,
@@ -1139,6 +1144,7 @@ static int mtk_dsp_pcm_copy_ul(struct snd_pcm_substream *substream,
 	int id = cpu_dai->id;
 	struct RingBuf *ringbuf = &(dsp_mem->ring_buf);
 	unsigned long flags = 0;
+	void *dsp_copy_buf = dsp_mem->dsp_copy_buf;
 	spinlock_t *ringbuf_lock = &dsp_mem->ringbuf_lock;
 
 #ifdef DEBUG_VERBOSE
@@ -1146,26 +1152,34 @@ static int mtk_dsp_pcm_copy_ul(struct snd_pcm_substream *substream,
 	dump_rbuf_bridge_s(__func__,
 			   &dsp_mem->adsp_buf.aud_buffer.buf_bridge);
 #endif
+	if (dsp_copy_buf == NULL)
+		return -ENOMEM;
+
 	Ringbuf_Check(&dsp_mem->ring_buf);
 	Ringbuf_Bridge_Check(
 			&dsp_mem->adsp_buf.aud_buffer.buf_bridge);
 
 	spin_lock_irqsave(ringbuf_lock, flags);
 	availsize = RingBuf_getDataCount(ringbuf);
-	spin_unlock_irqrestore(ringbuf_lock, flags);
 
 	if (availsize < copy_size) {
 		pr_info("%s fail copy_size = %d availsize = %d\n", __func__,
 			copy_size, RingBuf_getFreeSpace(ringbuf));
+		spin_unlock_irqrestore(ringbuf_lock, flags);
 		return -1;
 	}
 
 	/* get audio_buffer from ring buffer */
-	ringbuf_copyto_user_linear(buf, &dsp_mem->ring_buf, copy_size);
-	spin_lock_irqsave(ringbuf_lock, flags);
+	RingBuf_copyToLinear(dsp_copy_buf, &dsp_mem->ring_buf, copy_size);
 	sync_bridge_ringbuf_readidx(&dsp_mem->adsp_buf.aud_buffer.buf_bridge,
 				    &dsp_mem->ring_buf);
 	spin_unlock_irqrestore(ringbuf_lock, flags);
+
+	ret = copy_to_iter(dsp_copy_buf, copy_size, buf);
+	if (ret != copy_size) {
+		pr_info("%s copy_to_iter fail line %d\n", __func__, __LINE__);
+		return -1;
+	}
 
 	ipi_audio_buf = (void *)dsp_mem->msg_atod_share_buf.va_addr;
 	memcpy((void *)ipi_audio_buf, (void *)&dsp_mem->adsp_buf,

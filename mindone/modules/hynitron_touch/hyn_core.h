@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: GPL-2.0 */
 #ifndef HYNITRON_CORE_H
 #define HYNITRON_CORE_H
 
@@ -239,6 +240,18 @@ struct hyn_ts_data {
     u32 esd_last_value;
     enum work_mode work_mode;
 
+    bool stopping;
+    bool input_registered;
+    bool irq_registered;
+    bool notifier_registered;
+    bool gesture_registered;
+    bool proximity_initialized;
+    bool irq_gpio_requested;
+    bool reset_gpio_requested;
+    bool vdd_gpio_requested;
+    bool glove_registered;
+    struct kobject *prize_node;
+    struct kobject *smartcover_node;
     int power_is_on;
     atomic_t irq_is_disable;
     atomic_t hyn_irq_flg;
@@ -246,6 +259,8 @@ struct hyn_ts_data {
     struct mutex mutex_report;
     struct mutex mutex_bus;
     struct mutex mutex_fs;
+    struct mutex mutex_protocol;
+    struct mutex mutex_control;
     #if (HYN_WAKE_LOCK_EN==1)
     struct wake_lock tp_wakelock;
     #endif
@@ -269,6 +284,7 @@ struct hyn_ts_data {
     u8 *fw_updata_addr;
     int fw_updata_len;
     int fw_dump_state;
+    u8 *fw_dump_buffer;
     u8 fw_updata_process;
     u8 host_cmd_save[16];
     wait_queue_head_t wait_irq;
@@ -319,6 +335,9 @@ int hyn_write_data(struct hyn_ts_data *ts_data, u8 *buf, u8 reg_len, u16 len);
 int hyn_read_data(struct hyn_ts_data *ts_data,u8 *buf, u16 len);
 int hyn_wr_reg(struct hyn_ts_data *ts_data, u32 reg_addr, u8 reg_len, u8 *rbuf, u16 rlen);
 
+int hyn_protocol_begin(struct hyn_ts_data *ts_data);
+int hyn_protocol_try_begin(struct hyn_ts_data *ts_data);
+void hyn_protocol_end(struct hyn_ts_data *ts_data);
 void hyn_irq_set(struct hyn_ts_data *ts_data, u8 value);
 void hyn_esdcheck_switch(struct hyn_ts_data *ts_data, u8 enable);
 int copy_for_updata(struct hyn_ts_data *ts_data,u8 *buf,u32 offset,u16 len);

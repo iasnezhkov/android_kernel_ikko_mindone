@@ -18,20 +18,22 @@
 
 #include "ged_base.h"
 #include "ged_log.h"
-#ifdef GED_DEBUG_FS
+#if IS_ENABLED(CONFIG_DEBUG_FS)
 #include "ged_debugFS.h"
 #endif
 #include "ged_hashtable.h"
 #include "ged_sysfs.h"
 
-enum {
-	/* 0x00 - 0xff reserved for internal buffer type */
+#define CREATE_TRACE_POINTS
+#include "ged_tracepoint.h"
+#include "ged_eb.h"
 
-	/* rewrite the oldest log when buffer is full */
+enum {
+
 	GED_LOG_ATTR_RINGBUFFER     = 0x1,
-	/* stop logging when buffer is full */
+
 	GED_LOG_ATTR_QUEUEBUFFER    = 0x2,
-	/* increase buffersize when buffer is full */
+
 	GED_LOG_ATTR_AUTO_INCREASE  = 0x4,
 };
 
@@ -90,25 +92,18 @@ static struct GED_LOG_BUF_LIST gsGEDLogBufList = {
 	.sList_listen   = LIST_HEAD_INIT(gsGEDLogBufList.sList_listen),
 };
 
-#ifdef GED_DEBUG_FS
+#if IS_ENABLED(CONFIG_DEBUG_FS)
 static struct dentry *gpsGEDLogEntry;
 static struct dentry *gpsGEDLogBufsDir;
 #endif
 
 static GED_HASHTABLE_HANDLE ghHashTable;
 
-unsigned int ged_log_trace_enable;
-unsigned int ged_log_perf_trace_enable;
-unsigned int force_fence_timeout_dump_enable;
+static unsigned int ged_log_perf_trace_enable;
 
 static struct kobject *gpu_debug_kobj;
 static unsigned int gpu_debug_log_enable;
 
-//-----------------------------------------------------------------------------
-//
-//  GED Log Buf
-//
-//-----------------------------------------------------------------------------
 static struct GED_LOG_BUF *ged_log_buf_from_handle(GED_LOG_BUF_HANDLE hLogBuf)
 {
 	return ged_hashtable_find(ghHashTable, (unsigned long)hLogBuf);
@@ -127,19 +122,17 @@ GED_ERROR __ged_log_buf_vprint(struct GED_LOG_BUF *psGEDLogBuf,
 
 	spin_lock_irqsave(&psGEDLogBuf->sSpinLock, psGEDLogBuf->ulIRQFlags);
 
-	/* if OOM */
 	if (psGEDLogBuf->i32LineCurrent >= psGEDLogBuf->i32LineCount ||
 			psGEDLogBuf->i32BufferCurrent + 256
 			> psGEDLogBuf->i32BufferSize) {
 		if (attrs & GED_LOG_ATTR_RINGBUFFER) {
-			/* for ring buffer, we start over. */
+
 			psGEDLogBuf->i32LineCurrent = 0;
 			psGEDLogBuf->i32BufferCurrent = 0;
 		} else if (attrs & GED_LOG_ATTR_QUEUEBUFFER) {
 			if (attrs & GED_LOG_ATTR_AUTO_INCREASE) {
 				int newLineCount, newBufferSize;
 
-				/* incease min(25%, 1MB) */
 				if ((psGEDLogBuf->i32LineCount >> 2)
 					<= 1024 * 1024) {
 					newLineCount = psGEDLogBuf->i32LineCount
@@ -167,7 +160,7 @@ GED_ERROR __ged_log_buf_vprint(struct GED_LOG_BUF *psGEDLogBuf,
 				spin_lock_irqsave(&psGEDLogBuf->sSpinLock,
 					psGEDLogBuf->ulIRQFlags);
 			} else {
-				/* for queuebuffer only, we skip the log. */
+
 				spin_unlock_irqrestore(&psGEDLogBuf->sSpinLock,
 					psGEDLogBuf->ulIRQFlags);
 				return GED_ERROR_OOM;
@@ -181,27 +174,21 @@ GED_ERROR __ged_log_buf_vprint(struct GED_LOG_BUF *psGEDLogBuf,
 	curline->tattrs = 0;
 	curline->time = 0;
 
-	/* record the kernel time */
 	if (attrs & GED_LOG_ATTR_TIME) {
 		curline->tattrs = GED_LOG_ATTR_TIME;
 		curline->time = ged_get_time();
 	}
 
-	/* record the user time */
 	if (attrs & GED_LOG_ATTR_TIME_TPT) {
 		struct timespec64 time;
 		unsigned long local_time;
-		unsigned long long temp = 0;
-
 
 		ktime_get_real_ts64(&time);
 		local_time = (u32)(time.tv_sec - (sys_tz.tz_minuteswest * 60));
 
 		curline->tattrs = GED_LOG_ATTR_TIME_TPT;
 		curline->time = local_time;
-		temp = time.tv_nsec;
-		do_div(temp, 1000);
-		curline->time_usec = (unsigned int)temp;
+		curline->time_usec = (unsigned int)(time.tv_nsec / 1000);
 		curline->pid = current->tgid;
 		curline->tid = current->pid;
 	}
@@ -209,21 +196,19 @@ GED_ERROR __ged_log_buf_vprint(struct GED_LOG_BUF *psGEDLogBuf,
 	buf_n = psGEDLogBuf->i32BufferSize - psGEDLogBuf->i32BufferCurrent;
 	len = vsnprintf(psGEDLogBuf->pcBuffer + psGEDLogBuf->i32BufferCurrent,
 		buf_n, fmt, args);
-	// To avoid when pcBuffer[-x] == 10('\n') tampered with 0.
+
 	if (len <= 0) {
 		spin_unlock_irqrestore(&psGEDLogBuf->sSpinLock,
 			psGEDLogBuf->ulIRQFlags);
 		return GED_OK;
 	}
-	/* if 'len' >= 'buf_n', the resulting string is truncated.
-	 * let 'len' be a safe number
-	 */
+
 	if (len > buf_n)
 		len = buf_n;
 
 	if (psGEDLogBuf->pcBuffer[psGEDLogBuf->i32BufferCurrent + len - 1]
 		== '\n') {
-		/* remove tailing newline */
+
 		psGEDLogBuf->pcBuffer[psGEDLogBuf->i32BufferCurrent + len - 1] =
 			0;
 		len -= 1;
@@ -233,7 +218,7 @@ GED_ERROR __ged_log_buf_vprint(struct GED_LOG_BUF *psGEDLogBuf,
 
 	if (attrs & GED_LOG_ATTR_RINGBUFFER) {
 		int i;
-		int check = 10 + 1; /* we check the following 10 items. */
+		int check = 10 + 1;
 		int a = psGEDLogBuf->i32BufferCurrent;
 		int b = psGEDLogBuf->i32BufferCurrent + len + 2;
 
@@ -256,7 +241,6 @@ GED_ERROR __ged_log_buf_vprint(struct GED_LOG_BUF *psGEDLogBuf,
 		}
 	}
 
-	/* update current */
 	psGEDLogBuf->i32BufferCurrent += len + 2;
 	psGEDLogBuf->i32LineCurrent += 1;
 
@@ -289,7 +273,6 @@ static int __ged_log_buf_write(struct GED_LOG_BUF *psGEDLogBuf,
 
 	if (!psGEDLogBuf || (i32Count < 0))
 		return 0;
-
 
 	cnt = (i32Count >= 256) ? 255 : i32Count;
 
@@ -334,8 +317,7 @@ static int __ged_log_buf_check_get_early_list(GED_LOG_BUF_HANDLE hLogBuf,
 	return !!psFound;
 }
 
-//-----------------------------------------------------------------------------
-#ifdef GED_DEBUG_FS
+#if IS_ENABLED(CONFIG_DEBUG_FS)
 static ssize_t ged_log_buf_write_entry(const char __user *pszBuffer,
 	size_t uiCount, loff_t uiPosition, void *pvData)
 {
@@ -425,7 +407,7 @@ static int ged_log_buf_seq_show(struct seq_file *psSeqFile, void *pvData)
 		if (strncmp(psGEDLogBuf->acName, "PowerLog", 8) == 0)
 			ged_dump_fw();
 #endif
-#endif /* CONFIG_MTK_GPU_SUPPORT */
+#endif
 
 		spin_lock_irqsave(&psGEDLogBuf->sSpinLock,
 			psGEDLogBuf->ulIRQFlags);
@@ -472,8 +454,8 @@ static const struct seq_operations gsGEDLogBufReadOps = {
 	.next = ged_log_buf_seq_next,
 	.show = ged_log_buf_seq_show,
 };
-#endif /* GED_DEBUG_FS */
-//-----------------------------------------------------------------------------
+#endif
+
 GED_LOG_BUF_HANDLE ged_log_buf_alloc(
 		int i32MaxLineCount,
 		int i32MaxBufferSizeByte,
@@ -532,7 +514,6 @@ GED_LOG_BUF_HANDLE ged_log_buf_alloc(
 	psGEDLogBuf->acName[0] = '\0';
 	psGEDLogBuf->acNodeName[0] = '\0';
 
-	/* Init Line */
 	{
 		int i = 0;
 		for (i = 0; i < psGEDLogBuf->i32LineCount; ++i)
@@ -554,13 +535,12 @@ GED_LOG_BUF_HANDLE ged_log_buf_alloc(
 		}
 	}
 
-	// Add into the global list
 	INIT_LIST_HEAD(&psGEDLogBuf->sList);
 	write_lock_bh(&gsGEDLogBufList.sLock);
 	list_add(&psGEDLogBuf->sList, &gsGEDLogBufList.sList_buf);
 	write_unlock_bh(&gsGEDLogBufList.sLock);
 
-#ifdef GED_DEBUG_FS
+#if IS_ENABLED(CONFIG_DEBUG_FS)
 	if (pszNodeName) {
 		int err;
 		int cx;
@@ -594,7 +574,7 @@ GED_LOG_BUF_HANDLE ged_log_buf_alloc(
 			return (GED_LOG_BUF_HANDLE)0;
 		}
 	}
-#endif /* GED_DEBUG_FS */
+#endif
 
 	error = ged_hashtable_insert(ghHashTable, psGEDLogBuf,
 		&psGEDLogBuf->ulHashNodeID);
@@ -633,14 +613,12 @@ GED_ERROR ged_log_buf_resize(
 		|| (i32NewMaxBufferSizeByte <= 0))
 		return GED_ERROR_INVALID_PARAMS;
 
-
 	i32NewMemorySize =
 		i32NewMaxBufferSizeByte +
 		sizeof(struct GED_LOG_BUF_LINE) * i32NewMaxLineCount;
 	pNewMemory = ged_alloc(i32NewMemorySize);
 	if (pNewMemory == NULL)
 		return GED_ERROR_OOM;
-
 
 	spin_lock_irqsave(&psGEDLogBuf->sSpinLock, psGEDLogBuf->ulIRQFlags);
 
@@ -684,7 +662,7 @@ GED_ERROR ged_log_buf_ignore_lines(GED_LOG_BUF_HANDLE hLogBuf, int n)
 	if (psGEDLogBuf && n > 0) {
 		if (psGEDLogBuf->attrs & GED_LOG_ATTR_QUEUEBUFFER) {
 			if (n >= psGEDLogBuf->i32LineCurrent) {
-				/* reset all buffer */
+
 				ged_log_buf_reset(hLogBuf);
 			} else {
 				int i;
@@ -698,7 +676,6 @@ GED_ERROR ged_log_buf_ignore_lines(GED_LOG_BUF_HANDLE hLogBuf, int n)
 				buf_size = psGEDLogBuf->i32BufferCurrent
 					- buf_offset;
 
-				/* Move lines, update offset and current */
 				for (i = 0; n + i < psGEDLogBuf->i32LineCount;
 					++i) {
 					psGEDLogBuf->psLine[i] =
@@ -708,7 +685,6 @@ GED_ERROR ged_log_buf_ignore_lines(GED_LOG_BUF_HANDLE hLogBuf, int n)
 				}
 				psGEDLogBuf->i32LineCurrent -= n;
 
-				/* Move buffers and update current */
 				for (i = 0; i < buf_size; ++i)
 					psGEDLogBuf->pcBuffer[i] =
 					psGEDLogBuf->pcBuffer[buf_offset + i];
@@ -767,7 +743,6 @@ int ged_log_buf_get_early(const char *pszName,
 
 		write_lock_bh(&gsGEDLogBufList.sLock);
 
-		/* search again */
 		{
 			struct list_head *psListEntry;
 			struct list_head *psListEntryTemp, *psList;
@@ -792,7 +767,6 @@ int ged_log_buf_get_early(const char *pszName,
 			}
 		}
 
-		/* add to listen list */
 		psGEDLogListen =
 			(struct GED_LOG_LISTEN *)ged_alloc(
 				sizeof(struct GED_LOG_LISTEN));
@@ -819,7 +793,6 @@ exit_unlock:
 }
 EXPORT_SYMBOL(ged_log_buf_get_early);
 
-//-----------------------------------------------------------------------------
 void ged_log_buf_free(GED_LOG_BUF_HANDLE hLogBuf)
 {
 	struct GED_LOG_BUF *psGEDLogBuf = ged_log_buf_from_handle(hLogBuf);
@@ -831,7 +804,7 @@ void ged_log_buf_free(GED_LOG_BUF_HANDLE hLogBuf)
 		list_del(&psGEDLogBuf->sList);
 		write_unlock_bh(&gsGEDLogBufList.sLock);
 
-#ifdef GED_DEBUG_FS
+#if IS_ENABLED(CONFIG_DEBUG_FS)
 		if (psGEDLogBuf->psEntry)
 			ged_debugFS_remove_entry(psGEDLogBuf->psEntry);
 #endif
@@ -843,7 +816,7 @@ void ged_log_buf_free(GED_LOG_BUF_HANDLE hLogBuf)
 	}
 }
 EXPORT_SYMBOL(ged_log_buf_free);
-//-----------------------------------------------------------------------------
+
 GED_ERROR ged_log_buf_print(GED_LOG_BUF_HANDLE hLogBuf, const char *fmt, ...)
 {
 	va_list args;
@@ -854,6 +827,8 @@ GED_ERROR ged_log_buf_print(GED_LOG_BUF_HANDLE hLogBuf, const char *fmt, ...)
 		va_start(args, fmt);
 		err = __ged_log_buf_vprint(psGEDLogBuf,
 			fmt, args, psGEDLogBuf->attrs);
+		if (err != GED_OK)
+			GED_LOGD("@%s err:%d\n", __func__, err);
 		va_end(args);
 	}
 
@@ -869,19 +844,21 @@ GED_ERROR ged_log_buf_print2(GED_LOG_BUF_HANDLE hLogBuf,
 	struct GED_LOG_BUF *psGEDLogBuf = ged_log_buf_from_handle(hLogBuf);
 
 	if (psGEDLogBuf) {
-		/* clear reserved attrs */
+
 		i32LogAttrs &= ~0xff;
 
 		va_start(args, fmt);
 		err = __ged_log_buf_vprint(psGEDLogBuf, fmt,
 			args, psGEDLogBuf->attrs | i32LogAttrs);
+		if (err != GED_OK)
+			GED_LOGD("@%s err:%d\n", __func__, err);
 		va_end(args);
 	}
 
 	return GED_OK;
 }
 EXPORT_SYMBOL(ged_log_buf_print2);
-//-----------------------------------------------------------------------------
+
 GED_ERROR ged_log_buf_reset(GED_LOG_BUF_HANDLE hLogBuf)
 {
 	struct GED_LOG_BUF *psGEDLogBuf = ged_log_buf_from_handle(hLogBuf);
@@ -904,12 +881,7 @@ GED_ERROR ged_log_buf_reset(GED_LOG_BUF_HANDLE hLogBuf)
 }
 EXPORT_SYMBOL(ged_log_buf_reset);
 
-//-----------------------------------------------------------------------------
-//
-//  GED Log System
-//
-//-----------------------------------------------------------------------------
-#ifdef GED_DEBUG_FS
+#if IS_ENABLED(CONFIG_DEBUG_FS)
 static ssize_t ged_log_write_entry(const char __user *pszBuffer, size_t uiCount,
 	loff_t uiPosition, void *pvData)
 {
@@ -1001,9 +973,8 @@ static const struct seq_operations gsGEDLogReadOps = {
 	.next = ged_log_seq_next,
 	.show = ged_log_buf_seq_show,
 };
-#endif /* GED_DEBUG_FS */
+#endif
 
-//-----------------------------------------------------------------------------
 unsigned int is_gpu_ged_log_enable(void)
 {
 	return gpu_debug_log_enable;
@@ -1037,12 +1008,11 @@ static ssize_t gpu_debug_log_show(struct kobject *kobj, struct kobj_attribute *a
 
 static KOBJ_ATTR_RW(gpu_debug_log);
 
-//-----------------------------------------------------------------------------
 GED_ERROR ged_log_system_init(void)
 {
 	GED_ERROR err = GED_OK;
 
-#ifdef GED_DEBUG_FS
+#if IS_ENABLED(CONFIG_DEBUG_FS)
 	err = ged_debugFS_create_entry(
 			"gedlog",
 			NULL,
@@ -1066,7 +1036,7 @@ GED_ERROR ged_log_system_init(void)
 		GED_LOGE("Failed to create logbufs dir!\n");
 		goto ERROR;
 	}
-#endif /* GED_DEBUG_FS */
+#endif
 
 	ghHashTable = ged_hashtable_create(5);
 	if (!ghHashTable) {
@@ -1074,10 +1044,6 @@ GED_ERROR ged_log_system_init(void)
 		GED_LOGE("Failed to create a hash table!\n");
 		goto ERROR;
 	}
-
-	ged_log_trace_enable = 0;
-	ged_log_perf_trace_enable = 0;
-	force_fence_timeout_dump_enable = 0;
 
 	err = ged_sysfs_create_dir(NULL, "gpu_debug", &gpu_debug_kobj);
 	if (unlikely(err != GED_OK)) {
@@ -1100,11 +1066,11 @@ ERROR:
 
 	return err;
 }
-//-----------------------------------------------------------------------------
+
 void ged_log_system_exit(void)
 {
 	ged_hashtable_destroy(ghHashTable);
-#ifdef GED_DEBUG_FS
+#if IS_ENABLED(CONFIG_DEBUG_FS)
 	ged_debugFS_remove_entry_dir(gpsGEDLogBufsDir);
 	ged_debugFS_remove_entry(gpsGEDLogEntry);
 #endif
@@ -1112,7 +1078,7 @@ void ged_log_system_exit(void)
 	ged_sysfs_remove_file(gpu_debug_kobj, &kobj_attr_gpu_debug_log);
 	ged_sysfs_remove_dir(&gpu_debug_kobj);
 }
-//-----------------------------------------------------------------------------
+
 int ged_log_buf_write(GED_LOG_BUF_HANDLE hLogBuf,
 	const char __user *pszBuffer, int i32Count)
 {
@@ -1199,346 +1165,94 @@ void ged_log_dump(GED_LOG_BUF_HANDLE hLogBuf)
 }
 EXPORT_SYMBOL(ged_log_dump);
 
-static noinline int tracing_mark_write(const char *buf)
+int ged_timer_or_trace_enable(void)
 {
-	trace_printk(buf);
+	int fdvfs_enable = is_fdvfs_enable();
+
+	return (fdvfs_enable == 0) ||
+		(fdvfs_enable && ged_log_perf_trace_enable);
+}
+
+static int set_ged_log_perf_trace_enable(const char *val,
+	const struct kernel_param *kp)
+{
+	int ret = param_set_uint(val, kp);
+
+	if (ret)
+		return ret;
+
+	if (ged_log_perf_trace_enable == 0)
+		trace_set_clr_event("ged", NULL, 0);
+	else if (ged_log_perf_trace_enable == 1)
+		trace_set_clr_event("ged", NULL, 1);
+
+	ged_eb_dvfs_task(EB_SET_FTRACE, ged_log_perf_trace_enable);
+
 	return 0;
 }
 
-noinline void Policy__Frame_based__Frequency(int v1, int v2)
-{
-	char buf[256];
-	int cx;
+static const struct kernel_param_ops ged_log_perf_trace_enable_ops = {
+	.set = set_ged_log_perf_trace_enable,
+	.get = param_get_uint,
+};
 
-	if (ged_log_perf_trace_enable) {
-		cx = snprintf(buf, sizeof(buf), "target=%d, floor=%d\n", v1, v2);
-		if (cx >= 0 && cx < sizeof(buf))
-			trace_printk(buf);
+module_param_cb(ged_log_perf_trace_enable, &ged_log_perf_trace_enable_ops,
+	&ged_log_perf_trace_enable, 0644);
+
+static int sys_get_process_name_by_pid(int pid, char *buf, int len)
+{
+	struct task_struct *task;
+	char *name = NULL;
+
+	rcu_read_lock();
+	task = find_task_by_vpid(pid);
+	rcu_read_unlock();
+
+	if (task != NULL) {
+
+		name = kstrdup_quotable_cmdline(task, GFP_KERNEL);
+		strscpy(buf, name, len);
 	}
+
+	if(name != NULL)
+		kfree(name);
+	if (strstr(buf, "/system/bin/sh") != NULL)
+		return 1;
+	else if (strstr(buf, "mtkpower") != NULL)
+		return 2;
+
+	return 0;
 }
 
-noinline void Policy__Frame_based__Workload(int v1, int v2)
+void init_cmd_info(struct cmd_info *cmd, unsigned int value)
 {
-	char buf[256];
-	int cx;
+	char *initial = "initial";
 
-	if (ged_log_perf_trace_enable) {
-		cx = snprintf(buf, sizeof(buf), "cur=%d, aggregate=%d\n", v1, v2);
-		if (cx >= 0 && cx < sizeof(buf))
-			trace_printk(buf);
-	}
+	cmd->pid = 0;
+	cmd->value = value;
+	cmd->ori_value = value;
+	cmd->ts = 0;
+	strscpy(cmd->buffer, initial, MAX_NAME_SIZE);
+	cmd->user_id = 0;
 }
 
-noinline void Policy__Frame_based__Workload__Source(int v1, int v2, int v3)
+void set_cmd_info(struct cmd_info *cmd, unsigned int ori_value, unsigned int value)
 {
-	char buf[256];
-	int cx;
-
-	if (ged_log_perf_trace_enable) {
-		cx = snprintf(buf, sizeof(buf), "gpueb=%d, ap_active=%d, ap_3d=%d\n",
-			v1, v2, v3);
-		if (cx >= 0 && cx < sizeof(buf))
-			trace_printk(buf);
-	}
+	cmd->pid = current->tgid;
+	cmd->value = value;
+	cmd->ori_value = ori_value;
+	cmd->ts = ged_get_time();
+	cmd->user_id = sys_get_process_name_by_pid(cmd->pid, cmd->buffer, MAX_NAME_SIZE);
 }
 
-noinline void Policy__Frame_based__GPU_Time(int v1, int v2, int v3)
+ssize_t get_cmd_info_dump(char *buf, int sz, ssize_t pos, struct cmd_info *cmd)
 {
-	char buf[256];
-	int cx;
+	int length;
 
-	if (ged_log_perf_trace_enable) {
-		cx = snprintf(buf, sizeof(buf),
-			"t_gpu=%d, t_gpu_target=%d, t_gpu_target_hd=%d\n",
-			v1, v2, v3);
-		if (cx >= 0 && cx < sizeof(buf))
-			trace_printk(buf);
-	}
+	length = scnprintf(buf + pos, sz - pos,
+					  "%llu:pid:%u ori:%u value:%u user_id:%d(%s) ",
+					  cmd->ts, cmd->pid, cmd->value, cmd->ori_value, cmd->user_id, cmd->buffer);
+	pos += length;
+
+	return pos;
 }
-
-noinline void Policy__Frame_based__GPU_Time__Detail(int v1, int v2, int v3)
-{
-	char buf[256];
-	int cx;
-
-	if (ged_log_perf_trace_enable) {
-		cx = snprintf(buf, sizeof(buf),
-			"t_gpu_done_interval=%d, t_gpu_active=%d, t_gpu_3d=%d\n",
-				v1, v2, v3);
-		if (cx >= 0 && cx < sizeof(buf))
-			trace_printk(buf);
-	}
-}
-
-noinline void Policy__Frame_based__Margin(int v1, int v2, int v3)
-{
-	char buf[256];
-	int cx;
-
-	if (ged_log_perf_trace_enable) {
-		cx = snprintf(buf, sizeof(buf), "ceil=%d, cur=%d, floor=%d\n", v1, v2, v3);
-		if (cx >= 0 && cx < sizeof(buf))
-			trace_printk(buf);
-	}
-}
-
-noinline void Policy__Frame_based__Margin__Detail(unsigned int v1, int v2, int v3, int v4, int v5)
-{
-	char buf[256];
-	int cx;
-
-	if (ged_log_perf_trace_enable) {
-		cx = snprintf(buf, sizeof(buf),
-			"margin_mode=%d, target_fps_margin=%d, min_margin_inc_step=%d, min_margin=%d, min_dcs_margin=%d\n",
-			v1, v2, v3, v4, v5);
-		if (cx >= 0 && cx < sizeof(buf))
-			trace_printk(buf);
-	}
-}
-
-noinline void Policy__Loading_based__Opp(int v1)
-{
-	char buf[256];
-	int cx;
-
-	if (ged_log_perf_trace_enable) {
-		cx = snprintf(buf, sizeof(buf), "target=%d\n", v1);
-		if (cx >= 0 && cx < sizeof(buf))
-			trace_printk(buf);
-	}
-}
-
-noinline void Policy__Loading_based__Loading(unsigned int v1, unsigned int v2)
-{
-	char buf[256];
-	int cx;
-
-	if (ged_log_perf_trace_enable) {
-		cx = snprintf(buf, sizeof(buf), "cur=%u, average=%u\n", v1, v2);
-		if (cx >= 0 && cx < sizeof(buf))
-			trace_printk(buf);
-	}
-}
-
-noinline void Policy__Loading_based__Loading__Detail(unsigned int v1, unsigned int v2,
-	unsigned int v3, unsigned int v4, int v5)
-{
-	char buf[256];
-	int cx;
-
-	if (ged_log_perf_trace_enable) {
-		cx = snprintf(buf, sizeof(buf),
-			"active=%u, 3d=%u, ta=%u, compute=%u, mode=%d\n",
-			v1, v2, v3, v4, v5);
-		if (cx >= 0 && cx < sizeof(buf))
-			trace_printk(buf);
-	}
-}
-
-noinline void Policy__Loading_based__Bound(int v1, int v2, int v3, int v4)
-{
-	char buf[256];
-	int cx;
-
-	if (ged_log_perf_trace_enable) {
-		cx = snprintf(buf, sizeof(buf),
-			"ultra_high=%d, high=%d, low=%d, ultra_low=%d\n",
-			v1, v2, v3, v4);
-		if (cx >= 0 && cx < sizeof(buf))
-			trace_printk(buf);
-	}
-}
-
-noinline void Policy__Loading_based__Step(unsigned int v1, unsigned int v2, int v3, int v4)
-{
-	char buf[256];
-	int cx;
-
-	if (ged_log_perf_trace_enable) {
-		cx = snprintf(buf, sizeof(buf),
-			"up_count=%u, down_count=%u, step_limit=%d, ultra_high_step_size=%d\n",
-			v1, v2, v3, v4);
-		if (cx >= 0 && cx < sizeof(buf))
-			trace_printk(buf);
-	}
-}
-
-noinline void Policy__Loading_based__GPU_Time(int v1, int v2, int v3, int v4, int v5)
-{
-	char buf[256];
-	int cx;
-
-	if (ged_log_perf_trace_enable) {
-		cx = snprintf(buf, sizeof(buf),
-			"t_gpu=%d, t_gpu_target=%d, t_gpu_target_hd=%d, t_gpu_real=%d, t_gpu_pipe=%d\n",
-			v1, v2, v3, v4, v5);
-		if (cx >= 0 && cx < sizeof(buf))
-			trace_printk(buf);
-	}
-}
-
-noinline void Policy__Loading_based__Margin(int v1, int v2, int v3)
-{
-	char buf[256];
-	int cx;
-
-	if (ged_log_perf_trace_enable) {
-		cx = snprintf(buf, sizeof(buf), "ceil=%d, cur=%d, floor=%d\n", v1, v2, v3);
-		if (cx >= 0 && cx < sizeof(buf))
-			trace_printk(buf);
-	}
-}
-
-noinline void Policy__Loading_based__Margin__Detail(unsigned int v1, int v2, int v3,
-	unsigned int v4, int v5)
-{
-	char buf[256];
-	int cx;
-
-	if (ged_log_perf_trace_enable) {
-		cx = snprintf(buf, sizeof(buf),
-			"margin_mode=%u, min_margin_inc_step=%d, min_margin=%d, step_margin=%u, min_dcs_margin=%d\n",
-			v1, v2, v3, v4, v5);
-		if (cx >= 0 && cx < sizeof(buf))
-			trace_printk(buf);
-	}
-}
-
-noinline void Policy__DCS(int v1, int v2)
-{
-	char buf[256];
-	int cx;
-
-	if (ged_log_perf_trace_enable) {
-		cx = snprintf(buf, sizeof(buf), "max_core=%d, current_core=%d\n", v1, v2);
-		if (cx >= 0 && cx < sizeof(buf))
-			trace_printk(buf);
-	}
-}
-
-noinline void Policy__DCS__Detail(unsigned int v1)
-{
-	char buf[256];
-	int cx;
-
-	if (ged_log_perf_trace_enable) {
-		cx = snprintf(buf, sizeof(buf), "core_mask=0x%x\n", v1);
-		if (cx >= 0 && cx < sizeof(buf))
-			trace_printk(buf);
-	}
-}
-
-noinline void Policy__Common__Commit_Reason(int v1, int v2)
-{
-	char buf[256];
-	int cx;
-
-	if (ged_log_perf_trace_enable) {
-		cx = snprintf(buf, sizeof(buf),
-			"main_producer_ratio=%d, fb_dvfs_threshold=%d\n",
-			v1, v2);
-		if (cx >= 0 && cx < sizeof(buf))
-			trace_printk(buf);
-	}
-}
-
-noinline void Frequency__(long long v1, unsigned long v2)
-{
-	char buf[256];
-	int cx;
-
-	if (ged_log_perf_trace_enable) {
-		cx = snprintf(buf, sizeof(buf), "virtual_freq=%lld, real_freq=%lu\n", v1, v2);
-		if (cx >= 0 && cx < sizeof(buf))
-			trace_printk(buf);
-	}
-}
-
-void ged_log_trace_begin(char *name)
-{
-#ifdef ENABLE_GED_SYSTRACE_UTIL
-	char buf[256];
-	int cx;
-
-	if (ged_log_trace_enable) {
-		cx = snprintf(buf, sizeof(buf),
-			"B|%d|%s\n", current->tgid, name);
-		if (cx >= 0 && cx < sizeof(buf))
-			tracing_mark_write(buf);
-	}
-#endif
-}
-EXPORT_SYMBOL(ged_log_trace_begin);
-void ged_log_trace_end(void)
-{
-#ifdef ENABLE_GED_SYSTRACE_UTIL
-	char buf[256];
-	int cx;
-
-	if (ged_log_trace_enable) {
-		cx = snprintf(buf, sizeof(buf), "E\n");
-		if (cx >= 0 && cx < sizeof(buf))
-			tracing_mark_write(buf);
-	}
-#endif
-}
-EXPORT_SYMBOL(ged_log_trace_end);
-void ged_log_trace_counter(char *name, int count)
-{
-#ifdef ENABLE_GED_SYSTRACE_UTIL
-	char buf[256];
-	int cx;
-
-	if (ged_log_trace_enable) {
-		cx = snprintf(buf, sizeof(buf), "C|5566|%s|%d\n", name, count);
-		if (cx >= 0 && cx < sizeof(buf))
-			tracing_mark_write(buf);
-	}
-#endif
-}
-EXPORT_SYMBOL(ged_log_trace_counter);
-void ged_log_perf_trace_counter(char *name, long long count, int pid,
-	unsigned long frameID, u64 BQID)
-{
-	char buf[256];
-	int cx;
-
-	if (ged_log_perf_trace_enable) {
-		cx = snprintf(buf, sizeof(buf), "C|%d|%s|%lld|%llu|%lu\n",
-		pid, name, count, (unsigned long long)BQID, frameID);
-		if (cx >= 0 && cx < sizeof(buf))
-			tracing_mark_write(buf);
-	}
-}
-EXPORT_SYMBOL(ged_log_perf_trace_counter);
-
-void ged_log_perf_trace_batch_counter(char *name, long long count, int pid,
-	unsigned long frameID, u64 BQID, char *batch_str)
-{
-	char buf[256];
-	int cx;
-
-	if (ged_log_perf_trace_enable) {
-		cx = snprintf(buf, sizeof(buf), "C|%d|%s|%lld|%llu|%lu%s\n",
-		pid, name, count, (unsigned long long)BQID, frameID, batch_str);
-		if (cx >= 0 && cx < sizeof(buf))
-			tracing_mark_write(buf);
-	}
-}
-EXPORT_SYMBOL(ged_log_perf_trace_batch_counter);
-
-unsigned int force_fence_timeout_dump(bool reset)
-{
-	unsigned int ret = force_fence_timeout_dump_enable;
-
-	if (reset)
-		force_fence_timeout_dump_enable = 0;
-
-	return ret;
-}
-EXPORT_SYMBOL(force_fence_timeout_dump);
-
-
-module_param(ged_log_trace_enable, uint, 0644);
-module_param(ged_log_perf_trace_enable, uint, 0644);
-module_param(force_fence_timeout_dump_enable, uint, 0644);

@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: GPL-2.0 OR BSD-3-Clause */
 /*******************************************************************************
  *
  * This file is provided under a dual license.  When you use or
@@ -915,6 +916,8 @@
 #define CFG_SUPPORT_ROAMING		1
 #endif
 
+#define CFG_FW_ROAMING_BLACKLIST_SIZE 16
+
 #if (CFG_SUPPORT_ROAMING == 1)
 
 /* Roaming feature: skip roaming when only one ESSID AP
@@ -1134,7 +1137,7 @@
  * Value of scan cache result
  *------------------------------------------------------------------------------
  */
-#define CFG_SUPPORT_SCAN_CACHE_RESULT      (1)
+#define CFG_SUPPORT_SCAN_CACHE_RESULT      (0)
 #define CFG_SCAN_CACHE_RESULT_PERIOD       (7000)	/* Unit: ms */
 #define CFG_SCAN_CACHE_MIN_CHANNEL_NUM     (10)
 

@@ -1,3 +1,5 @@
+/* SPDX-License-Identifier: GPL-2.0 */
+/* SPDX-FileCopyrightText: 2026 The LineageOS Project */
 struct power_supply;
 struct power_supply_desc {
     int (*set_property)(struct power_supply *, enum power_supply_property,
@@ -43,10 +45,12 @@ static int mtk_charger_force_disable_power_path(struct mtk_charger *charger, int
     (void)charger; (void)idx; (void)enable; return 0;
 }
 static int fixture_get_charging_current(struct charger_device *charger, u32 *value) {
+    assert(charger->evt_nh.srcu.readers == 1);
     if (charger->cc_errno) return charger->cc_errno;
     *value = charger->cc; return 0;
 }
 static int fixture_get_input_current(struct charger_device *charger, u32 *value) {
+    assert(charger->evt_nh.srcu.readers == 1);
     if (charger->iin_errno) return charger->iin_errno;
     *value = charger->iin; return 0;
 }
@@ -66,7 +70,17 @@ static int charger_dev_is_charging_done(struct charger_device *charger, bool *va
 static int charger_dev_is_enabled(struct charger_device *charger, bool *value) {
     (void)charger; *value = true; return 0;
 }
+#if CHECKED_REQUESTS
+static int get_vbus(struct mtk_charger *charger, int *value) {
+    (void)charger; *value = 5000; return 0;
+}
+static int mtk_chg_cached_temp(struct mtk_charger *charger, struct power_supply *psy,
+                               struct charger_device *dev, int *value) {
+    (void)charger; (void)psy; (void)dev; (void)value; return -ENODATA;
+}
+#else
 static int get_vbus(struct mtk_charger *charger) { (void)charger; return 5000; }
+#endif
 static int get_charger_zcv(struct mtk_charger *charger, struct charger_device *dev) {
     (void)charger; (void)dev; return -EOPNOTSUPP;
 }

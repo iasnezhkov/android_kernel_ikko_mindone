@@ -278,6 +278,8 @@ static int trusty_vqueue_to_cpu(struct trusty_ctx *tctx, struct virtqueue *vq)
 	if (tvr->notifyid >= TIPC_TXVQ_NOTIFYID_START)
 		cpu = tvr->notifyid - TIPC_TXVQ_NOTIFYID_START;
 
+	if (cpu < 0)
+		return -1;
 	return cpu_possible(cpu) ? cpu : -1;
 }
 
@@ -999,7 +1001,8 @@ static int trusty_thread_create(struct trusty_ctx *tctx)
 
 			init_completion(&task_info->rdy[task_cnt]);
 			task_info->fd[task_cnt] =
-				kthread_run(trusty_task_ptr, (void *)tctx, task_name);
+				kthread_run(trusty_task_ptr, (void *)tctx, "%s",
+						task_name);
 			if (IS_ERR(task_info->fd[task_cnt])) {
 				dev_info(tctx->dev, "%s unable create kthread\n", __func__);
 				ret = PTR_ERR(task_info->fd[task_cnt]);

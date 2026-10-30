@@ -228,6 +228,9 @@ struct charger_data {
 	int input_current_limit_by_aicl;
 	int junction_temp_min;
 	int junction_temp_max;
+	int junction_temp_error;
+	bool junction_temp_valid;
+	struct charger_device *junction_temp_source;
 };
 
 enum chg_data_idx_enum {
@@ -289,6 +292,7 @@ struct mtk_charger {
 	int chr_type;
 	int usb_type;
 	int usb_state;
+	bool usb_input_suspended;
 
 	struct mutex cable_out_lock;
 	int cable_out_cnt;
@@ -430,7 +434,7 @@ extern int get_uisoc(struct mtk_charger *info);
 extern int get_battery_voltage(struct mtk_charger *info);
 extern int get_battery_temperature(struct mtk_charger *info);
 extern int get_battery_current(struct mtk_charger *info);
-extern int get_vbus(struct mtk_charger *info);
+extern int get_vbus(struct mtk_charger *info, int *vchr);
 extern int get_ibat(struct mtk_charger *info);
 extern int get_ibus(struct mtk_charger *info);
 extern bool is_battery_exist(struct mtk_charger *info);
@@ -439,7 +443,7 @@ extern int get_usb_type(struct mtk_charger *info);
 extern int disable_hw_ovp(struct mtk_charger *info, int en);
 extern bool is_charger_exist(struct mtk_charger *info);
 extern int get_charger_temperature(struct mtk_charger *info,
-	struct charger_device *chg);
+	struct charger_device *chg, int *temperature);
 extern int get_charger_charging_current(struct mtk_charger *info,
 	struct charger_device *chg);
 extern int get_charger_input_current(struct mtk_charger *info,
@@ -462,5 +466,7 @@ extern bool g_charge_is_screen_on;
 #endif
 
 //prize add by lipengpeng 20220613 end 
+
+void mtk_usb_sdp_update(struct mtk_charger *info);
 
 #endif /* __MTK_CHARGER_H */

@@ -4,7 +4,6 @@
  */
 
 #include <linux/clk.h>
-#include "mindone_log.h"
 #include <linux/iopoll.h>
 #include <linux/module.h>
 #include <linux/of_device.h>
@@ -14814,8 +14813,6 @@ void mtk_disp_mutex_submit_sof(struct mtk_disp_mutex *mutex)
 	}
 }
 
-extern int mindone_vb_watch;
-
 static irqreturn_t mtk_disp_mutex_irq_handler(int irq, void *dev_id)
 {
 	struct mtk_ddp *ddp = dev_id;
@@ -14830,20 +14827,12 @@ static irqreturn_t mtk_disp_mutex_irq_handler(int irq, void *dev_id)
 	if (IS_ERR_OR_NULL(ddp))
 		return IRQ_NONE;
 
-	if (mindone_vb_watch)
-		MINDONE_PR("MINDONE-VB: mutex-irq enter\n");
 	if (mtk_drm_top_clk_isr_get("mutex_irq") == false) {
-		if (mindone_vb_watch)
-			MINDONE_PR("MINDONE-VB: mutex-irq clk-gate-fail\n");
 		DDPIRQ("%s, top clk off\n", __func__);
 		return IRQ_NONE;
 	}
 
-	if (mindone_vb_watch)
-		MINDONE_PR("MINDONE-VB: mutex-irq pre-readl\n");
 	val = readl(ddp->regs + DISP_REG_MUTEX_INTSTA) & DISP_MUTEX_INT_MSK;
-	if (mindone_vb_watch)
-		MINDONE_PR("MINDONE-VB: mutex-irq post-readl val=0x%x\n", val);
 
 	if (!val) {
 		ret = IRQ_NONE;
@@ -14902,8 +14891,6 @@ static irqreturn_t mtk_disp_mutex_irq_handler(int irq, void *dev_id)
 	ret = IRQ_HANDLED;
 
 out:
-	if (mindone_vb_watch)
-		MINDONE_PR("MINDONE-VB: mutex-irq exit ret=%d\n", ret);
 	mtk_drm_top_clk_isr_put("mutex_irq");
 
 	return ret;

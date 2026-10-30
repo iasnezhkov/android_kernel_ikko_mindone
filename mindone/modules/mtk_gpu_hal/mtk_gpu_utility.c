@@ -2,7 +2,6 @@
 /*
  * Copyright (c) 2019 MediaTek Inc.
  */
-
 #include <linux/kernel.h>
 #include <linux/module.h>
 #include <linux/slab.h>
@@ -27,6 +26,21 @@ bool mtk_get_gpu_memory_usage(unsigned int *pMemUsage)
 }
 EXPORT_SYMBOL(mtk_get_gpu_memory_usage);
 
+size_t (*mtk_get_gpu_memory_pool_fp)(void) = NULL;
+EXPORT_SYMBOL(mtk_get_gpu_memory_pool_fp);
+
+bool mtk_get_gpu_memory_pool(size_t *pMemPool)
+{
+	if (mtk_get_gpu_memory_pool_fp != NULL) {
+		if (pMemPool) {
+			*pMemPool = mtk_get_gpu_memory_pool_fp();
+			return true;
+		}
+	}
+	return false;
+}
+EXPORT_SYMBOL(mtk_get_gpu_memory_pool);
+
 unsigned int (*mtk_get_gpu_loading_fp)(void) = NULL;
 EXPORT_SYMBOL(mtk_get_gpu_loading_fp);
 
@@ -41,6 +55,21 @@ bool mtk_get_gpu_loading(unsigned int *pLoading)
 	return false;
 }
 EXPORT_SYMBOL(mtk_get_gpu_loading);
+
+unsigned int (*mtk_get_gpu_loading_avg_fp)(void) = NULL;
+EXPORT_SYMBOL(mtk_get_gpu_loading_avg_fp);
+
+bool mtk_get_gpu_loading_avg(unsigned int *pLoading)
+{
+	if (mtk_get_gpu_loading_avg_fp != NULL) {
+		if (pLoading) {
+			*pLoading = mtk_get_gpu_loading_avg_fp();
+			return true;
+		}
+	}
+	return false;
+}
+EXPORT_SYMBOL(mtk_get_gpu_loading_avg);
 
 unsigned int (*mtk_get_gpu_block_fp)(void) = NULL;
 EXPORT_SYMBOL(mtk_get_gpu_block_fp);
@@ -85,7 +114,6 @@ bool mtk_set_bottom_gpu_freq(unsigned int ui32FreqLevel)
 }
 EXPORT_SYMBOL(mtk_set_bottom_gpu_freq);
 
-/* -------------------------------------------------------------------------- */
 unsigned int (*mtk_get_bottom_gpu_freq_fp)(void) = NULL;
 EXPORT_SYMBOL(mtk_get_bottom_gpu_freq_fp);
 
@@ -98,15 +126,15 @@ bool mtk_get_bottom_gpu_freq(unsigned int *pui32FreqLevel)
 	return false;
 }
 EXPORT_SYMBOL(mtk_get_bottom_gpu_freq);
-/* -------------------------------------------------------------------------- */
+
 unsigned int (*mtk_custom_get_gpu_freq_level_count_fp)(void) = NULL;
 EXPORT_SYMBOL(mtk_custom_get_gpu_freq_level_count_fp);
 
-bool mtk_custom_get_gpu_freq_level_count(unsigned int *pui32FreqLevelCount)
+bool mtk_custom_get_gpu_freq_level_count(unsigned int *pi32FreqLevelCount)
 {
 	if (mtk_custom_get_gpu_freq_level_count_fp != NULL) {
-		if (pui32FreqLevelCount) {
-			*pui32FreqLevelCount =
+		if (pi32FreqLevelCount) {
+			*pi32FreqLevelCount =
 				mtk_custom_get_gpu_freq_level_count_fp();
 			return true;
 		}
@@ -115,7 +143,20 @@ bool mtk_custom_get_gpu_freq_level_count(unsigned int *pui32FreqLevelCount)
 }
 EXPORT_SYMBOL(mtk_custom_get_gpu_freq_level_count);
 
-/* -------------------------------------------------------------------------- */
+unsigned long (*mtk_get_custom_boost_gpu_freq_fp)(void) = NULL;
+EXPORT_SYMBOL(mtk_get_custom_boost_gpu_freq_fp);
+
+bool mtk_get_custom_boost_gpu_freq(unsigned long *pulFreq)
+{
+	if (mtk_get_custom_boost_gpu_freq_fp != NULL) {
+		if (pulFreq) {
+			*pulFreq = mtk_get_custom_boost_gpu_freq_fp();
+			return true;
+		}
+	}
+	return false;
+}
+EXPORT_SYMBOL(mtk_get_custom_boost_gpu_freq);
 
 void (*mtk_custom_boost_gpu_freq_fp)(unsigned int ui32FreqLevel) = NULL;
 EXPORT_SYMBOL(mtk_custom_boost_gpu_freq_fp);
@@ -130,7 +171,20 @@ bool mtk_custom_boost_gpu_freq(unsigned int ui32FreqLevel)
 }
 EXPORT_SYMBOL(mtk_custom_boost_gpu_freq);
 
-/* -------------------------------------------------------------------------- */
+unsigned long (*mtk_get_custom_upbound_gpu_freq_fp)(void) = NULL;
+EXPORT_SYMBOL(mtk_get_custom_upbound_gpu_freq_fp);
+
+bool mtk_get_custom_upbound_gpu_freq(unsigned long *pulFreq)
+{
+	if (mtk_get_custom_upbound_gpu_freq_fp != NULL) {
+		if (pulFreq) {
+			*pulFreq = mtk_get_custom_upbound_gpu_freq_fp();
+			return true;
+		}
+	}
+	return false;
+}
+EXPORT_SYMBOL(mtk_get_custom_upbound_gpu_freq);
 
 void (*mtk_custom_upbound_gpu_freq_fp)(unsigned int ui32FreqLevel) = NULL;
 EXPORT_SYMBOL(mtk_custom_upbound_gpu_freq_fp);
@@ -145,8 +199,6 @@ bool mtk_custom_upbound_gpu_freq(unsigned int ui32FreqLevel)
 }
 EXPORT_SYMBOL(mtk_custom_upbound_gpu_freq);
 
-/* -------------------------------------------------------------------------- */
-
 bool (*mtk_dump_gpu_memory_usage_fp)(void) = NULL;
 EXPORT_SYMBOL(mtk_dump_gpu_memory_usage_fp);
 
@@ -159,8 +211,6 @@ bool mtk_dump_gpu_memory_usage(void)
 	return false;
 }
 EXPORT_SYMBOL(mtk_dump_gpu_memory_usage);
-
-/* -------------------------------------------------------------------------- */
 
 unsigned long (*mtk_get_gpu_bottom_freq_fp)(void) = NULL;
 EXPORT_SYMBOL(mtk_get_gpu_bottom_freq_fp);
@@ -176,8 +226,6 @@ bool mtk_get_gpu_bottom_freq(unsigned long *pulFreq)
 	return false;
 }
 EXPORT_SYMBOL(mtk_get_gpu_bottom_freq);
-
-/* -------------------------------------------------------------------------- */
 
 #if defined(CONFIG_MTK_GPUFREQ_V2)
 int (*mtk_get_gpu_limit_index_fp)(enum gpufreq_target target,
@@ -210,8 +258,6 @@ bool mtk_get_gpu_ceiling_index(int *piIndex)
 }
 EXPORT_SYMBOL(mtk_get_gpu_ceiling_index);
 
-/* -------------------------------------------------------------------------- */
-
 unsigned int (*mtk_get_gpu_limiter_fp)(enum gpufreq_target target,
 	enum gpuppm_limit_type limit) = NULL;
 EXPORT_SYMBOL(mtk_get_gpu_limiter_fp);
@@ -242,8 +288,6 @@ bool mtk_get_gpu_ceiling_limiter(unsigned int *puiLimiter)
 }
 EXPORT_SYMBOL(mtk_get_gpu_ceiling_limiter);
 
-/* -------------------------------------------------------------------------- */
-
 unsigned int (*mtk_get_gpu_cur_freq_fp)(enum gpufreq_target target) = NULL;
 EXPORT_SYMBOL(mtk_get_gpu_cur_freq_fp);
 
@@ -258,8 +302,6 @@ bool mtk_get_gpu_cur_freq(unsigned int *puiFreq)
 	return false;
 }
 EXPORT_SYMBOL(mtk_get_gpu_cur_freq);
-
-/* -------------------------------------------------------------------------- */
 
 int (*mtk_get_gpu_cur_oppidx_fp)(enum gpufreq_target target) = NULL;
 EXPORT_SYMBOL(mtk_get_gpu_cur_oppidx_fp);
@@ -276,9 +318,7 @@ bool mtk_get_gpu_cur_oppidx(int *piIndex)
 }
 EXPORT_SYMBOL(mtk_get_gpu_cur_oppidx);
 
-/* -------------------------------------------------------------------------- */
-
-#else /* CONFIG_MTK_GPUFREQ_V2 */
+#else
 
 bool mtk_get_gpu_floor_index(int *piIndex)
 {
@@ -315,9 +355,7 @@ bool mtk_get_gpu_cur_oppidx(int *piIndex)
 	return false;
 }
 EXPORT_SYMBOL(mtk_get_gpu_cur_oppidx);
-#endif /* CONFIG_MTK_GPUFREQ_V2 */
-
-/* -------------------------------------------------------------------------- */
+#endif
 
 int (*mtk_get_gpu_pmu_init_fp)(struct GPU_PMU *pmus, int pmuSize, int *retSize);
 EXPORT_SYMBOL(mtk_get_gpu_pmu_init_fp);
@@ -329,8 +367,6 @@ bool mtk_get_gpu_pmu_init(struct GPU_PMU *pmus, int pmu_size, int *ret_size)
 	return false;
 }
 EXPORT_SYMBOL(mtk_get_gpu_pmu_init);
-
-/* -------------------------------------------------------------------------- */
 
 int (*mtk_get_gpu_pmu_swapnreset_fp)(struct GPU_PMU *pmus, int pmu_size);
 EXPORT_SYMBOL(mtk_get_gpu_pmu_swapnreset_fp);
@@ -344,8 +380,6 @@ bool mtk_get_gpu_pmu_swapnreset(struct GPU_PMU *pmus, int pmu_size)
 	return false;
 }
 EXPORT_SYMBOL(mtk_get_gpu_pmu_swapnreset);
-
-/* -------------------------------------------------------------------------- */
 
 struct sGpuPowerChangeEntry {
 	void (*callback)(int power_on);
@@ -455,7 +489,6 @@ bool mtk_get_gpu_pmu_swapnreset_stop(void)
 }
 EXPORT_SYMBOL(mtk_get_gpu_pmu_swapnreset_stop);
 
-/* ------------------------------------------------------------------------ */
 void (*mtk_dvfs_margin_value_fp)(int i32MarginValue) = NULL;
 EXPORT_SYMBOL(mtk_dvfs_margin_value_fp);
 
@@ -484,7 +517,6 @@ bool mtk_get_dvfs_margin_value(int *pi32MarginValue)
 }
 EXPORT_SYMBOL(mtk_get_dvfs_margin_value);
 
-/* -------------------------------------------------------------------------*/
 void (*mtk_loading_base_dvfs_step_fp)(int i32StepValue) = NULL;
 EXPORT_SYMBOL(mtk_loading_base_dvfs_step_fp);
 
@@ -511,7 +543,7 @@ bool mtk_get_loading_base_dvfs_step(int *pi32StepValue)
 	return false;
 }
 EXPORT_SYMBOL(mtk_get_loading_base_dvfs_step);
-/* ------------------------------------------------------------------------ */
+
 void (*mtk_timer_base_dvfs_margin_fp)(int i32MarginValue) = NULL;
 EXPORT_SYMBOL(mtk_timer_base_dvfs_margin_fp);
 
@@ -539,7 +571,7 @@ bool mtk_get_timer_base_dvfs_margin(int *pi32MarginValue)
 	return false;
 }
 EXPORT_SYMBOL(mtk_get_timer_base_dvfs_margin);
-/* ------------------------------------------------------------------------ */
+
 void (*mtk_dvfs_loading_mode_fp)(int i32LoadingMode) = NULL;
 EXPORT_SYMBOL(mtk_dvfs_loading_mode_fp);
 
@@ -567,7 +599,7 @@ bool mtk_get_dvfs_loading_mode(unsigned int *pui32LoadingMode)
 	return false;
 }
 EXPORT_SYMBOL(mtk_get_dvfs_loading_mode);
-/* ------------------------------------------------------------------------ */
+
 void (*mtk_dvfs_workload_mode_fp)(int i32WorkloadMode) = NULL;
 EXPORT_SYMBOL(mtk_dvfs_workload_mode_fp);
 
@@ -595,7 +627,7 @@ bool mtk_get_dvfs_workload_mode(unsigned int *pui32WorkloadMode)
 	return false;
 }
 EXPORT_SYMBOL(mtk_get_dvfs_workload_mode);
-/* ------------------------------------------------------------------------ */
+
 void (*mtk_set_fastdvfs_mode_fp)(unsigned int u32Mode) = NULL;
 EXPORT_SYMBOL(mtk_set_fastdvfs_mode_fp);
 
@@ -609,27 +641,22 @@ bool mtk_set_fastdvfs_mode(unsigned int u32Mode)
 }
 EXPORT_SYMBOL(mtk_set_fastdvfs_mode);
 
-unsigned int (*mtk_get_fastdvfs_mode_fp)(void) = NULL;
+void (*mtk_get_fastdvfs_mode_fp)(void *ipi_data) = NULL;
 EXPORT_SYMBOL(mtk_get_fastdvfs_mode_fp);
 
-bool mtk_get_fastdvfs_mode(unsigned int *pui32Mode)
+bool mtk_get_fastdvfs_mode(void *ipi_data)
 {
-	if (pui32Mode == NULL)
-		return false;
 
 	if ((mtk_get_fastdvfs_mode_fp != NULL) &&
-		(pui32Mode != NULL)) {
-
-		*pui32Mode = mtk_get_fastdvfs_mode_fp();
+		(ipi_data != NULL)) {
+		mtk_get_fastdvfs_mode_fp(ipi_data);
 		return true;
 	}
 
-	*pui32Mode = 0;
 	return false;
 }
 EXPORT_SYMBOL(mtk_get_fastdvfs_mode);
 
-/* -----------------------------gpu pmu fp--------------------------------- */
 void (*mtk_ltr_gpu_pmu_start_fp)(unsigned int interval_ns) = NULL;
 EXPORT_SYMBOL(mtk_ltr_gpu_pmu_start_fp);
 
@@ -672,8 +699,6 @@ bool mtk_ltr_gpu_pmu_stop(void)
 }
 EXPORT_SYMBOL(mtk_ltr_gpu_pmu_stop);
 
-/* -----------------------------set gpu idle time--------------------------------- */
-
 void (*mtk_set_gpu_idle_fp)(unsigned int val) = NULL;
 EXPORT_SYMBOL(mtk_set_gpu_idle_fp);
 
@@ -688,8 +713,33 @@ bool mtk_set_gpu_idle(unsigned int val)
 }
 EXPORT_SYMBOL(mtk_set_gpu_idle);
 
+u64 (*mtk_get_system_timer_fp)(void) = NULL;
+EXPORT_SYMBOL(mtk_get_system_timer_fp);
 
-/* ----------------------gpufreq change notify fp-------------------------- */
+bool mtk_get_system_timer(u64 *psys_timer)
+{
+	if (mtk_get_system_timer_fp != NULL) {
+		if (psys_timer) {
+			*psys_timer = mtk_get_system_timer_fp();
+			return true;
+		}
+	}
+	return false;
+}
+EXPORT_SYMBOL(mtk_get_system_timer);
+
+bool (*mtk_adaptive_power_notify_fp)(void) = NULL;
+EXPORT_SYMBOL(mtk_adaptive_power_notify_fp);
+
+bool mtk_adaptive_power_notify(void)
+{
+	if (mtk_adaptive_power_notify_fp != NULL)
+		return mtk_adaptive_power_notify_fp();
+	return false;
+
+}
+EXPORT_SYMBOL(mtk_adaptive_power_notify);
+
 void (*mtk_notify_gpu_freq_change_fp)(u32 clk_idx, u32 gpufreq) = NULL;
 EXPORT_SYMBOL(mtk_notify_gpu_freq_change_fp);
 
@@ -703,9 +753,6 @@ bool mtk_notify_gpu_freq_change(u32 clk_idx, u32 gpufreq)
 }
 EXPORT_SYMBOL(mtk_notify_gpu_freq_change);
 
-/* ------------------------------------------------------------------------ */
-
-/* ----------------------gpu fence debug fp-------------------------- */
 void (*mtk_gpu_fence_debug_dump_fp)(int fd, int pid, int type, int timeouts) = NULL;
 EXPORT_SYMBOL(mtk_gpu_fence_debug_dump_fp);
 
@@ -715,16 +762,15 @@ void mtk_gpu_fence_debug_dump(int fd, int pid, int type, int timeouts)
 		mtk_gpu_fence_debug_dump_fp(fd, pid, type, timeouts);
 }
 EXPORT_SYMBOL(mtk_gpu_fence_debug_dump);
-
 static int mtk_gpu_hal_init(void)
 {
-	/*Do Nothing*/
+
 	return 0;
 }
 
 static void mtk_gpu_hal_exit(void)
 {
-	/*Do Nothing*/
+
 	;
 }
 

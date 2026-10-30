@@ -906,6 +906,7 @@ int pd_set_vconn(struct pd_port *pd_port, uint8_t role)
 	bool enable = !!(role & PD_ROLE_VCONN_ON);
 	bool en_role = role != PD_ROLE_VCONN_OFF;
 	bool en_role_old = pd_port->vconn_role != PD_ROLE_VCONN_OFF;
+	bool retry = false;
 	struct tcpc_device __maybe_unused *tcpc = pd_port->tcpc;
 
 	PE_DBG("%s:%d\n", __func__, role);
@@ -917,13 +918,16 @@ int pd_set_vconn(struct pd_port *pd_port, uint8_t role)
 	}
 #endif	/* CONFIG_USB_PD_VCONN_SAFE5V_ONLY */
 
-	if (role == pd_port->vconn_role)
+#if CONFIG_TCPC_SOURCE_VCONN
+	retry = tcpc->tcpc_source_vconn_dirty;
+#endif
+	if (role == pd_port->vconn_role && !retry)
 		goto out;
 
-	pd_port->vconn_role = role;
 	ret = tcpci_set_vconn(tcpc, enable);
 	if (ret < 0)
 		return ret;
+	pd_port->vconn_role = role;
 
 	if (en_role != en_role_old)
 		tcpci_notify_role_swap(tcpc, TCP_NOTIFY_VCONN_SWAP, en_role);

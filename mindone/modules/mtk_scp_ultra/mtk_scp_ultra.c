@@ -46,8 +46,13 @@ int mtk_scp_ultra_allocate_mem(struct snd_pcm_substream *substream,
 	struct snd_soc_pcm_runtime *rtd = substream->private_data;
 	int id = snd_soc_rtd_to_cpu(rtd, 0)->id;
 	struct mtk_base_scp_ultra *scp_ultra = get_scp_ultra_base();
-	struct audio_ultra_dram *ultra_resv_mem = &scp_ultra->ultra_reserve_dram;
+	struct audio_ultra_dram *ultra_resv_mem;
 	int buf_offset;
+
+	if (!scp_ultra)
+		return -ENODEV;
+
+	ultra_resv_mem = &scp_ultra->ultra_reserve_dram;
 
 	if (id == scp_ultra->scp_ultra_dl_memif_id) {
 		buf_offset = ULTRA_BUF_OFFSET;
@@ -57,6 +62,12 @@ int mtk_scp_ultra_allocate_mem(struct snd_pcm_substream *substream,
 		dev_err(scp_ultra->dev, "%s(), wrong memif id\n", __func__);
 		return -EINVAL;
 	}
+
+	if (!ultra_resv_mem->phy_addr || !ultra_resv_mem->vir_addr ||
+	    !size || size > ULTRA_BUF_OFFSET ||
+	    buf_offset > ultra_resv_mem->size ||
+	    size > ultra_resv_mem->size - buf_offset)
+		return -EINVAL;
 
 	dma_buf->dev.type = SNDRV_DMA_TYPE_DEV;
 	dma_buf->dev.dev = substream->pcm->card->dev;

@@ -35,6 +35,7 @@
 #include <linux/cdev.h>
 #include <linux/delay.h>
 #include <linux/kernel.h>
+#include <linux/limits.h>
 #include <linux/init.h>
 #include <linux/types.h>
 #include <linux/wait.h>
@@ -76,6 +77,7 @@ int get_uisoc(struct mtk_charger *info)
 	}
 	else{
 		ret = power_supply_get_property(bms_psy,POWER_SUPPLY_PROP_CAPACITY, &prop);
+		power_supply_put(bms_psy);
 		ret = prop.intval;
 		chr_debug("%s:%d\n", __func__,ret);
 		return ret;
@@ -118,6 +120,7 @@ int get_battery_voltage(struct mtk_charger *info)
 	}
 	else{
 		ret = power_supply_get_property(bms_psy,POWER_SUPPLY_PROP_VOLTAGE_NOW, &prop);
+		power_supply_put(bms_psy);
 		ret = prop.intval / 1000;
 		chr_debug("%s:%d\n", __func__,ret);
 		return ret;
@@ -161,6 +164,7 @@ int get_battery_temperature(struct mtk_charger *info)
 	}
 	else{
 		ret = power_supply_get_property(bms_psy,POWER_SUPPLY_PROP_TEMP, &prop);
+		power_supply_put(bms_psy);
 		if (!ret) {
 			ret = prop.intval / 10;
 			chr_debug("%s (cw-bat): %d\n", __func__, ret);
@@ -211,6 +215,7 @@ int get_battery_current(struct mtk_charger *info)
 	}
 	else{
 		ret = power_supply_get_property(bms_psy,POWER_SUPPLY_PROP_CURRENT_NOW, &prop);
+		power_supply_put(bms_psy);
 		ret = prop.intval / 1000;
 		chr_debug("%s:%d\n", __func__,ret);
 		return ret;
@@ -259,6 +264,10 @@ static int get_pmic_vbus(struct mtk_charger *info, int *vchr)
 	} else {
 		ret = power_supply_get_property(batt_psy,
 			POWER_SUPPLY_PROP_INPUT_VOLTAGE_LIMIT, &prop);
+		if (ret < 0)
+			return ret;
+		if (prop.intval < 0)
+			return -ERANGE;
 		*vchr = prop.intval;
 		chr_err("vbus:%s:%d\n", __func__, *vchr);
 
@@ -269,13 +278,17 @@ static int get_pmic_vbus(struct mtk_charger *info, int *vchr)
 
 	if (chg_psy == NULL)
 		chg_psy = power_supply_get_by_name("mtk_charger_type");
-	if (chg_psy == NULL || IS_ERR(chg_psy)) {
+	if (IS_ERR_OR_NULL(chg_psy)) {
 		chr_err("%s Couldn't get chg_psy\n", __func__);
-		ret = -1;
+		ret = chg_psy ? PTR_ERR(chg_psy) : -ENODEV;
 	} else {
 		ret = power_supply_get_property(chg_psy,
 			POWER_SUPPLY_PROP_VOLTAGE_NOW, &prop);
 	}
+	if (ret < 0)
+		return ret;
+	if (prop.intval < 0)
+		return -ERANGE;
 	*vchr = prop.intval;
 
 	chr_debug("%s vbus:%d\n", __func__,
@@ -283,22 +296,24 @@ static int get_pmic_vbus(struct mtk_charger *info, int *vchr)
 	return ret;
 }
 
-int get_vbus(struct mtk_charger *info)
+int get_vbus(struct mtk_charger *info, int *vchr)
 {
-	int ret = 0;
-	int vchr = 0;
+	int ret;
+	int value;
+	u32 primary;
 
-	if (info == NULL)
-		return 0;
-	ret = charger_dev_get_vbus(info->chg1_dev, &vchr);
+	if (!info || !vchr)
+		return -EINVAL;
+	ret = charger_dev_get_vbus(info->chg1_dev, &primary);
 	if (ret < 0) {
-		ret = get_pmic_vbus(info, &vchr);
+		ret = get_pmic_vbus(info, &value);
 		if (ret < 0)
-			chr_err("%s: get vbus failed: %d\n", __func__, ret);
-	} else
-		vchr /= 1000;
-
-	return vchr;
+			return ret;
+	} else {
+		value = primary / 1000;
+	}
+	*vchr = value;
+	return 0;
 }
 //prize begin
 int get_ibat(struct mtk_charger *info)
@@ -491,23 +506,21 @@ int get_usb_type(struct mtk_charger *info)
 }
 
 int get_charger_temperature(struct mtk_charger *info,
-	struct charger_device *chg)
+	struct charger_device *chg, int *temperature)
 {
-	int ret = 0;
-	int tchg_min = 0, tchg_max = 0;
+	int ret, tchg_min = 0, tchg_max = 0;
 
-	if (info == NULL)
-		return 0;
-
+	if (!info || !temperature)
+		return -EINVAL;
+	if (IS_ERR_OR_NULL(chg))
+		return chg ? PTR_ERR(chg) : -ENODATA;
 	ret = charger_dev_get_temperature(chg, &tchg_min, &tchg_max);
-	if (ret < 0)
-		chr_err("%s: get temperature failed: %d\n", __func__, ret);
-	else
-		ret = (tchg_max + tchg_min) / 2;
-
-	chr_debug("%s:%d\n", __func__,
-		ret);
-	return ret;
+	if (ret)
+		return ret < 0 ? ret : -EIO;
+	if (tchg_min > tchg_max)
+		return -ERANGE;
+	*temperature = ((s64)tchg_min + tchg_max) / 2;
+	return 0;
 }
 
 int get_charger_charging_current(struct mtk_charger *info,

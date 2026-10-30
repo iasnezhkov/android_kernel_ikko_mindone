@@ -6,9 +6,14 @@
 #define _SCHED_COMMON_H
 
 #if IS_ENABLED(CONFIG_NONLINEAR_FREQ_CTL)
+unsigned long mtk_apply_dvfs_margin(unsigned long util);
 extern void mtk_map_util_freq(void *data, unsigned long util, unsigned long freq,
 			struct cpumask *cpumask, unsigned long *next_freq);
 #else
+static inline unsigned long mtk_apply_dvfs_margin(unsigned long util)
+{
+	return util;
+}
 #define mtk_map_util_freq(data, util, freq, cap, next_freq)
 #endif /* CONFIG_NONLINEAR_FREQ_CTL */
 

@@ -355,20 +355,20 @@ static int mtk_dvfsrc_met_probe(struct platform_device *pdev)
 		return -ENOMEM;
 
 	dvfsrc->dvfsrc_vcore_power =
-		regulator_get_optional(dvfsrc->dev, "rc-vcore");
+		devm_regulator_get_optional(dvfsrc->dev, "rc-vcore");
 	if (IS_ERR(dvfsrc->dvfsrc_vcore_power)) {
 		dev_info(dvfsrc->dev, "get dvfsrc_vcore failed = %ld\n",
 			PTR_ERR(dvfsrc->dvfsrc_vcore_power));
 		dvfsrc->dvfsrc_vcore_power = NULL;
 	}
 
-	dvfsrc->bw_path = of_icc_get(dvfsrc->dev, "icc-bw");
+	dvfsrc->bw_path = devm_of_icc_get(dvfsrc->dev, "icc-bw");
 	if (IS_ERR(dvfsrc->bw_path)) {
 		dev_info(dvfsrc->dev, "get icc-bw fail\n");
 		dvfsrc->bw_path = NULL;
 	}
 
-	dvfsrc->hrt_path = of_icc_get(dvfsrc->dev, "icc-hrt-bw");
+	dvfsrc->hrt_path = devm_of_icc_get(dvfsrc->dev, "icc-hrt-bw");
 	if (IS_ERR(dvfsrc->hrt_path)) {
 		dev_info(dvfsrc->dev, "get icc-hrt_bw fail\n");
 		dvfsrc->hrt_path = NULL;

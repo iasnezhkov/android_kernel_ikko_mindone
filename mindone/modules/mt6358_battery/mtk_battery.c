@@ -435,6 +435,21 @@ static int mtk_battery_get_full_uah(struct mtk_battery *gm)
 	return mtk_battery_get_learned_q_max(gm) * 1000;
 }
 
+static int mtk_battery_get_capacity(struct mtk_battery *gm, int *capacity)
+{
+	int soc;
+
+	if (!smp_load_acquire(&gm->cc_soc_ready))
+		return -ENODATA;
+
+	soc = READ_ONCE(gm->ui_soc);
+	if (soc < 0 || soc > 100)
+		return -ENODATA;
+
+	*capacity = soc;
+	return 0;
+}
+
 static int mtk_battery_get_charge_now_uah(struct mtk_battery *gm)
 {
 	int full_uah = mtk_battery_get_full_uah(gm);
@@ -513,7 +528,7 @@ static int battery_psy_get_property(struct power_supply *psy,
 		val->intval = gm->bat_cycle > 0 ? gm->bat_cycle : 1;
 		break;
 	case POWER_SUPPLY_PROP_CAPACITY:
-		val->intval = bs_data->bat_capacity;
+		ret = mtk_battery_get_capacity(gm, &val->intval);
 		break;
 	case POWER_SUPPLY_PROP_CURRENT_NOW:
 	case POWER_SUPPLY_PROP_CURRENT_AVG:
@@ -1684,9 +1699,9 @@ void fg_custom_init_from_dts(struct platform_device *dev,
 {
 	struct device_node *np = dev->dev.of_node;
 	unsigned int val;
-	int bat_id, multi_battery, active_table, i, j, ret, column;
+	int bat_id, i, j, ret, column;
+	int multi_battery = MULTI_BATTERY, active_table = ACTIVE_TABLE;
 	int r_pseudo100_raw = 0, r_pseudo100_col = 0;
-	int lk_v, lk_i, shuttime;
 	char node_name[128];
 	struct fuel_gauge_custom_data *fg_cust_data;
 	struct fuel_gauge_table_custom_data *fg_table_cust_data;
@@ -1699,18 +1714,15 @@ void fg_custom_init_from_dts(struct platform_device *dev,
 	bm_err("%s\n", __func__);
 
 	if (gm->ptim_lk_v == 0) {
-		fg_read_dts_val(np, "fg_swocv_v", &(lk_v), 1);
-		gm->ptim_lk_v = lk_v;
+		fg_read_dts_val(np, "fg_swocv_v", &gm->ptim_lk_v, 1);
 	}
 
 	if (gm->ptim_lk_i == 0) {
-		fg_read_dts_val(np, "fg_swocv_i", &(lk_i), 1);
-		gm->ptim_lk_i = lk_i;
+		fg_read_dts_val(np, "fg_swocv_i", &gm->ptim_lk_i, 1);
 	}
 
 	if (gm->pl_shutdown_time == 0) {
-		fg_read_dts_val(np, "shutdown_time", &(shuttime), 1);
-		gm->pl_shutdown_time = shuttime;
+		fg_read_dts_val(np, "shutdown_time", &gm->pl_shutdown_time, 1);
 	}
 
 	bm_err("%s swocv_v:%d swocv_i:%d shutdown_time:%d\n",
@@ -2348,7 +2360,7 @@ void battery_update(struct mtk_battery *gm)
 void disable_fg(struct mtk_battery *gm)
 {
 	gm->disableGM30 = true;
-	gm->ui_soc = 50;
+	WRITE_ONCE(gm->ui_soc, 50);
 	gm->bs_data.bat_capacity = 50;
 
 	disable_all_irq(gm);
@@ -2586,12 +2598,12 @@ static int uisoc_set(struct mtk_battery *gm,
 	}
 
 	pdata->ui_old_soc = daemon_ui_soc;
-	old_uisoc = gm->ui_soc;
+	old_uisoc = READ_ONCE(gm->ui_soc);
 
 	if (gm->disableGM30 == true)
-		gm->ui_soc = 50;
+		WRITE_ONCE(gm->ui_soc, 50);
 	else
-		gm->ui_soc = (daemon_ui_soc + 50) / 100;
+		WRITE_ONCE(gm->ui_soc, (daemon_ui_soc + 50) / 100);
 	smp_store_release(&gm->cc_soc_ready, true);
 
 	/* when UISOC changes, check the diff time for smooth */
@@ -3978,6 +3990,7 @@ int battery_init(struct platform_device *pdev)
 		return ret;
 	ret = gauge_coulomb_service_init(gm);
 	if (ret) {
+		mtk_battery_lbat_release(gm);
 		release_gauge_irqs(gm);
 		return ret;
 	}

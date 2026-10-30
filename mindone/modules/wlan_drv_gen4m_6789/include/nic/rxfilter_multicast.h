@@ -1,3 +1,5 @@
+/* SPDX-License-Identifier: GPL-2.0 */
+/* SPDX-FileCopyrightText: 2026 The LineageOS Project */
 #ifndef MINDONE_RXFILTER_MULTICAST_H
 #define MINDONE_RXFILTER_MULTICAST_H
 

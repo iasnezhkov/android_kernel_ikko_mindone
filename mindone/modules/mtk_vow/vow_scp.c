@@ -1,212 +1,175 @@
 // SPDX-License-Identifier: GPL-2.0
 /*
- *  vow_scp.c  --  VoW SCP
- *
- *  Copyright (c) 2020 MediaTek Inc.
- *  Author: Michael HSiao <michael.hsiao@mediatek.com>
+ * Copyright (c) 2020 MediaTek Inc.
  */
-
-/*****************************************************************************
- * Header Files
- *****************************************************************************/
 #include <linux/delay.h>
-#include "vow_scp.h"
-#include "vow.h"
-#include "vow_assert.h"
-#if IS_ENABLED(CONFIG_MTK_TINYSYS_SCP_SUPPORT)
+#include <linux/interrupt.h>
+#include <linux/module.h>
+#include <linux/mutex.h>
+#include <linux/of.h>
+#include <linux/of_platform.h>
+#include <linux/slab.h>
+#include <linux/soc/mediatek/mtk-mbox.h>
 #include "scp.h"
-#endif
+#include "vow.h"
 
-#if IS_ENABLED(CONFIG_MTK_TINYSYS_SCP_SUPPORT)
-static int vow_ipi_recv_handler(unsigned int id,
-				void *prdata,
-				void *data,
-				unsigned int len);
-static int vow_ipi_ack_handler(unsigned int id,
-			       void *prdata,
-			       void *data,
-			       unsigned int len);
-#endif
+static DEFINE_MUTEX(vow_tx_lock);
+static DECLARE_WAIT_QUEUE_HEAD(vow_ack_wait);
+static unsigned int ack_id = UINT_MAX;
+static unsigned int ack_data;
+static void (*vow_receive)(unsigned int, void *);
+static struct mtk_mbox_pin_recv *vow_pins[2];
+static int vow_irq;
 
-unsigned int ipi_ack_return;
-unsigned int ipi_ack_id;
-unsigned int ipi_ack_data;
-
-struct vow_ipi_receive_info vow_ipi_receive;
-struct vow_ipi_ack_info vow_ipi_send_ack;
-void (*ipi_rx_handle)(unsigned int a, void *b);
-bool (*ipi_tx_ack_handle)(unsigned int a, unsigned int b);
-
-/*****************************************************************************
- * Function
- ****************************************************************************/
 unsigned int vow_check_scp_status(void)
 {
-#if IS_ENABLED(CONFIG_MTK_TINYSYS_SCP_SUPPORT)
 	return is_scp_ready(SCP_A_ID);
-#else
-	return 0;
-#endif
 }
 
-void vow_ipi_register(void (*ipi_rx_call)(unsigned int, void *),
-		      bool (*ipi_tx_ack_call)(unsigned int, unsigned int))
+static int vow_receive_ipi(unsigned int id, void *private, void *data,
+			   unsigned int len)
 {
-#if IS_ENABLED(CONFIG_MTK_TINYSYS_SCP_SUPPORT)
-	mtk_ipi_register(&scp_ipidev, IPI_IN_AUDIO_VOW_1,
-			(void *)vow_ipi_recv_handler, NULL,
-			 &vow_ipi_receive);
-	mtk_ipi_register(&scp_ipidev, IPI_IN_AUDIO_VOW_ACK_1,
-			(void *)vow_ipi_ack_handler, NULL,
-			 &vow_ipi_send_ack);
-#endif
-	ipi_rx_handle = ipi_rx_call;
-	ipi_tx_ack_handle = ipi_tx_ack_call;
-}
+	struct vow_ipi_receive_info *msg = data;
 
-#if IS_ENABLED(CONFIG_MTK_TINYSYS_SCP_SUPPORT)
-static int vow_ipi_recv_handler(unsigned int id,
-				void *prdata,
-				void *data,
-				unsigned int len)
-{
-	struct vow_ipi_receive_info *ipi_info =
-		(struct vow_ipi_receive_info *)data;
-
-	ipi_rx_handle(ipi_info->msg_id, (void *)ipi_info->msg_data);
+	if (len < sizeof(*msg) || msg->msg_length > VOW_IPI_RECEIVE_LENGTH)
+		return -EINVAL;
+	vow_receive(msg->msg_id, msg->msg_data);
 	return 0;
 }
 
-static int vow_ipi_ack_handler(unsigned int id,
-			       void *prdata,
-			       void *data,
-			       unsigned int len)
+static int vow_receive_ack(unsigned int id, void *private, void *data,
+			   unsigned int len)
 {
-	struct vow_ipi_ack_info *ipi_info =
-		(struct vow_ipi_ack_info *)data;
+	struct vow_ipi_ack_info *msg = data;
 
-	ipi_tx_ack_handle(ipi_info->msg_id, ipi_info->msg_data);
-	ipi_ack_return = ipi_info->msg_need_ack;
-	ipi_ack_id = ipi_info->msg_id;
-	ipi_ack_data = ipi_info->msg_data;
+	if (len < sizeof(*msg) || msg->msg_need_ack != VOW_IPI_ACK_BACK)
+		return -EINVAL;
+	WRITE_ONCE(ack_data, msg->msg_data);
+	WRITE_ONCE(ack_id, msg->msg_id);
+	wake_up(&vow_ack_wait);
 	return 0;
 }
-#endif
 
-bool vow_ipi_send(unsigned int msg_id,
-		  unsigned int payload_len,
-		  unsigned int *payload,
+int vow_ipi_register(void (*receive)(unsigned int, void *))
+{
+	struct device_node *node;
+	struct platform_device *pdev;
+	struct mtk_mbox_pin_recv *pin;
+	const unsigned int ids[] = { IPI_IN_AUDIO_VOW_1, IPI_IN_AUDIO_VOW_ACK_1 };
+	mbox_pin_cb_t callbacks[] = { vow_receive_ipi, vow_receive_ack };
+	int i, ret = 0;
+
+	if (!scp_ipidev.ipi_inited)
+		return -EPROBE_DEFER;
+	node = of_find_compatible_node(NULL, NULL, "mediatek,scp");
+	if (!node)
+		return -ENODEV;
+	pdev = of_find_device_by_node(node);
+	of_node_put(node);
+	if (!pdev)
+		return -ENODEV;
+	for (i = 0; i < ARRAY_SIZE(ids); i++) {
+		pin = scp_ipidev.table[ids[i]].pin_recv;
+		if (!pin || pin->cb_ctx_opt != MBOX_CB_IN_ISR || pin->mbox != 0 ||
+		    pin->msg_size != (i ? PIN_IN_SIZE_AUDIO_VOW_ACK_1 :
+					PIN_IN_SIZE_AUDIO_VOW_1)) {
+			dev_err(&pdev->dev, "VoW mailbox layout does not match DT\n");
+			ret = -EINVAL;
+			goto put_device;
+		}
+		vow_pins[i] = pin;
+	}
+	if (!scp_ipidev.table[IPI_OUT_AUDIO_VOW_1].pin_send ||
+	    scp_ipidev.table[IPI_OUT_AUDIO_VOW_1].pin_send->msg_size !=
+	    PIN_OUT_SIZE_AUDIO_VOW_1) {
+		ret = -EINVAL;
+		goto put_device;
+	}
+	vow_irq = scp_ipidev.mbdev->info_table[0].irq_num;
+	if (vow_irq <= 0) {
+		ret = -EINVAL;
+		goto put_device;
+	}
+	vow_receive = receive;
+	disable_irq(vow_irq);
+	mutex_lock(&scp_ipidev.mutex_ipi_reg);
+	for (i = 0; i < ARRAY_SIZE(ids); i++) {
+		pin = vow_pins[i];
+		if (pin->mbox_pin_cb || pin->prdata) {
+			dev_err(&pdev->dev, "VoW mailbox already has an owner\n");
+			ret = -EBUSY;
+			goto unlock;
+		}
+		if (!pin->pin_buf) {
+			pin->pin_buf = devm_kzalloc(&pdev->dev,
+						pin->msg_size * sizeof(u32), GFP_KERNEL);
+			if (!pin->pin_buf) {
+				ret = -ENOMEM;
+				goto unlock;
+			}
+		}
+	}
+	for (i = 0; i < ARRAY_SIZE(ids); i++)
+		vow_pins[i]->mbox_pin_cb = callbacks[i];
+unlock:
+	mutex_unlock(&scp_ipidev.mutex_ipi_reg);
+	enable_irq(vow_irq);
+put_device:
+	put_device(&pdev->dev);
+	return ret;
+}
+
+void vow_ipi_unregister(void)
+{
+	int i;
+
+	disable_irq(vow_irq);
+	mutex_lock(&scp_ipidev.mutex_ipi_reg);
+	for (i = 0; i < ARRAY_SIZE(vow_pins); i++) {
+		vow_pins[i]->mbox_pin_cb = NULL;
+		vow_pins[i]->prdata = NULL;
+	}
+	mutex_unlock(&scp_ipidev.mutex_ipi_reg);
+	enable_irq(vow_irq);
+	vow_receive = NULL;
+}
+
+bool vow_ipi_send(unsigned int id, unsigned int count, unsigned int *payload,
 		  unsigned int need_ack)
 {
-#if IS_ENABLED(CONFIG_MTK_TINYSYS_SCP_SUPPORT)
-	bool ret = false;
-	int ipi_result = -1;
-	unsigned int retry_time = VOW_IPI_SEND_CNT_TIMEOUT;
-	unsigned int retry_cnt = 0;
-	unsigned int ack_time = VOW_IPI_WAIT_ACK_TIMEOUT;
-	unsigned int ack_cnt = 0;
-	unsigned int msg_need_ack = 0;
-	unsigned int resend_cnt = 0;
-	struct vow_ipi_send_info ipi_data;
+	struct vow_ipi_send_info msg = {};
+	unsigned int retry;
+	int ret = -EIO;
 
-	if (!vow_check_scp_status()) {
-		VOWDRV_DEBUG("SCP is off, bypass send ipi id(%d)\n", msg_id);
+	if (id > U8_MAX || count > ARRAY_SIZE(msg.payload) ||
+	    (count && !payload))
 		return false;
-	}
-	if (vow_service_GetScpRecoverStatus() == true) {
-		VOWDRV_DEBUG("scp is recovering, then break\n");
-		return false;
-	}
-
-	/* clear send buffer */
-	memset(&ipi_data.payload[0], 0,
-		sizeof(unsigned int) * VOW_IPI_SEND_BUFFER_LENGTH);
-
-	resend_cnt = 0;
-	msg_need_ack = need_ack;
-	ipi_data.msg_id = msg_id;
-	ipi_data.msg_need_ack = msg_need_ack;
-	ipi_data.param1 = 0;
-	ipi_data.param2 = 0;
-	ipi_data.msg_length = payload_len;
-
-	if (payload > 0) {
-		/* have payload */
-		memcpy(&ipi_data.payload[0], payload,
-		       sizeof(unsigned int) * payload_len);
-	}
-
-RESEND_IPI:
-	if (resend_cnt == VOW_IPI_RESEND_TIMES) {
-		VOWDRV_DEBUG("%s(), resend over time, drop id:%d\n",
-			__func__, msg_id);
-		return false;
-	}
-	/* ipi ack reset */
-	ipi_ack_return = 0;
-	ipi_ack_id = 0xFF;
-	ipi_ack_data = 0;
-
-	for (retry_cnt = 0; retry_cnt <= retry_time; retry_cnt++) {
-		ipi_result = mtk_ipi_send(&scp_ipidev,
-					  IPI_OUT_AUDIO_VOW_1,
-					  0,
-					  &ipi_data,
-					  PIN_OUT_SIZE_AUDIO_VOW_1,
-					  0);
-		if (ipi_result == IPI_ACTION_DONE) {
-			if (retry_cnt != 0) {
-				VOWDRV_DEBUG("%s(), ipi_id(%d) succeed after retry cnt =%d\n",
-						 __func__,
-						 msg_id,
-						 retry_cnt);
-			}
-			break;
-		} else {
-			if (retry_cnt == retry_time) { // already retry max times
-				VOWDRV_DEBUG("%s() ERROR, ipi_id(%d) Fail %d after retry cnt =%d\n",
-						 __func__,
-						 msg_id,
-						 ipi_result,
-						 retry_cnt);
-			}
-		}
-		if (vow_service_GetScpRecoverStatus() == true) {
-			VOWDRV_DEBUG("scp is recovering, then break\n");
+	msg.msg_id = id;
+	msg.msg_need_ack = need_ack;
+	msg.msg_length = count;
+	if (count)
+		memcpy(msg.payload, payload, count * sizeof(u32));
+	mutex_lock(&vow_tx_lock);
+	WRITE_ONCE(ack_id, UINT_MAX);
+	for (retry = 0; retry < VOW_IPI_SEND_CNT_TIMEOUT; retry++) {
+		if (!vow_check_scp_status()) {
+			ret = -ENODEV;
 			break;
 		}
+		ret = mtk_ipi_send(&scp_ipidev, IPI_OUT_AUDIO_VOW_1, 0, &msg,
+				   PIN_OUT_SIZE_AUDIO_VOW_1, 0);
+		if (ret == IPI_ACTION_DONE)
+			break;
 		msleep(VOW_WAITCHECK_INTERVAL_MS);
 	}
-
-	if (ipi_result == IPI_ACTION_DONE) {
-		if (need_ack == VOW_IPI_NEED_ACK) {
-			for (ack_cnt = 0; ack_cnt <= ack_time; ack_cnt++) {
-				if ((ipi_ack_return == VOW_IPI_ACK_BACK) &&
-				    (ipi_ack_id == msg_id)) {
-					/* ack back */
-					break;
-				}
-				if (ack_cnt >= ack_time) {
-					/* no ack */
-					VOWDRV_DEBUG("%s(), no ack\n",
-						__func__);
-					resend_cnt++;
-					goto RESEND_IPI;
-				}
-				msleep(VOW_WAITCHECK_INTERVAL_MS);
-			}
-		}
-		VOWDRV_DEBUG("%s(), ipi_id(%d) pass\n", __func__, msg_id);
-		ret = true;
+	if (!ret && need_ack == VOW_IPI_NEED_ACK) {
+		if (!wait_event_timeout(vow_ack_wait, READ_ONCE(ack_id) == id,
+					msecs_to_jiffies(100)))
+			ret = -ETIMEDOUT;
+		else if (READ_ONCE(ack_data))
+			ret = -EREMOTEIO;
 	}
-	return ret;
-#else
-	(void) msg_id;
-	(void) payload_len;
-	(void) payload;
-	(void) need_ack;
-	VOWDRV_DEBUG("%s(), vow: SCP no support\n\r", __func__);
-	return false;
-#endif
+	mutex_unlock(&vow_tx_lock);
+	return !ret;
 }
 EXPORT_SYMBOL_GPL(vow_ipi_send);

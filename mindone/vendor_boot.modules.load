@@ -1,9 +1,6 @@
 bootprof.ko
 dbgtop_drm.ko
-mrdump.ko
 mtk_boot_common.ko
-aee_aed.ko
-aee_hangdet.ko
 mtk_printk_ctrl.ko
 log_store.ko
 nvmem_mtk_devinfo.ko

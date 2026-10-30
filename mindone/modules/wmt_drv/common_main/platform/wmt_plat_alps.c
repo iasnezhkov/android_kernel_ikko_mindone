@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0
 /*
  * Copyright (C) 2016 MediaTek Inc.
  *
@@ -1325,7 +1326,7 @@ static INT32 wmt_plat_cmb_gps_sync_ctrl(ENUM_PIN_STATE state)
 
 static INT32 wmt_plat_soc_gps_sync_ctrl(ENUM_PIN_STATE state)
 {
-	WMT_PLAT_PR_WARN("host gps sync pin not defined!!!\n");
+	WMT_PLAT_PR_DBG("host gps sync pin not defined!!!\n");
 
 	return 0;
 }
@@ -1373,7 +1374,7 @@ static INT32 wmt_plat_soc_gps_lna_ctrl(ENUM_PIN_STATE state)
 	WMT_PLAT_PR_DBG("ENTER++\n");
 	consys_pinctrl = mtk_wcn_consys_get_pinctrl();
 	if (!consys_pinctrl) {
-		WMT_PLAT_PR_ERR("get consys pinctrl fail\n");
+		WMT_PLAT_PR_DBG("get consys pinctrl fail\n");
 		return 0;
 	}
 

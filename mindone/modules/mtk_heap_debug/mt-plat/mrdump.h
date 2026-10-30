@@ -1,1 +1,1 @@
-../../aee_aed/mt-plat/mrdump.h
+../../include/drivers/misc/mediatek/include/mt-plat/mrdump.h

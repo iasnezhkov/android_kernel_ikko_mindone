@@ -444,7 +444,7 @@ static void remove_all_iova_node(struct mtk_vcu *vcu)
 
 	// detach
 	display_dma_buf = (struct dma_buf *)(uintptr_t)curr_node->wdma_dma_buf_addr;
-	dma_buf_unmap_attachment(curr_node->buf_att, curr_node->sgt, DMA_TO_DEVICE);
+	dma_buf_unmap_attachment_unlocked(curr_node->buf_att, curr_node->sgt, DMA_TO_DEVICE);
 	dma_buf_detach(display_dma_buf, curr_node->buf_att);
 
 	kfree(curr_node);
@@ -456,7 +456,7 @@ static void remove_all_iova_node(struct mtk_vcu *vcu)
 
 		// detach
 		display_dma_buf = (struct dma_buf *)(uintptr_t)curr_node->wdma_dma_buf_addr;
-		dma_buf_unmap_attachment(curr_node->buf_att, curr_node->sgt, DMA_TO_DEVICE);
+		dma_buf_unmap_attachment_unlocked(curr_node->buf_att, curr_node->sgt, DMA_TO_DEVICE);
 		dma_buf_detach(display_dma_buf, curr_node->buf_att);
 
 		vcu_dbg_log("[VCU] free node with mapped_iova:x%llx wdma_dma_buf_addr:0x%lx",
@@ -1682,7 +1682,7 @@ static long vcu_get_disp_mapped_iova(struct mtk_vcu *vcu, unsigned long arg)
 	// obtain iova on this device
 	buf_att = dma_buf_attach(display_dma_buf, vcu->dev);
 	vcu_dbg_log("%s %d", __func__, __LINE__);
-	sgt = dma_buf_map_attachment(buf_att, DMA_FROM_DEVICE);
+	sgt = dma_buf_map_attachment_unlocked(buf_att, DMA_FROM_DEVICE);
 	vcu_dbg_log("%s %d", __func__, __LINE__);
 	mapped_iova= sg_dma_address(sgt->sgl);
 	vcu_dbg_log("[VCU] mapped_iova=0x%llx", mapped_iova);

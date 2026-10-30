@@ -92,7 +92,7 @@ void fmt_prepare_dvfs_emi_bw(struct mtk_vdec_fmt *fmt)
 	unsigned long freq = 0;
 	int i = 0;
 
-	ret = dev_pm_opp_of_add_table(fmt->dev);
+	ret = devm_pm_opp_of_add_table(fmt->dev);
 	if (ret < 0) {
 		fmt_debug(0, "Failed to get opp table (%d)\n", ret);
 		return;
@@ -100,18 +100,18 @@ void fmt_prepare_dvfs_emi_bw(struct mtk_vdec_fmt *fmt)
 
 	fmt->fmt_reg = devm_regulator_get(fmt->dev,
 						"dvfsrc-vcore");
-	if (fmt->fmt_reg == 0) {
-		fmt_debug(0, "Failed to get regulator\n");
+	if (IS_ERR(fmt->fmt_reg)) {
+		fmt_debug(0, "Failed to get regulator %ld\n", PTR_ERR(fmt->fmt_reg));
+		fmt->fmt_reg = NULL;
 		return;
 	}
 
-	fmt->fmt_freq_cnt = dev_pm_opp_get_opp_count(fmt->dev);
+	fmt->fmt_freq_cnt = 0;
 	freq = 0;
-	while (!IS_ERR(opp =
-		dev_pm_opp_find_freq_ceil(fmt->dev, &freq))) {
-		fmt->fmt_freqs[i] = freq;
+	while (fmt->fmt_freq_cnt < MAX_FREQ_STEP &&
+	       !IS_ERR(opp = dev_pm_opp_find_freq_ceil(fmt->dev, &freq))) {
+		fmt->fmt_freqs[fmt->fmt_freq_cnt++] = freq;
 		freq++;
-		i++;
 		dev_pm_opp_put(opp);
 	}
 	i = 0;
@@ -158,23 +158,22 @@ void fmt_start_dvfs_emi_bw(struct mtk_vdec_fmt *fmt, struct fmt_pmqos pmqos_para
 
 	fmt_debug(1, "request_freq %lu", request_freq);
 
-	if (request_freq > fmt->fmt_freqs[fmt->fmt_freq_cnt-1]) {
+	if (fmt->fmt_freq_cnt && request_freq > fmt->fmt_freqs[fmt->fmt_freq_cnt-1]) {
 		request_freq = fmt->fmt_freqs[fmt->fmt_freq_cnt-1];
 		fmt_debug(1, "request_freq %lu limited by highest fmt_freq %lu",
 					request_freq, fmt->fmt_freqs[fmt->fmt_freq_cnt-1]);
 	}
 
-	if (fmt->fmt_reg != 0) {
+	if (fmt->fmt_reg && fmt->fmt_freq_cnt) {
 		opp = dev_pm_opp_find_freq_ceil(fmt->dev,
 					&request_freq);
 		fmt_debug(1, "actual request freq %lu", request_freq);
-		volt = dev_pm_opp_get_voltage(opp);
-		dev_pm_opp_put(opp);
-
-		ret = regulator_set_voltage(fmt->fmt_reg, volt, INT_MAX);
-		if (ret) {
-			fmt_debug(0, "Failed to set regulator voltage %d\n",
-			volt);
+		if (!IS_ERR(opp)) {
+			volt = dev_pm_opp_get_voltage(opp);
+			dev_pm_opp_put(opp);
+			ret = regulator_set_voltage(fmt->fmt_reg, volt, INT_MAX);
+			if (ret)
+				fmt_debug(0, "Failed to set regulator voltage %d\n", volt);
 		}
 	}
 	fmt_debug(1, "rdma cal MMqos (%d, %d, %lu)",
@@ -209,17 +208,16 @@ void fmt_end_dvfs_emi_bw(struct mtk_vdec_fmt *fmt, int id)
 	int volt = 0;
 	int ret = 0;
 
-	if (fmt->fmt_reg != 0) {
+	if (fmt->fmt_reg && fmt->fmt_freq_cnt) {
 		fmt_debug(1, "request freq %lu", fmt->fmt_freqs[0]);
 		opp = dev_pm_opp_find_freq_ceil(fmt->dev,
 					&fmt->fmt_freqs[0]);
-		volt = dev_pm_opp_get_voltage(opp);
-		dev_pm_opp_put(opp);
-
-		ret = regulator_set_voltage(fmt->fmt_reg, volt, INT_MAX);
-		if (ret) {
-			fmt_debug(0, "Failed to set regulator voltage %d\n",
-			volt);
+		if (!IS_ERR(opp)) {
+			volt = dev_pm_opp_get_voltage(opp);
+			dev_pm_opp_put(opp);
+			ret = regulator_set_voltage(fmt->fmt_reg, volt, INT_MAX);
+			if (ret)
+				fmt_debug(0, "Failed to set regulator voltage %d\n", volt);
 		}
 	}
 	if (id >= 0 && id < fmt->gce_th_num) {

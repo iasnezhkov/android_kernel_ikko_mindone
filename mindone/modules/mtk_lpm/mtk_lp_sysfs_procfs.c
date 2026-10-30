@@ -35,6 +35,7 @@ void *mtk_lp_sysfs_procfs_seq_start(struct seq_file *sf, loff_t *ppos)
 void *mtk_lp_sysfs_procfs_seq_next(struct seq_file *sf
 			, void *v, loff_t *ppos)
 {
+	++*ppos;
 	return NULL;
 }
 
@@ -110,7 +111,8 @@ static ssize_t mtk_lp_sysfs_procfs_write(struct file *filp,
 	struct mtk_lp_sysfs_op *pOp = (struct mtk_lp_sysfs_op *)
 			((struct seq_file *)filp->private_data)->private;
 
-	count = min(count, sizeof(BufFromUser));
+	if (count >= sizeof(BufFromUser))
+		return -EINVAL;
 
 	memset(&BufFromUser[0], 0, sizeof(BufFromUser));
 	if (copy_from_user(&BufFromUser[0], userbuf, count))

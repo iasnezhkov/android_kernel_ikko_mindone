@@ -360,7 +360,7 @@ void *mtk_vcu_get_sec_buffer(struct device *dev, struct mtk_vcu_queue *vcu_queue
 	}
 	vcu_sec_buf->attach = attach;
 
-	sgt = dma_buf_map_attachment(attach, DMA_BIDIRECTIONAL);
+	sgt = dma_buf_map_attachment_unlocked(attach, DMA_BIDIRECTIONAL);
 	if (IS_ERR(sgt)) {
 		pr_info("map failed, detach and return\n");
 		dma_buf_detach(vcu_sec_buf->dbuf, attach);
@@ -534,7 +534,7 @@ int mtk_vcu_free_sec_buffer(struct mtk_vcu_queue *vcu_queue,
 
 				/* decrease file count */
 				//free iova here
-				dma_buf_unmap_attachment(vcu_sec_buf->attach,
+				dma_buf_unmap_attachment_unlocked(vcu_sec_buf->attach,
 					vcu_sec_buf->sgt,
 					DMA_BIDIRECTIONAL);
 
@@ -646,14 +646,14 @@ void vcu_io_buffer_cache_sync(struct device *dev,
 		pr_info("failed to attach dmabuf\n");
 		return;
 	}
-	sgt = dma_buf_map_attachment(buf_att, op);
+	sgt = dma_buf_map_attachment_unlocked(buf_att, op);
 	if (IS_ERR_OR_NULL(sgt)) {
 		pr_info("%s Error getting dmabuf scatterlist %p\n", __func__, sgt);
 		dma_buf_detach(dbuf, buf_att);
 		return;
 	}
 	dma_sync_sg_for_device(dev, sgt->sgl, sgt->orig_nents, op);
-	dma_buf_unmap_attachment(buf_att, sgt, op);
+	dma_buf_unmap_attachment_unlocked(buf_att, sgt, op);
 	dma_buf_detach(dbuf, buf_att);
 }
 

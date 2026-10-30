@@ -9,6 +9,7 @@
 #include <linux/io.h>
 #include <linux/kernel.h>
 #include <linux/module.h>
+#include <linux/math64.h>
 #include <linux/nvmem-consumer.h>
 #include <linux/of.h>
 #include <linux/of_device.h>
@@ -65,7 +66,7 @@ static int pmic_raw_to_temp(struct pmic_tz_cali_data *cali_data, int tz_id,
 	int y_curr = val;
 
 	t_current = cali_data[tz_id].intercept +
-		((cali_data[tz_id].slope1 * y_curr) / (cali_data[tz_id].slope2));
+		div_s64((int64_t)cali_data[tz_id].slope1 * y_curr, cali_data[tz_id].slope2);
 
 	return t_current;
 }
@@ -85,17 +86,17 @@ static void pmic_get_temp_convert_params(struct pmic_temp_info *data)
 		cali[i].slope1 = (100 * 1000 * 10);	/* 1000 is for 0.001 degree */
 
 		if (tz_data->o_slope_sign == 0)
-			cali[i].slope2 = -(factor + tz_data->o_slope);
+			cali[i].slope2 = -(factor + tz_data->o_slope * 10);
 		else
-			cali[i].slope2 = -(factor - tz_data->o_slope);
+			cali[i].slope2 = -(factor - tz_data->o_slope * 10);
 
-		vbe_t = (-1) * ((((cali[i].o_vts) * tz_data->pullup_volt)) / 4096) * 1000;
+		vbe_t = (-1) * div_s64((int64_t)cali[i].o_vts * tz_data->pullup_volt, 4096) * 1000;
 
 		if (tz_data->o_slope_sign == 0)
-			cali[i].intercept = (vbe_t * 1000) / (-(factor + tz_data->o_slope * 10));
+			cali[i].intercept = div_s64((int64_t)vbe_t * 1000, -(factor + tz_data->o_slope * 10));
 		/*0.001 degree */
 		else
-			cali[i].intercept = (vbe_t * 1000) / (-(factor - tz_data->o_slope * 10));
+			cali[i].intercept = div_s64((int64_t)vbe_t * 1000, -(factor - tz_data->o_slope * 10));
 		/*0.001 degree */
 
 		cali[i].intercept = cali[i].intercept + (tz_data->degc_cali * (1000 / 2));
@@ -248,9 +249,6 @@ static int mt6357_get_cali_data(struct device *dev, struct pmic_tz_data *tz_data
 	tz_data->o_slope_sign = ((efuse_buff[2] & BIT(8)) >> 8);
 	tz_data->o_slope = (efuse_buff[2] & GENMASK(5, 0));
 	tz_data->id = ((efuse_buff[3] & BIT(4)) >> 4);
-
-	if (tz_data->o_slope_sign == 1)
-		tz_data->o_slope = -tz_data->o_slope;
 
 	if (tz_data->id == 0)
 		tz_data->o_slope = 0;

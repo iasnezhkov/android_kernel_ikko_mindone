@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-2.0
+// SPDX-FileCopyrightText: 2026 The LineageOS Project
 #include <assert.h>
 #include <errno.h>
 #include <stdbool.h>
@@ -23,6 +25,7 @@ struct mtk_afe_adda_priv {
 
 struct mt6789_afe_private {
     struct mtk_afe_adda_priv *dai_priv[2];
+    int mtkaif_dmic;
 };
 
 struct mtk_base_afe {
@@ -67,13 +70,6 @@ static int regmap_update_bits(struct regmap *map, unsigned int reg,
     assert(reg <= AFE_MAX_REGISTER && reg % 4 == 0);
     map->values[reg / 4] = (map->values[reg / 4] & ~mask) | (value & mask);
     return 0;
-}
-
-static void mtk_adda_ul_src_dmic(struct mtk_base_afe *afe, int id)
-{
-    (void)afe;
-    (void)id;
-    assert(0);
 }
 
 PRODUCTION_FUNCTIONS

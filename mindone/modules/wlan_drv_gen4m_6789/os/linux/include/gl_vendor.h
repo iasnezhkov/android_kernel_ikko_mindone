@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: GPL-2.0 OR BSD-3-Clause */
 /*******************************************************************************
  *
  * This file is provided under a dual license.  When you use or
@@ -441,7 +442,7 @@ enum WIFI_VENDOR_NAN {
 };
 #endif
 
-#define MAX_FW_ROAMING_BLACKLIST_SIZE	16
+#define MAX_FW_ROAMING_BLACKLIST_SIZE CFG_FW_ROAMING_BLACKLIST_SIZE
 #define MAX_FW_ROAMING_WHITELIST_SIZE	8
 
 #if CFG_SUPPORT_DATA_STALL

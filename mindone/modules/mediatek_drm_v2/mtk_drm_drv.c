@@ -5,11 +5,8 @@
 
 #include <drm/drm_atomic_helper.h>
 #include <linux/vmalloc.h>
+#include <linux/compat.h>
 #include <drivers/misc/mediatek/smi/mtk-smi-larb.h>
-#include "mindone_log.h"
-int mindone_log;
-module_param(mindone_log, int, 0644);
-MODULE_PARM_DESC(mindone_log, "print MINDONE diagnostic markers (0 = silent)");
 #include <drm/drm_crtc_helper.h>
 #include <drm/drm_probe_helper.h>
 #include <drm/drm_gem.h>
@@ -33,7 +30,7 @@ MODULE_PARM_DESC(mindone_log, "print MINDONE diagnostic markers (0 = silent)");
 #include <drm/drm_auth.h>
 #include <drm/drm_print.h>
 
-#include "drm_internal.h"
+#include <drm/drm_ioctl.h>
 #include "mtk_drm_crtc.h"
 #include "mtk_drm_ddp.h"
 #include "mtk_drm_ddp_comp.h"
@@ -985,11 +982,7 @@ static void mtk_atomic_doze_finish(struct drm_device *dev,
 	}
 }
 
-int mindone_lk_takeover;
-module_param(mindone_lk_takeover, int, 0644);
 static int mindone_lk_alive = -1;
-static int mindone_lk_alive_ro = -1;
-module_param_named(mindone_lk_alive, mindone_lk_alive_ro, int, 0444);
 
 unsigned int mindone_lk_islcmfound(void)
 {
@@ -1012,7 +1005,6 @@ bool mindone_lk_display_alive(void)
 void mindone_lk_set_alive(int alive)
 {
 	mindone_lk_alive = alive;
-	mindone_lk_alive_ro = alive;
 }
 
 static bool mtk_drm_is_enable_from_lk(struct drm_crtc *crtc)
@@ -1425,6 +1417,10 @@ static void mtk_atomic_mml(struct drm_device *dev,
 	struct mtk_drm_crtc *mtk_crtc = NULL;
 	int i = 0;
 	bool last_is_mml = false;
+	struct mtk_drm_private *priv = dev->dev_private;
+
+	if (!mtk_drm_helper_get_opt(priv->helper_opt, MTK_DRM_OPT_MML_PRIMARY))
+		return;
 
 	for_each_old_crtc_in_state(state, crtc, old_crtc_state, i) {
 		if (drm_crtc_index(crtc) == 0)
@@ -1496,14 +1492,11 @@ static void mtk_atomic_complete(struct mtk_drm_private *private,
 {
 	struct drm_device *drm = private->drm;
 
-	MINDONE_PR("MINDONE-AC: atomic-complete begin state=%px\n", state);
 	if (mtk_atomic_skip_config(state)) {
 		drm_atomic_helper_commit_planes(drm, state,
 			DRM_PLANE_COMMIT_ACTIVE_ONLY);
-		MINDONE_PR("MINDONE-AC: atomic-complete end (skip-config)\n");
 		return;
 	}
-	MINDONE_PR("MINDONE-AC: complete-step wait-for-fences\n");
 	mtk_atomic_wait_for_fences(state);
 
 	/*
@@ -1524,20 +1517,14 @@ static void mtk_atomic_complete(struct mtk_drm_private *private,
 	 * To change the CRTC doze state, call the encorder enable/disable
 	 * directly if the actvie state doesn't change.
 	 */
-	MINDONE_PR("MINDONE-AC: complete-step doze-preparation\n");
 	mtk_atomic_doze_preparation(drm, state);
 
-	MINDONE_PR("MINDONE-AC: complete-step modeset-disables\n");
 	drm_atomic_helper_commit_modeset_disables(drm, state);
-	MINDONE_PR("MINDONE-AC: complete-step modeset-enables\n");
 	drm_atomic_helper_commit_modeset_enables(drm, state);
-	MINDONE_PR("MINDONE-AC: complete-step post-modeset-enables\n");
 
 	mtk_set_first_config(drm, state);
 
-	MINDONE_PR("MINDONE-AC: complete-step enable-trig\n");
 	mtk_drm_enable_trig(drm, state);
-	MINDONE_PR("MINDONE-AC: complete-step post-enable-trig\n");
 
 	mtk_atomic_disp_rsz_roi(drm, state);
 
@@ -1545,15 +1532,11 @@ static void mtk_atomic_complete(struct mtk_drm_private *private,
 
 	mtk_atomic_check_plane_sec_state(drm, state);
 
-	MINDONE_PR("MINDONE-AC: complete-step mml\n");
 	mtk_atomic_mml(drm, state);
-	MINDONE_PR("MINDONE-AC: complete-step post-mml\n");
 
 	if (!mtk_atomic_skip_plane_update(private, state)) {
-		MINDONE_PR("MINDONE-AC: complete-step commit-planes\n");
 		drm_atomic_helper_commit_planes(drm, state,
 						DRM_PLANE_COMMIT_ACTIVE_ONLY);
-		MINDONE_PR("MINDONE-AC: complete-step post-commit-planes\n");
 		drm_atomic_esd_chk_first_enable(drm, state);
 	}
 
@@ -1561,13 +1544,10 @@ static void mtk_atomic_complete(struct mtk_drm_private *private,
 
 	if (!mtk_drm_helper_get_opt(private->helper_opt,
 				    MTK_DRM_OPT_COMMIT_NO_WAIT_VBLANK)) {
-		MINDONE_PR("MINDONE-AC: complete-step wait-for-vblanks\n");
 		drm_atomic_helper_wait_for_vblanks(drm, state);
-		MINDONE_PR("MINDONE-AC: complete-step post-wait-for-vblanks\n");
 	}
 
 	drm_atomic_helper_cleanup_planes(drm, state);
-	MINDONE_PR("MINDONE-AC: atomic-complete end\n");
 	drm_atomic_state_put(state);
 }
 
@@ -1587,7 +1567,6 @@ static int mtk_atomic_check(struct drm_device *dev,
 	struct mtk_crtc_state *old_state, *new_state;
 	int i, ret = 0;
 
-	MINDONE_PR("MINDONE-AC: atomic-check begin state=%px\n", state);
 	ret = drm_atomic_helper_check(dev, state);
 	if (ret)
 		return ret;
@@ -1609,12 +1588,10 @@ static int mtk_atomic_check(struct drm_device *dev,
 		if (ret) {
 			DDPINFO("DRM add conn failed! state:%p, ret:%d\n",
 					state, ret);
-			MINDONE_PR("MINDONE-AC: atomic-check end ret=%d (add-conn-fail)\n", ret);
 			return ret;
 		}
 	}
 
-	MINDONE_PR("MINDONE-AC: atomic-check end ret=%d\n", ret);
 	return ret;
 }
 
@@ -1628,11 +1605,9 @@ static int mtk_atomic_commit(struct drm_device *drm,
 	int ret, i = 0;
 	int index;
 
-	MINDONE_PR("MINDONE-AC: atomic-commit begin async=%d state=%px\n", async, state);
 	DDP_PROFILE("[PROFILE] %s+\n", __func__);
 	ret = drm_atomic_helper_prepare_planes(drm, state);
 	if (ret) {
-		MINDONE_PR("MINDONE-AC: atomic-commit end ret=%d (prepare-planes-fail)\n", ret);
 		return ret;
 	}
 
@@ -1725,7 +1700,6 @@ commit_unlock:
 	mutex_unlock(&private->commit.lock);
 	DDP_PROFILE("[PROFILE] %s-\n", __func__);
 
-	MINDONE_PR("MINDONE-AC: atomic-commit end ret=0\n");
 	return 0;
 }
 
@@ -4234,19 +4208,10 @@ void mtk_drm_top_clk_prepare_enable(struct drm_device *drm)
 		priv->data->sodi_config(drm, DDP_COMPONENT_ID_MAX, NULL, &en);
 }
 
-static int mindone_top_clk_isr_wait_retries;
-module_param(mindone_top_clk_isr_wait_retries, int, 0644);
-MODULE_PARM_DESC(mindone_top_clk_isr_wait_retries,
-	"top_isr_ref wait retries (x20-40us); 0 (default) = wait unbounded, like vendor");
-static unsigned long mindone_top_clk_isr_race_hits;
-module_param(mindone_top_clk_isr_race_hits, ulong, 0444);
-MODULE_PARM_DESC(mindone_top_clk_isr_race_hits,
-	"mtk_drm_top_clk_disable_unprepare() giving up with top_isr_ref still > 0 — count");
-
 void mtk_drm_top_clk_disable_unprepare(struct drm_device *drm)
 {
 	struct mtk_drm_private *priv = drm->dev_private;
-	int i = 0, cnt = 0;
+	int i = 0;
 	unsigned long flags = 0;
 
 	if (priv->top_clk_num <= 0)
@@ -4256,17 +4221,11 @@ void mtk_drm_top_clk_disable_unprepare(struct drm_device *drm)
 	spin_lock_irqsave(&top_clk_lock, flags);
 	atomic_dec(&top_clk_ref);
 	if (atomic_read(&top_clk_ref) == 0) {
-		while (atomic_read(&top_isr_ref) > 0 &&
-		       (mindone_top_clk_isr_wait_retries <= 0 ||
-		        cnt++ < mindone_top_clk_isr_wait_retries)) {
+		while (atomic_read(&top_isr_ref) > 0) {
 			spin_unlock_irqrestore(&top_clk_lock, flags);
-			pr_notice("%s waiting for isr job, %d\n",
-				  __func__, cnt);
+			pr_notice("%s waiting for isr job\n", __func__);
 			usleep_range(20, 40);
 			spin_lock_irqsave(&top_clk_lock, flags);
-		}
-		if (atomic_read(&top_isr_ref) > 0) {
-			mindone_top_clk_isr_race_hits++;
 		}
 		priv->power_state = false;
 	}
@@ -4955,7 +4914,7 @@ int _parse_tag_videolfb(unsigned int *vramsize, phys_addr_t *fb_base,
 
 found:
 #ifdef CONFIG_MTK_DISP_NO_LK
-	return mindone_lk_takeover ? 0 : -1;
+	return 0;
 #else
 	DDPINFO("[DT][videolfb] fb_base    = 0x%lx\n", (unsigned long)*fb_base);
 	DDPINFO("[DT][videolfb] vram       = 0x%x (%d)\n", *vramsize,
@@ -4997,9 +4956,6 @@ int mtk_drm_get_info_ioctl(struct drm_device *dev, void *data,
 	int ret = 0;
 	struct drm_mtk_session_info *info = data;
 	int s_type = MTK_SESSION_TYPE(info->session_id);
-
-	MINDONE_PR("MINDONE-RT: get-info-ioctl session_id=0x%08x s_type=%d\n",
-		info->session_id, s_type);
 
 	if (s_type == MTK_SESSION_PRIMARY) {
 		ret = mtk_drm_get_panel_info(dev, info, 0);
@@ -5059,8 +5015,6 @@ int mtk_drm_set_ddp_mode(struct drm_device *dev, void *data,
 	int ret = 0;
 	unsigned int *session_mode = data;
 
-	MINDONE_PR("MINDONE-RT: set-ddp-mode session_mode=%u\n", *session_mode);
-
 	ret = mtk_session_set_mode(dev, *session_mode);
 	return ret;
 }
@@ -5084,108 +5038,360 @@ int mtk_drm_ioctl_get_lcm_index(struct drm_device *dev, void *data,
 	return ret;
 }
 
+static int mtk_drm_ioctl_kick_idle(struct drm_device *dev, void *data,
+				   struct drm_file *file_priv)
+{
+	unsigned int *crtc_id = data;
+	struct drm_crtc *crtc;
+
+	crtc = drm_crtc_find(dev, file_priv, *crtc_id);
+	if (!crtc) {
+		DDPPR_ERR("Unknown CRTC ID %d\n", *crtc_id);
+		return -ENOENT;
+	}
+	DDPDBG("[%s CRTC:%d:%s]\n", __func__, crtc->base.id, crtc->name);
+
+	mtk_drm_idlemgr_kick_async(crtc);
+
+	return 0;
+}
+
+static int mtk_drm_ioctl_hwvsync_on(struct drm_device *dev, void *data,
+				    struct drm_file *file_priv)
+{
+	struct mtk_drm_hwvsync_on_info *args = data;
+	struct mtk_drm_crtc *mtk_crtc;
+	struct drm_crtc *crtc;
+
+	crtc = drm_crtc_find(dev, file_priv, args->crtc_id);
+	if (!crtc) {
+		DDPPR_ERR("Unknown CRTC ID %d\n", args->crtc_id);
+		return -ENOENT;
+	}
+	if (drm_crtc_index(crtc) != 0)
+		return 0;
+
+	mtk_crtc = to_mtk_crtc(crtc);
+	DDP_MUTEX_LOCK(&mtk_crtc->lock, __func__, __LINE__);
+	WRITE_ONCE(mtk_crtc->hwvsync_en, args->hw_vsync_on);
+	mtk_crtc->hwvsync_owner = args->hw_vsync_on ? file_priv : NULL;
+	if (args->hw_vsync_on && mtk_crtc->enabled)
+		mtk_drm_idlemgr_kick(__func__, crtc, 0);
+	DDP_MUTEX_UNLOCK(&mtk_crtc->lock, __func__, __LINE__);
+	DDPDBG("[%s CRTC:%d:%s,hwvsyncon:%d]\n", __func__, crtc->base.id,
+	       crtc->name, args->hw_vsync_on);
+
+	return 0;
+}
+
+static int mtk_drm_get_mode_ext_info_ioctl(struct drm_device *dev, void *data,
+					   struct drm_file *file_priv)
+{
+	struct mtk_drm_mode_ext_info *args = data;
+	struct drm_crtc *crtc;
+
+	if (!args)
+		return -EINVAL;
+
+	crtc = drm_crtc_find(dev, file_priv, args->crtc_id);
+	if (!crtc) {
+		DDPPR_ERR("%s unknown CRTC ID %u\n", __func__, args->crtc_id);
+		return -EINVAL;
+	}
+
+	if (drm_crtc_index(crtc) != 0 ||
+	    !mtk_crtc_is_frame_trigger_mode(crtc))
+		return 0;
+
+	return -EOPNOTSUPP;
+}
+
+static int mtk_drm_ioctl_mml_ctrl(struct drm_device *dev, void *data,
+				  struct drm_file *file_priv)
+{
+	struct mtk_drm_private *priv = dev->dev_private;
+	struct mtk_drm_mml_ctrl *mml_ctrl = data;
+	struct platform_device *plat_dev;
+	u8 info[360];
+
+	if (!mml_ctrl || !priv || !priv->data)
+		return -EINVAL;
+	if (priv->data->mmsys_id != MMSYS_MT6789)
+		return -EOPNOTSUPP;
+
+	switch (mml_ctrl->func) {
+	case mtk_drm_mml_func_get_caps:
+		plat_dev = of_find_device_by_node(priv->mutex_node);
+		if (!plat_dev) {
+			DDPPR_ERR("%s of_find_device_by_node failed\n", __func__);
+			return -EINVAL;
+		}
+		put_device(&plat_dev->dev);
+		mml_ctrl->caps.mode_caps = MTK_MML_DISP_MDP_LAYER;
+		mml_ctrl->caps.hw_caps = 0;
+		return 0;
+	case mtk_drm_mml_func_query_hw_support:
+		if (copy_from_user(info, mml_ctrl->query.info, sizeof(info))) {
+			DDPPR_ERR("%s mml frame info copy failed\n", __func__);
+			return -EINVAL;
+		}
+		mml_ctrl->query.support = false;
+		return 0;
+	default:
+		DDPPR_ERR("%s wrong func %u\n", __func__, mml_ctrl->func);
+		return -EINVAL;
+	}
+}
+
+static void mtk_drm_postclose(struct drm_device *dev, struct drm_file *file_priv)
+{
+	struct drm_crtc *crtc;
+
+	drm_for_each_crtc(crtc, dev) {
+		struct mtk_drm_crtc *mtk_crtc = to_mtk_crtc(crtc);
+
+		DDP_MUTEX_LOCK(&mtk_crtc->lock, __func__, __LINE__);
+		if (mtk_crtc->hwvsync_owner == file_priv) {
+			WRITE_ONCE(mtk_crtc->hwvsync_en, 0);
+			mtk_crtc->hwvsync_owner = NULL;
+		}
+		DDP_MUTEX_UNLOCK(&mtk_crtc->lock, __func__, __LINE__);
+	}
+}
+
+static void __user *mtk_drm_panel_user_ptr(const void __user *array, int index)
+{
+	void __user *ptr;
+
+#if IS_ENABLED(CONFIG_COMPAT)
+	if (in_compat_syscall()) {
+		compat_uptr_t ptr32;
+
+		if (copy_from_user(&ptr32, (const compat_uptr_t __user *)array + index,
+				   sizeof(ptr32)))
+			return NULL;
+		return compat_ptr(ptr32);
+	}
+#endif
+	if (copy_from_user(&ptr, (void __user * const __user *)array + index,
+			   sizeof(ptr)))
+		return NULL;
+	return ptr;
+}
+
 int mtk_drm_ioctl_get_all_connector_panel_info(struct drm_device *dev, void *data,
 		struct drm_file *file_priv)
 {
-	struct mtk_ddp_comp *dsi_comp;
+	struct mtk_drm_panels_info *panel_ctx = data;
+	struct mtk_drm_panels_info ctx = { .connector_cnt = -1 };
 	struct mtk_drm_private *private;
-	struct mtk_drm_panels_info *panel_ctx =
-			(struct mtk_drm_panels_info *)data;
-	struct mtk_drm_panels_info __panel_ctx = {0};
-	bool check_only_mode;
-	void *ptr;
-	void **uptr;
-	int i, ret = 0;
+	struct mtk_ddp_comp *dsi_comp;
+	void __user *ptr;
+	int i, j, count, ret = 0;
 
 	if (!dev)
 		return -ENODEV;
-
+	if (!panel_ctx)
+		return -EINVAL;
 	private = dev->dev_private;
-	/* just need the struct mtk_dsi definition, would not really access HW or SW state */
 	dsi_comp = private->ddp_comp[DDP_COMPONENT_DSI0];
 	if (!dsi_comp)
 		dsi_comp = private->ddp_comp[DDP_COMPONENT_DSI1];
 	if (!dsi_comp)
 		return -ENXIO;
-
-	if (!panel_ctx) {
-		DDPPR_ERR("%s panel_info alloc failed\n", __func__);
+	mtk_ddp_comp_io_cmd(dsi_comp, NULL, GET_ALL_CONNECTOR_PANEL_NAME, &ctx);
+	if (panel_ctx->connector_cnt == -1) {
+		panel_ctx->connector_cnt = ctx.connector_cnt;
+		panel_ctx->default_connector_id = ctx.default_connector_id;
+		return 0;
+	}
+	if (ctx.connector_cnt < 0 || panel_ctx->connector_cnt < ctx.connector_cnt)
 		return -EINVAL;
+	count = ctx.connector_cnt;
+	if (!count)
+		return 0;
+	ctx.connector_obj_id = vzalloc(sizeof(*ctx.connector_obj_id) * count);
+	ctx.possible_crtc = vzalloc(sizeof(*ctx.possible_crtc) * count);
+	ctx.panel_name = vzalloc(sizeof(*ctx.panel_name) * count);
+	ctx.dsi_mode = vzalloc(sizeof(*ctx.dsi_mode) * count);
+	if (!ctx.connector_obj_id || !ctx.possible_crtc || !ctx.panel_name || !ctx.dsi_mode) {
+		ret = -ENOMEM;
+		goto out;
 	}
-
-	__panel_ctx.connector_cnt = panel_ctx->connector_cnt;
-	check_only_mode = (__panel_ctx.connector_cnt == -1);
-	/* need copy_from_user */
-	if (check_only_mode == false) {
-		ptr = panel_ctx->connector_obj_id;
-		__panel_ctx.connector_obj_id =
-			vmalloc(sizeof(unsigned int) * __panel_ctx.connector_cnt);
-		__panel_ctx.panel_name = vmalloc(sizeof(char *) * __panel_ctx.connector_cnt);
-		if (!__panel_ctx.connector_obj_id || !__panel_ctx.panel_name) {
-			DDPPR_ERR("%s ojb_id panel_id or panel_name alloc fail\n", __func__);
+	for (i = 0; i < count; i++) {
+		ctx.possible_crtc[i] = vzalloc(sizeof(unsigned int) * MAX_CRTC_CNT);
+		ctx.panel_name[i] = vzalloc(GET_PANELS_STR_LEN);
+		if (!ctx.possible_crtc[i] || !ctx.panel_name[i]) {
 			ret = -ENOMEM;
-			goto exit0;
-		}
-
-		for (i = 0 ; i < __panel_ctx.connector_cnt ; ++i) {
-			__panel_ctx.panel_name[i] = vzalloc(sizeof(char) * GET_PANELS_STR_LEN);
-			if (!__panel_ctx.panel_name[i]) {
-				DDPPR_ERR("%s alloc panel_name fail\n", __func__);
-				ret = -ENOMEM;
-				goto exit1;
-			}
+			goto out;
 		}
 	}
-
-	mtk_ddp_comp_io_cmd(dsi_comp, NULL, GET_ALL_CONNECTOR_PANEL_NAME, &__panel_ctx);
-
-	/* need copy_to_user */
-	if (check_only_mode == false) {
-		ptr = panel_ctx->connector_obj_id;
-		if (copy_to_user((void __user *)ptr, __panel_ctx.connector_obj_id,
-				sizeof(unsigned int) * __panel_ctx.connector_cnt)) {
-			DDPPR_ERR("%s copy_to_user connector_obj_id fail\n", __func__);
-			ret = -EINVAL;
-			goto exit1;
-		}
-
-		uptr = vmalloc(sizeof(void __user *) * __panel_ctx.connector_cnt);
-		if (!uptr) {
-			DDPPR_ERR("%s alloc panel_name fail\n", __func__);
-			ret = -ENOMEM;
-			goto exit2;
-		}
-
-		if (copy_from_user(uptr, panel_ctx->panel_name,
-				sizeof(void __user *) * __panel_ctx.connector_cnt)) {
-			DDPPR_ERR("%s copy_from_user panel_name fail\n", __func__);
-			ret = -EINVAL;
-			goto exit2;
-		}
-		for (i = 0 ; i < __panel_ctx.connector_cnt; ++i) {
-			if (copy_to_user((void __user *)uptr[i], __panel_ctx.panel_name[i],
-					sizeof(char) * GET_PANELS_STR_LEN)) {
-				DDPPR_ERR("%s copy_to_user panel_name fail\n", __func__);
-				ret = -EINVAL;
-				goto exit2;
-			}
-		}
-	} else {
-		panel_ctx->connector_cnt = __panel_ctx.connector_cnt;
-		panel_ctx->default_connector_id = __panel_ctx.default_connector_id;
-		return ret;
+	mtk_ddp_comp_io_cmd(dsi_comp, NULL, GET_ALL_CONNECTOR_PANEL_NAME, &ctx);
+	if (copy_to_user(panel_ctx->connector_obj_id, ctx.connector_obj_id,
+			 sizeof(*ctx.connector_obj_id) * count)) {
+		ret = -EFAULT;
+		goto out;
 	}
-exit2:
-	vfree(uptr);
-exit1:
-	for (i = 0 ; i < __panel_ctx.connector_cnt; ++i)
-		vfree(__panel_ctx.panel_name[i]);
-exit0:
-	vfree(__panel_ctx.connector_obj_id);
-	vfree(__panel_ctx.panel_name);
+	for (i = 0; i < count; i++) {
+		unsigned int mask = ctx.possible_crtc[i][0];
+		int crtc_count = 0;
 
+		ctx.possible_crtc[i][0] = 0;
+		for (j = 0; j < MAX_CRTC && crtc_count < MAX_CRTC_CNT; j++) {
+			if ((mask & BIT(j)) && private->crtc[j])
+				ctx.possible_crtc[i][crtc_count++] = private->crtc[j]->base.id;
+		}
+		ptr = mtk_drm_panel_user_ptr(panel_ctx->possible_crtc, i);
+		if (!ptr || copy_to_user(ptr, ctx.possible_crtc[i],
+					 sizeof(unsigned int) * MAX_CRTC_CNT)) {
+			ret = -EFAULT;
+			goto out;
+		}
+		ptr = mtk_drm_panel_user_ptr(panel_ctx->panel_name, i);
+		if (!ptr || copy_to_user(ptr, ctx.panel_name[i], GET_PANELS_STR_LEN)) {
+			ret = -EFAULT;
+			goto out;
+		}
+	}
+	if (panel_ctx->dsi_mode && copy_to_user(panel_ctx->dsi_mode, ctx.dsi_mode,
+					     sizeof(*ctx.dsi_mode) * count))
+		ret = -EFAULT;
+out:
+	for (i = 0; i < count; i++) {
+		if (ctx.possible_crtc)
+			vfree(ctx.possible_crtc[i]);
+		if (ctx.panel_name)
+			vfree(ctx.panel_name[i]);
+	}
+	vfree(ctx.connector_obj_id);
+	vfree(ctx.possible_crtc);
+	vfree(ctx.panel_name);
+	vfree(ctx.dsi_mode);
 	return ret;
 }
+
+#if IS_ENABLED(CONFIG_COMPAT)
+struct mtk_drm_mode_ext_info_32 {
+	unsigned int crtc_id;
+	unsigned int mode_num;
+	compat_uptr_t total_offset;
+	compat_uptr_t real_te_duration;
+	compat_uptr_t switch_mode_delay;
+	unsigned int idle_fps;
+};
+
+struct mtk_drm_mml_ctrl_32 {
+	u32 func;
+	union {
+		struct mtk_drm_mml_caps_info caps;
+		struct {
+			compat_uptr_t info;
+			bool support;
+		} query;
+	};
+};
+
+static int mtk_drm_get_mode_ext_info_compat(struct file *file, unsigned int cmd,
+					    unsigned long arg)
+{
+	struct drm_file *file_priv = file->private_data;
+	struct mtk_drm_mode_ext_info_32 data32;
+	struct mtk_drm_mode_ext_info data = { 0 };
+	void __user *argp = compat_ptr(arg);
+	int ret;
+
+	if (cmd != DRM_IOWR(DRM_COMMAND_BASE + DRM_MTK_GET_MODE_EXT_INFO,
+			    struct mtk_drm_mode_ext_info_32))
+		return -EINVAL;
+	if (copy_from_user(&data32, argp, sizeof(data32)))
+		return -EFAULT;
+
+	data.crtc_id = data32.crtc_id;
+	data.mode_num = data32.mode_num;
+	data.total_offset = compat_ptr(data32.total_offset);
+	data.real_te_duration = compat_ptr(data32.real_te_duration);
+	data.switch_mode_delay = compat_ptr(data32.switch_mode_delay);
+	data.idle_fps = data32.idle_fps;
+	ret = mtk_drm_get_mode_ext_info_ioctl(file_priv->minor->dev,
+					      &data, file_priv);
+	if (ret)
+		return ret;
+	if (copy_to_user(argp, &data32, sizeof(data32)))
+		return -EFAULT;
+
+	return 0;
+}
+
+static int mtk_drm_mml_ctrl_compat(struct file *file, unsigned int cmd,
+				   unsigned long arg)
+{
+	struct drm_file *file_priv = file->private_data;
+	struct mtk_drm_mml_ctrl_32 data32;
+	struct mtk_drm_mml_ctrl data = { 0 };
+	void __user *argp = compat_ptr(arg);
+	int ret;
+
+	if (cmd != DRM_IOWR(DRM_COMMAND_BASE + DRM_MTK_MML_CTRL,
+			    struct mtk_drm_mml_ctrl_32))
+		return -EINVAL;
+	if (copy_from_user(&data32, argp, sizeof(data32)))
+		return -EFAULT;
+
+	data.func = data32.func;
+	if (data.func == mtk_drm_mml_func_query_hw_support)
+		data.query.info = compat_ptr(data32.query.info);
+	ret = mtk_drm_ioctl_mml_ctrl(file_priv->minor->dev, &data, file_priv);
+	if (ret)
+		return ret;
+	if (data.func == mtk_drm_mml_func_get_caps)
+		data32.caps = data.caps;
+	else if (data.func == mtk_drm_mml_func_query_hw_support)
+		data32.query.support = data.query.support;
+	if (copy_to_user(argp, &data32, sizeof(data32)))
+		return -EFAULT;
+
+	return 0;
+}
+
+struct mtk_drm_panels_info_32 {
+	int connector_cnt;
+	int default_connector_id;
+	compat_uptr_t connector_obj_id;
+	compat_uptr_t possible_crtc;
+	compat_uptr_t panel_name;
+	compat_uptr_t panel_id;
+	compat_uptr_t dsi_mode;
+};
+
+static int mtk_drm_get_panels_info_compat(struct file *file, unsigned int cmd,
+		unsigned long arg)
+{
+	struct drm_file *file_priv = file->private_data;
+	struct mtk_drm_panels_info_32 data32;
+	struct mtk_drm_panels_info data = {0};
+	void __user *argp = compat_ptr(arg);
+	int ret;
+
+	if (copy_from_user(&data32, argp, sizeof(data32)))
+		return -EFAULT;
+	data.connector_cnt = data32.connector_cnt;
+	data.default_connector_id = data32.default_connector_id;
+	data.connector_obj_id = compat_ptr(data32.connector_obj_id);
+	data.possible_crtc = compat_ptr(data32.possible_crtc);
+	data.panel_name = compat_ptr(data32.panel_name);
+	data.panel_id = compat_ptr(data32.panel_id);
+	data.dsi_mode = compat_ptr(data32.dsi_mode);
+	ret = mtk_drm_ioctl_get_all_connector_panel_info(file_priv->minor->dev,
+			&data, file_priv);
+	if (ret)
+		return ret;
+	data32.connector_cnt = data.connector_cnt;
+	data32.default_connector_id = data.default_connector_id;
+	if (copy_to_user(argp, &data32, sizeof(data32)))
+		return -EFAULT;
+	return 0;
+}
+#endif
 
 void mtk_drm_mmlsys_submit_done_cb(void *cb_param)
 {
@@ -5538,6 +5744,8 @@ int mtk_drm_fm_lcm_auto_test(struct drm_device *dev, void *data,
 	int *result = data;
 	int ret = 0;
 
+	*result = 0;
+
 	/* this debug cmd only for crtc0 */
 	crtc = list_first_entry(&(dev)->mode_config.crtc_list,
 			typeof(*crtc), head);
@@ -5570,14 +5778,14 @@ int mtk_drm_fm_lcm_auto_test(struct drm_device *dev, void *data,
 	DDP_MUTEX_UNLOCK(&mtk_crtc->lock, __func__, __LINE__);
 
 	/* ret = 0 fail, ret = 1 pass */
-	if (ret == 0) {
+	if (ret != 1) {
 		DDPPR_ERR("ATA LCM failed\n");
 		*result = 0;
 	} else {
 		DDPMSG("ATA LCM passed\n");
 		*result = 1;
 	}
-	return 0;
+	return ret < 0 ? ret : ret > 1 ? -EIO : 0;
 }
 #endif
 
@@ -5585,13 +5793,7 @@ int mtk_drm_fm_lcm_auto_test(struct drm_device *dev, void *data,
 static int mrk_##fn(struct drm_device *dev, void *data, struct drm_file *file_priv) \
 { \
 	int __ret; \
-	MINDONE_PR("MINDONE-IOC: enter cmd=0x%08x nr=0x%02x pid=%d name=%s\n", \
-		(unsigned int)DRM_IOCTL_##IOCTL, (unsigned int)DRM_##IOCTL, \
-		current->pid, #IOCTL); \
 	__ret = fn(dev, data, file_priv); \
-	MINDONE_PR("MINDONE-IOC: exit  cmd=0x%08x nr=0x%02x ret=%d pid=%d name=%s\n", \
-		(unsigned int)DRM_IOCTL_##IOCTL, (unsigned int)DRM_##IOCTL, \
-		__ret, current->pid, #IOCTL); \
 	return __ret; \
 }
 
@@ -5630,6 +5832,11 @@ MRK_WRAP(MTK_WRITE_SW_REG, mtk_drm_ioctl_write_sw_reg)
 MRK_WRAP(MTK_READ_SW_REG, mtk_drm_ioctl_read_sw_reg)
 MRK_WRAP(MTK_GET_LCM_INDEX, mtk_drm_ioctl_get_lcm_index)
 MRK_WRAP(MTK_GET_PANELS_INFO, mtk_drm_ioctl_get_all_connector_panel_info)
+MRK_WRAP(MTK_KICK_IDLE, mtk_drm_ioctl_kick_idle)
+MRK_WRAP(MTK_HWVSYNC_ON, mtk_drm_ioctl_hwvsync_on)
+MRK_WRAP(MTK_GET_MODE_EXT_INFO, mtk_drm_get_mode_ext_info_ioctl)
+MRK_WRAP(MTK_MML_CTRL, mtk_drm_ioctl_mml_ctrl)
+MRK_WRAP(MTK_DEBUG_LOG, mtk_disp_ioctl_debug_log_switch)
 MRK_WRAP(MTK_AAL_INIT_REG, mtk_drm_ioctl_aal_init_reg)
 MRK_WRAP(MTK_AAL_GET_HIST, mtk_drm_ioctl_aal_get_hist)
 MRK_WRAP(MTK_AAL_SET_PARAM, mtk_drm_ioctl_aal_set_param)
@@ -5730,6 +5937,14 @@ static const struct drm_ioctl_desc mtk_ioctls[] = {
 			  0),
 	DRM_IOCTL_DEF_DRV(MTK_GET_PANELS_INFO, mrk_mtk_drm_ioctl_get_all_connector_panel_info,
 			  0),
+	DRM_IOCTL_DEF_DRV(MTK_KICK_IDLE, mrk_mtk_drm_ioctl_kick_idle,
+			  0),
+	DRM_IOCTL_DEF_DRV(MTK_HWVSYNC_ON, mrk_mtk_drm_ioctl_hwvsync_on,
+			  0),
+	DRM_IOCTL_DEF_DRV(MTK_GET_MODE_EXT_INFO, mrk_mtk_drm_get_mode_ext_info_ioctl,
+			  0),
+	DRM_IOCTL_DEF_DRV(MTK_MML_CTRL, mrk_mtk_drm_ioctl_mml_ctrl, 0),
+	DRM_IOCTL_DEF_DRV(MTK_DEBUG_LOG, mrk_mtk_disp_ioctl_debug_log_switch, 0),
 	DRM_IOCTL_DEF_DRV(MTK_AAL_INIT_REG, mrk_mtk_drm_ioctl_aal_init_reg,
 			  0),
 	DRM_IOCTL_DEF_DRV(MTK_AAL_GET_HIST, mrk_mtk_drm_ioctl_aal_get_hist,
@@ -5804,6 +6019,12 @@ static const struct drm_ioctl32_desc mtk_compat_ioctls[] = {
 	DRM_IOCTL32_DEF_DRV(MTK_SESSION_CREATE, NULL),
 	DRM_IOCTL32_DEF_DRV(MTK_SESSION_DESTROY, NULL),
 	DRM_IOCTL32_DEF_DRV(MTK_LAYERING_RULE, mtk_layering_rule_ioctl_compat),
+	DRM_IOCTL32_DEF_DRV(MTK_GET_PANELS_INFO, mtk_drm_get_panels_info_compat),
+	DRM_IOCTL32_DEF_DRV(MTK_KICK_IDLE, NULL),
+	DRM_IOCTL32_DEF_DRV(MTK_HWVSYNC_ON, NULL),
+	DRM_IOCTL32_DEF_DRV(MTK_GET_MODE_EXT_INFO, mtk_drm_get_mode_ext_info_compat),
+	DRM_IOCTL32_DEF_DRV(MTK_MML_CTRL, mtk_drm_mml_ctrl_compat),
+	DRM_IOCTL32_DEF_DRV(MTK_DEBUG_LOG, NULL),
 	DRM_IOCTL32_DEF_DRV(MTK_CRTC_GETFENCE, NULL),
 	DRM_IOCTL32_DEF_DRV(MTK_CRTC_GETSFFENCE, NULL),
 	DRM_IOCTL32_DEF_DRV(MTK_SET_MSYNC_PARAMS, NULL),
@@ -5934,6 +6155,7 @@ static struct drm_driver mtk_drm_driver = {
 	 * the field is left unset, matching the real vendor intent (it was
 	 * only ever pointed at the stock function, never a custom one).
 	 */
+	.postclose = mtk_drm_postclose,
 	.dumb_create = mtk_drm_gem_dumb_create,
 	.dumb_map_offset = mtk_drm_gem_dumb_map_offset,
 

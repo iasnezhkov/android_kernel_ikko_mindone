@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-2.0
+// SPDX-FileCopyrightText: 2026 The LineageOS Project
 int bat_get_debug_level(void)
 {
 	struct mtk_gauge *gauge;

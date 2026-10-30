@@ -6,6 +6,7 @@
 
 #include <linux/module.h>
 #include <linux/dma-mapping.h>
+#include <linux/io.h>
 #include <linux/of.h>
 #include <linux/of_address.h>
 
@@ -101,14 +102,6 @@ int mtk_audio_sram_init(struct device *dev,
 		goto of_error;
 	}
 
-	/* iomap sram address */
-	sram->virt_addr = of_iomap(sram_node, 0);
-	if (sram->virt_addr == NULL) {
-		dev_err(sram->dev, "%s(), sram->virt_addr == NULL\n", __func__);
-		goto of_error;
-	}
-
-	/* get physical address, size */
 	regaddr_p = of_get_address(sram_node, 0, &size64, NULL);
 	if (!regaddr_p) {
 		dev_err(sram->dev, "%s(), get sram address fail\n", __func__);
@@ -116,6 +109,18 @@ int mtk_audio_sram_init(struct device *dev,
 	}
 
 	regaddr64 = of_translate_address(sram_node, regaddr_p);
+	if (regaddr64 == OF_BAD_ADDR) {
+		dev_err(sram->dev, "%s(), translate sram address fail\n", __func__);
+		goto of_error;
+	}
+
+	sram->virt_addr = devm_memremap(dev, regaddr64, size64, MEMREMAP_WC);
+	if (IS_ERR(sram->virt_addr)) {
+		dev_err(sram->dev, "%s(), map sram fail %ld\n", __func__,
+			PTR_ERR(sram->virt_addr));
+		sram->virt_addr = NULL;
+		goto of_error;
+	}
 
 	sram->phys_addr = (dma_addr_t)regaddr64;
 	sram->size = (unsigned int)size64;

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-2.0
+// SPDX-FileCopyrightText: 2026 The LineageOS Project
 static void reset_state(int count, bool active) {
     g_gpu.power_count = count; g_gpu.buck_count = g_gpu.mtcmos_count = g_gpu.cg_count = count ? 1 : 0;
     g_dvfs_state = count ? 0 : DVFS_POWEROFF;

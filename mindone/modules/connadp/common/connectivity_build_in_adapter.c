@@ -10,7 +10,6 @@
 #include <drivers/misc/mediatek/connectivity/common/connectivity_build_in_adapter.h>
 
 #include <linux/sched/cputime.h>
-#include <kernel/sched/sched.h>
 
 /*device tree mode*/
 #ifdef CONFIG_OF
@@ -38,7 +37,6 @@
 /* MMC */
 #include <linux/mmc/card.h>
 #include <linux/mmc/host.h>
-#include <sdio_ops.h>
 
 
 #ifdef CONFIG_ARCH_MT6570
@@ -58,9 +56,6 @@
 #include "mtk_ppm_api.h"
 #endif
 
-#ifndef TASK_STATE_TO_CHAR_STR
-#define TASK_STATE_TO_CHAR_STR "RSDTtXZxKWPNn"
-#endif
 
 /* conninfra init/deinit notifier */
 static BLOCKING_NOTIFIER_HEAD(conn_state_notifier_list);
@@ -69,22 +64,14 @@ struct connsys_state_info g_connsys_state_info;
 
 void connectivity_export_show_stack(struct task_struct *tsk, unsigned long *sp)
 {
-#ifdef CFG_CONNADP_BUILD_IN
-	show_stack(tsk, sp, KERN_DEFAULT);
-#else
 	pr_info("%s not support in connadp.ko\n", __func__);
-#endif
 }
 EXPORT_SYMBOL(connectivity_export_show_stack);
 
 void connectivity_export_tracing_record_cmdline(struct task_struct *tsk)
 {
 #ifdef CONFIG_TRACING
-#ifdef CFG_CONNADP_BUILD_IN
-	tracing_record_cmdline(tsk);
-#else
 	pr_info("%s not support in connadp.ko\n", __func__);
-#endif
 #endif
 }
 EXPORT_SYMBOL(connectivity_export_tracing_record_cmdline);
@@ -241,51 +228,7 @@ EXPORT_SYMBOL(connectivity_export_dump_gpio_info);
 
 void connectivity_export_dump_thread_state(const char *name)
 {
-#ifdef CFG_CONNADP_BUILD_IN
-	static const char stat_nam[] = TASK_STATE_TO_CHAR_STR;
-	struct task_struct *p;
-	int cpu;
-	struct rq *rq;
-	struct task_struct *curr;
-	struct thread_info *ti;
-
-	if (name == NULL || strlen(name) > 255) {
-		pr_info("invalid name:%p or thread name too long\n", name);
-		return;
-	}
-
-	pr_info("start to show debug info of %s\n", name);
-
-	rcu_read_lock();
-	for_each_process(p) {
-		unsigned long state;
-
-		if (strncmp(p->comm, name, strlen(name)) != 0)
-			continue;
-		state = READ_ONCE(p->__state);
-		cpu = task_cpu(p);
-		rq = cpu_rq(cpu);
-		curr = rq->curr;
-		ti = task_thread_info(curr);
-		if (state)
-			state = __ffs(state) + 1;
-		pr_info("%d:%-15.15s %c", p->pid, p->comm,
-			state < sizeof(stat_nam) - 1 ? stat_nam[state] : '?');
-		pr_info("cpu=%d on_cpu=%d ", cpu, p->on_cpu);
-		show_stack(p, NULL, KERN_DEFAULT);
-		pr_info("CPU%d curr=%d:%-15.15s preempt_count=0x%x", cpu,
-			curr->pid, curr->comm, ti->preempt_count);
-
-		if (state == TASK_RUNNING && curr != p)
-			show_stack(curr, NULL, KERN_DEFAULT);
-
-		break;
-	}
-	rcu_read_unlock();
-
-#else
 	pr_info("%s not support in connadp.ko\n", __func__);
-#endif
 }
 EXPORT_SYMBOL(connectivity_export_dump_thread_state);
 

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0
 
 #include "../hyn_core.h"
 #include <linux/string.h>
@@ -21,6 +22,10 @@ static ssize_t hyn_dbg_show(struct device *dev,struct device_attribute *attr,cha
 	u16 i;
 	HYN_ENTER();
 	mutex_lock(&hyn_fs_data->mutex_fs);
+    if (hyn_protocol_begin(hyn_fs_data)) {
+        mutex_unlock(&hyn_fs_data->mutex_fs);
+        return -ENODEV;
+    }
 	kbuf = kzalloc(DEBUG_BUF_SIZE, GFP_KERNEL);
 
 	if(hyn_fs_data->host_cmd_save[0]==0x5A){
@@ -57,6 +62,7 @@ static ssize_t hyn_dbg_show(struct device *dev,struct device_attribute *attr,cha
 	}
 	
 	if(!IS_ERR_OR_NULL(kbuf)) kfree(kbuf);
+	hyn_protocol_end(hyn_fs_data);
 	mutex_unlock(&hyn_fs_data->mutex_fs);
 
 	return ret;
@@ -72,6 +78,10 @@ static ssize_t hyn_dbg_store(struct device *dev,struct device_attribute *attr,co
 	int ret = 0;
 	HYN_ENTER();
 	mutex_lock(&hyn_fs_data->mutex_fs);
+    if (hyn_protocol_begin(hyn_fs_data)) {
+        mutex_unlock(&hyn_fs_data->mutex_fs);
+        return -ENODEV;
+    }
 	rec_len = strlen(buf);
 	HYN_INFO("rec_len =%d",rec_len);
 	// HYN_INFO("%ddata:0x%02x 0x%02x 0x%02x 0x%02x 0x%02x 0x%02x 0x%02x 0x%02x",(int)count,buf[0], buf[1],buf[2], buf[3],buf[4], buf[5],buf[6],buf[7]);
@@ -159,6 +169,7 @@ static ssize_t hyn_dbg_store(struct device *dev,struct device_attribute *attr,co
 		}
 	}
 END:
+	hyn_protocol_end(hyn_fs_data);
 	mutex_unlock(&hyn_fs_data->mutex_fs);
 	return count;
 }
@@ -200,8 +211,16 @@ static ssize_t hyn_selftest_show(struct device *dev,	struct device_attribute *at
         HYN_ERROR("zalloc GFP_KERNEL memory[%d] failed.\n",max_len);
         return -ENOMEM;
     }
+    mutex_lock(&hyn_fs_data->mutex_fs);
+    if (hyn_protocol_begin(hyn_fs_data)) {
+        mutex_unlock(&hyn_fs_data->mutex_fs);
+        kfree(rbuf);
+        return -ENODEV;
+    }
 	hyn_fun->tp_set_workmode(FAC_TEST_MODE,0);
 	ret = hyn_fun->tp_get_test_result(rbuf,max_len);
+    hyn_protocol_end(hyn_fs_data);
+    mutex_unlock(&hyn_fs_data->mutex_fs);
 	num_read = snprintf(buf, 128, "module selftest %s ret:%d\r\n",
 			   ret==0 ? "pass":"failed", ret);
 	if(!IS_ERR_OR_NULL(rbuf)){	
@@ -227,18 +246,24 @@ static ssize_t hyn_dumpfw_store(struct device *dev,struct device_attribute *attr
 {
 	u8 str[16]={'\0'};
 	int max_len = hyn_fs_data->fw_updata_len+64;
+    if (!count)
+        return -EINVAL;
+    mutex_lock(&hyn_fs_data->mutex_fs);
 	if(count<10){
 		memcpy(str,buf,count);
 		if(str[count-1]==0x0A) str[count-1] = '\0';
 	}
 	// HYN_INFO("state[%d]: %d,%s",(int)count,hyn_fs_data->fw_dump_state,str);
 	if(0 == strcmp(str,"fwstart")){
+		vfree(hyn_fs_data->fw_dump_buffer);
+		hyn_fs_data->fw_dump_buffer = NULL;
 		hyn_fs_data->fw_dump_state = 0;
-		hyn_fs_data->fw_updata_addr = vmalloc(max_len);
-		if(hyn_fs_data->fw_updata_addr == NULL){
+		hyn_fs_data->fw_dump_buffer = vmalloc(max_len);
+		if(hyn_fs_data->fw_dump_buffer == NULL){
 			HYN_ERROR("vmalloc memory[%d] failed.\n",max_len);
 			hyn_fs_data->fw_dump_state=-1;
-			return -EPERM;
+			mutex_unlock(&hyn_fs_data->mutex_fs);
+			return -ENOMEM;
 		}
 		else{
 			HYN_INFO("vmalloc memory[%d] success",max_len);
@@ -248,15 +273,22 @@ static ssize_t hyn_dumpfw_store(struct device *dev,struct device_attribute *attr
 		if(hyn_fs_data->fw_dump_state >= 0){
 			const struct hyn_ts_fuc* hyn_fun = hyn_fs_data->hyn_fuc_used;
 			memset(hyn_fs_data->fw_file_name,0,sizeof(hyn_fs_data->fw_file_name));
-			hyn_fun->tp_updata_fw(hyn_fs_data->fw_updata_addr,hyn_fs_data->fw_updata_len);
-			vfree(hyn_fs_data->fw_updata_addr);
+            if (hyn_protocol_begin(hyn_fs_data)) {
+                mutex_unlock(&hyn_fs_data->mutex_fs);
+                return -ENODEV;
+            }
+			hyn_fun->tp_updata_fw(hyn_fs_data->fw_dump_buffer,hyn_fs_data->fw_updata_len);
+            hyn_protocol_end(hyn_fs_data);
+			vfree(hyn_fs_data->fw_dump_buffer);
+            hyn_fs_data->fw_dump_buffer = NULL;
 		}
 		hyn_fs_data->fw_dump_state = -2;
 	}
 	else if(hyn_fs_data->fw_dump_state >=0 && (hyn_fs_data->fw_dump_state + count) < max_len){
-		memcpy(hyn_fs_data->fw_updata_addr+hyn_fs_data->fw_dump_state,buf,count);
+		memcpy(hyn_fs_data->fw_dump_buffer+hyn_fs_data->fw_dump_state,buf,count);
 		hyn_fs_data->fw_dump_state += count;
 	}
+    mutex_unlock(&hyn_fs_data->mutex_fs);
 	return count;
 }
 
@@ -279,7 +311,7 @@ static struct attribute_group hyn_attribute_group = {
 
 /* drv add by chenjiaxi, support glove mode, begin */
 /* change based on TP driver start */
-static void drv_glove_mode_enable(unsigned char on)
+static int drv_glove_mode_enable(unsigned char on)
 {
 	u8 glove_buf[] = {
 		0xD0, 0x01, 0x00, 0x00, 
@@ -293,6 +325,10 @@ static void drv_glove_mode_enable(unsigned char on)
 	const struct hyn_ts_fuc* hyn_fun = hyn_fs_data->hyn_fuc_used;
 	
 	mutex_lock(&hyn_fs_data->mutex_fs);
+    if (hyn_protocol_begin(hyn_fs_data)) {
+        mutex_unlock(&hyn_fs_data->mutex_fs);
+        return -ENODEV;
+    }
 	if (1 == on) {
 		hyn_fs_data->glove_state = 1;
 		ret = hyn_write_data(hyn_fs_data, glove_buf, 4, 29);
@@ -304,7 +340,9 @@ static void drv_glove_mode_enable(unsigned char on)
 		hyn_fun->tp_rest();
 		mdelay(40);
 	}
+	hyn_protocol_end(hyn_fs_data);
 	mutex_unlock(&hyn_fs_data->mutex_fs);
+    return ret;
 }
 /* change based on TP driver end */
 
@@ -317,50 +355,57 @@ static ssize_t drv_glove_mode_show(struct device *dev, struct device_attribute *
 
 static ssize_t drv_glove_mode_store(struct device *dev, struct device_attribute *attr, const char *buf, size_t count)
 {
-	if (buf[0] == '1') {
-		hyn_fs_data->glove_state = 1;
-		drv_glove_mode_enable(1);
-		pr_err("enable glove mode, glove_mode_enable = %d\n", hyn_fs_data->glove_state);
-	} else if (buf[0] == '0') {
-		hyn_fs_data->glove_state = 0;
-		drv_glove_mode_enable(0);
-		pr_err("disable glove mode, glove_mode_enable = %d\n", hyn_fs_data->glove_state);
-	}
+    int ret;
 
-	return count;
+    if (!count)
+        return -EINVAL;
+    if (buf[0] != '0' && buf[0] != '1')
+        return -EINVAL;
+    ret = drv_glove_mode_enable(buf[0] == '1');
+    return ret < 0 ? ret : count;
 }
 static DEVICE_ATTR(state, S_IRUGO | S_IWUSR, drv_glove_mode_show, drv_glove_mode_store);
 
-int drv_glove_init(void)
+static void drv_glove_release(struct hyn_ts_data *ts_data)
 {
-	struct kobject *prize1_obj = NULL;
-	struct kobject *smartcover_obj = NULL;
-	int err;
-
-	prize1_obj = kobject_create_and_add("prize1", kernel_kobj);
-	if (IS_ERR(prize1_obj)) {
-		return -1;
-	}
-
-	smartcover_obj = kobject_create_and_add("smartcover", prize1_obj);
-	if (IS_ERR(smartcover_obj)) {
-		return -1;
-	}
-
-	err = sysfs_create_link(smartcover_obj, &hyn_fs_data->dev->kobj, "common_node");
-	if (err) {
-		pr_err("sysfs_create_link fail\n");
-		return -1;
-	}
-
-	err = sysfs_create_file(&hyn_fs_data->dev->kobj, &dev_attr_state.attr);
-	if (err) {
-		pr_err("sysfs_create_file fail\n");
-		return -1;
-	}
-
-	return 0;
+    if (ts_data->glove_registered) {
+        sysfs_remove_file(&ts_data->dev->kobj, &dev_attr_state.attr);
+        ts_data->glove_registered = false;
+    }
+    if (ts_data->smartcover_node) {
+        sysfs_remove_link(ts_data->smartcover_node, "common_node");
+        kobject_put(ts_data->smartcover_node);
+        ts_data->smartcover_node = NULL;
+    }
+    if (ts_data->prize_node) {
+        kobject_put(ts_data->prize_node);
+        ts_data->prize_node = NULL;
+    }
 }
+
+static int drv_glove_init(struct hyn_ts_data *ts_data)
+{
+    int ret = -ENOMEM;
+
+    ts_data->prize_node = kobject_create_and_add("prize1", kernel_kobj);
+    if (!ts_data->prize_node)
+        return ret;
+    ts_data->smartcover_node = kobject_create_and_add("smartcover", ts_data->prize_node);
+    if (!ts_data->smartcover_node)
+        goto fail;
+    ret = sysfs_create_link(ts_data->smartcover_node, &ts_data->dev->kobj, "common_node");
+    if (ret)
+        goto fail;
+    ret = sysfs_create_file(&ts_data->dev->kobj, &dev_attr_state.attr);
+    if (ret)
+        goto fail;
+    ts_data->glove_registered = true;
+    return 0;
+fail:
+    drv_glove_release(ts_data);
+    return ret;
+}
+
 /* drv add by chenjiaxi, support glove mode, end */
 
 int hyn_create_sysfs(struct hyn_ts_data *ts_data)
@@ -376,18 +421,24 @@ int hyn_create_sysfs(struct hyn_ts_data *ts_data)
     ret = sysfs_create_group(ts_data->sys_node, &hyn_attribute_group);
 	if(ret){
 		kobject_put(ts_data->sys_node);
-		return -1;
+		ts_data->sys_node = NULL;
+		return ret;
 	}
 	HYN_INFO("sys_node creat success ,GKI version is [%s]",HYN_GKI_VER ? "enable":"disable");
 
 	/* drv add by chenjiaxi, support glove mode, begin */
-	drv_glove_init();
+	ret = drv_glove_init(ts_data);
+	if (ret) {
+		hyn_release_sysfs(ts_data);
+		return ret;
+	}
 	/* drv add by chenjiaxi, support glove mode, end */
 	return 0;
 }
 
 void hyn_release_sysfs(struct hyn_ts_data *ts_data)
 {
+    drv_glove_release(ts_data);
     if(!IS_ERR_OR_NULL(ts_data->sys_node)){
 		sysfs_remove_group(ts_data->sys_node, &hyn_attribute_group);
 		kobject_put(ts_data->sys_node);

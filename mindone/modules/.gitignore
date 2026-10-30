@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: GPL-2.0
+# SPDX-FileCopyrightText: 2026 The LineageOS Project
 # Out-of-tree vendor module sources.
 # Keep: .c/.h/.py/.sh/.mk/Makefile/Kconfig/.txt/.tsv (source + notes).
 # Ignore: everything kbuild, the toolchain or our own scripts regenerate from that source.

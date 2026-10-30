@@ -1,1 +1,1 @@
-ged_gpufreq.h
+../include/drivers/gpu/mediatek/ged/include/ged_gpufreq_v2.h

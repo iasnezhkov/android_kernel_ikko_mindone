@@ -3,7 +3,7 @@
  * Copyright (c) 2021 MediaTek Inc.
  */
 #include <linux/module.h>
-#include <sched/sched.h>
+#include <../kernel/sched/sched.h>
 #include <linux/of.h>
 #include "common.h"
 

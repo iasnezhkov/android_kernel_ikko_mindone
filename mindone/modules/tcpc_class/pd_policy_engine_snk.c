@@ -41,13 +41,12 @@ void pe_snk_startup_entry(struct pd_port *pd_port)
 
 void pe_snk_discovery_entry(struct pd_port *pd_port)
 {
-	bool wait_valid = true;
-
 	if (pd_check_pe_during_hard_reset(pd_port)) {
-		wait_valid = false;
-		pd_enable_pe_state_timer(pd_port, PD_TIMER_PS_TRANSITION);
-	}
-	pd_enable_vbus_valid_detection(pd_port, wait_valid);
+		pd_set_rx_enable(pd_port, PD_RX_CAP_PE_SEND_WAIT_CAP);
+		pd_enable_vbus_safe0v_detection(pd_port);
+		pd_enable_pe_state_timer(pd_port, PD_TIMER_HARD_RESET_SAFE0V);
+	} else
+		pd_enable_vbus_valid_detection(pd_port, true);
 }
 
 void pe_snk_wait_for_capabilities_entry(

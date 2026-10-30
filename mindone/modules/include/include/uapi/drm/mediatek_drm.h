@@ -430,6 +430,8 @@ struct DISP_DITHER_PARAM {
 #define DRM_MTK_SET_MSYNC_PARAMS         0x0F
 #define DRM_MTK_GET_MSYNC_PARAMS         0x10
 #define DRM_MTK_FACTORY_LCM_AUTO_TEST    0x11
+#define DRM_MTK_GET_MODE_EXT_INFO 0x15
+#define DRM_MTK_HWVSYNC_ON 0x16
 
 /* PQ */
 #define DRM_MTK_SET_12BIT_GAMMALUT	0x1D
@@ -463,6 +465,7 @@ struct DISP_DITHER_PARAM {
 #define DRM_MTK_HDMI_AUDIO_ENABLE	0x3B
 #define DRM_MTK_HDMI_AUDIO_CONFIG	0x3C
 #define DRM_MTK_HDMI_GET_CAPABILITY	0x3D
+#define DRM_MTK_DEBUG_LOG			0x3E
 
 /* C3D */
 #define DRM_MTK_C3D_GET_BIN_NUM     0x40
@@ -487,6 +490,8 @@ struct DISP_DITHER_PARAM {
 
 #define DRM_MTK_AIBLD_CV_MODE 0x58
 #define DRM_MTK_GET_PANELS_INFO 0x5a
+#define DRM_MTK_KICK_IDLE 0x5b
+#define DRM_MTK_MML_CTRL 0x5f
 
 /* C3D */
 #define DISP_C3D_1DLUT_SIZE 32
@@ -566,6 +571,7 @@ enum MTK_LAYERING_CAPS {
 	MTK_MML_DISP_DECOUPLE_LAYER =	0x00001000,
 	MTK_MML_DISP_MDP_LAYER =	0x00002000,
 	MTK_MML_DISP_NOT_SUPPORT =	0x00004000,
+	MTK_MML_DISP_DECOUPLE2_LAYER =	0x00400000,
 };
 
 struct drm_mtk_layer_config {
@@ -579,8 +585,21 @@ struct drm_mtk_layer_config {
 	__u32 src_width, src_height;
 	__u32 layer_caps;
 	__u32 clip; /* drv internal use */
+	__u64 buffer_alloc_id;
 	__u8 compress;
 	__u8 secure;
+};
+
+struct wb_frame_info {
+	__u32 fmt;
+	__u32 src_width, src_height;
+	__u32 dst_width, dst_height;
+};
+
+struct dbi_count_info {
+	__u32 enable;
+	__u32 block_h, block_v;
+	__u32 slice_size, slice_num;
 };
 
 #define LYE_CRTC 4
@@ -592,6 +611,8 @@ struct drm_mtk_layering_info {
 	int layer_num[LYE_CRTC];
 	int gles_head[LYE_CRTC];
 	int gles_tail[LYE_CRTC];
+	__u32 disp_caps[LYE_CRTC];
+	__u32 frame_idx[LYE_CRTC];
 	int hrt_num;
 	__u32 disp_idx;
 	__u32 disp_list;
@@ -600,6 +621,9 @@ struct drm_mtk_layering_info {
 	__u32 hrt_weight;
 	__u32 hrt_idx;
 	struct mml_frame_info *mml_cfg[LYE_CRTC];
+	struct wb_frame_info wb_cfg[LYE_CRTC];
+	__u32 exec_reserved_time;
+	struct dbi_count_info dbi_count_cfg[LYE_CRTC];
 };
 
 /**
@@ -942,6 +966,8 @@ struct drm_mtk_chist_info {
 	enum MTK_DRM_CHIST_CALLER caller;
 	unsigned int get_channel_count;
 	struct drm_mtk_channel_hist channel_hist[MTK_DRM_DISP_CHIST_CHANNEL_COUNT];
+	unsigned int lcm_width;
+	unsigned int lcm_height;
 };
 
 struct drm_mtk_channel_config {
@@ -984,12 +1010,20 @@ struct mtk_drm_pq_caps_info {
 };
 
 #define GET_PANELS_STR_LEN 64
+#define MAX_CRTC_CNT 10
+enum MTK_PANEL_DSI_MODE {
+	MTK_PANEL_DSI_MODE_UNKNOWN = 0,
+	MTK_PANEL_DSI_MODE_VDO,
+	MTK_PANEL_DSI_MODE_CMD,
+};
 struct mtk_drm_panels_info {
 	int connector_cnt;
 	int default_connector_id;
 	unsigned int *connector_obj_id;
+	unsigned int **possible_crtc;
 	char **panel_name;
 	unsigned int *panel_id;
+	unsigned int *dsi_mode;
 };
 
 #define DRM_IOCTL_MTK_GEM_CREATE	DRM_IOWR(DRM_COMMAND_BASE + \
@@ -1096,6 +1130,74 @@ struct mtk_drm_panels_info {
 
 #define DRM_IOCTL_MTK_GET_PANELS_INFO   DRM_IOWR(DRM_COMMAND_BASE + \
 		DRM_MTK_GET_PANELS_INFO, struct mtk_drm_panels_info)
+
+#define DRM_IOCTL_MTK_KICK_IDLE   DRM_IOWR(DRM_COMMAND_BASE + \
+		DRM_MTK_KICK_IDLE, unsigned int)
+
+enum SWITCH_MODE_DELAY {
+	DELAY_INVAL = 0,
+	DELAY_0,
+	DELAY_1,
+	DELAY_2,
+	DELAY_3,
+	DELAY_4,
+	DELAY_5,
+	DELAY_6,
+	DELAY_7,
+	DELAY_8,
+	DELAY_9,
+	DELAY_10,
+};
+
+struct mtk_drm_mode_ext_info {
+	unsigned int crtc_id;
+	unsigned int mode_num;
+	unsigned int *total_offset;
+	unsigned int *real_te_duration;
+	enum SWITCH_MODE_DELAY **switch_mode_delay;
+	unsigned int idle_fps;
+};
+
+#define DRM_IOCTL_MTK_GET_MODE_EXT_INFO DRM_IOWR(DRM_COMMAND_BASE + \
+		DRM_MTK_GET_MODE_EXT_INFO, struct mtk_drm_mode_ext_info)
+
+struct mtk_drm_mml_caps_info {
+	uint32_t mode_caps;
+	uint32_t hw_caps;
+};
+
+struct mtk_drm_mml_query_hw_support {
+	struct mml_frame_info *info;
+	bool support;
+};
+
+enum mtk_drm_mml_func {
+	mtk_drm_mml_func_unknown,
+	mtk_drm_mml_func_get_caps,
+	mtk_drm_mml_func_query_hw_support,
+};
+
+struct mtk_drm_mml_ctrl {
+	uint32_t func;
+	union {
+		struct mtk_drm_mml_caps_info caps;
+		struct mtk_drm_mml_query_hw_support query;
+	};
+};
+
+#define DRM_IOCTL_MTK_MML_CTRL DRM_IOWR(DRM_COMMAND_BASE + \
+		DRM_MTK_MML_CTRL, struct mtk_drm_mml_ctrl)
+
+#define DRM_IOCTL_MTK_DEBUG_LOG DRM_IOWR(DRM_COMMAND_BASE + \
+		DRM_MTK_DEBUG_LOG, int)
+
+struct mtk_drm_hwvsync_on_info {
+	unsigned int crtc_id;
+	bool hw_vsync_on;
+};
+
+#define DRM_IOCTL_MTK_HWVSYNC_ON   DRM_IOWR(DRM_COMMAND_BASE + \
+		DRM_MTK_HWVSYNC_ON, struct mtk_drm_hwvsync_on_info)
 
 #define DRM_IOCTL_MTK_SUPPORT_COLOR_TRANSFORM     DRM_IOWR(DRM_COMMAND_BASE + \
 		DRM_MTK_SUPPORT_COLOR_TRANSFORM, struct DISP_COLOR_TRANSFORM)

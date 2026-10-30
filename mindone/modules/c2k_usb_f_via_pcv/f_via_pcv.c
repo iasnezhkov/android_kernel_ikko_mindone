@@ -18,7 +18,6 @@
 
 #include <linux/module.h>
 #include <linux/configfs.h>
-#include "configfs.h"
 
 /* int setdtr, data_connect; */
 /* struct work_struct flow_control; */

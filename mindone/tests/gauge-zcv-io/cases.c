@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-2.0
+// SPDX-FileCopyrightText: 2026 The LineageOS Project
 static void error_case(struct mtk_gauge *gauge, bool voltage)
 {
 	const int errors[] = { -EIO, -ETIMEDOUT, -EACCES };

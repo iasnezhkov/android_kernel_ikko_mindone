@@ -324,6 +324,7 @@ static int mt_ssc_pdrv_probe(struct platform_device *pdev)
 
 		if (!ret && ssc_disable == 1) {
 			pr_info("[SSC] disabled\n");
+			of_node_put(ssc_node);
 			return 0;
 		}
 

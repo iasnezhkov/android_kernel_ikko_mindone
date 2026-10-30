@@ -751,7 +751,7 @@ long GPS_unlocked_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 	UINT32 gps_lna_pin = 0;
 	UINT32 md2gps_status = 0;
 
-	pr_info("GPS_ioctl(): cmd (%d)\n", cmd);
+	pr_debug("GPS_ioctl(): cmd (%d)\n", cmd);
 
 	switch (cmd) {
 	case 0:		/* enable/disable STP */
@@ -913,6 +913,11 @@ long GPS_unlocked_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 			do {
 				char *addr = ioremap((phys_addr_t)md_status_addr, 0x4);
 
+				if (!addr) {
+					retval = -ENOMEM;
+					GPS_ERR_FUNC("ioremap failed\n");
+					break;
+				}
 				md2gps_status = *(unsigned int *)addr;
 				GPS_INFO_FUNC("MD2GPS_REG (0x%x), md2gps_status=0x%x\n",
 					md_status_addr, md2gps_status);
@@ -1261,6 +1266,8 @@ static int GPS_init(void)
 #endif
 #endif
 	int alloc_ret = 0;
+	md_status_addr = 0;
+
 #ifdef MTK_GENERIC_HAL
 	gps_lna_linux_plat_drv_register();
 #else
@@ -1346,8 +1353,6 @@ static int GPS_init(void)
 		pr_info("%s %d: init gps wakeup source fail!", __func__, __LINE__);
 		goto error;
 	}
-
-	md_status_addr = 0;
 
 	sema_init(&status_mtx, 1);
 	sema_init(&fwctl_mtx, 1);

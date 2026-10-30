@@ -585,7 +585,9 @@ int __mtk_pdc_get_setting(struct chg_alg_device *alg, int *newvbus, int *newcur,
 		}
 	}
 
-	vbus = pd_hal_get_vbus(alg);
+	ret = pd_hal_get_vbus(alg, &vbus);
+	if (ret < 0)
+		return ret;
 	ibus = ibus / 1000;
 	if (ibus == 0)
 		ibus = 1000;
@@ -881,10 +883,10 @@ static int __pd_run(struct chg_alg_device *alg)
 
 	ret = __mtk_pdc_get_setting(alg, &vbus, &cur, &idx);
 
-	if (pd->enable_inductor_protect)
+	if (ret == 0 && pd->enable_inductor_protect)
 		mtk_pd_input_current_protection(alg, vbus);
 
-	if (ret != -1 && idx != -1) {
+	if (ret == 0 && idx != -1) {
 		if ((pd->input_current_limit1 != -1 &&
 			pd->input_current_limit1 < cur * 1000) == false)
 			pd->input_current_limit1 = cur * 1000;

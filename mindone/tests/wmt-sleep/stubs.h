@@ -1,3 +1,5 @@
+/* SPDX-License-Identifier: GPL-2.0 */
+/* SPDX-FileCopyrightText: 2026 The LineageOS Project */
 static INT32 opfunc_get_consys_state(P_WMT_OP op);
 static INT32 consys_dump_osc_state(P_CONSYS_STATE state);
 static INT32 consys_dump_gating_state(P_CONSYS_STATE state);

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0 OR BSD-3-Clause
 /******************************************************************************
  *
  * This file is provided under a dual license.  When you use or
@@ -590,184 +591,131 @@ const struct net_device_ops p2p_netdev_ops = {
  *           FALSE
  */
 /*---------------------------------------------------------------------------*/
-u_int8_t p2PAllocInfo(IN struct GLUE_INFO *prGlueInfo, IN uint8_t ucIdex)
+u_int8_t p2PAllocInfo(IN struct GLUE_INFO *prGlueInfo, IN uint8_t ucIdex, struct GL_P2P_INFO **pprInfo)
 {
-	struct ADAPTER *prAdapter = NULL;
-	struct WIFI_VAR *prWifiVar = NULL;
-	/* UINT_32 u4Idx = 0; */
+	struct ADAPTER *prAdapter;
+	struct WIFI_VAR *prWifiVar;
+	uint8_t ucRoleIdx;
+	struct GL_P2P_INFO *prRole = NULL;
+	struct GL_P2P_DEV_INFO *prNewDevice = NULL;
+	struct P2P_INFO *prNewInfo = NULL;
+	struct P2P_DEV_FSM_INFO *prNewDevFsm = NULL;
+	struct P2P_CONNECTION_SETTINGS *prSettings = NULL;
+	struct P2P_SPECIFIC_BSS_INFO *prSpecific = NULL;
+#if CFG_ENABLE_PER_STA_STATISTICS_LOG
+	struct PARAM_GET_STA_STATISTICS *prStatistics = NULL;
+#endif
 
-	ASSERT(prGlueInfo);
-
+	if (!pprInfo)
+		return FALSE;
+	*pprInfo = NULL;
+	if (!prGlueInfo || !prGlueInfo->prAdapter || ucIdex >= KAL_P2P_NUM)
+		return FALSE;
 	prAdapter = prGlueInfo->prAdapter;
-	prWifiVar = &(prAdapter->rWifiVar);
+	prWifiVar = &prAdapter->rWifiVar;
 
-	ASSERT(prAdapter);
-	ASSERT(prWifiVar);
-
-	do {
-		if (prGlueInfo->prP2PInfo[ucIdex] == NULL) {
-			/*alloc memory for p2p info */
-			prGlueInfo->prP2PInfo[ucIdex] =
-				kalMemAlloc(sizeof(struct GL_P2P_INFO),
-					VIR_MEM_TYPE);
-
-			if (prGlueInfo->prP2PDevInfo == NULL) {
-				prGlueInfo->prP2PDevInfo =
-					kalMemAlloc(
-						sizeof(struct GL_P2P_DEV_INFO),
-						VIR_MEM_TYPE);
-				if (prGlueInfo->prP2PDevInfo) {
-					kalMemZero(prGlueInfo->prP2PDevInfo,
-						sizeof(struct GL_P2P_DEV_INFO));
-				}
-			}
-
-			if (prAdapter->prP2pInfo == NULL) {
-				prAdapter->prP2pInfo =
-					kalMemAlloc(sizeof(struct P2P_INFO),
-						    VIR_MEM_TYPE);
-				if (prAdapter->prP2pInfo) {
-					kalMemZero(prAdapter->prP2pInfo,
-						   sizeof(struct P2P_INFO));
-				}
-			}
-
-			if (prWifiVar->prP2pDevFsmInfo == NULL) {
-				/* Don't only create P2P device for ucIdex 0.
-				 * Avoid the exception that mtk_init_ap_role
-				 * called without p2p0.
-				 */
-				prWifiVar->prP2pDevFsmInfo =
-					kalMemAlloc(
-						sizeof(struct P2P_DEV_FSM_INFO),
-						VIR_MEM_TYPE);
-				if (prWifiVar->prP2pDevFsmInfo) {
-					kalMemZero(prWifiVar->prP2pDevFsmInfo,
-						sizeof(struct
-							P2P_DEV_FSM_INFO));
-				}
-			}
-
-			prWifiVar->prP2PConnSettings[ucIdex] =
-				kalMemAlloc(
-					sizeof(struct P2P_CONNECTION_SETTINGS),
-					VIR_MEM_TYPE);
-			prWifiVar->prP2pSpecificBssInfo[ucIdex] =
-				kalMemAlloc(
-					sizeof(struct P2P_SPECIFIC_BSS_INFO),
-					VIR_MEM_TYPE);
+	for (ucRoleIdx = 0; ucRoleIdx < KAL_P2P_NUM; ucRoleIdx++) {
+		if (!prGlueInfo->prP2PInfo[ucRoleIdx])
+			continue;
+		if (!prGlueInfo->prP2PDevInfo || !prAdapter->prP2pInfo ||
+		    !prWifiVar->prP2pDevFsmInfo ||
+		    !prWifiVar->prP2PConnSettings[ucRoleIdx] ||
+		    !prWifiVar->prP2pSpecificBssInfo[ucRoleIdx]
 #if CFG_ENABLE_PER_STA_STATISTICS_LOG
-			prWifiVar->prP2pQueryStaStatistics[ucIdex] =
-				kalMemAlloc(
-					sizeof(struct PARAM_GET_STA_STATISTICS),
-					VIR_MEM_TYPE);
+		    || !prWifiVar->prP2pQueryStaStatistics[ucRoleIdx]
 #endif
-			/* TODO: It can be moved
-			 * to the interface been created.
-			 */
-#if 0
-			for (u4Idx = 0; u4Idx < BSS_P2P_NUM; u4Idx++) {
-				prWifiVar->aprP2pRoleFsmInfo[u4Idx] =
-				kalMemAlloc(sizeof(struct P2P_ROLE_FSM_INFO),
-					VIR_MEM_TYPE);
-			}
-#endif
-		} else {
-			ASSERT(prAdapter->prP2pInfo != NULL);
-			ASSERT(prWifiVar->prP2PConnSettings[ucIdex] != NULL);
-			/* ASSERT(prWifiVar->prP2pFsmInfo != NULL); */
-			ASSERT(prWifiVar->prP2pSpecificBssInfo[ucIdex] != NULL);
-		}
-		/*MUST set memory to 0 */
-		kalMemZero(prGlueInfo->prP2PInfo[ucIdex],
-			sizeof(struct GL_P2P_INFO));
-		kalMemZero(prWifiVar->prP2PConnSettings[ucIdex],
-			sizeof(struct P2P_CONNECTION_SETTINGS));
-/* kalMemZero(prWifiVar->prP2pFsmInfo, sizeof(P2P_FSM_INFO_T)); */
-		kalMemZero(prWifiVar->prP2pSpecificBssInfo[ucIdex],
-			sizeof(struct P2P_SPECIFIC_BSS_INFO));
-#if CFG_ENABLE_PER_STA_STATISTICS_LOG
-		if (prWifiVar->prP2pQueryStaStatistics[ucIdex])
-			kalMemZero(prWifiVar->prP2pQueryStaStatistics[ucIdex],
-				sizeof(struct PARAM_GET_STA_STATISTICS));
-#endif
-	} while (FALSE);
-
-	if (!prGlueInfo->prP2PDevInfo)
-		DBGLOG(P2P, ERROR, "prP2PDevInfo error\n");
-	else
-		DBGLOG(P2P, TRACE, "prP2PDevInfo ok\n");
-
-	if (!prGlueInfo->prP2PInfo[ucIdex])
-		DBGLOG(P2P, ERROR, "prP2PInfo error\n");
-	else
-		DBGLOG(P2P, TRACE, "prP2PInfo ok\n");
-
-
-
-	/* chk if alloc successful or not */
-	if (prGlueInfo->prP2PInfo[ucIdex] &&
-		prGlueInfo->prP2PDevInfo &&
-		prAdapter->prP2pInfo &&
-		prWifiVar->prP2PConnSettings[ucIdex] &&
-/* prWifiVar->prP2pFsmInfo && */
-	    prWifiVar->prP2pSpecificBssInfo[ucIdex])
-		return TRUE;
-
-
-	DBGLOG(P2P, ERROR, "[fail!]p2PAllocInfo :fail\n");
-
-	if (prWifiVar->prP2pSpecificBssInfo[ucIdex]) {
-		kalMemFree(prWifiVar->prP2pSpecificBssInfo[ucIdex],
-			VIR_MEM_TYPE,
-			sizeof(struct P2P_SPECIFIC_BSS_INFO));
-
-		prWifiVar->prP2pSpecificBssInfo[ucIdex] = NULL;
-	}
-
-#if CFG_ENABLE_PER_STA_STATISTICS_LOG
-	if (prWifiVar->prP2pQueryStaStatistics[ucIdex]) {
-		kalMemFree(prWifiVar->prP2pQueryStaStatistics[ucIdex],
-			VIR_MEM_TYPE,
-			sizeof(struct PARAM_GET_STA_STATISTICS));
-		prWifiVar->prP2pQueryStaStatistics[ucIdex] = NULL;
-	}
-#endif
-
-/* if (prWifiVar->prP2pFsmInfo) { */
-/* kalMemFree(prWifiVar->prP2pFsmInfo,
- * VIR_MEM_TYPE, sizeof(P2P_FSM_INFO_T));
- */
-
-/* prWifiVar->prP2pFsmInfo = NULL; */
-/* } */
-	if (prWifiVar->prP2PConnSettings[ucIdex]) {
-		kalMemFree(prWifiVar->prP2PConnSettings[ucIdex],
-			VIR_MEM_TYPE, sizeof(struct P2P_CONNECTION_SETTINGS));
-
-		prWifiVar->prP2PConnSettings[ucIdex] = NULL;
-	}
-	if (prGlueInfo->prP2PDevInfo) {
-		kalMemFree(prGlueInfo->prP2PDevInfo,
-			VIR_MEM_TYPE, sizeof(struct GL_P2P_DEV_INFO));
-
-		prGlueInfo->prP2PDevInfo = NULL;
+		   )
+			return FALSE;
 	}
 	if (prGlueInfo->prP2PInfo[ucIdex]) {
-		kalMemFree(prGlueInfo->prP2PInfo[ucIdex],
-			VIR_MEM_TYPE, sizeof(struct GL_P2P_INFO));
-
-		prGlueInfo->prP2PInfo[ucIdex] = NULL;
+		*pprInfo = prGlueInfo->prP2PInfo[ucIdex];
+		return TRUE;
 	}
-	if (prAdapter->prP2pInfo) {
-		kalMemFree(prAdapter->prP2pInfo,
-			VIR_MEM_TYPE, sizeof(struct P2P_INFO));
+	if (prWifiVar->prP2PConnSettings[ucIdex] ||
+	    prWifiVar->prP2pSpecificBssInfo[ucIdex]
+#if CFG_ENABLE_PER_STA_STATISTICS_LOG
+	    || prWifiVar->prP2pQueryStaStatistics[ucIdex]
+#endif
+	   )
+		return FALSE;
 
-		prAdapter->prP2pInfo = NULL;
+	prRole = kalMemAlloc(sizeof(*prRole), VIR_MEM_TYPE);
+	if (!prRole)
+		goto fail;
+	if (!prGlueInfo->prP2PDevInfo) {
+		prNewDevice = kalMemAlloc(sizeof(*prNewDevice), VIR_MEM_TYPE);
+		if (!prNewDevice)
+			goto fail;
 	}
+	if (!prAdapter->prP2pInfo) {
+		prNewInfo = kalMemAlloc(sizeof(*prNewInfo), VIR_MEM_TYPE);
+		if (!prNewInfo)
+			goto fail;
+	}
+	if (!prWifiVar->prP2pDevFsmInfo) {
+		prNewDevFsm = kalMemAlloc(sizeof(*prNewDevFsm), VIR_MEM_TYPE);
+		if (!prNewDevFsm)
+			goto fail;
+	}
+	prSettings = kalMemAlloc(sizeof(*prSettings), VIR_MEM_TYPE);
+	if (!prSettings)
+		goto fail;
+	prSpecific = kalMemAlloc(sizeof(*prSpecific), VIR_MEM_TYPE);
+	if (!prSpecific)
+		goto fail;
+#if CFG_ENABLE_PER_STA_STATISTICS_LOG
+	prStatistics = kalMemAlloc(sizeof(*prStatistics), VIR_MEM_TYPE);
+	if (!prStatistics)
+		goto fail;
+#endif
+
+	kalMemZero(prRole, sizeof(*prRole));
+	if (prNewDevice)
+		kalMemZero(prNewDevice, sizeof(*prNewDevice));
+	if (prNewInfo)
+		kalMemZero(prNewInfo, sizeof(*prNewInfo));
+	if (prNewDevFsm)
+		kalMemZero(prNewDevFsm, sizeof(*prNewDevFsm));
+	kalMemZero(prSettings, sizeof(*prSettings));
+	kalMemZero(prSpecific, sizeof(*prSpecific));
+#if CFG_ENABLE_PER_STA_STATISTICS_LOG
+	kalMemZero(prStatistics, sizeof(*prStatistics));
+#endif
+
+	if (prNewDevice)
+		prGlueInfo->prP2PDevInfo = prNewDevice;
+	if (prNewInfo)
+		prAdapter->prP2pInfo = prNewInfo;
+	if (prNewDevFsm)
+		prWifiVar->prP2pDevFsmInfo = prNewDevFsm;
+	prWifiVar->prP2PConnSettings[ucIdex] = prSettings;
+	prWifiVar->prP2pSpecificBssInfo[ucIdex] = prSpecific;
+#if CFG_ENABLE_PER_STA_STATISTICS_LOG
+	prWifiVar->prP2pQueryStaStatistics[ucIdex] = prStatistics;
+#endif
+	*pprInfo = prRole;
+	return TRUE;
+
+fail:
+#if CFG_ENABLE_PER_STA_STATISTICS_LOG
+	if (prStatistics)
+		kalMemFree(prStatistics, VIR_MEM_TYPE, sizeof(*prStatistics));
+#endif
+	if (prSpecific)
+		kalMemFree(prSpecific, VIR_MEM_TYPE, sizeof(*prSpecific));
+	if (prSettings)
+		kalMemFree(prSettings, VIR_MEM_TYPE, sizeof(*prSettings));
+	if (prNewDevFsm)
+		kalMemFree(prNewDevFsm, VIR_MEM_TYPE, sizeof(*prNewDevFsm));
+	if (prNewInfo)
+		kalMemFree(prNewInfo, VIR_MEM_TYPE, sizeof(*prNewInfo));
+	if (prNewDevice)
+		kalMemFree(prNewDevice, VIR_MEM_TYPE, sizeof(*prNewDevice));
+	if (prRole)
+		kalMemFree(prRole, VIR_MEM_TYPE, sizeof(*prRole));
 	return FALSE;
-
 }
+
 
 /*---------------------------------------------------------------------------*/
 /*!
@@ -783,78 +731,71 @@ u_int8_t p2PAllocInfo(IN struct GLUE_INFO *prGlueInfo, IN uint8_t ucIdex)
  *           FALSE
  */
 /*---------------------------------------------------------------------------*/
-u_int8_t p2PFreeInfo(struct GLUE_INFO *prGlueInfo, uint8_t ucIdx)
+static void p2pFreeRoleMemory(struct GLUE_INFO *prGlueInfo, uint8_t ucIdx)
+{
+	struct WIFI_VAR *prWifiVar = &prGlueInfo->prAdapter->rWifiVar;
+
+	if (prWifiVar->prP2PConnSettings[ucIdx])
+		p2pFreeMemSafe(prGlueInfo, (void **)&prWifiVar->prP2PConnSettings[ucIdx], sizeof(struct P2P_CONNECTION_SETTINGS));
+	if (prWifiVar->prP2pSpecificBssInfo[ucIdx])
+		p2pFreeMemSafe(prGlueInfo, (void **)&prWifiVar->prP2pSpecificBssInfo[ucIdx], sizeof(struct P2P_SPECIFIC_BSS_INFO));
+#if CFG_ENABLE_PER_STA_STATISTICS_LOG
+	if (prWifiVar->prP2pQueryStaStatistics[ucIdx])
+		p2pFreeMemSafe(prGlueInfo, (void **)&prWifiVar->prP2pQueryStaStatistics[ucIdx], sizeof(struct PARAM_GET_STA_STATISTICS));
+#endif
+	if (prGlueInfo->prP2PInfo[ucIdx])
+		p2pFreeMemSafe(prGlueInfo, (void **)&prGlueInfo->prP2PInfo[ucIdx], sizeof(struct GL_P2P_INFO));
+}
+
+static void p2pFreeCommonMemory(struct GLUE_INFO *prGlueInfo)
 {
 	struct ADAPTER *prAdapter = prGlueInfo->prAdapter;
-	struct WIFI_VAR *prWifiVar;
 
-	ASSERT(prGlueInfo);
-	ASSERT(prAdapter);
+	if (prAdapter->rWifiVar.prP2pDevFsmInfo)
+		p2pFreeMemSafe(prGlueInfo, (void **)&prAdapter->rWifiVar.prP2pDevFsmInfo, sizeof(struct P2P_DEV_FSM_INFO));
+	if (prGlueInfo->prP2PDevInfo)
+		p2pFreeMemSafe(prGlueInfo, (void **)&prGlueInfo->prP2PDevInfo, sizeof(struct GL_P2P_DEV_INFO));
+	if (prAdapter->prP2pInfo)
+		p2pFreeMemSafe(prGlueInfo, (void **)&prAdapter->prP2pInfo, sizeof(struct P2P_INFO));
+}
 
-	if (ucIdx >= KAL_P2P_NUM) {
-		DBGLOG(P2P, ERROR, "ucIdx=%d is invalid\n", ucIdx);
+u_int8_t p2PFreeInfo(struct GLUE_INFO *prGlueInfo, uint8_t ucIdx)
+{
+	struct ADAPTER *prAdapter;
+	struct GL_P2P_INFO *prInfo;
+	u_int8_t counted;
+	uint8_t i;
+
+	if (!prGlueInfo || !prGlueInfo->prAdapter || ucIdx >= KAL_P2P_NUM)
 		return FALSE;
-	}
-
-	/* Expect that prAdapter->prP2pInfo must be existing. */
-	if (prAdapter->prP2pInfo == NULL) {
-		DBGLOG(P2P, ERROR, "prAdapter->prP2pInfo is NULL\n");
+	prAdapter = prGlueInfo->prAdapter;
+	if (!prAdapter->prP2pInfo)
 		return FALSE;
-	}
-
-	prWifiVar = &prAdapter->rWifiVar;
-
-	/* TODO: how can I sure that the specific P2P device can be freed?
-	 * The original check is that prGlueInfo->prAdapter->fgIsP2PRegistered.
-	 * For one wiphy feature, this func may be called without
-	 * (fgIsP2PRegistered == FALSE) condition.
-	 */
-
-	if (prGlueInfo->prP2PInfo[ucIdx] != NULL) {
-		p2pFreeMemSafe(prGlueInfo,
-			(void **)&prWifiVar->prP2PConnSettings[ucIdx],
-			sizeof(struct P2P_CONNECTION_SETTINGS));
-
-		p2pFreeMemSafe(prGlueInfo,
-			(void **)&prWifiVar->prP2pSpecificBssInfo[ucIdx],
-			sizeof(struct P2P_SPECIFIC_BSS_INFO));
-
-#if CFG_ENABLE_PER_STA_STATISTICS_LOG
-		p2pFreeMemSafe(prGlueInfo,
-			(void **)&prWifiVar->prP2pQueryStaStatistics[ucIdx],
-			sizeof(struct PARAM_GET_STA_STATISTICS));
-#endif
-
-		p2pFreeMemSafe(prGlueInfo,
-			(void **)&prGlueInfo->prP2PInfo[ucIdx],
-			sizeof(struct GL_P2P_INFO));
+	prInfo = prGlueInfo->prP2PInfo[ucIdx];
+	if (!prInfo)
+		return TRUE;
+	if (P2P_ROLE_INDEX_2_ROLE_FSM_INFO(prAdapter, ucIdx))
+		return FALSE;
+	counted = prInfo->fgSetupCommitted;
+	if (counted && !prAdapter->prP2pInfo->u4DeviceNum)
+		return FALSE;
+	if (prAdapter->prP2pInfo->u4DeviceNum == (counted ? 1 : 0) &&
+	    prAdapter->rWifiVar.prP2pDevFsmInfo &&
+	    prAdapter->rWifiVar.prP2pDevFsmInfo->fgIsInitialized)
+		return FALSE;
+	p2pFreeRoleMemory(prGlueInfo, ucIdx);
+	if (counted)
 		prAdapter->prP2pInfo->u4DeviceNum--;
-	}
-
-	if (prAdapter->prP2pInfo->u4DeviceNum == 0) {
-		/* all prP2PInfo are freed, and free the general part now */
-
-		p2pFreeMemSafe(prGlueInfo,
-			(void **)&prAdapter->prP2pInfo,
-			sizeof(struct P2P_INFO));
-
-		if (prGlueInfo->prP2PDevInfo) {
-			p2pFreeMemSafe(prGlueInfo,
-				(void **)&prGlueInfo->prP2PDevInfo,
-				sizeof(struct GL_P2P_DEV_INFO));
-		}
-		if (prAdapter->rWifiVar.prP2pDevFsmInfo) {
-			p2pFreeMemSafe(prGlueInfo,
-				(void **)&prWifiVar->prP2pDevFsmInfo,
-				sizeof(struct P2P_DEV_FSM_INFO));
-		}
-
-		/* Reomve p2p bss scan list */
-		scanRemoveAllP2pBssDesc(prAdapter);
-	}
-
+	if (prAdapter->prP2pInfo->u4DeviceNum)
+		return TRUE;
+	for (i = 0; i < KAL_P2P_NUM; i++)
+		if (prGlueInfo->prP2PInfo[i])
+			return TRUE;
+	p2pFreeCommonMemory(prGlueInfo);
+	scanRemoveAllP2pBssDesc(prAdapter);
 	return TRUE;
 }
+
 
 void p2pFreeMemSafe(struct GLUE_INFO *prGlueInfo,
 		void **pprMemInfo, uint32_t size)
@@ -871,151 +812,212 @@ void p2pFreeMemSafe(struct GLUE_INFO *prGlueInfo,
 	kalMemFree(prTmpMemInfo, VIR_MEM_TYPE, size);
 }
 
-u_int8_t p2pNetRegister(struct GLUE_INFO *prGlueInfo,
-		u_int8_t fgIsRtnlLockAcquired)
+u_int8_t p2pNetIsRegistered(struct GLUE_INFO *prGlueInfo)
 {
-	u_int8_t fgDoRegister = FALSE;
-	u_int8_t fgRollbackRtnlLock = FALSE;
-	struct net_device *prDevHandler = NULL;
-	struct ADAPTER *prAdapter = NULL;
-	u_int8_t ret = FALSE;
-	uint32_t i;
+	struct ADAPTER *adapter;
+	u_int8_t ready = FALSE;
 
 	GLUE_SPIN_LOCK_DECLARATION();
 
-	prAdapter = prGlueInfo->prAdapter;
+	ASSERT_RTNL();
+	if (!prGlueInfo || !prGlueInfo->prAdapter)
+		return FALSE;
+	adapter = prGlueInfo->prAdapter;
+	GLUE_ACQUIRE_SPIN_LOCK(prGlueInfo, SPIN_LOCK_NET_DEV);
+	if (adapter->fgIsP2PRegistered &&
+	    adapter->rP2PRegState == ENUM_P2P_REG_STATE_REGISTERED &&
+	    adapter->rP2PNetRegState == ENUM_NET_REG_STATE_REGISTERED &&
+	    prGlueInfo->prP2PInfo[0] && gPrP2pDev[0] &&
+	    prGlueInfo->prP2PInfo[0]->prDevHandler == gPrP2pDev[0] &&
+	    gPrP2pDev[0]->reg_state == NETREG_REGISTERED)
+		ready = TRUE;
+	GLUE_RELEASE_SPIN_LOCK(prGlueInfo, SPIN_LOCK_NET_DEV);
+	return ready;
+}
 
-	ASSERT(prGlueInfo);
-	ASSERT(prAdapter);
+u_int8_t p2pNetRegister(struct GLUE_INFO *prGlueInfo,
+		u_int8_t fgIsRtnlLockAcquired)
+{
+	struct net_device *registered[KAL_P2P_NUM] = { NULL };
+	struct net_device *prDevHandler = NULL;
+	struct ADAPTER *prAdapter;
+	uint32_t count, done = 0, i;
+	u_int8_t result = FALSE;
+	int ret;
+
+	GLUE_SPIN_LOCK_DECLARATION();
+
+	if (!prGlueInfo || !prGlueInfo->prAdapter)
+		return FALSE;
+	prAdapter = prGlueInfo->prAdapter;
+	if (fgIsRtnlLockAcquired)
+		ASSERT_RTNL();
+	else
+		rtnl_lock();
 
 	GLUE_ACQUIRE_SPIN_LOCK(prGlueInfo, SPIN_LOCK_NET_DEV);
-	if (prAdapter->rP2PNetRegState == ENUM_NET_REG_STATE_UNREGISTERED &&
-		prAdapter->rP2PRegState == ENUM_P2P_REG_STATE_REGISTERED) {
-		prAdapter->rP2PNetRegState = ENUM_NET_REG_STATE_REGISTERING;
-		fgDoRegister = TRUE;
+	if (!prAdapter->fgIsP2PRegistered ||
+	    prAdapter->rP2PRegState != ENUM_P2P_REG_STATE_REGISTERED ||
+	    !prAdapter->prP2pInfo || !prAdapter->prP2pInfo->u4DeviceNum ||
+	    prAdapter->prP2pInfo->u4DeviceNum > KAL_P2P_NUM) {
+		goto leave_state;
 	}
+	count = prAdapter->prP2pInfo->u4DeviceNum;
+	if (prAdapter->rP2PNetRegState == ENUM_NET_REG_STATE_REGISTERED) {
+		result = TRUE;
+		for (i = 0; i < count; i++) {
+			prDevHandler = prGlueInfo->prP2PInfo[i] ?
+				prGlueInfo->prP2PInfo[i]->prDevHandler : NULL;
+			if (!prDevHandler ||
+			    prDevHandler->reg_state != NETREG_REGISTERED ||
+			    gPrP2pDev[i] != prDevHandler)
+				result = FALSE;
+		}
+		goto leave_state;
+	}
+	if (prAdapter->rP2PNetRegState != ENUM_NET_REG_STATE_UNREGISTERED)
+		goto leave_state;
+	prAdapter->rP2PNetRegState = ENUM_NET_REG_STATE_REGISTERING;
 	GLUE_RELEASE_SPIN_LOCK(prGlueInfo, SPIN_LOCK_NET_DEV);
 
-	if (!fgDoRegister)
-		return TRUE;
-
-	if (fgIsRtnlLockAcquired && rtnl_is_locked()) {
-		fgRollbackRtnlLock = TRUE;
-	}
-
-	for (i = 0; i < prGlueInfo->prAdapter->prP2pInfo->u4DeviceNum; i++) {
+	for (i = 0; i < count; i++) {
 		GLUE_ACQUIRE_SPIN_LOCK(prGlueInfo, SPIN_LOCK_NET_DEV);
 		prDevHandler = prGlueInfo->prP2PInfo[i] ?
 			prGlueInfo->prP2PInfo[i]->prDevHandler :
 			NULL;
 
-		/* Check NETREG_RELEASED for the case that free_netdev
-		 * is called but not set to NULL yet.
-		 */
-		if (prDevHandler == NULL ||
-			prDevHandler->reg_state == NETREG_RELEASED) {
-			prAdapter->rP2PNetRegState =
-				ENUM_NET_REG_STATE_UNREGISTERED;
+		if (!prDevHandler ||
+		    prDevHandler->reg_state != NETREG_UNINITIALIZED) {
 			GLUE_RELEASE_SPIN_LOCK(prGlueInfo, SPIN_LOCK_NET_DEV);
-			ret = FALSE;
 			goto fail;
 		}
 
-		/* net device initialize */
 		netif_carrier_off(prDevHandler);
 		netif_tx_stop_all_queues(prDevHandler);
 
-		if (g_u4DevIdx[i]) {
+		if (g_u4DevIdx[i])
 			prDevHandler->ifindex = g_u4DevIdx[i];
-			g_u4DevIdx[i] = 0;
-		}
 		GLUE_RELEASE_SPIN_LOCK(prGlueInfo, SPIN_LOCK_NET_DEV);
 
-		if (fgRollbackRtnlLock)
-			rtnl_unlock();
-
-		DBGLOG(P2P, INFO, "Register net_dev=%p, wdev=%px\n",
-			prDevHandler, prDevHandler->ieee80211_ptr);
-
-		/* register for net device */
-		if (register_netdev(prDevHandler) < 0) {
-			DBGLOG(INIT, WARN,
-				"unable to register netdevice for p2p\n");
-			/* free dev in glUnregisterP2P() */
-			/* free_netdev(prGlueInfo->prP2PInfo->prDevHandler); */
-			ret = FALSE;
-		} else {
-			GLUE_ACQUIRE_SPIN_LOCK(prGlueInfo, SPIN_LOCK_NET_DEV);
-			gPrP2pDev[i] = prDevHandler;
-			GLUE_RELEASE_SPIN_LOCK(prGlueInfo, SPIN_LOCK_NET_DEV);
-			ret = TRUE;
-		}
-
-		if (fgRollbackRtnlLock)
-			rtnl_lock();
-
-		DBGLOG(P2P, INFO, "P2P interface %d work %d\n",
-			i, prDevHandler->ifindex);
+		ret = register_netdevice(prDevHandler);
+		if (ret < 0)
+			goto fail;
+		registered[done++] = prDevHandler;
 	}
 
 	GLUE_ACQUIRE_SPIN_LOCK(prGlueInfo, SPIN_LOCK_NET_DEV);
+	for (i = 0; i < count; i++) {
+		gPrP2pDev[i] = registered[i];
+		g_u4DevIdx[i] = 0;
+	}
 	prAdapter->rP2PNetRegState = ENUM_NET_REG_STATE_REGISTERED;
 	GLUE_RELEASE_SPIN_LOCK(prGlueInfo, SPIN_LOCK_NET_DEV);
+	if (!fgIsRtnlLockAcquired)
+		rtnl_unlock();
+	return TRUE;
 fail:
-	return ret;
+	while (done) {
+		prDevHandler = registered[--done];
+		unregister_netdevice(prDevHandler);
+	}
+	rtnl_unlock();
+	if (fgIsRtnlLockAcquired)
+		rtnl_lock();
+	GLUE_ACQUIRE_SPIN_LOCK(prGlueInfo, SPIN_LOCK_NET_DEV);
+	for (i = 0; i < count; i++)
+		gPrP2pDev[i] = NULL;
+	prAdapter->rP2PNetRegState = ENUM_NET_REG_STATE_UNREGISTERED;
+	GLUE_RELEASE_SPIN_LOCK(prGlueInfo, SPIN_LOCK_NET_DEV);
+	return FALSE;
+leave_state:
+	GLUE_RELEASE_SPIN_LOCK(prGlueInfo, SPIN_LOCK_NET_DEV);
+	if (!fgIsRtnlLockAcquired)
+		rtnl_unlock();
+	return result;
 }
 
 u_int8_t p2pNetUnregister(struct GLUE_INFO *prGlueInfo,
 		u_int8_t fgIsRtnlLockAcquired)
 {
-	u_int8_t fgDoUnregister = FALSE;
-	u_int8_t fgRollbackRtnlLock = FALSE;
+	u_int8_t result = FALSE;
 	uint8_t ucRoleIdx;
 	struct ADAPTER *prAdapter = NULL;
 	struct NETDEV_PRIVATE_GLUE_INFO *prNetDevPriv = NULL;
 	struct GL_P2P_INFO *prP2PInfo = NULL;
 	struct BSS_INFO *prP2pBssInfo = NULL;
+	struct cfg80211_scan_request *scan;
 	int iftype = 0;
 	struct net_device *prRoleDev = NULL;
+	u_int8_t sharedAis;
 
 	GLUE_SPIN_LOCK_DECLARATION();
 
+	if (!prGlueInfo || !prGlueInfo->prAdapter)
+		return FALSE;
 	prAdapter = prGlueInfo->prAdapter;
-
-	ASSERT(prGlueInfo);
-	ASSERT(prAdapter);
+	if (fgIsRtnlLockAcquired)
+		ASSERT_RTNL();
 
 	GLUE_ACQUIRE_SPIN_LOCK(prGlueInfo, SPIN_LOCK_NET_DEV);
-	if (prAdapter->rP2PNetRegState == ENUM_NET_REG_STATE_REGISTERED &&
-		prAdapter->rP2PRegState == ENUM_P2P_REG_STATE_REGISTERED) {
-		prAdapter->rP2PNetRegState = ENUM_NET_REG_STATE_UNREGISTERING;
-		fgDoUnregister = TRUE;
+	if (prAdapter->rP2PRegState == ENUM_P2P_REG_STATE_REGISTERING ||
+	    prAdapter->rP2PRegState == ENUM_P2P_REG_STATE_UNREGISTERING) {
+		GLUE_RELEASE_SPIN_LOCK(prGlueInfo, SPIN_LOCK_NET_DEV);
+		return FALSE;
+	}
+	if (prAdapter->rP2PNetRegState == ENUM_NET_REG_STATE_UNREGISTERED) {
+		GLUE_RELEASE_SPIN_LOCK(prGlueInfo, SPIN_LOCK_NET_DEV);
+		return TRUE;
+	}
+	if (prAdapter->rP2PNetRegState != ENUM_NET_REG_STATE_REGISTERED ||
+	    prAdapter->rP2PRegState != ENUM_P2P_REG_STATE_REGISTERED) {
+		GLUE_RELEASE_SPIN_LOCK(prGlueInfo, SPIN_LOCK_NET_DEV);
+		return FALSE;
 	}
 	GLUE_RELEASE_SPIN_LOCK(prGlueInfo, SPIN_LOCK_NET_DEV);
 
-	if (!fgDoUnregister)
-		return TRUE;
+	if (!fgIsRtnlLockAcquired)
+		rtnl_lock();
+	GLUE_ACQUIRE_SPIN_LOCK(prGlueInfo, SPIN_LOCK_NET_DEV);
+	if (prAdapter->rP2PNetRegState == ENUM_NET_REG_STATE_UNREGISTERED &&
+	    (prAdapter->rP2PRegState == ENUM_P2P_REG_STATE_UNREGISTERED ||
+	     prAdapter->rP2PRegState == ENUM_P2P_REG_STATE_REGISTERED)) {
+		result = TRUE;
+		goto leave_state;
+	}
+	if (prAdapter->rP2PNetRegState != ENUM_NET_REG_STATE_REGISTERED ||
+	    prAdapter->rP2PRegState != ENUM_P2P_REG_STATE_REGISTERED)
+		goto leave_state;
+	prAdapter->rP2PNetRegState = ENUM_NET_REG_STATE_UNREGISTERING;
+	GLUE_RELEASE_SPIN_LOCK(prGlueInfo, SPIN_LOCK_NET_DEV);
 
-	if (fgIsRtnlLockAcquired && rtnl_is_locked())
-		fgRollbackRtnlLock = TRUE;
+	KAL_ACQUIRE_MUTEX(prAdapter, MUTEX_DEL_INF);
+	GLUE_ACQUIRE_SPIN_LOCK(prGlueInfo, SPIN_LOCK_NET_DEV);
+	scan = prGlueInfo->prP2PDevInfo ?
+		prGlueInfo->prP2PDevInfo->prScanRequest : NULL;
+	if (scan)
+		prGlueInfo->prP2PDevInfo->prScanRequest = NULL;
+	GLUE_RELEASE_SPIN_LOCK(prGlueInfo, SPIN_LOCK_NET_DEV);
+	if (scan)
+		kalCfg80211ScanDone(scan, TRUE);
+	KAL_RELEASE_MUTEX(prAdapter, MUTEX_DEL_INF);
 
 	for (ucRoleIdx = 0; ucRoleIdx < KAL_P2P_NUM; ucRoleIdx++) {
 		GLUE_ACQUIRE_SPIN_LOCK(prGlueInfo, SPIN_LOCK_NET_DEV);
 		prP2PInfo = prGlueInfo->prP2PInfo[ucRoleIdx];
+		gPrP2pDev[ucRoleIdx] = NULL;
 		if (prP2PInfo == NULL) {
 			GLUE_RELEASE_SPIN_LOCK(prGlueInfo, SPIN_LOCK_NET_DEV);
 			continue;
 		}
 
 #if CFG_ENABLE_UNIFY_WIPHY
-		/* don't unregister the dev that share with the AIS */
-		if (wlanIsAisDev(prP2PInfo->prDevHandler)) {
-			GLUE_RELEASE_SPIN_LOCK(prGlueInfo, SPIN_LOCK_NET_DEV);
-			continue;
-		}
+		sharedAis = wlanIsAisDev(prP2PInfo->prDevHandler);
+#else
+		sharedAis = FALSE;
 #endif
 
 		prRoleDev = prP2PInfo->aprRoleHandler;
+		gPrP2pDev[ucRoleIdx] = NULL;
 		GLUE_RELEASE_SPIN_LOCK(prGlueInfo, SPIN_LOCK_NET_DEV);
 		if (prRoleDev != NULL) {
 			/* info cfg80211 disconnect */
@@ -1048,16 +1050,26 @@ u_int8_t p2pNetUnregister(struct GLUE_INFO *prGlueInfo,
 					netif_carrier_off(prRoleDev);
 
 				netif_tx_stop_all_queues(prRoleDev);
+				wlanBindBssIdxToNetInterface(prGlueInfo,
+					prNetDevPriv->ucBssIdx,
+					prP2PInfo->prDevHandler);
+				GLUE_ACQUIRE_SPIN_LOCK(prGlueInfo,
+					SPIN_LOCK_NET_DEV);
+				prP2PInfo->aprRoleHandler =
+					prP2PInfo->prDevHandler;
+				prP2PInfo->prWdev =
+					prP2PInfo->prDevHandler->ieee80211_ptr;
+				gprP2pRoleWdev[ucRoleIdx] = prP2PInfo->prWdev;
+				GLUE_RELEASE_SPIN_LOCK(prGlueInfo,
+					SPIN_LOCK_NET_DEV);
 			}
 		}
 
-		if (netif_carrier_ok(prP2PInfo->prDevHandler))
-			netif_carrier_off(prP2PInfo->prDevHandler);
-
-		netif_tx_stop_all_queues(prP2PInfo->prDevHandler);
-
-		if (fgRollbackRtnlLock)
-			rtnl_unlock();
+		if (!sharedAis) {
+			if (netif_carrier_ok(prP2PInfo->prDevHandler))
+				netif_carrier_off(prP2PInfo->prDevHandler);
+			netif_tx_stop_all_queues(prP2PInfo->prDevHandler);
+		}
 
 		/* Here are the functions which need rtnl_lock */
 		if ((prRoleDev) && (prP2PInfo->prDevHandler != prRoleDev)) {
@@ -1066,7 +1078,7 @@ u_int8_t p2pNetUnregister(struct GLUE_INFO *prGlueInfo,
 				ucRoleIdx, prRoleDev,
 				prRoleDev->ieee80211_ptr);
 			if (prRoleDev->reg_state == NETREG_REGISTERED)
-				unregister_netdev(prRoleDev);
+				unregister_netdevice(prRoleDev);
 
 			/* This ndev is created in mtk_p2p_cfg80211_add_iface(),
 			 * and unregister_netdev will also free the ndev.
@@ -1076,18 +1088,24 @@ u_int8_t p2pNetUnregister(struct GLUE_INFO *prGlueInfo,
 		DBGLOG(INIT, INFO, "unregister p2pdev[%d], net_dev=%p, wdev=%px\n",
 			ucRoleIdx, prP2PInfo->prDevHandler,
 			prP2PInfo->prDevHandler->ieee80211_ptr);
-		if (prP2PInfo->prDevHandler->reg_state == NETREG_REGISTERED)
-			unregister_netdev(prP2PInfo->prDevHandler);
-
-		if (fgRollbackRtnlLock)
-			rtnl_lock();
+		if (!sharedAis &&
+		    prP2PInfo->prDevHandler->reg_state == NETREG_REGISTERED)
+			unregister_netdevice(prP2PInfo->prDevHandler);
 	}
 
+	rtnl_unlock();
+	if (fgIsRtnlLockAcquired)
+		rtnl_lock();
 	GLUE_ACQUIRE_SPIN_LOCK(prGlueInfo, SPIN_LOCK_NET_DEV);
 	prAdapter->rP2PNetRegState = ENUM_NET_REG_STATE_UNREGISTERED;
 	GLUE_RELEASE_SPIN_LOCK(prGlueInfo, SPIN_LOCK_NET_DEV);
 
 	return TRUE;
+leave_state:
+	GLUE_RELEASE_SPIN_LOCK(prGlueInfo, SPIN_LOCK_NET_DEV);
+	if (!fgIsRtnlLockAcquired)
+		rtnl_unlock();
+	return result;
 }
 
 /*---------------------------------------------------------------------------*/
@@ -1105,151 +1123,133 @@ u_int8_t p2pNetUnregister(struct GLUE_INFO *prGlueInfo,
  */
 /*---------------------------------------------------------------------------*/
 int glSetupP2P(struct GLUE_INFO *prGlueInfo, struct wireless_dev *prP2pWdev,
-		struct net_device *prP2pDev, uint8_t u4Idx, u_int8_t fgIsApMode)
+	struct net_device *prP2pDev, uint8_t u4Idx, u_int8_t fgIsApMode)
 {
-	struct ADAPTER *prAdapter = NULL;
-	struct GL_P2P_INFO *prP2PInfo = NULL;
-	struct GL_HIF_INFO *prHif = NULL;
-	struct NETDEV_PRIVATE_GLUE_INFO *prNetDevPriv = NULL;
-	struct mt66xx_chip_info *prChipInfo = NULL;
+	struct ADAPTER *prAdapter;
+	struct WIFI_VAR *prWifiVar;
+	struct GL_P2P_INFO *prP2PInfo;
+	struct P2P_ROLE_FSM_INFO *prPreparedRole = NULL;
+	struct NETDEV_PRIVATE_GLUE_INFO *prNetDevPriv;
+	struct GL_HIF_INFO *prHif;
+	u_int8_t newCommon;
+	uint8_t peer;
+	uint32_t committed = 0;
+	int ret;
 
 	GLUE_SPIN_LOCK_DECLARATION();
 
-	DBGLOG(INIT, TRACE, "setup the p2p dev\n");
-
-	if ((prGlueInfo == NULL) ||
-	    (prP2pWdev == NULL) ||
-	    (prP2pWdev->wiphy == NULL) ||
-	    (prP2pDev == NULL)) {
-		DBGLOG(INIT, ERROR, "parameter is NULL!!\n");
-		return -1;
-	}
-
-	prHif = &prGlueInfo->rHifInfo;
+	if (!prGlueInfo || !prGlueInfo->prAdapter || !prP2pWdev ||
+	    !prP2pWdev->wiphy || !prP2pDev || u4Idx >= KAL_P2P_NUM)
+		return -EINVAL;
 	prAdapter = prGlueInfo->prAdapter;
-
-	if ((prAdapter == NULL) ||
-	    (prHif == NULL)) {
-		DBGLOG(INIT, ERROR, "prAdapter/prHif is NULL!!\n");
-		return -1;
+	prWifiVar = &prAdapter->rWifiVar;
+	prHif = &prGlueInfo->rHifInfo;
+	if (!prAdapter->chip_info)
+		return -EINVAL;
+	if (prGlueInfo->prP2PInfo[u4Idx] ||
+	    P2P_ROLE_INDEX_2_ROLE_FSM_INFO(prAdapter, u4Idx))
+		return -EALREADY;
+	newCommon = !prGlueInfo->prP2PDevInfo && !prAdapter->prP2pInfo &&
+		!prWifiVar->prP2pDevFsmInfo;
+	for (peer = 0; peer < KAL_P2P_NUM; peer++) {
+		if (!prGlueInfo->prP2PInfo[peer])
+			continue;
+		if (!prGlueInfo->prP2PInfo[peer]->fgSetupCommitted)
+			return -EINVAL;
+		committed++;
 	}
-
-	/* FIXME: check KAL_P2P_NUM in trunk? */
-	if (u4Idx >= KAL_P2P_NUM) {
-		DBGLOG(INIT, ERROR, "u4Idx(%d) is out of range!!\n", u4Idx);
-		return -1;
+	if ((newCommon && (committed || prAdapter->fgIsP2PRegistered)) ||
+	    (!newCommon && prAdapter->prP2pInfo &&
+	     prAdapter->prP2pInfo->u4DeviceNum != committed))
+		return -EINVAL;
+	if (!newCommon && (!prGlueInfo->prP2PDevInfo || !prAdapter->prP2pInfo ||
+	    !prAdapter->prP2pInfo->u4DeviceNum ||
+	    !prWifiVar->prP2pDevFsmInfo ||
+	    !prWifiVar->prP2pDevFsmInfo->fgIsInitialized))
+		return -EINVAL;
+	if (!p2PAllocInfo(prGlueInfo, u4Idx, &prP2PInfo))
+		return -ENOMEM;
+	p2pFuncInitConnectionSettings(prAdapter,
+		prWifiVar->prP2PConnSettings[u4Idx], fgIsApMode);
+	ret = p2pDevFsmInit(prAdapter);
+	if (ret < 0)
+		goto fail;
+	if (ret != prAdapter->ucP2PDevBssIdx) {
+		ret = -EINVAL;
+		goto fail_device;
 	}
-
-	prChipInfo = prAdapter->chip_info;
-
-	/*0. allocate p2pinfo */
-	if (p2PAllocInfo(prGlueInfo, u4Idx) != TRUE) {
-		DBGLOG(INIT, WARN, "Allocate memory for p2p FAILED\n");
-		return -1;
+	ret = p2pRoleFsmPrepare(prAdapter, u4Idx, prP2pDev->dev_addr, fgIsApMode, &prPreparedRole);
+	if (ret < 0)
+		goto fail_device;
+	if (ret >= prAdapter->ucHwBssIdNum) {
+		p2pRoleFsmReleasePrepared(prAdapter, prPreparedRole);
+		ret = -EINVAL;
+		goto fail_device;
 	}
-
-	prP2PInfo = prGlueInfo->prP2PInfo[u4Idx];
-
-#if CFG_ENABLE_WIFI_DIRECT_CFG_80211
-	/* fill wiphy parameters */
-
-	prP2PInfo->prWdev = prP2pWdev;
-
-	if (!prAdapter->fgEnable5GBand)
-		prP2pWdev->wiphy->bands[BAND_5G] = NULL;
-
-#endif /* CFG_ENABLE_WIFI_DIRECT_CFG_80211 */
-
-#if (CFG_SUPPORT_WIFI_6G == 1)
-	if (!prAdapter->fgIsHwSupport6G)
-		prP2pWdev->wiphy->bands[BAND_6G] = NULL;
-#endif
 
 	GLUE_ACQUIRE_SPIN_LOCK(prGlueInfo, SPIN_LOCK_NET_DEV);
-	/* setup netdev */
-	/* Point to shared glue structure */
-	prNetDevPriv = (struct NETDEV_PRIVATE_GLUE_INFO *)
-		netdev_priv(prP2pDev);
+	prNetDevPriv = netdev_priv(prP2pDev);
 	prNetDevPriv->prGlueInfo = prGlueInfo;
-
-	/* set ucIsP2p for P2P function device */
-	if (fgIsApMode == TRUE) {
+	prNetDevPriv->ucBssIdx = ret;
+	prNetDevPriv->ucMddpSupport = FALSE;
+	if (fgIsApMode) {
 		prP2pWdev->iftype = NL80211_IFTYPE_AP;
 #if CFG_ENABLE_UNIFY_WIPHY
 		prNetDevPriv->ucIsP2p = FALSE;
 #endif
 #if CFG_MTK_MDDP_SUPPORT
 		prNetDevPriv->ucMddpSupport = TRUE;
-#else
-		prNetDevPriv->ucMddpSupport = FALSE;
 #endif
 	} else {
 		prP2pWdev->iftype = NL80211_IFTYPE_P2P_CLIENT;
 #if CFG_ENABLE_UNIFY_WIPHY
 		prNetDevPriv->ucIsP2p = TRUE;
 #endif
-		prNetDevPriv->ucMddpSupport = FALSE;
 	}
-
-	/* register callback functions */
-	prP2pDev->needed_headroom =
-		NIC_TX_DESC_AND_PADDING_LENGTH + prChipInfo->txd_append_size;
+	prP2pDev->needed_headroom = NIC_TX_DESC_AND_PADDING_LENGTH +
+		prAdapter->chip_info->txd_append_size;
 	prP2pDev->netdev_ops = &p2p_netdev_ops;
-
-#if defined(_HIF_SDIO)
-#if (MTK_WCN_HIF_SDIO == 0)
-	SET_NETDEV_DEV(prP2pDev, &(prHif->func->dev));
+#if defined(_HIF_SDIO) && (MTK_WCN_HIF_SDIO == 0)
+	SET_NETDEV_DEV(prP2pDev, &prHif->func->dev);
 #endif
-#endif
-
+	(void)prHif;
 #if CFG_ENABLE_WIFI_DIRECT_CFG_80211
 	prP2pDev->ieee80211_ptr = prP2pWdev;
 	prP2pWdev->netdev = prP2pDev;
+	prP2PInfo->prWdev = prP2pWdev;
+	if (!prAdapter->fgEnable5GBand)
+		prP2pWdev->wiphy->bands[BAND_5G] = NULL;
 #endif
-
+#if CFG_SUPPORT_WIFI_6G
+	if (!prAdapter->fgIsHwSupport6G)
+		prP2pWdev->wiphy->bands[BAND_6G] = NULL;
+#endif
 #if CFG_TCP_IP_CHKSUM_OFFLOAD
-	/* set HW checksum offload */
-	if (prAdapter->fgIsSupportCsumOffload) {
-		prP2pDev->features |= NETIF_F_IP_CSUM |
-				     NETIF_F_IPV6_CSUM |
-				     NETIF_F_RXCSUM;
-	}
-#endif /* CFG_TCP_IP_CHKSUM_OFFLOAD */
-
-	kalResetStats(prP2pDev);
-
-	/* finish */
-	/* bind netdev pointer to netdev index */
-	prP2PInfo->prDevHandler = prP2pDev;
-	GLUE_RELEASE_SPIN_LOCK(prGlueInfo, SPIN_LOCK_NET_DEV);
-
-	/* XXX: All the P2P/AP devices do p2pDevFsmInit in the original code */
-	p2pDevFsmInit(prAdapter);
-	prP2PInfo->aprRoleHandler = prP2PInfo->prDevHandler;
-
-	DBGLOG(P2P, INFO,
-		"check prDevHandler = %p, aprRoleHandler = %p\n",
-		prP2PInfo->prDevHandler, prP2PInfo->aprRoleHandler);
-
-	prNetDevPriv->ucBssIdx = p2pRoleFsmInit(prAdapter, (uint8_t) u4Idx);
-	init_completion(&prP2PInfo->rStopApComp);
-	/* Currently wpasupplicant can't support create interface. */
-	/* so initial the corresponding data structure here. */
-	wlanBindBssIdxToNetInterface(prGlueInfo, prNetDevPriv->ucBssIdx,
-					(void *) prP2PInfo->aprRoleHandler);
-
-	/* bind netdev pointer to netdev index */
-#if 0
-	wlanBindNetInterface(prGlueInfo, NET_DEV_P2P_IDX,
-				(void *)prGlueInfo->prP2PInfo->prDevHandler);
+	if (prAdapter->fgIsSupportCsumOffload)
+		prP2pDev->features |= NETIF_F_IP_CSUM | NETIF_F_IPV6_CSUM | NETIF_F_RXCSUM;
 #endif
-
-	/* setup running mode */
-	p2pFuncInitConnectionSettings(prAdapter,
-		prAdapter->rWifiVar.prP2PConnSettings[u4Idx], fgIsApMode);
-
+	kalResetStats(prP2pDev);
+	prP2PInfo->prDevHandler = prP2pDev;
+	prP2PInfo->aprRoleHandler = prP2pDev;
+	init_completion(&prP2PInfo->rStopApComp);
+	wlanBindBssIdxToNetInterface(prGlueInfo, prNetDevPriv->ucBssIdx, prP2pDev);
+	prP2PInfo->fgSetupCommitted = TRUE;
+	P2P_ROLE_INDEX_2_ROLE_FSM_INFO(prAdapter, u4Idx) = prPreparedRole;
+	prGlueInfo->prP2PInfo[u4Idx] = prP2PInfo;
+	prAdapter->prP2pInfo->u4DeviceNum++;
+	GLUE_RELEASE_SPIN_LOCK(prGlueInfo, SPIN_LOCK_NET_DEV);
 	return 0;
+fail_device:
+	if (newCommon)
+		p2pDevFsmAbortInit(prAdapter);
+fail:
+	p2pFreeRoleMemory(prGlueInfo, u4Idx);
+	kalMemFree(prP2PInfo, VIR_MEM_TYPE, sizeof(*prP2PInfo));
+	if (newCommon)
+		p2pFreeCommonMemory(prGlueInfo);
+	return ret;
 }
+
 
 /*---------------------------------------------------------------------------*/
 /*!
@@ -1262,128 +1262,134 @@ int glSetupP2P(struct GLUE_INFO *prGlueInfo, struct wireless_dev *prP2pWdev,
  */
 /*---------------------------------------------------------------------------*/
 u_int8_t glRegisterP2P(struct GLUE_INFO *prGlueInfo, const char *prDevName,
-		const char *prDevName2, uint8_t ucApMode)
+	const char *prDevName2, uint8_t ucApMode)
 {
-	struct ADAPTER *prAdapter = NULL;
-	uint8_t rMacAddr[PARAM_MAC_ADDR_LEN];
-	u_int8_t fgIsApMode = FALSE;
-	uint8_t  ucRegisterNum = 1, i = 0;
-	struct wireless_dev *prP2pWdev = NULL;
-	struct net_device *prP2pDev = NULL;
-	struct wiphy *prWiphy = NULL;
-	const char *prSetDevName;
-#if (CFG_ENABLE_UNIFY_WIPHY == 0)
-	struct GL_HIF_INFO *prHif = NULL;
-	struct device *prDev;
+	struct ADAPTER *prAdapter;
+	struct wireless_dev *oldRole[KAL_P2P_NUM], *oldBase[KAL_P2P_NUM];
+	struct wireless_dev *created[KAL_P2P_NUM] = {NULL};
+	struct net_device *made[KAL_P2P_NUM] = {NULL};
+	struct ieee80211_supported_band *oldBands[KAL_P2P_NUM][NUM_NL80211_BANDS];
+	enum nl80211_iftype oldType[KAL_P2P_NUM];
+	struct wireless_dev *wdev;
+	struct net_device *ndev = NULL;
+	struct GL_P2P_INFO *info;
+	const char *name;
+	uint8_t count, done = 0, i, j;
+	u_int8_t ap;
+#if CFG_ENABLE_UNIFY_WIPHY == 0
+	struct device *parent;
 #endif
-
 	GLUE_SPIN_LOCK_DECLARATION();
 
-	ASSERT(prGlueInfo);
-
+	if (!prGlueInfo || !prGlueInfo->prAdapter || !prDevName ||
+	    ucApMode > RUNNING_DUAL_P2P_MODE)
+		return FALSE;
 	prAdapter = prGlueInfo->prAdapter;
-	ASSERT(prAdapter);
-
-	if ((ucApMode == RUNNING_DUAL_AP_MODE) ||
-	    (ucApMode == RUNNING_P2P_AP_MODE) ||
-	    (ucApMode == RUNNING_DUAL_P2P_MODE)) {
-		ucRegisterNum = 2;
-		glP2pCreateWirelessDevice(prGlueInfo);
+	if (prAdapter->fgIsP2PRegistered || prAdapter->prP2pInfo ||
+	    prGlueInfo->prP2PDevInfo || prAdapter->rWifiVar.prP2pDevFsmInfo)
+		return FALSE;
+	count = ucApMode == RUNNING_DUAL_AP_MODE ||
+		ucApMode == RUNNING_P2P_AP_MODE ||
+		ucApMode == RUNNING_DUAL_P2P_MODE ? 2 : 1;
+	if (count > KAL_P2P_NUM || (ucApMode == RUNNING_P2P_AP_MODE && !prDevName2))
+		return FALSE;
+	for (i = 0; i < KAL_P2P_NUM; i++) {
+		if (prGlueInfo->prP2PInfo[i] ||
+		    P2P_ROLE_INDEX_2_ROLE_FSM_INFO(prAdapter, i))
+			return FALSE;
+		oldRole[i] = gprP2pRoleWdev[i];
+		oldBase[i] = gprP2pWdev[i];
 	}
-
-	do {
-		if (ucApMode == RUNNING_P2P_AP_MODE) {
-			if (i == 0) {
-				prSetDevName = prDevName;
-				fgIsApMode = FALSE;
-			} else {
-				prSetDevName = prDevName2;
-				fgIsApMode = TRUE;
-			}
-		} else {
-			/* RUNNING_AP_MODE
-			 * RUNNING_DUAL_AP_MODE
-			 * RUNNING_P2P_MODE
-			 * RUNNING_DUAL_P2P_MODE
-			 */
-			prSetDevName = prDevName;
-
-			if (ucApMode == RUNNING_P2P_MODE ||
-				ucApMode == RUNNING_DUAL_P2P_MODE)
-				fgIsApMode = FALSE;
-			else
-				fgIsApMode = TRUE;
-		}
-
-		if (!gprP2pRoleWdev[i]) {
-			DBGLOG(P2P, ERROR, "gprP2pRoleWdev[%d] is NULL\n", i);
-			return FALSE;
-		}
-
-		prP2pWdev = gprP2pRoleWdev[i];
-
-		/* Reset prP2pWdev for the issue that the prP2pWdev doesn't
-		 * reset when the usb unplug/plug.
-		 */
-		prWiphy = prP2pWdev->wiphy;
-		memset(prP2pWdev, 0, sizeof(struct wireless_dev));
-		prP2pWdev->wiphy = prWiphy;
-
-		/* allocate netdev */
-		prP2pDev = alloc_netdev_mq(
-					sizeof(struct NETDEV_PRIVATE_GLUE_INFO),
-					prSetDevName, NET_NAME_PREDICTABLE,
-					ether_setup, CFG_MAX_TXQ_NUM);
-		if (!prP2pDev) {
-			DBGLOG(INIT, WARN, "unable to allocate ndev for p2p\n");
-			goto err_alloc_netdev;
-		}
-
-		COPY_MAC_ADDR(rMacAddr,
-				prAdapter->rWifiVar.aucInterfaceAddress[i]);
-
-		DBGLOG(INIT, INFO,
-			"Set p2p role[%d] mac to " MACSTR " fgIsApMode(%d)\n",
-			i, MAC2STR(rMacAddr), fgIsApMode);
-
-		dev_addr_set(prP2pDev, rMacAddr);
-		kalMemCopy(prP2pDev->perm_addr, prP2pDev->dev_addr, ETH_ALEN);
-
-		if (glSetupP2P(prGlueInfo, prP2pWdev, prP2pDev, i, fgIsApMode)
-				 != 0) {
-			DBGLOG(INIT, WARN, "glSetupP2P FAILED\n");
-			free_netdev(prP2pDev);
-			return FALSE;
-		}
-
-#if (CFG_ENABLE_UNIFY_WIPHY == 0)
-		prHif = &prGlueInfo->rHifInfo;
-		glGetHifDev(prHif, &prDev);
-		if (!prDev)
-			DBGLOG(INIT, ERROR, "P2P[%d] parent dev is NULL\n", i);
-		set_wiphy_dev(prWiphy, prDev);
+#if CFG_ENABLE_UNIFY_WIPHY == 0
+	glGetHifDev(&prGlueInfo->rHifInfo, &parent);
+	if (!parent)
+		return FALSE;
 #endif
-
-		i++;
-		/* prP2pInfo is alloc at glSetupP2P()->p2PAllocInfo() */
-		prAdapter->prP2pInfo->u4DeviceNum++;
-
-	} while (i < ucRegisterNum);
-
+	for (i = 0; i < count; i++) {
+		if (!gprP2pRoleWdev[i] && gprP2pWdev[i])
+			gprP2pRoleWdev[i] = gprP2pWdev[i];
+		if (!gprP2pRoleWdev[i]) {
+			if (!glP2pCreateWirelessDevice(prGlueInfo))
+				goto fail;
+			created[i] = gprP2pRoleWdev[i];
+		}
+		wdev = gprP2pRoleWdev[i];
+		if (!wdev || !wdev->wiphy || wdev->netdev)
+			goto fail;
+		oldType[i] = wdev->iftype;
+		for (j = 0; j < NUM_NL80211_BANDS; j++)
+			oldBands[i][j] = wdev->wiphy->bands[j];
+		ap = ucApMode != RUNNING_P2P_MODE && ucApMode != RUNNING_DUAL_P2P_MODE;
+		name = prDevName;
+		if (ucApMode == RUNNING_P2P_AP_MODE) {
+			ap = i != 0;
+			if (i)
+				name = prDevName2;
+		}
+		ndev = alloc_netdev_mq(sizeof(struct NETDEV_PRIVATE_GLUE_INFO), name,
+			NET_NAME_PREDICTABLE, ether_setup, CFG_MAX_TXQ_NUM);
+		if (!ndev)
+			goto fail;
+		dev_addr_set(ndev, prAdapter->rWifiVar.aucInterfaceAddress[i]);
+		kalMemCopy(ndev->perm_addr, ndev->dev_addr, ETH_ALEN);
+		if (glSetupP2P(prGlueInfo, wdev, ndev, i, ap))
+			goto fail;
+		made[i] = ndev;
+		ndev = NULL;
+		done++;
+	}
+#if CFG_ENABLE_UNIFY_WIPHY == 0
+	for (i = 0; i < count; i++)
+		set_wiphy_dev(gprP2pRoleWdev[i]->wiphy, parent);
+#endif
+#if (CFG_SUPPORT_DFS_MASTER == 1)
+	p2pFuncRadarInfoInit();
+#endif
 	GLUE_ACQUIRE_SPIN_LOCK(prGlueInfo, SPIN_LOCK_NET_DEV);
-	/* set p2p net device register state */
-	/* p2pNetRegister() will check prAdapter->rP2PNetRegState. */
 	prAdapter->rP2PNetRegState = ENUM_NET_REG_STATE_UNREGISTERED;
 	GLUE_RELEASE_SPIN_LOCK(prGlueInfo, SPIN_LOCK_NET_DEV);
-
 	return TRUE;
-#if 0
-err_reg_netdev:
-	free_netdev(prGlueInfo->prP2PInfo->prDevHandler);
+fail:
+	if (ndev)
+		free_netdev(ndev);
+	p2pDevFsmAbortInit(prAdapter);
+	while (done) {
+		i = --done;
+		wdev = made[i]->ieee80211_ptr;
+		info = prGlueInfo->prP2PInfo[i];
+		prGlueInfo->prP2PInfo[i] = NULL;
+		p2pRoleFsmAbortInit(prAdapter, i);
+		if (info->fgSetupCommitted) {
+			info->fgSetupCommitted = FALSE;
+			prAdapter->prP2pInfo->u4DeviceNum--;
+		}
+		if (wdev && wdev->netdev == made[i])
+			wdev->netdev = NULL;
+		made[i]->ieee80211_ptr = NULL;
+		p2pFreeRoleMemory(prGlueInfo, i);
+		kalMemFree(info, VIR_MEM_TYPE, sizeof(*info));
+		if (!wlanIsAisDev(made[i]))
+			free_netdev(made[i]);
+		wdev->iftype = oldType[i];
+		for (j = 0; j < NUM_NL80211_BANDS; j++)
+			wdev->wiphy->bands[j] = oldBands[i][j];
+	}
+	if (prAdapter->prP2pInfo && !prAdapter->prP2pInfo->u4DeviceNum)
+		p2pFreeCommonMemory(prGlueInfo);
+	for (i = 0; i < KAL_P2P_NUM; i++) {
+		gprP2pRoleWdev[i] = oldRole[i];
+		gprP2pWdev[i] = oldBase[i];
+		if (!created[i])
+			continue;
+#if CFG_ENABLE_UNIFY_WIPHY == 0
+		wiphy_unregister(created[i]->wiphy);
+		wiphy_free(created[i]->wiphy);
 #endif
-err_alloc_netdev:
+		kfree(created[i]);
+	}
 	return FALSE;
-}				/* end of glRegisterP2P() */
+}
+
 
 #if CFG_ENABLE_UNIFY_WIPHY
 u_int8_t glP2pCreateWirelessDevice(struct GLUE_INFO *prGlueInfo)
@@ -1552,13 +1558,15 @@ free_wdev:
 u_int8_t glUnregisterP2P(struct GLUE_INFO *prGlueInfo, uint8_t ucIdx)
 {
 	uint8_t ucRoleIdx;
+	uint32_t counted = 0;
 	u_int8_t fgDoUnregister = FALSE;
 	struct ADAPTER *prAdapter;
 	struct GL_P2P_INFO *prP2PInfo = NULL;
 	int i4Start = 0, i4End = 0;
 	GLUE_SPIN_LOCK_DECLARATION();
 
-	ASSERT(prGlueInfo);
+	if (!prGlueInfo || !prGlueInfo->prAdapter)
+		return FALSE;
 
 	if (ucIdx == 0xff) {
 		i4Start = 0;
@@ -1573,27 +1581,21 @@ u_int8_t glUnregisterP2P(struct GLUE_INFO *prGlueInfo, uint8_t ucIdx)
 
 	prAdapter = prGlueInfo->prAdapter;
 
-	/* 4 <1> Uninit P2P dev FSM */
-	/* Uninit P2P device FSM */
-	/* only do p2pDevFsmUninit, when unregister all P2P device */
-	if (ucIdx == 0xff)
+	for (ucRoleIdx = i4Start; ucRoleIdx < i4End; ucRoleIdx++)
+		if (prGlueInfo->prP2PInfo[ucRoleIdx] &&
+		    prGlueInfo->prP2PInfo[ucRoleIdx]->fgSetupCommitted)
+			counted++;
+	if (ucIdx == 0xff || (prAdapter->prP2pInfo && counted &&
+	    counted == prAdapter->prP2pInfo->u4DeviceNum))
 		p2pDevFsmUninit(prAdapter);
 
-	/* 4 <2> Uninit P2P role FSM */
 	for (ucRoleIdx = i4Start; ucRoleIdx < i4End; ucRoleIdx++) {
 		if (P2P_ROLE_INDEX_2_ROLE_FSM_INFO(prAdapter, ucRoleIdx)) {
-			/* FIXME: The cfg80211_XXX() is following the
-			 * p2pRoleFsmUninit() sub-progress.
-			 * ex: The cfg80211_del_sta() is called in the
-			 *     kalP2PGOStationUpdate().
-			 * But the netdev had be unregistered at
-			 * p2pNetUnregister(). EXCEPTION!!
-			 */
+
 			p2pRoleFsmUninit(prGlueInfo->prAdapter, ucRoleIdx);
 		}
 	}
 
-	/* 4 <3> Free Wiphy & netdev */
 	for (ucRoleIdx = i4Start; ucRoleIdx < i4End; ucRoleIdx++) {
 		GLUE_ACQUIRE_SPIN_LOCK(prGlueInfo, SPIN_LOCK_NET_DEV);
 		prP2PInfo = prGlueInfo->prP2PInfo[ucRoleIdx];
@@ -1603,41 +1605,26 @@ u_int8_t glUnregisterP2P(struct GLUE_INFO *prGlueInfo, uint8_t ucIdx)
 			continue;
 		}
 
-		/* For P2P interfaces, prDevHandler points to the net_device of
-		 * p2p0 interface. And aprRoleHandler points to the net_device
-		 * of p2p virtual interface (i.e., p2p1) when it was created.
-		 * And when p2p virtual interface is deleted, aprRoleHandler
-		 * will change to point to prDevHandler. Hence, when
-		 * aprRoleHandler & prDevHandler are pointing to different
-		 * addresses, it means vif p2p1 exists. Otherwise it means p2p1
-		 * was already deleted.
-		 */
 		if ((prP2PInfo->aprRoleHandler != NULL) &&
 		    (prP2PInfo->aprRoleHandler != prP2PInfo->prDevHandler)) {
-			/* This device is added by the P2P, and use
-			 * ndev->destructor to free. The p2pDevFsmUninit() use
-			 * prP2PInfo->aprRoleHandler to do some check.
-			 */
+
 			prP2PInfo->aprRoleHandler = NULL;
 			DBGLOG(P2P, INFO, "aprRoleHandler idx %d set NULL\n",
 					ucRoleIdx);
 
-			/* Expect that gprP2pRoleWdev[ucRoleIdx] has been reset
-			 * as gprP2pWdev or NULL in p2pNetUnregister
-			 * (unregister_netdev).
-			 */
 		}
 		if (prP2PInfo->prDevHandler) {
-			if (prAdapter->rP2PNetRegState ==
-				ENUM_NET_REG_STATE_REGISTERED) {
-				prAdapter->rP2PNetRegState =
-					ENUM_NET_REG_STATE_UNREGISTERING;
-				fgDoUnregister = TRUE;
-			}
-			/* don't free the dev that share with the AIS */
+			gPrP2pDev[ucRoleIdx] = NULL;
+
 			if (wlanIsAisDev(prP2PInfo->prDevHandler))
 				gprP2pRoleWdev[ucRoleIdx] = NULL;
 			else {
+				if (prAdapter->rP2PNetRegState ==
+				    ENUM_NET_REG_STATE_REGISTERED) {
+					prAdapter->rP2PNetRegState =
+						ENUM_NET_REG_STATE_UNREGISTERING;
+					fgDoUnregister = TRUE;
+				}
 				GLUE_RELEASE_SPIN_LOCK(prGlueInfo,
 					SPIN_LOCK_NET_DEV);
 				if (prP2PInfo->prDevHandler->reg_state ==
@@ -1647,19 +1634,23 @@ u_int8_t glUnregisterP2P(struct GLUE_INFO *prGlueInfo, uint8_t ucIdx)
 					unregister_netdev(
 						prP2PInfo->prDevHandler);
 				}
+				if (prP2PInfo->prDevHandler->ieee80211_ptr &&
+				    prP2PInfo->prDevHandler->ieee80211_ptr->netdev ==
+				    prP2PInfo->prDevHandler)
+					prP2PInfo->prDevHandler->ieee80211_ptr->netdev = NULL;
+				prP2PInfo->prDevHandler->ieee80211_ptr = NULL;
 				free_netdev(prP2PInfo->prDevHandler);
 				GLUE_ACQUIRE_SPIN_LOCK(prGlueInfo,
 					SPIN_LOCK_NET_DEV);
-			}
-			prAdapter->rP2PNetRegState =
+				prAdapter->rP2PNetRegState =
 					ENUM_NET_REG_STATE_UNREGISTERED;
+			}
 			prP2PInfo->prDevHandler = NULL;
 		}
 		GLUE_RELEASE_SPIN_LOCK(prGlueInfo, SPIN_LOCK_NET_DEV);
 
-		/* 4 <4> Free P2P internal memory */
 		if (!p2PFreeInfo(prGlueInfo, ucRoleIdx)) {
-			/* FALSE: (fgIsP2PRegistered!=FALSE)||(ucRoleIdx err) */
+
 			DBGLOG(INIT, ERROR, "p2PFreeInfo FAILED\n");
 			return FALSE;
 		}
@@ -1667,7 +1658,8 @@ u_int8_t glUnregisterP2P(struct GLUE_INFO *prGlueInfo, uint8_t ucIdx)
 	}
 
 	return TRUE;
-}				/* end of glUnregisterP2P() */
+}
+
 
 /* Net Device Hooks */
 /*----------------------------------------------------------------------------*/

@@ -46,10 +46,9 @@ static void sspm_reserve_memory_ioremap(struct platform_device *pdev)
 {
 	struct device_node *rmem_node;
 	struct reserved_mem *rmem;
-	unsigned int res_ram_start;
-	unsigned int res_ram_size;
+	unsigned int res_ram_start = 0;
+	unsigned int res_ram_size = 0;
 
-	/* Get reserved memory from dts if have */
 	of_property_read_u32(pdev->dev.of_node, "sspm_res_ram_start"
 						, &res_ram_start);
 	if (res_ram_start) {
@@ -61,7 +60,6 @@ static void sspm_reserve_memory_ioremap(struct platform_device *pdev)
 		return;
 	}
 
-	/* Get reserved memory */
 	rmem_node = of_find_compatible_node(NULL, NULL, SSPM_MEM_RESERVED_KEY);
 	if (!rmem_node) {
 		pr_err("[SSPM] no node for reserved memory\n");
@@ -69,6 +67,7 @@ static void sspm_reserve_memory_ioremap(struct platform_device *pdev)
 	}
 
 	rmem = of_reserved_mem_lookup(rmem_node);
+	of_node_put(rmem_node);
 	if (!rmem) {
 		pr_err("[SSPM] cannot lookup reserved memory\n");
 		return;

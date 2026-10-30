@@ -552,10 +552,12 @@ static int mmdvfs_probe(struct platform_device *pdev)
 	drv_data->num_hoppings = num_hopping;
 	of_property_read_u32(dev->of_node,
 			     "mediatek,action", &drv_data->action);
-	/* Get voltage info from opp table */
-	dev_pm_opp_of_add_table(dev);
+	ret = devm_pm_opp_of_add_table(dev);
+	if (ret)
+		return ret;
 	freq = 0;
-	while (!IS_ERR(opp = dev_pm_opp_find_freq_ceil(dev, &freq))) {
+	while (drv_data->num_voltages < MAX_OPP_NUM &&
+	       !IS_ERR(opp = dev_pm_opp_find_freq_ceil(dev, &freq))) {
 		drv_data->voltages[drv_data->num_voltages] =
 			dev_pm_opp_get_voltage(opp);
 		freq++;

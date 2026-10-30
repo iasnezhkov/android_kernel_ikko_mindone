@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0
 /*
  * Copyright (C) 2016 MediaTek Inc.
  *
@@ -3413,6 +3414,10 @@ static INT32 opfunc_wlan_probe(P_WMT_OP pWmtOp)
 	INT32 iRet;
 	UINT32 drvType = pWmtOp->au4OpData[0];
 
+	if (drvType >= WMTDRV_TYPE_MAX) {
+		WMT_INFO_FUNC("drvType(%d) is invalid.\n", drvType);
+		return -1;
+	}
 
 	iRet = wmt_lib_wlan_lock_aquire();
 	atomic_set(&g_wifi_on_off_ready, 0);

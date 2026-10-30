@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0 OR BSD-3-Clause
 /******************************************************************************
  *
  * This file is provided under a dual license.  When you use or
@@ -515,7 +516,6 @@ void aisFsmInit(IN struct ADAPTER *prAdapter, uint8_t ucBssIndex)
 	LINK_INITIALIZE(&prAisFsmInfo->rPendingReqList);
 
 	/* Support AP Selection */
-	LINK_MGMT_INIT(&prAdapter->rWifiVar.rBlackList);
 	kalMemZero(&prAisSpecificBssInfo->arCurEssChnlInfo[0],
 		   sizeof(prAisSpecificBssInfo->arCurEssChnlInfo));
 	LINK_INITIALIZE(&prAisSpecificBssInfo->rCurEssLink);
@@ -638,8 +638,6 @@ void aisFsmUninit(IN struct ADAPTER *prAdapter, uint8_t ucBssIndex)
 	rsnStopSaQuery(prAdapter, ucBssIndex);
 #endif
 	/* Support AP Selection */
-	LINK_MGMT_UNINIT(&prAdapter->rWifiVar.rBlackList,
-			 struct AIS_BLACKLIST_ITEM, VIR_MEM_TYPE);
 	/* end Support AP Selection */
 	LINK_MGMT_UNINIT(&prAisSpecificBssInfo->rNeighborApList,
 			 struct NEIGHBOR_AP, VIR_MEM_TYPE);
@@ -4779,6 +4777,19 @@ static void aisFsmRunEventScanDoneTimeOut(IN struct ADAPTER *prAdapter,
 	/* try to stop scan in CONNSYS */
 	aisFsmStateAbort_SCAN(prAdapter, ucBssIndex);
 
+	if (!prAisFsmInfo->fgIsScanning &&
+	    prConnSettings->fgIsScanReqIssued &&
+	    prAisFsmInfo->u2SeqNumOfScanReport == AIS_SCN_REPORT_SEQ_NOT_SET &&
+	    (prAisFsmInfo->eCurrentState == AIS_STATE_SCAN ||
+	     prAisFsmInfo->eCurrentState == AIS_STATE_ONLINE_SCAN)) {
+		prConnSettings->fgIsScanReqIssued = FALSE;
+		kalScanDone(prAdapter->prGlueInfo, ucBssIndex,
+			WLAN_STATUS_FAILURE);
+		aisFsmSteps(prAdapter,
+			prAisFsmInfo->eCurrentState == AIS_STATE_SCAN ?
+			AIS_STATE_IDLE : AIS_STATE_NORMAL_TR, ucBssIndex);
+	}
+
 #if CFG_SUPPORT_SCAN_NO_AP_RECOVERY
 	if (IS_FEATURE_ENABLED(prAdapter->rWifiVar.ucScanNoApRecover))
 		scnDoScanTimeoutRecoveryCheck(prAdapter, ucBssIndex);
@@ -6655,6 +6666,197 @@ void aisFuncValidateRxActionFrame(IN struct ADAPTER *prAdapter,
 }				/* aisFuncValidateRxActionFrame */
 
 /* Support AP Selection */
+enum AIS_FWK_PLAN_ORIGIN {
+	AIS_FWK_PLAN_USING,
+	AIS_FWK_PLAN_FREE,
+	AIS_FWK_PLAN_NEW,
+};
+
+struct AIS_FWK_PLAN_ITEM {
+	struct BSS_DESC *bss;
+	struct AIS_BLACKLIST_ITEM *entry;
+	enum AIS_FWK_PLAN_ORIGIN origin;
+	uint32_t touches;
+};
+
+struct AIS_FWK_PLAN_TOUCH {
+	struct BSS_DESC *bss;
+	uint32_t item;
+};
+
+struct AIS_FWK_BLACKLIST_PLAN {
+	struct ADAPTER *adapter;
+	uint32_t used;
+	uint32_t touch_count;
+	struct AIS_FWK_PLAN_ITEM items[CFG_FW_ROAMING_BLACKLIST_SIZE];
+	struct AIS_FWK_PLAN_TOUCH touches[CFG_FW_ROAMING_BLACKLIST_SIZE];
+};
+
+static bool aisFwkSameBss(const struct BSS_DESC *left,
+	const struct BSS_DESC *right)
+{
+	return EQUAL_MAC_ADDR(left->aucBSSID, right->aucBSSID) &&
+		EQUAL_SSID(left->aucSSID, left->ucSSIDLen,
+			right->aucSSID, right->ucSSIDLen);
+}
+
+static struct AIS_BLACKLIST_ITEM *
+aisFwkFindUsing(struct ADAPTER *adapter, const struct BSS_DESC *bss)
+{
+	struct LINK *using_list = &adapter->rWifiVar.rBlackList.rUsingLink;
+	struct LINK_ENTRY *link;
+	struct AIS_BLACKLIST_ITEM *entry;
+	struct AIS_BLACKLIST_ITEM *match = NULL;
+
+	LINK_FOR_EACH(link, using_list) {
+		entry = LINK_ENTRY(link, struct AIS_BLACKLIST_ITEM, rLinkEntry);
+		if (!EQUAL_MAC_ADDR(bss->aucBSSID, entry->aucBSSID) ||
+		    !EQUAL_SSID(bss->aucSSID, bss->ucSSIDLen,
+			entry->aucSSID, entry->ucSSIDLen))
+			continue;
+		if (entry == bss->prBlack)
+			return entry;
+		if (!match)
+			match = entry;
+	}
+	return match;
+}
+
+void aisAbortFwkBlacklist(struct AIS_FWK_BLACKLIST_PLAN *plan)
+{
+	uint32_t index;
+
+	if (!plan)
+		return;
+	for (index = 0; index < plan->used; index++) {
+		if (plan->items[index].origin == AIS_FWK_PLAN_NEW)
+			kalMemFree(plan->items[index].entry, VIR_MEM_TYPE,
+				sizeof(*plan->items[index].entry));
+	}
+	kalMemFree(plan, VIR_MEM_TYPE, sizeof(*plan));
+}
+
+int aisPrepareFwkBlacklist(struct ADAPTER *adapter, uint32_t count,
+	const uint8_t bssid[][MAC_ADDR_LEN],
+	struct AIS_FWK_BLACKLIST_PLAN **output)
+{
+	struct AIS_FWK_BLACKLIST_PLAN *plan;
+	struct AIS_FWK_PLAN_ITEM *item;
+	struct LINK_MGMT *blacklist;
+	struct LINK *free_list;
+	struct LINK_ENTRY *cursor;
+	struct BSS_DESC *bss;
+	uint8_t address[MAC_ADDR_LEN];
+	uint32_t index, selected, new_count = 0;
+	int ret;
+
+	if (!adapter || !output || (count && !bssid) ||
+	    count > CFG_FW_ROAMING_BLACKLIST_SIZE)
+		return -EINVAL;
+	if (!adapter->rWifiVar.fgAisBlacklistInitialized)
+		return -ESHUTDOWN;
+	plan = kalMemAlloc(sizeof(*plan), VIR_MEM_TYPE);
+	if (!plan)
+		return -ENOMEM;
+	kalMemZero(plan, sizeof(*plan));
+	plan->adapter = adapter;
+	blacklist = &adapter->rWifiVar.rBlackList;
+	free_list = &blacklist->rFreeLink;
+	cursor = free_list->prNext;
+
+	for (index = 0; index < count; index++) {
+		COPY_MAC_ADDR(address, bssid[index]);
+		bss = scanSearchBssDescByBssid(adapter, address);
+		if (!bss)
+			continue;
+		if (bss->ucSSIDLen > ELEM_MAX_LEN_SSID) {
+			ret = -EINVAL;
+			goto fail;
+		}
+		for (selected = 0; selected < plan->used; selected++) {
+			if (aisFwkSameBss(bss, plan->items[selected].bss))
+				break;
+		}
+		if (selected == plan->used) {
+			item = &plan->items[selected];
+			item->bss = bss;
+			item->entry = aisFwkFindUsing(adapter, bss);
+			if (item->entry) {
+				item->origin = AIS_FWK_PLAN_USING;
+			} else if (cursor != (struct LINK_ENTRY *)free_list) {
+				item->entry = LINK_ENTRY(cursor,
+					struct AIS_BLACKLIST_ITEM, rLinkEntry);
+				item->origin = AIS_FWK_PLAN_FREE;
+				cursor = cursor->prNext;
+				new_count++;
+			} else {
+				item->entry = kalMemAlloc(sizeof(*item->entry),
+					VIR_MEM_TYPE);
+				if (!item->entry) {
+					ret = -ENOMEM;
+					goto fail;
+				}
+				item->origin = AIS_FWK_PLAN_NEW;
+				new_count++;
+			}
+			plan->used++;
+		}
+		plan->items[selected].touches++;
+		plan->touches[plan->touch_count].bss = bss;
+		plan->touches[plan->touch_count].item = selected;
+		plan->touch_count++;
+	}
+	if (new_count > U32_MAX - blacklist->rUsingLink.u4NumElem) {
+		ret = -EOVERFLOW;
+		goto fail;
+	}
+	*output = plan;
+	return 0;
+
+fail:
+	aisAbortFwkBlacklist(plan);
+	return ret;
+}
+
+void aisCommitFwkBlacklist(struct AIS_FWK_BLACKLIST_PLAN *plan)
+{
+	struct LINK_MGMT *blacklist = &plan->adapter->rWifiVar.rBlackList;
+	struct LINK_ENTRY *link;
+	struct AIS_BLACKLIST_ITEM *entry;
+	struct AIS_FWK_PLAN_ITEM *item;
+	OS_SYSTIME now;
+	uint32_t index, count;
+
+	GET_CURRENT_SYSTIME(&now);
+	LINK_FOR_EACH(link, &blacklist->rUsingLink) {
+		entry = LINK_ENTRY(link, struct AIS_BLACKLIST_ITEM, rLinkEntry);
+		entry->fgIsInFWKBlacklist = FALSE;
+	}
+	for (index = 0; index < plan->used; index++) {
+		item = &plan->items[index];
+		entry = item->entry;
+		if (item->origin != AIS_FWK_PLAN_USING) {
+			if (item->origin == AIS_FWK_PLAN_FREE)
+				LINK_REMOVE_KNOWN_ENTRY(&blacklist->rFreeLink,
+					&entry->rLinkEntry);
+			kalMemZero(entry, sizeof(*entry));
+			COPY_MAC_ADDR(entry->aucBSSID, item->bss->aucBSSID);
+			COPY_SSID(entry->aucSSID, entry->ucSSIDLen,
+				item->bss->aucSSID, item->bss->ucSSIDLen);
+			LINK_INSERT_TAIL(&blacklist->rUsingLink,
+				&entry->rLinkEntry);
+		}
+		count = (uint32_t)entry->ucCount + item->touches;
+		entry->ucCount = count > 10 ? 10 : count;
+		entry->rAddTime = now;
+		entry->fgIsInFWKBlacklist = TRUE;
+	}
+	for (index = 0; index < plan->touch_count; index++)
+		plan->touches[index].bss->prBlack =
+			plan->items[plan->touches[index].item].entry;
+	kalMemFree(plan, VIR_MEM_TYPE, sizeof(*plan));
+}
+
 void aisRefreshFWKBlacklist(struct ADAPTER *prAdapter)
 {
 	struct AIS_BLACKLIST_ITEM *prEntry = NULL;

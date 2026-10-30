@@ -10,7 +10,7 @@
 #include <linux/sync_file.h>
 #include <linux/dma-fence.h>
 
-#include <mt-plat/mtk_gpu_utility.h>
+#include <mtk_gpu_utility.h>
 
 #ifdef MTK_GPU_DVFS
 #include <mtk_gpufreq.h>
@@ -32,7 +32,7 @@
 #include <ged_gpufreq_v2.h>
 #else
 #include <ged_gpufreq_v1.h>
-#endif /* CONFIG_MTK_GPUFREQ_V2 */
+#endif
 
 static atomic_t g_i32Count = ATOMIC_INIT(0);
 static unsigned int ged_monitor_3D_fence_debug;
@@ -76,7 +76,6 @@ static void ged_monitor_3D_fence_work_cb(struct work_struct *psWork)
 #ifdef GED_DEBUG_MONITOR_3D_FENCE
 	ged_log_buf_print(ghLogBuf_GED, "ged_monitor_3D_fence_work_cb");
 #endif
-
 
 	if (atomic_sub_return(1, &g_i32Count) < 1) {
 		unsigned int uiFreqLevelID;

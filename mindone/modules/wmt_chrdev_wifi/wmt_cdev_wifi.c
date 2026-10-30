@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0
 /*
 * Copyright (C) 2016 MediaTek Inc.
 *
@@ -101,6 +102,7 @@ enum {
 	WLAN_MODE_STA_AP_P2P,
 	WLAN_MODE_DUAL_P2P,
 	WLAN_MODE_DUAL_AP,
+	WLAN_MODE_UNKNOWN,
 	WLAN_MODE_MAX
 };
 static int32_t wlan_mode = WLAN_MODE_HALT;
@@ -318,7 +320,11 @@ int32_t wifi_reset_end(enum ENUM_RESET_STATUS status)
 	struct net_device *netdev = NULL;
 	struct PARAM_CUSTOM_P2P_SET_STRUCT p2pmode;
 	int32_t wait_cnt = 0;
-	int32_t ret = -1;
+	int32_t ret = -EIO;
+	int32_t target = wlan_mode;
+
+	if (powered == 1)
+		wlan_mode = WLAN_MODE_UNKNOWN;
 
 	if (status == RESET_FAIL) {
 		/* whole chip reset fail, donot recover WIFI */
@@ -349,6 +355,7 @@ int32_t wifi_reset_end(enum ENUM_RESET_STATUS status)
 
 			if (pf_set_p2p_mode == NULL) {
 				WIFI_ERR_FUNC("Set p2p mode handler is NULL\n");
+				ret = -EOPNOTSUPP;
 				goto done;
 			}
 
@@ -360,31 +367,41 @@ int32_t wifi_reset_end(enum ENUM_RESET_STATUS status)
 				wait_cnt++;
 				netdev = dev_get_by_name(&init_net, ifname);
 			}
-			if (wait_cnt >= 10) {
+			if (!netdev) {
 				WIFI_ERR_FUNC("Get %s net device timeout\n", ifname);
+				ret = -ENODEV;
 				goto done;
 			}
 
-			if (wlan_mode == WLAN_MODE_STA_P2P) {
-				p2pmode.u4Enable = 1;
+			p2pmode.u4Enable = 1;
+			switch (target) {
+			case WLAN_MODE_HALT:
+				p2pmode.u4Enable = 0;
 				p2pmode.u4Mode = 0;
-				if (pf_set_p2p_mode(netdev, p2pmode) != 0) {
-					WIFI_ERR_FUNC("Set wlan mode 0 fail\n");
-				} else {
-					WIFI_WARN_FUNC("Set wlan mode %d\n", WLAN_MODE_STA_P2P);
-					ret = 0;
-				}
-			} else if (wlan_mode == WLAN_MODE_AP) {
-				p2pmode.u4Enable = 1;
+				break;
+			case WLAN_MODE_STA_P2P:
+				p2pmode.u4Mode = 0;
+				break;
+			case WLAN_MODE_AP:
 				p2pmode.u4Mode = 1;
-				if (pf_set_p2p_mode(netdev, p2pmode) != 0) {
-					WIFI_ERR_FUNC("Set wlan mode 1 fail\n");
-				} else {
-					WIFI_WARN_FUNC("Set wlan mode %d\n", WLAN_MODE_AP);
-					ret = 0;
-				}
-			} else
-				ret = 0;
+				break;
+			case WLAN_MODE_DUAL_AP:
+				p2pmode.u4Mode = 2;
+				break;
+			case WLAN_MODE_STA_AP_P2P:
+				p2pmode.u4Mode = 3;
+				break;
+			case WLAN_MODE_DUAL_P2P:
+				p2pmode.u4Mode = 4;
+				break;
+			default:
+				goto done;
+			}
+			ret = pf_set_p2p_mode(netdev, p2pmode);
+			if (ret)
+				ret = ret < 0 ? ret : -EIO;
+			else
+				wlan_mode = target;
 done:
 			if (netdev != NULL)
 				dev_put(netdev);
@@ -413,13 +430,35 @@ static int WIFI_close(struct inode *inode, struct file *file)
 	return 0;
 }
 
+static int32_t wifi_p2p_transition(struct net_device *netdev,
+	uint32_t enable, uint32_t mode)
+{
+	struct PARAM_CUSTOM_P2P_SET_STRUCT p2pmode;
+	int32_t ret;
+
+	if (!netdev || !pf_set_p2p_mode) {
+		wlan_mode = WLAN_MODE_UNKNOWN;
+		return netdev ? -EOPNOTSUPP : -ENODEV;
+	}
+	p2pmode.u4Enable = enable;
+	p2pmode.u4Mode = mode;
+	ret = pf_set_p2p_mode(netdev, p2pmode);
+	if (ret) {
+		wlan_mode = WLAN_MODE_UNKNOWN;
+		return ret < 0 ? ret : -EIO;
+	}
+	if (!enable)
+		wlan_mode = WLAN_MODE_HALT;
+	return 0;
+}
+
 ssize_t WIFI_write(struct file *filp, const char __user *buf, size_t count, loff_t *f_pos)
 {
 	int32_t retval = -EIO;
 	int8_t local[20] = { 0 };
 	struct net_device *netdev = NULL;
-	struct PARAM_CUSTOM_P2P_SET_STRUCT p2pmode;
 	int32_t wait_cnt = 0;
+	int32_t mode_ret;
 	uint32_t copy_size = 0;
 
 	down(&wr_mtx);
@@ -441,6 +480,13 @@ ssize_t WIFI_write(struct file *filp, const char __user *buf, size_t count, loff
 		WIFI_INFO_FUNC("WIFI_write %s, length %zu, copy_size %u\n",
 			local, count, copy_size);
 
+		if ((local[0] == '0' || local[0] == '1') &&
+		    (count > 2 || (local[1] != '\0' && local[1] != '\n'))) {
+			WIFI_ERR_FUNC("WIFI_write: malformed power command\n");
+			retval = -EINVAL;
+			goto done;
+		}
+
 		if (local[0] == '0') {
 #if (CFG_ANDORID_CONNINFRA_SUPPORT == 1)
 			write_processing = 1;
@@ -453,20 +499,16 @@ ssize_t WIFI_write(struct file *filp, const char __user *buf, size_t count, loff
 			}
 
 			netdev = dev_get_by_name(&init_net, ifname);
-			if (netdev == NULL) {
-				WIFI_ERR_FUNC("Fail to get %s net device\n", ifname);
-			} else {
-				p2pmode.u4Enable = 0;
-				p2pmode.u4Mode = 0;
-
-				if (pf_set_p2p_mode) {
-					if (pf_set_p2p_mode(netdev, p2pmode) != 0) {
-						WIFI_ERR_FUNC("Turn off p2p/ap mode fail");
-					} else {
-						WIFI_INFO_FUNC("Turn off p2p/ap mode");
-						wlan_mode = WLAN_MODE_HALT;
-					}
+			if (netdev && pf_set_p2p_mode) {
+				mode_ret = wifi_p2p_transition(netdev, 0, 0);
+				if (mode_ret) {
+					retval = mode_ret;
+					goto done;
 				}
+			} else {
+				wlan_mode = WLAN_MODE_UNKNOWN;
+			}
+			if (netdev) {
 				dev_put(netdev);
 				netdev = NULL;
 			}
@@ -559,196 +601,113 @@ ssize_t WIFI_write(struct file *filp, const char __user *buf, size_t count, loff
 			else
 				retval = -ENOTSUPP;
 		} else if (local[0] == 'S' || local[0] == 'P' || local[0] == 'A') {
-			if (powered == 1 && driver_loaded == 0) {
-				WIFI_INFO_FUNC("In fact wifi is already turned off! reset related states.\n");
-				powered = 0;
-				wlan_mode = WLAN_MODE_HALT;
+			int32_t target;
+			uint32_t mode;
+
+			if (isconcurrent) {
+				target = WLAN_MODE_STA_AP_P2P;
+				mode = 3;
+			} else if (local[0] == 'A') {
+				target = WLAN_MODE_AP;
+				mode = 1;
+			} else {
+				target = WLAN_MODE_STA_P2P;
+				mode = 0;
 			}
 
-			if (powered == 0) {
-				/* If WIFI is off, turn on WIFI first */
+			if (!powered) {
 #if (CFG_ANDORID_CONNINFRA_SUPPORT == 1)
 				if (mtk_wcn_wlan_func_ctrl(WLAN_OPID_FUNC_ON) == MTK_WCN_BOOL_FALSE) {
 #else
 				if (mtk_wcn_wmt_func_on(WMTDRV_TYPE_WIFI) == MTK_WCN_BOOL_FALSE) {
 #endif
-					WIFI_ERR_FUNC("WMT turn on WIFI fail!\n");
+					wlan_mode = WLAN_MODE_UNKNOWN;
 					goto done;
-				} else {
-					powered = 1;
-					WIFI_INFO_FUNC("WMT turn on WIFI success!\n");
-					wlan_mode = WLAN_MODE_HALT;
 				}
+				powered = 1;
+				wlan_mode = WLAN_MODE_UNKNOWN;
 			}
-
-			if (pf_set_p2p_mode == NULL) {
-				WIFI_ERR_FUNC("Set p2p mode handler is NULL\n");
+			if (!driver_loaded) {
+				wlan_mode = WLAN_MODE_UNKNOWN;
+				retval = -ENODEV;
 				goto done;
 			}
 
 			netdev = dev_get_by_name(&init_net, ifname);
 			wait_cnt = 0;
-			while (netdev == NULL && wait_cnt < 10) {
-				WIFI_ERR_FUNC("Fail to get %s net device, sleep 300ms\n", ifname);
+			while (!netdev && wait_cnt < 10) {
 				msleep(300);
 				wait_cnt++;
 				netdev = dev_get_by_name(&init_net, ifname);
 			}
-			if (wait_cnt >= 10) {
-				WIFI_ERR_FUNC("Get %s net device timeout\n", ifname);
+			if (!netdev || !pf_set_p2p_mode) {
+				retval = wifi_p2p_transition(netdev, 0, 0);
 				goto done;
 			}
-
-			/* 1. Concurrent mode */
-			if (isconcurrent) {
-				if (wlan_mode == WLAN_MODE_STA_AP_P2P) {
-					WIFI_INFO_FUNC("WIFI is already in cocurrent mode %d!\n", wlan_mode);
-					retval = count;
-					goto done;
-				}
-				p2pmode.u4Enable = 1;
-				p2pmode.u4Mode = 3;
-				if (pf_set_p2p_mode(netdev, p2pmode) != 0) {
-					WIFI_ERR_FUNC("Set wlan mode fail\n");
-					/* Goto Non-concurrent mode */
-				} else {
-					WIFI_INFO_FUNC("Set wlan mode %d --> %d\n", wlan_mode, WLAN_MODE_STA_AP_P2P);
-					wlan_mode = WLAN_MODE_STA_AP_P2P;
-					retval = count;
-					goto done;
-				}
-			}
-
-			/* 2. Non-concurrent mode */
-			if ((wlan_mode == WLAN_MODE_STA_P2P && (local[0] == 'S' || local[0] == 'P')) ||
-			    (wlan_mode == WLAN_MODE_AP && (local[0] == 'A'))) {
-				WIFI_INFO_FUNC("WIFI is already in mode %d!\n", wlan_mode);
+			if (wlan_mode == target) {
 				retval = count;
 				goto done;
 			}
 
-			if ((wlan_mode == WLAN_MODE_AP && (local[0] == 'S' || local[0] == 'P')) ||
-			    (wlan_mode == WLAN_MODE_STA_P2P && (local[0] == 'A'))) {
-				p2pmode.u4Enable = 0;
-				p2pmode.u4Mode = 0;
-				if (pf_set_p2p_mode(netdev, p2pmode) != 0) {
-					WIFI_ERR_FUNC("Turn off p2p/ap mode fail");
-					goto done;
-				}
+			mode_ret = wifi_p2p_transition(netdev, 0, 0);
+			if (mode_ret) {
+				retval = mode_ret;
+				goto done;
 			}
-
-			if (local[0] == 'S' || local[0] == 'P') {
-				p2pmode.u4Enable = 1;
-				p2pmode.u4Mode = 0;
-				if (pf_set_p2p_mode(netdev, p2pmode) != 0) {
-					WIFI_ERR_FUNC("Set wlan mode fail\n");
-				} else {
-					WIFI_INFO_FUNC("Set wlan mode %d --> %d\n", wlan_mode, WLAN_MODE_STA_P2P);
-					wlan_mode = WLAN_MODE_STA_P2P;
-					retval = count;
-				}
-			} else if (local[0] == 'A') {
-				p2pmode.u4Enable = 1;
-				p2pmode.u4Mode = 1;
-				if (pf_set_p2p_mode(netdev, p2pmode) != 0) {
-					WIFI_ERR_FUNC("Set wlan mode fail\n");
-				} else {
-					WIFI_INFO_FUNC("Set wlan mode %d --> %d\n", wlan_mode, WLAN_MODE_AP);
-					wlan_mode = WLAN_MODE_AP;
-					retval = count;
-				}
+			mode_ret = wifi_p2p_transition(netdev, 1, mode);
+			if (mode_ret) {
+				retval = mode_ret;
+				goto done;
 			}
-			dev_put(netdev);
-			netdev = NULL;
+			wlan_mode = target;
+			retval = count;
 		} else if (local[0] == 'C') {
 			if ((isconcurrent == 0) &&
-				((wlan_mode == WLAN_MODE_STA_P2P)
-				|| (wlan_mode == WLAN_MODE_AP))) {
+			    ((wlan_mode == WLAN_MODE_STA_P2P) ||
+			     (wlan_mode == WLAN_MODE_AP) ||
+			     (wlan_mode == WLAN_MODE_UNKNOWN))) {
 				netdev = dev_get_by_name(&init_net, ifname);
-				if (netdev && pf_set_p2p_mode) {
-					p2pmode.u4Enable = 0;
-					p2pmode.u4Mode = 0;
-					if (pf_set_p2p_mode(netdev, p2pmode) != 0)
-						WIFI_ERR_FUNC("Turn off p2p/ap mode fail");
-					else
-						WIFI_INFO_FUNC("Turn off p2p/ap mode success");
-				} else
-					WIFI_ERR_FUNC("Fail to get %s netdev\n", ifname);
+				mode_ret = wifi_p2p_transition(netdev, 0, 0);
+				if (mode_ret) {
+					retval = mode_ret;
+					goto done;
+				}
 			}
 			isconcurrent = 1;
 			WIFI_INFO_FUNC("Enable concurrent mode\n");
 			retval = count;
 		} else if (local[0] == 'N') {
 			if ((isconcurrent == 1) &&
-				(wlan_mode == WLAN_MODE_STA_AP_P2P)) {
+			    ((wlan_mode == WLAN_MODE_STA_AP_P2P) ||
+			     (wlan_mode == WLAN_MODE_UNKNOWN))) {
 				netdev = dev_get_by_name(&init_net, ifname);
-				if (netdev && pf_set_p2p_mode) {
-					p2pmode.u4Enable = 0;
-					p2pmode.u4Mode = 0;
-					if (pf_set_p2p_mode(netdev, p2pmode) != 0)
-						WIFI_ERR_FUNC("Turn off p2p/ap mode fail");
-					else
-						WIFI_INFO_FUNC("Turn off p2p/ap mode success");
-				} else
-					WIFI_ERR_FUNC("Fail to get %s netdev\n", ifname);
+				mode_ret = wifi_p2p_transition(netdev, 0, 0);
+				if (mode_ret) {
+					retval = mode_ret;
+					goto done;
+				}
 			}
 			isconcurrent = 0;
 			WIFI_INFO_FUNC("Disable concurrent mode\n");
 			retval = count;
-		} else if (local[0] == 'D') {
-			if (wlan_mode == WLAN_MODE_DUAL_P2P) {
-				WIFI_INFO_FUNC("WIFI is already in dual p2p mode %d!\n", wlan_mode);
-			} else {
-				netdev = dev_get_by_name(&init_net, ifname);
-				if (netdev && pf_set_p2p_mode) {
-					p2pmode.u4Enable = 0;
-					p2pmode.u4Mode = 0;
-					if (pf_set_p2p_mode(netdev, p2pmode) != 0)
-						WIFI_ERR_FUNC("Turn off p2p/ap mode fail");
-					else
-						WIFI_INFO_FUNC("Turn off p2p/ap mode success");
-				} else
-					WIFI_ERR_FUNC("Fail to get %s netdev\n", ifname);
+		} else if (local[0] == 'D' || local[0] == 'E') {
+			int32_t target = local[0] == 'D' ?
+				WLAN_MODE_DUAL_P2P : WLAN_MODE_DUAL_AP;
+			uint32_t mode = local[0] == 'D' ? 4 : 2;
 
-				if (netdev && pf_set_p2p_mode) {
-					p2pmode.u4Enable = 1;
-					p2pmode.u4Mode = 4;
-					if (pf_set_p2p_mode(netdev, p2pmode) != 0) {
-						WIFI_ERR_FUNC("Set wlan mode fail\n");
-					} else {
-						WIFI_INFO_FUNC("Set wlan mode %d --> %d\n",
-							wlan_mode, WLAN_MODE_DUAL_P2P);
-						wlan_mode = WLAN_MODE_DUAL_P2P;
-					}
-				}
-			}
-			retval = count;
-		} else if (local[0] == 'E') {
-			if (wlan_mode == WLAN_MODE_DUAL_AP) {
-				WIFI_INFO_FUNC("WIFI is already in dual ap mode %d!\n", wlan_mode);
-			} else {
+			if (wlan_mode != target) {
 				netdev = dev_get_by_name(&init_net, ifname);
-				if (netdev && pf_set_p2p_mode) {
-					p2pmode.u4Enable = 0;
-					p2pmode.u4Mode = 0;
-					if (pf_set_p2p_mode(netdev, p2pmode) != 0)
-						WIFI_ERR_FUNC("Turn off p2p/ap mode fail");
-					else
-						WIFI_INFO_FUNC("Turn off p2p/ap mode success");
-				} else
-					WIFI_ERR_FUNC("Fail to get %s netdev\n", ifname);
-
-				if (netdev && pf_set_p2p_mode) {
-					p2pmode.u4Enable = 1;
-					p2pmode.u4Mode = 2;
-					if (pf_set_p2p_mode(netdev, p2pmode) != 0) {
-						WIFI_ERR_FUNC("Set wlan mode fail\n");
-					} else {
-						WIFI_INFO_FUNC("Set wlan mode %d --> %d\n",
-							wlan_mode, WLAN_MODE_DUAL_AP);
-						wlan_mode = WLAN_MODE_DUAL_AP;
-					}
+				mode_ret = wifi_p2p_transition(netdev, 0, 0);
+				if (mode_ret) {
+					retval = mode_ret;
+					goto done;
 				}
+				mode_ret = wifi_p2p_transition(netdev, 1, mode);
+				if (mode_ret) {
+					retval = mode_ret;
+					goto done;
+				}
+				wlan_mode = target;
 			}
 			retval = count;
 		} else if (!strncmp(local, "LLM", 3)) {

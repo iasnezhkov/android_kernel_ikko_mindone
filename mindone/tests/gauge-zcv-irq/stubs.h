@@ -1,3 +1,5 @@
+/* SPDX-License-Identifier: GPL-2.0 */
+/* SPDX-FileCopyrightText: 2026 The LineageOS Project */
 #define smp_load_acquire(pointer) (*(pointer))
 #define smp_store_release(pointer, value) (*(pointer) = (value))
 #include <assert.h>

@@ -1,9 +1,12 @@
+/* SPDX-License-Identifier: GPL-2.0 */
+/* SPDX-FileCopyrightText: 2026 The LineageOS Project */
 #define smp_load_acquire(pointer) (*(pointer))
 #define smp_store_release(pointer, value) (*(pointer) = (value))
 static int initialization_calls;
 static int setup_calls;
 static int publication_calls;
 static int temperature_error;
+static int sample_error;
 static bool allocation_error;
 static bool profile_error;
 static bool profile_order_error;
@@ -37,6 +40,24 @@ static int force_get_tbat_internal(struct mtk_battery *gm, bool update, int *val
 	if (temperature_error)
 		return temperature_error;
 	*value = -5;
+	return 0;
+}
+
+static int gauge_read_ptim_sample(struct mtk_gauge *gauge,
+	struct gauge_ptim_sample *sample)
+{
+	int ret = io_step(false);
+	if (ret)
+		return ret;
+	if (sample_error)
+		return sample_error;
+	if (gauge_values[GAUGE_PROP_PTIM_BATTERY_VOLTAGE] <= 0)
+		return -ENODATA;
+	*sample = (struct gauge_ptim_sample) {
+		.sequence = 1,
+		.voltage_01mv = gauge_values[GAUGE_PROP_PTIM_BATTERY_VOLTAGE] * 10,
+		.current_01ma = -1000,
+	};
 	return 0;
 }
 

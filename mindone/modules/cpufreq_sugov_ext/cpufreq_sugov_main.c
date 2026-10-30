@@ -13,7 +13,7 @@
 #undef pr_fmt
 #define pr_fmt(fmt) KBUILD_MODNAME ": " fmt
 
-#include <sched/sched.h>
+#include <../kernel/sched/sched.h>
 #include "cpufreq.h"
 #include "sugov_types.h"
 #include "common.h"
@@ -42,6 +42,7 @@ struct sugov_cpu {
 	u64			last_update;
 
 	unsigned long		bw_dl;
+	unsigned long		min;
 	unsigned long		max;
 
 	/* The field below is for single-CPU policies only: */
@@ -219,17 +220,21 @@ static bool ignore_irq_util;
  * based on the task model parameters and gives the minimal utilization
  * required to meet deadlines.
  */
-unsigned long mtk_cpu_util(int cpu, unsigned long util_cfs,
-				 unsigned long max, enum mtk_cpu_util_type type,
-				 struct task_struct *p)
+static unsigned long sugov_effective_cpu_util(int cpu, unsigned long util_cfs,
+		unsigned long max, enum mtk_cpu_util_type type,
+		struct task_struct *p, unsigned long *min_util)
 {
 	unsigned long dl_util, util, irq;
 	struct rq *rq = cpu_rq(cpu);
 
-
+	irq = READ_ONCE(ignore_irq_util) ? 0 : cpu_util_irq(rq);
+	if (min_util)
+		*min_util = min(max, irq + cpu_bw_dl(rq));
 
 	if (!uclamp_is_used() &&
 	    type == MTK_FREQUENCY_UTIL && rt_rq_is_runnable(&rq->rt)) {
+		if (min_util)
+			*min_util = max;
 		return max;
 	}
 
@@ -238,11 +243,8 @@ unsigned long mtk_cpu_util(int cpu, unsigned long util_cfs,
 	 * because of inaccuracies in how we track these -- see
 	 * update_irq_load_avg().
 	 */
-	if (likely(!ignore_irq_util)) {
-		irq = cpu_util_irq(rq);
-		if (unlikely(irq >= max))
-			return max;
-	}
+	if (unlikely(irq >= max))
+		return max;
 
 	/*
 	 * Because the time spend on RT/DL tasks is visible as 'lost' time to
@@ -258,7 +260,7 @@ unsigned long mtk_cpu_util(int cpu, unsigned long util_cfs,
 	 */
 	util = util_cfs + cpu_util_rt(rq);
 
-	if (type == MTK_FREQUENCY_UTIL)
+	if (type == MTK_FREQUENCY_UTIL && !min_util)
 		util = mtk_uclamp_rq_util_with(rq, util, p);
 
 	dl_util = cpu_util_dl(rq);
@@ -293,12 +295,10 @@ unsigned long mtk_cpu_util(int cpu, unsigned long util_cfs,
 	 */
 	if (trace_sugov_ext_util_debug_enabled())
 		trace_sugov_ext_util_debug(cpu, util_cfs, cpu_util_rt(rq), dl_util,
-				irq, util, ignore_irq_util ? 0 : scale_irq_capacity(util, irq, max),
+				irq, util, scale_irq_capacity(util, irq, max),
 				cpu_bw_dl(rq));
-	if (likely(!ignore_irq_util)) {
-		util = scale_irq_capacity(util, irq, max);
-		util += irq;
-	}
+	util = scale_irq_capacity(util, irq, max);
+	util += irq;
 
 	/*
 	 * Bandwidth required by DEADLINE must always be granted while, for
@@ -315,6 +315,13 @@ unsigned long mtk_cpu_util(int cpu, unsigned long util_cfs,
 
 	return min(max, util);
 }
+
+unsigned long mtk_cpu_util(int cpu, unsigned long util_cfs,
+		unsigned long max, enum mtk_cpu_util_type type,
+		struct task_struct *p)
+{
+	return sugov_effective_cpu_util(cpu, util_cfs, max, type, p, NULL);
+}
 EXPORT_SYMBOL(mtk_cpu_util);
 
 static unsigned long sugov_get_util(struct sugov_cpu *sg_cpu)
@@ -329,7 +336,8 @@ static unsigned long sugov_get_util(struct sugov_cpu *sg_cpu)
 	sg_cpu->max = max;
 	sg_cpu->bw_dl = cpu_bw_dl(rq);
 
-	return mtk_cpu_util(sg_cpu->cpu, util, max, MTK_FREQUENCY_UTIL, NULL);
+	return sugov_effective_cpu_util(sg_cpu->cpu, util, max,
+			MTK_FREQUENCY_UTIL, NULL, &sg_cpu->min);
 }
 
 /**
@@ -455,11 +463,35 @@ static unsigned long sugov_iowait_apply(struct sugov_cpu *sg_cpu, u64 time,
 	return max(boost, util);
 }
 
+static unsigned long sugov_apply_uclamp(struct sugov_cpu *sg_cpu,
+		unsigned long util)
+{
+	util = mtk_apply_dvfs_margin(util);
+	util = mtk_uclamp_rq_util_with(cpu_rq(sg_cpu->cpu), util, NULL);
+
+	return min(sg_cpu->max, max(sg_cpu->min, util));
+}
+
 #if IS_ENABLED(CONFIG_NO_HZ_COMMON)
 static bool sugov_cpu_is_busy(struct sugov_cpu *sg_cpu)
 {
 	unsigned long idle_calls = tick_nohz_get_idle_calls_cpu(sg_cpu->cpu);
 	bool ret = idle_calls == sg_cpu->saved_idle_calls;
+#ifdef CONFIG_UCLAMP_TASK
+	struct rq *rq = cpu_rq(sg_cpu->cpu);
+	unsigned long util, max_util;
+
+	if (uclamp_is_used()) {
+		util = min_t(unsigned long,
+				max_t(unsigned long, READ_ONCE(rq->cfs.avg.util_avg),
+					READ_ONCE(rq->cfs.avg.util_est)),
+				arch_scale_cpu_capacity(sg_cpu->cpu));
+		util += cpu_util_rt(rq);
+		max_util = READ_ONCE(rq->uclamp[UCLAMP_MAX].value);
+		if (max_util != SCHED_CAPACITY_SCALE && util >= max_util)
+			ret = false;
+	}
+#endif
 
 	sg_cpu->saved_idle_calls = idle_calls;
 	return ret;
@@ -589,6 +621,7 @@ static void sugov_update_single(struct update_util_data *hook, u64 time,
 	util = sugov_get_util(sg_cpu);
 	max = sg_cpu->max;
 	util = sugov_iowait_apply(sg_cpu, time, util, max);
+	util = sugov_apply_uclamp(sg_cpu, util);
 
 	if (trace_sugov_ext_util_enabled()) {
 		rq = cpu_rq(sg_cpu->cpu);
@@ -640,6 +673,7 @@ static unsigned int sugov_next_freq_shared(struct sugov_cpu *sg_cpu, u64 time)
 		j_util = sugov_get_util(j_sg_cpu);
 		j_max = j_sg_cpu->max;
 		j_util = sugov_iowait_apply(j_sg_cpu, time, j_util, j_max);
+		j_util = sugov_apply_uclamp(j_sg_cpu, j_util);
 
 		if (trace_sugov_ext_util_enabled()) {
 			rq = cpu_rq(j);

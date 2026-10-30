@@ -230,6 +230,7 @@ extern void scp_extern_notify(enum SCP_NOTIFY_EVENT notify_status);
 extern void scp_status_set(unsigned int value);
 extern void scp_logger_init_set(unsigned int value);
 extern unsigned int scp_set_reset_status(void);
+extern bool scp_claim_reset(void);
 extern void scp_enable_sram(void);
 extern int scp_sys_full_reset(void);
 extern void scp_reset_awake_counts(void);

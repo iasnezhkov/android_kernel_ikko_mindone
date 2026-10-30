@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: GPL-2.0 OR BSD-3-Clause */
 /******************************************************************************
  *
  * This file is provided under a dual license.  When you use or
@@ -618,6 +619,12 @@ void aisTest(void);
 
 /* Support AP Selection */
 void aisRefreshFWKBlacklist(struct ADAPTER *prAdapter);
+struct AIS_FWK_BLACKLIST_PLAN;
+int aisPrepareFwkBlacklist(struct ADAPTER *adapter, uint32_t count,
+	const uint8_t bssid[][MAC_ADDR_LEN],
+	struct AIS_FWK_BLACKLIST_PLAN **output);
+void aisCommitFwkBlacklist(struct AIS_FWK_BLACKLIST_PLAN *plan);
+void aisAbortFwkBlacklist(struct AIS_FWK_BLACKLIST_PLAN *plan);
 struct AIS_BLACKLIST_ITEM *aisAddBlacklist(struct ADAPTER *prAdapter,
 	struct BSS_DESC *prBssDesc);
 void aisRemoveBlackList(struct ADAPTER *prAdapter, struct BSS_DESC *prBssDesc);

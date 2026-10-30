@@ -24,7 +24,14 @@
 #include "u_ether_configfs.h"
 #include "u_rndis.h"
 #include "rndis.h"
-#include "configfs.h"
+#include <linux/configfs.h>
+
+struct config_group *usb_os_desc_prepare_interf_dir(
+		struct config_group *parent,
+		int n_interf,
+		struct usb_os_desc **desc,
+		char **names,
+		struct module *owner);
 
 #define F_RNDIS_LOG "[USB_RNDIS]"
 

@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: GPL-2.0
+# SPDX-FileCopyrightText: 2026 The LineageOS Project
 load(
     "//build/kernel/kleaf:kernel.bzl",
     "ddk_headers",
@@ -27,6 +29,47 @@ ddk_headers(
     name = "mindone_dt_bindings",
     hdrs = glob(["mmqos_mt6789/dt-bindings/**/*.h"]),
     includes = ["mmqos_mt6789"],
+)
+
+ddk_headers(
+    name = "mddp_headers",
+    hdrs = [
+        "mddp/include/mddp_export.h",
+        "mddp/include/mddp_wifi_def.h",
+    ],
+    includes = ["mddp/include"],
+)
+
+ddk_module(
+    name = "mddp",
+    srcs = [
+        "mddp/ctrl/mddp_if.c",
+        "mddp/ctrl/mddp_sm.c",
+        "mddp/ctrl/mddpwh_sm.c",
+        "mddp/ctrl/mddp_dev.c",
+        "mddp/ctrl/mddp_ipc.c",
+        "mddp/filter/mddp_filter.c",
+        "mddp/filter/mddp_f_dev.c",
+        "mddp/usage/mddp_usage.c",
+    ],
+    out = "mddp.ko",
+    hdrs = glob([
+        "mddp/**/*.h",
+        "mddp/filter/mddp_filter_v4.c",
+        "mddp/filter/mddp_filter_v6.c",
+    ]),
+    kernel_build = "//common/mindone:mindone",
+    includes = [
+        "mddp/ctrl",
+        "mddp/filter",
+        "mddp/include",
+        "include/drivers/misc/mediatek/include/mt-plat",
+    ],
+    copts = _MINDONE_COPTS,
+    deps = [
+        ":mindone_headers",
+        ":ccci_md_all",
+    ],
 )
 
 ddk_module(
@@ -79,88 +122,6 @@ ddk_module(
     deps = [
         ":mindone_headers",
         ":mtk_mbox",
-    ],
-)
-
-ddk_module(
-    name = "aee_aed",
-    srcs = [
-        "aee_aed/aed-main.c",
-        "aee_aed/aed-debug.c",
-        "aee_aed/aee-common.c",
-        "aee_aed/slog.c",
-        "aee_aed/reboot-reason.c",
-    ],
-    out = "aee_aed.ko",
-    hdrs = glob([
-        "aee_aed/**/*.h",
-        "aee_aed/**/.gitkeep",
-    ]),
-    kernel_build = "//common/mindone:mindone",
-    includes = [
-        "aee_aed",
-        "include",
-    ],
-    local_defines = [
-        "CONFIG_MTK_HANG_DETECT=1",
-        "CONFIG_MTK_AEE_AED=1",
-    ],
-    copts = _MINDONE_COPTS,
-    deps = [
-        ":mindone_headers",
-        ":mrdump",
-    ],
-)
-
-ddk_module(
-    name = "aee_hangdet",
-    srcs = [
-        "aee_hangdet/aee_hangdet.c",
-    ],
-    out = "aee_hangdet.ko",
-    hdrs = glob([
-        "aee_hangdet/**/*.h",
-        "aee_hangdet/**/.gitkeep",
-    ]),
-    kernel_build = "//common/mindone:mindone",
-    includes = [
-        "aee_hangdet",
-        "include/drivers/misc/mediatek/aee/mrdump",
-        "include/drivers/misc/mediatek/include",
-    ],
-    local_defines = [
-        "CONFIG_MTK_AEE_IPANIC_MODULE=1",
-        "CONFIG_MTK_AEE_IPANIC=1",
-    ],
-    copts = _MINDONE_COPTS + [
-        "-include",
-        "linux/sched/cputime.h",
-    ],
-    deps = [
-        ":mindone_headers",
-        ":mrdump",
-    ],
-)
-
-ddk_module(
-    name = "aee_rs",
-    srcs = [
-        "aee_rs/aee_rs.c",
-    ],
-    out = "aee_rs.ko",
-    hdrs = glob([
-        "aee_rs/**/*.h",
-        "aee_rs/**/.gitkeep",
-    ]),
-    kernel_build = "//common/mindone:mindone",
-    includes = [
-        "aee_rs",
-        "include",
-    ],
-    copts = _MINDONE_COPTS,
-    deps = [
-        ":mindone_headers",
-        ":aee_aed",
     ],
 )
 
@@ -262,7 +223,7 @@ ddk_module(
 )
 
 ddk_module(
-    name = "aw_haptic_nv",
+    name = "haptic_nv",
     srcs = [
         "haptic_nv/haptic_nv.c",
         "haptic_nv/aw862x.c",
@@ -270,7 +231,7 @@ ddk_module(
         "haptic_nv/aw8623x.c",
         "haptic_nv/aw8624x.c",
     ],
-    out = "aw_haptic_nv.ko",
+    out = "haptic_nv.ko",
     hdrs = glob([
         "haptic_nv/**/*.h",
         "haptic_nv/**/.gitkeep",
@@ -304,47 +265,6 @@ ddk_module(
         ":mindone_headers",
         ":leds-mtk",
     ],
-)
-
-ddk_module(
-    name = "blocktag",
-    srcs = [
-        "blocktag/blocktag-core.c",
-        "blocktag/blocktag-index.c",
-        "blocktag/blocktag-ufs.c",
-        "blocktag/blocktag-mmc.c",
-        "blocktag/blocktag-pm-trace.c",
-        "blocktag/fscmd-trace.c",
-        "blocktag/blocktag-fuse.c",
-    ],
-    out = "blocktag.ko",
-    hdrs = glob([
-        "blocktag/**/*.h",
-        "blocktag/**/.gitkeep",
-    ]),
-    kernel_build = "//common/mindone:mindone",
-    includes = [
-        "blocktag",
-        "include/drivers/misc/mediatek/include/mt-plat",
-        "include/drivers/misc/mediatek/include",
-        "include/drivers/scsi/ufs",
-        "include/drivers/mmc/core",
-        "include/drivers/mmc/host",
-        "include/fs/fuse",
-        "include/include",
-        "include",
-    ],
-    local_defines = [
-        "CONFIG_CGROUP_SCHED=1",
-        "CONFIG_COMPAT=1",
-        "CONFIG_MTK_BLOCK_IO_PM_DEBUG=1",
-        "CONFIG_MTK_BLOCK_IO_TRACER=1",
-        "CONFIG_MTK_FSCMD_TRACER=1",
-        "CONFIG_MTK_FUSE_DEBUG=1",
-        "CONFIG_MTK_AEE_IPANIC=1",
-    ],
-    copts = _MINDONE_COPTS,
-    deps = [":mindone_headers"],
 )
 
 ddk_module(
@@ -587,6 +507,17 @@ ddk_module(
         ":mindone_headers",
         ":c2k_usb",
     ],
+)
+
+ddk_module(
+    name = "cache_parity",
+    srcs = [
+        "cache_parity/cache-parity.c",
+    ],
+    out = "cache_parity.ko",
+    kernel_build = "//common/mindone:mindone",
+    copts = _MINDONE_COPTS,
+    deps = [":mindone_headers"],
 )
 
 ddk_module(
@@ -1194,7 +1125,11 @@ ddk_module(
         "include/drivers/clk/mediatek",
     ],
     copts = _MINDONE_COPTS,
-    deps = [":mindone_headers"],
+    deps = [
+        ":mindone_headers",
+        ":clk_mediatek",
+        "//common/mindone:mindone_dt_bindings_common",
+    ],
 )
 
 ddk_module(
@@ -1271,7 +1206,11 @@ ddk_module(
         "include",
     ],
     copts = _MINDONE_COPTS,
-    deps = [":mindone_headers"],
+    deps = [
+        ":mindone_headers",
+        ":clk_mediatek",
+        "//common/mindone:mindone_dt_bindings_common",
+    ],
 )
 
 ddk_module(
@@ -1290,7 +1229,11 @@ ddk_module(
         "include",
     ],
     copts = _MINDONE_COPTS,
-    deps = [":mindone_headers"],
+    deps = [
+        ":mindone_headers",
+        ":clk_mediatek",
+        "//common/mindone:mindone_dt_bindings_common",
+    ],
 )
 
 ddk_module(
@@ -1309,7 +1252,11 @@ ddk_module(
         "include",
     ],
     copts = _MINDONE_COPTS,
-    deps = [":mindone_headers"],
+    deps = [
+        ":mindone_headers",
+        ":clk_mediatek",
+        "//common/mindone:mindone_dt_bindings_common",
+    ],
 )
 
 ddk_module(
@@ -1328,7 +1275,11 @@ ddk_module(
         "include",
     ],
     copts = _MINDONE_COPTS,
-    deps = [":mindone_headers"],
+    deps = [
+        ":mindone_headers",
+        ":clk_mediatek",
+        "//common/mindone:mindone_dt_bindings_common",
+    ],
 )
 
 ddk_module(
@@ -1347,7 +1298,11 @@ ddk_module(
         "include",
     ],
     copts = _MINDONE_COPTS,
-    deps = [":mindone_headers"],
+    deps = [
+        ":mindone_headers",
+        ":clk_mediatek",
+        "//common/mindone:mindone_dt_bindings_common",
+    ],
 )
 
 ddk_module(
@@ -1366,7 +1321,11 @@ ddk_module(
         "include",
     ],
     copts = _MINDONE_COPTS,
-    deps = [":mindone_headers"],
+    deps = [
+        ":mindone_headers",
+        ":clk_mediatek",
+        "//common/mindone:mindone_dt_bindings_common",
+    ],
 )
 
 ddk_module(
@@ -1385,7 +1344,11 @@ ddk_module(
         "include",
     ],
     copts = _MINDONE_COPTS,
-    deps = [":mindone_headers"],
+    deps = [
+        ":mindone_headers",
+        ":clk_mediatek",
+        "//common/mindone:mindone_dt_bindings_common",
+    ],
 )
 
 ddk_module(
@@ -1404,7 +1367,11 @@ ddk_module(
         "include",
     ],
     copts = _MINDONE_COPTS,
-    deps = [":mindone_headers"],
+    deps = [
+        ":mindone_headers",
+        ":clk_mediatek",
+        "//common/mindone:mindone_dt_bindings_common",
+    ],
 )
 
 ddk_module(
@@ -1423,7 +1390,11 @@ ddk_module(
         "include",
     ],
     copts = _MINDONE_COPTS,
-    deps = [":mindone_headers"],
+    deps = [
+        ":mindone_headers",
+        ":clk_mediatek",
+        "//common/mindone:mindone_dt_bindings_common",
+    ],
 )
 
 ddk_module(
@@ -1572,10 +1543,7 @@ ddk_module(
         "CONFIG_PMIC_LBAT_SERVICE=1",
     ],
     copts = _MINDONE_COPTS,
-    deps = [
-        ":mindone_headers",
-        "//common:all_headers_root_mindone",
-    ],
+    deps = [":mindone_headers"],
 )
 
 ddk_module(
@@ -1631,36 +1599,12 @@ ddk_module(
 )
 
 ddk_module(
-    name = "cpufreq_sugov_ext",
-    srcs = [
-        "cpufreq_sugov_ext/cpufreq_sugov_main.c",
-        "cpufreq_sugov_ext/nonlinear_opp_cap.c",
-        "cpufreq_sugov_ext/common.c",
-    ],
-    out = "cpufreq_sugov_ext.ko",
-    hdrs = glob([
-        "cpufreq_sugov_ext/**/*.h",
-        "cpufreq_sugov_ext/**/.gitkeep",
-    ]),
+    name = "mtk_cpu_capacity",
+    srcs = ["mtk_cpu_capacity/mtk_cpu_capacity.c"],
+    hdrs = ["mtk_cpu_capacity/mtk_cpu_capacity.h"],
+    out = "mtk_cpu_capacity.ko",
     kernel_build = "//common/mindone:mindone",
-    includes = [
-        "cpufreq_sugov_ext",
-        "include/drivers/thermal/mediatek",
-        "include/drivers/misc/mediatek/sched",
-        "include/drivers/misc/mediatek/include/upower",
-        "include",
-    ],
-    local_defines = [
-        "CONFIG_MTK_OPP_CAP_INFO=1",
-    ],
-    copts = _MINDONE_COPTS + [
-        "-include",
-        "linux/sched/cputime.h",
-    ],
-    deps = [
-        ":mindone_headers",
-        ":task_turbo",
-    ],
+    copts = _MINDONE_COPTS,
 )
 
 ddk_module(
@@ -1809,6 +1753,7 @@ ddk_module(
     name = "eta6965_charger",
     srcs = [
         "eta6965_charger/eta6965_charger.c",
+        "eta6965_charger/operations.c",
     ],
     out = "eta6965_charger.ko",
     hdrs = glob([
@@ -1902,6 +1847,7 @@ ddk_module(
         ":mindone_headers",
         ":mcupm",
         ":mtk_tinysys_ipi",
+        ":clk_mediatek",
     ],
 )
 
@@ -1947,6 +1893,20 @@ ddk_module(
 )
 
 ddk_module(
+    name = "flashlights-lm3643",
+    srcs = [
+        "flashlights_lm3643/flashlights-lm3643.c",
+    ],
+    out = "flashlights-lm3643.ko",
+    kernel_build = "//common/mindone:mindone",
+    copts = _MINDONE_COPTS,
+    deps = [
+        ":mindone_headers",
+        ":flashlight",
+    ],
+)
+
+ddk_module(
     name = "ged",
     srcs = [
         "ged/ged_debugFS.c",
@@ -1970,6 +1930,10 @@ ddk_module(
         "ged/ged_kpi.c",
         "ged/ged_gpu_bm.c",
         "ged/ged_sync.c",
+        "ged/ged_ski.c",
+        "ged/ged_gpu_slc.c",
+        "ged/ged_mali_event.c",
+        "ged/ged_gpu_memsys.c",
     ],
     out = "ged.ko",
     hdrs = glob([
@@ -1982,6 +1946,7 @@ ddk_module(
         "include/include",
         "include/drivers/gpu/mediatek/gpufreq",
         "include/drivers/gpu/mediatek/gpufreq/v2/include",
+        "include/drivers/gpu/mediatek/gpufreq/v2_legacy/include",
         "include/drivers/misc/mediatek/performance/fpsgo_v3",
         "include/drivers/gpu/drm/mediatek/mediatek_v2",
         "include/drivers/gpu/mediatek/gpueb/include",
@@ -2002,7 +1967,14 @@ ddk_module(
         "GED_DCS_POLICY",
         "GED_DEBUG_FS",
         "MTK_GPU_BM_2",
-        "MTK_GPU_EB_SUPPORT",
+        "CONFIG_MTK_GPU_LEGACY=1",
+        "CONFIG_MTK_GPU_MT6789_SUPPORT=1",
+        "GED_SKI_SUPPORT",
+        "CONFIG_MTK_GPU_FW_IDLE=1",
+        "CONFIG_MTK_GPU_APO_SUPPORT=1",
+        "CONFIG_MTK_GPU_POWER_ON_OFF_TEST=1",
+        "MTK_GPU_SLC_POLICY",
+        "MTK_GPU_MEMSYS_UTIL",
         "CONFIG_DRM_MEDIATEK=1",
         "CONFIG_MTK_FPSGO_V3=1",
         "CONFIG_MTK_GPUFREQ_V2=1",
@@ -2020,6 +1992,7 @@ ddk_module(
         ":mtk_gpu_hal",
         ":mtk_gpu_qos",
         ":mtk_gpufreq_wrapper",
+        ":mtk_gpufreq_mt6789",
         ":mtk_tinysys_ipi",
         ":sspm_v3",
         ":system_heap",
@@ -2054,6 +2027,7 @@ ddk_module(
         "include",
     ],
     local_defines = [
+        "DYNAMIC_DEBUG_MODULE",
         "MTK_GENERIC_HAL",
         "CONFIG_GPSL5_SUPPORT",
         "CONFIG_MTK_GPS_EMI",
@@ -2473,6 +2447,7 @@ ddk_module(
     deps = [
         ":mindone_headers",
         ":mindone_dt_bindings",
+        "//common/mindone:mindone_dt_bindings_common",
     ],
 )
 
@@ -2528,25 +2503,6 @@ ddk_module(
         "CONFIG_MTK_SMI=1",
         "MTK_M4U_DOM_NR_MAX=16",
         "MTK_M4U_TAB_NR_MAX=3",
-    ],
-    copts = _MINDONE_COPTS,
-    deps = [":mindone_headers"],
-)
-
-ddk_module(
-    name = "iommu_test",
-    srcs = [
-        "iommu_test/iommu_test.c",
-    ],
-    out = "iommu_test.ko",
-    hdrs = glob([
-        "iommu_test/**/*.h",
-        "iommu_test/**/.gitkeep",
-    ]),
-    kernel_build = "//common/mindone:mindone",
-    includes = [
-        "iommu_test",
-        "include/drivers/dma-buf/heaps",
     ],
     copts = _MINDONE_COPTS,
     deps = [":mindone_headers"],
@@ -2639,6 +2595,7 @@ ddk_module(
         ":leds-mtk",
         ":mediatek_drm",
         ":mtk_panel_ext",
+        ":rt4831a_drv",
     ],
 )
 
@@ -2798,162 +2755,201 @@ ddk_module(
 ddk_module(
     name = "mali_kbase_mt6789",
     srcs = [
-        "mali_kbase_clean/mali_kbase_as_fault_debugfs.c",
-        "mali_kbase_clean/mali_kbase_cache_policy.c",
-        "mali_kbase_clean/mali_kbase_cache_policy_backend.c",
-        "mali_kbase_clean/mali_kbase_ccswe.c",
-        "mali_kbase_clean/mali_kbase_clk_rate_trace_mgr.c",
-        "mali_kbase_clean/mali_kbase_config.c",
-        "mali_kbase_clean/mali_kbase_config_mt6789.c",
-        "mali_kbase_clean/mali_kbase_context.c",
-        "mali_kbase_clean/mali_kbase_context_jm.c",
-        "mali_kbase_clean/mali_kbase_core_linux.c",
-        "mali_kbase_clean/mali_kbase_ctx_sched.c",
-        "mali_kbase_clean/mali_kbase_debug.c",
-        "mali_kbase_clean/mali_kbase_debug_job_fault.c",
-        "mali_kbase_clean/mali_kbase_debug_job_fault_backend.c",
-        "mali_kbase_clean/mali_kbase_debug_ktrace.c",
-        "mali_kbase_clean/mali_kbase_debug_ktrace_jm.c",
-        "mali_kbase_clean/mali_kbase_debug_mem_view.c",
-        "mali_kbase_clean/mali_kbase_debugfs_helper.c",
-        "mali_kbase_clean/mali_kbase_devfreq.c",
-        "mali_kbase_clean/mali_kbase_device.c",
-        "mali_kbase_clean/mali_kbase_device_hw.c",
-        "mali_kbase_clean/mali_kbase_device_hw_jm.c",
-        "mali_kbase_clean/mali_kbase_device_jm.c",
-        "mali_kbase_clean/mali_kbase_disjoint_events.c",
-        "mali_kbase_clean/mali_kbase_dummy_job_wa.c",
-        "mali_kbase_clean/mali_kbase_dvfs_debugfs.c",
-        "mali_kbase_clean/mali_kbase_event.c",
-        "mali_kbase_clean/mali_kbase_fence.c",
-        "mali_kbase_clean/mali_kbase_fence_ops.c",
-        "mali_kbase_clean/mali_kbase_gator_api.c",
-        "mali_kbase_clean/mali_kbase_gpu.c",
-        "mali_kbase_clean/mali_kbase_gpu_fault_jm.c",
-        "mali_kbase_clean/mali_kbase_gpu_memory_debugfs.c",
-        "mali_kbase_clean/mali_kbase_gpuprops.c",
-        "mali_kbase_clean/mali_kbase_gpuprops_backend.c",
-        "mali_kbase_clean/mali_kbase_hw.c",
-        "mali_kbase_clean/mali_kbase_hwcnt.c",
-        "mali_kbase_clean/mali_kbase_hwcnt_backend_jm.c",
-        "mali_kbase_clean/mali_kbase_hwcnt_gpu.c",
-        "mali_kbase_clean/mali_kbase_hwcnt_legacy.c",
-        "mali_kbase_clean/mali_kbase_hwcnt_types.c",
-        "mali_kbase_clean/mali_kbase_hwcnt_virtualizer.c",
-        "mali_kbase_clean/mali_kbase_instr_backend.c",
-        "mali_kbase_clean/mali_kbase_ipa.c",
-        "mali_kbase_clean/mali_kbase_ipa_counter_common_jm.c",
-        "mali_kbase_clean/mali_kbase_ipa_counter_jm.c",
-        "mali_kbase_clean/mali_kbase_ipa_debugfs.c",
-        "mali_kbase_clean/mali_kbase_ipa_simple.c",
-        "mali_kbase_clean/mali_kbase_irq_linux.c",
-        "mali_kbase_clean/mali_kbase_jd.c",
-        "mali_kbase_clean/mali_kbase_jd_debugfs.c",
-        "mali_kbase_clean/mali_kbase_jm.c",
-        "mali_kbase_clean/mali_kbase_jm_as.c",
-        "mali_kbase_clean/mali_kbase_jm_hw.c",
-        "mali_kbase_clean/mali_kbase_jm_rb.c",
-        "mali_kbase_clean/mali_kbase_js.c",
-        "mali_kbase_clean/mali_kbase_js_backend.c",
-        "mali_kbase_clean/mali_kbase_js_ctx_attr.c",
-        "mali_kbase_clean/mali_kbase_kinstr_jm.c",
-        "mali_kbase_clean/mali_kbase_l2_mmu_config.c",
-        "mali_kbase_clean/mali_kbase_mem.c",
-        "mali_kbase_clean/mali_kbase_mem_linux.c",
-        "mali_kbase_clean/mali_kbase_mem_pool.c",
-        "mali_kbase_clean/mali_kbase_mem_pool_debugfs.c",
-        "mali_kbase_clean/mali_kbase_mem_pool_group.c",
-        "mali_kbase_clean/mali_kbase_mem_profile_debugfs.c",
-        "mali_kbase_clean/mali_kbase_mmap.c",
-        "mali_kbase_clean/mali_kbase_mmu.c",
-        "mali_kbase_clean/mali_kbase_mmu_hw_direct.c",
-        "mali_kbase_clean/mali_kbase_mmu_jm.c",
-        "mali_kbase_clean/mali_kbase_mmu_mode_aarch64.c",
-        "mali_kbase_clean/mali_kbase_native_mgm.c",
-        "mali_kbase_clean/mali_kbase_pm.c",
-        "mali_kbase_clean/mali_kbase_pm_always_on.c",
-        "mali_kbase_clean/mali_kbase_pm_backend.c",
-        "mali_kbase_clean/mali_kbase_pm_ca.c",
-        "mali_kbase_clean/mali_kbase_pm_coarse_demand.c",
-        "mali_kbase_clean/mali_kbase_pm_driver.c",
-        "mali_kbase_clean/mali_kbase_pm_metrics.c",
-        "mali_kbase_clean/mali_kbase_pm_policy.c",
-        "mali_kbase_clean/mali_kbase_regs_history_debugfs.c",
-        "mali_kbase_clean/mali_kbase_smc.c",
-        "mali_kbase_clean/mali_kbase_softjobs.c",
-        "mali_kbase_clean/mali_kbase_strings.c",
-        "mali_kbase_clean/mali_kbase_sync_common.c",
-        "mali_kbase_clean/mali_kbase_sync_file.c",
-        "mali_kbase_clean/mali_kbase_time.c",
-        "mali_kbase_clean/mali_kbase_timeline.c",
-        "mali_kbase_clean/mali_kbase_timeline_io.c",
-        "mali_kbase_clean/mali_kbase_timeline_jm.c",
-        "mali_kbase_clean/mali_kbase_tlstream.c",
-        "mali_kbase_clean/mali_kbase_trace_gpu_mem.c",
-        "mali_kbase_clean/mali_kbase_tracepoints.c",
-        "mali_kbase_clean/mali_kbase_vinstr.c",
-        "mali_kbase_clean/mali_power_gpu_frequency_trace.c",
-        "mali_kbase_clean/mtk_gpu_devfreq_governor.c",
-        "mali_kbase_clean/mtk_gpu_devfreq_thermal.c",
-        "mali_kbase_clean/mtk_gpu_dvfs.c",
-        "mali_kbase_clean/mtk_gpu_power_sspm_ipi.c",
-        "mali_kbase_clean/mtk_mfg_counter.c",
-        "mali_kbase_clean/mtk_platform_common.c",
-        "mali_kbase_clean/mtk_platform_debug.c",
+        "mali_kbase_r54/backend/gpu/mali_kbase_cache_policy_backend.c",
+        "mali_kbase_r54/backend/gpu/mali_kbase_clk_rate_trace_mgr.c",
+        "mali_kbase_r54/backend/gpu/mali_kbase_debug_job_fault_backend.c",
+        "mali_kbase_r54/backend/gpu/mali_kbase_devfreq.c",
+        "mali_kbase_r54/backend/gpu/mali_kbase_gpuprops_backend.c",
+        "mali_kbase_r54/backend/gpu/mali_kbase_instr_backend.c",
+        "mali_kbase_r54/backend/gpu/mali_kbase_irq_linux.c",
+        "mali_kbase_r54/backend/gpu/mali_kbase_jm_as.c",
+        "mali_kbase_r54/backend/gpu/mali_kbase_jm_hw.c",
+        "mali_kbase_r54/backend/gpu/mali_kbase_jm_rb.c",
+        "mali_kbase_r54/backend/gpu/mali_kbase_js_backend.c",
+        "mali_kbase_r54/backend/gpu/mali_kbase_l2_mmu_config.c",
+        "mali_kbase_r54/backend/gpu/mali_kbase_pm_always_on.c",
+        "mali_kbase_r54/backend/gpu/mali_kbase_pm_backend.c",
+        "mali_kbase_r54/backend/gpu/mali_kbase_pm_ca.c",
+        "mali_kbase_r54/backend/gpu/mali_kbase_pm_coarse_demand.c",
+        "mali_kbase_r54/backend/gpu/mali_kbase_pm_driver.c",
+        "mali_kbase_r54/backend/gpu/mali_kbase_pm_metrics.c",
+        "mali_kbase_r54/backend/gpu/mali_kbase_pm_policy.c",
+        "mali_kbase_r54/backend/gpu/mali_kbase_time.c",
+        "mali_kbase_r54/context/backend/mali_kbase_context_jm.c",
+        "mali_kbase_r54/context/mali_kbase_context.c",
+        "mali_kbase_r54/debug/backend/mali_kbase_debug_ktrace_jm.c",
+        "mali_kbase_r54/debug/mali_kbase_debug_ktrace.c",
+        "mali_kbase_r54/device/backend/mali_kbase_device_hw_jm.c",
+        "mali_kbase_r54/device/backend/mali_kbase_device_jm.c",
+        "mali_kbase_r54/device/mali_kbase_device.c",
+        "mali_kbase_r54/device/mali_kbase_device_hw.c",
+        "mali_kbase_r54/gpu/backend/mali_kbase_gpu_fault_jm.c",
+        "mali_kbase_r54/gpu/mali_kbase_gpu.c",
+        "mali_kbase_r54/hw_access/backend/mali_kbase_hw_access_real_hw.c",
+        "mali_kbase_r54/hw_access/mali_kbase_hw_access.c",
+        "mali_kbase_r54/hw_access/regmap/mali_kbase_regmap_jm.c",
+        "mali_kbase_r54/hwcnt/backend/mali_kbase_hwcnt_backend_jm.c",
+        "mali_kbase_r54/hwcnt/backend/mali_kbase_hwcnt_backend_jm_watchdog.c",
+        "mali_kbase_r54/hwcnt/mali_kbase_hwcnt.c",
+        "mali_kbase_r54/hwcnt/mali_kbase_hwcnt_gpu.c",
+        "mali_kbase_r54/hwcnt/mali_kbase_hwcnt_types.c",
+        "mali_kbase_r54/hwcnt/mali_kbase_hwcnt_virtualizer.c",
+        "mali_kbase_r54/hwcnt/mali_kbase_hwcnt_watchdog_if_timer.c",
+        "mali_kbase_r54/ipa/backend/mali_kbase_ipa_counter_common_jm.c",
+        "mali_kbase_r54/ipa/backend/mali_kbase_ipa_counter_jm.c",
+        "mali_kbase_r54/ipa/mali_kbase_ipa.c",
+        "mali_kbase_r54/ipa/mali_kbase_ipa_debugfs.c",
+        "mali_kbase_r54/ipa/mali_kbase_ipa_simple.c",
+        "mali_kbase_r54/mali_kbase_as_fault_debugfs.c",
+        "mali_kbase_r54/mali_kbase_cache_policy.c",
+        "mali_kbase_r54/mali_kbase_ccswe.c",
+        "mali_kbase_r54/mali_kbase_config.c",
+        "mali_kbase_r54/mali_kbase_core_linux.c",
+        "mali_kbase_r54/mali_kbase_ctx_sched.c",
+        "mali_kbase_r54/mali_kbase_debug.c",
+        "mali_kbase_r54/mali_kbase_debug_job_fault.c",
+        "mali_kbase_r54/mali_kbase_debug_mem_allocs.c",
+        "mali_kbase_r54/mali_kbase_debug_mem_view.c",
+        "mali_kbase_r54/mali_kbase_debug_mem_zones.c",
+        "mali_kbase_r54/mali_kbase_debugfs_helper.c",
+        "mali_kbase_r54/mali_kbase_disjoint_events.c",
+        "mali_kbase_r54/mali_kbase_dummy_job_wa.c",
+        "mali_kbase_r54/mali_kbase_dvfs_debugfs.c",
+        "mali_kbase_r54/mali_kbase_event.c",
+        "mali_kbase_r54/mali_kbase_fence.c",
+        "mali_kbase_r54/mali_kbase_fence_ops.c",
+        "mali_kbase_r54/mali_kbase_gator_api.c",
+        "mali_kbase_r54/mali_kbase_gpu_memory_debugfs.c",
+        "mali_kbase_r54/mali_kbase_gpu_metrics.c",
+        "mali_kbase_r54/mali_kbase_gpuprops.c",
+        "mali_kbase_r54/mali_kbase_hw.c",
+        "mali_kbase_r54/mali_kbase_jd.c",
+        "mali_kbase_r54/mali_kbase_jd_debugfs.c",
+        "mali_kbase_r54/mali_kbase_jm.c",
+        "mali_kbase_r54/mali_kbase_js.c",
+        "mali_kbase_r54/mali_kbase_js_ctx_attr.c",
+        "mali_kbase_r54/mali_kbase_kinstr_jm.c",
+        "mali_kbase_r54/mali_kbase_kinstr_prfcnt.c",
+        "mali_kbase_r54/mali_kbase_mem.c",
+        "mali_kbase_r54/mali_kbase_mem_linux.c",
+        "mali_kbase_r54/mali_kbase_mem_migrate.c",
+        "mali_kbase_r54/mali_kbase_mem_pool.c",
+        "mali_kbase_r54/mali_kbase_mem_pool_debugfs.c",
+        "mali_kbase_r54/mali_kbase_mem_pool_group.c",
+        "mali_kbase_r54/mali_kbase_mem_profile_debugfs.c",
+        "mali_kbase_r54/mali_kbase_native_mgm.c",
+        "mali_kbase_r54/mali_kbase_pbha.c",
+        "mali_kbase_r54/mali_kbase_pbha_debugfs.c",
+        "mali_kbase_r54/mali_kbase_pm.c",
+        "mali_kbase_r54/mali_kbase_reg_track.c",
+        "mali_kbase_r54/mali_kbase_regs_history_debugfs.c",
+        "mali_kbase_r54/mali_kbase_smc.c",
+        "mali_kbase_r54/mali_kbase_softjobs.c",
+        "mali_kbase_r54/mali_kbase_sync_common.c",
+        "mali_kbase_r54/mali_kbase_sync_file.c",
+        "mali_kbase_r54/mali_kbase_trace_gpu_mem.c",
+        "mali_kbase_r54/mali_power_gpu_frequency_trace.c",
+        "mali_kbase_r54/mali_power_gpu_work_period_trace.c",
+        "mali_kbase_r54/mmu/backend/mali_kbase_mmu_faults_decoder_luts_jm.c",
+        "mali_kbase_r54/mmu/backend/mali_kbase_mmu_jm.c",
+        "mali_kbase_r54/mmu/mali_kbase_mmu.c",
+        "mali_kbase_r54/mmu/mali_kbase_mmu_faults_decoder.c",
+        "mali_kbase_r54/mmu/mali_kbase_mmu_faults_decoder_luts.c",
+        "mali_kbase_r54/mmu/mali_kbase_mmu_hw_direct.c",
+        "mali_kbase_r54/mmu/mali_kbase_mmu_mode_aarch64.c",
+        "mali_kbase_r54/platform/mt6789/mali_kbase_config_mt6789.c",
+        "mali_kbase_r54/platform/mtk_platform_common/mtk_gpu_power_model_sspm_ipi.c",
+        "mali_kbase_r54/platform/mtk_platform_common/mtk_ltr_pmu.c",
+        "mali_kbase_r54/platform/mtk_platform_common/mtk_mfg_counter.c",
+        "mali_kbase_r54/platform/mtk_platform_common/mtk_platform_common.c",
+        "mali_kbase_r54/platform/mtk_platform_common/mtk_platform_devfreq_governor.c",
+        "mali_kbase_r54/platform/mtk_platform_common/mtk_platform_devfreq_thermal.c",
+        "mali_kbase_r54/platform/mtk_platform_common/mtk_platform_dvfs.c",
+        "mali_kbase_r54/platform/mtk_platform_common/mtk_platform_memtrack.c",
+        "mali_kbase_r54/thirdparty/mali_kbase_mmap.c",
+        "mali_kbase_r54/tl/backend/mali_kbase_timeline_jm.c",
+        "mali_kbase_r54/tl/mali_kbase_timeline.c",
+        "mali_kbase_r54/tl/mali_kbase_timeline_io.c",
+        "mali_kbase_r54/tl/mali_kbase_tlstream.c",
+        "mali_kbase_r54/tl/mali_kbase_tracepoints.c",
     ],
     out = "mali_kbase_mt6789.ko",
-    hdrs = glob([
-        "mali_kbase_clean/**/*.h",
-        "mali_kbase_clean/**/.gitkeep",
-    ]),
+    hdrs = glob(["include/drivers/gpu/mediatek/gpu_mali/mali_avalon/r54p1/**/*.h"]),
     kernel_build = "//common/mindone:mindone",
     includes = [
-        "mali_kbase_clean",
-        "include/drivers/gpu/mediatek/gpu_mali/mali_valhall/mali-r32p1/drivers/gpu/arm/midgard",
-        "include/drivers/gpu/mediatek/gpu_mali/mali_valhall/mali-r32p1/drivers/gpu/arm/midgard/include",
-        "include/drivers/gpu/mediatek/gpu_mali/mali_valhall/mali-r32p1/drivers/gpu/arm/midgard/include/linux",
-        "include/drivers/gpu/mediatek/gpu_mali/mali_valhall/mali-r32p1/drivers/gpu/arm/midgard/backend/gpu",
-        "include/drivers/gpu/mediatek/gpu_mali/mali_valhall/mali-r32p1/drivers/gpu/arm/midgard/mmu/backend",
-        "include/drivers/gpu/mediatek/gpu_mali/mali_valhall/mali-r32p1/drivers/gpu/arm/midgard/tl",
-        "include/drivers/gpu/mediatek/gpu_mali/mali_valhall/mali-r32p1/drivers/gpu/arm/midgard/tl/backend",
-        "include/drivers/gpu/mediatek/gpu_mali/mali_valhall/mali-r32p1/drivers/gpu/arm/midgard/debug/backend",
-        "include/drivers/gpu/mediatek/gpu_mali/mali_valhall/mali-r32p1/drivers/gpu/arm/midgard/device",
-        "include/drivers/gpu/mediatek/gpu_mali/mali_valhall/mali-r32p1/drivers/gpu/arm/midgard/device/backend",
-        "include/drivers/gpu/mediatek/gpu_mali/mali_valhall/mali-r32p1/drivers/gpu/arm/midgard/context/backend",
-        "include/drivers/gpu/mediatek/gpu_mali/mali_valhall/mali-r32p1/drivers/gpu/arm/midgard/ipa",
-        "include/drivers/gpu/mediatek/gpu_mali/mali_valhall/mali-r32p1/drivers/gpu/arm/midgard/ipa/backend",
-        "include/drivers/gpu/mediatek/gpu_mali/mali_valhall/mali-r32p1/drivers/gpu/arm/midgard/gpu/backend",
-        "include/drivers/gpu/mediatek/gpu_mali/mali_valhall/mali-r32p1/drivers/gpu/arm/midgard/platform/mtk_platform_common",
+        "mali_kbase_r54",
+        "include/drivers/gpu/mediatek/gpu_mali/mali_avalon/r54p1/drivers/gpu/arm/midgard",
+        "include/drivers/gpu/mediatek/gpu_mali/mali_avalon/r54p1/drivers/gpu/arm/midgard/backend/gpu",
+        "include/drivers/gpu/mediatek/gpu_mali/mali_avalon/r54p1/drivers/gpu/arm/midgard/context",
+        "include/drivers/gpu/mediatek/gpu_mali/mali_avalon/r54p1/drivers/gpu/arm/midgard/context/backend",
+        "include/drivers/gpu/mediatek/gpu_mali/mali_avalon/r54p1/drivers/gpu/arm/midgard/debug",
+        "include/drivers/gpu/mediatek/gpu_mali/mali_avalon/r54p1/drivers/gpu/arm/midgard/debug/backend",
+        "include/drivers/gpu/mediatek/gpu_mali/mali_avalon/r54p1/drivers/gpu/arm/midgard/device",
+        "include/drivers/gpu/mediatek/gpu_mali/mali_avalon/r54p1/drivers/gpu/arm/midgard/device/backend",
+        "include/drivers/gpu/mediatek/gpu_mali/mali_avalon/r54p1/drivers/gpu/arm/midgard/gpu",
+        "include/drivers/gpu/mediatek/gpu_mali/mali_avalon/r54p1/drivers/gpu/arm/midgard/gpu/backend",
+        "include/drivers/gpu/mediatek/gpu_mali/mali_avalon/r54p1/drivers/gpu/arm/midgard/hw_access",
+        "include/drivers/gpu/mediatek/gpu_mali/mali_avalon/r54p1/drivers/gpu/arm/midgard/hw_access/regmap",
+        "include/drivers/gpu/mediatek/gpu_mali/mali_avalon/r54p1/drivers/gpu/arm/midgard/hwcnt",
+        "include/drivers/gpu/mediatek/gpu_mali/mali_avalon/r54p1/drivers/gpu/arm/midgard/hwcnt/backend",
+        "include/drivers/gpu/mediatek/gpu_mali/mali_avalon/r54p1/drivers/gpu/arm/midgard/ipa",
+        "include/drivers/gpu/mediatek/gpu_mali/mali_avalon/r54p1/drivers/gpu/arm/midgard/ipa/backend",
+        "include/drivers/gpu/mediatek/gpu_mali/mali_avalon/r54p1/drivers/gpu/arm/midgard/mmu",
+        "include/drivers/gpu/mediatek/gpu_mali/mali_avalon/r54p1/drivers/gpu/arm/midgard/mmu/backend",
+        "include/drivers/gpu/mediatek/gpu_mali/mali_avalon/r54p1/drivers/gpu/arm/midgard/thirdparty",
+        "include/drivers/gpu/mediatek/gpu_mali/mali_avalon/r54p1/drivers/gpu/arm/midgard/tl",
+        "include/drivers/gpu/mediatek/gpu_mali/mali_avalon/r54p1/drivers/gpu/arm/midgard/tl/backend",
+        "include/drivers/gpu/mediatek/gpu_mali/mali_avalon/r54p1/drivers/gpu/arm/midgard/include",
+        "include/drivers/gpu/mediatek/gpu_mali/mali_avalon/r54p1/drivers/gpu/arm/midgard/include/linux",
+        "include/drivers/gpu/mediatek/gpu_mali/mali_avalon/r54p1/drivers/gpu/arm/midgard/platform",
+        "include/drivers/gpu/mediatek/gpu_mali/mali_avalon/r54p1/drivers/gpu/arm/midgard/platform/mt6789",
+        "include/drivers/gpu/mediatek/gpu_mali/mali_avalon/r54p1/drivers/gpu/arm/midgard/platform/mtk_platform_common",
+        "include/drivers/gpu/mediatek/gpu_mali/mali_avalon/r54p1/support",
         "include/drivers/gpu/mediatek/ged/include",
         "include/drivers/gpu/mediatek/gpufreq",
+        "include/drivers/gpu/mediatek/gpufreq/v2_legacy/include",
         "include/drivers/gpu/mediatek/mt-plat",
-        "include/drivers/misc/mediatek/tinysys_scmi",
-        "include/drivers/gpu/mediatek/gpu_mali/mali_valhall/mali-r32p1/drivers/gpu/arm/midgard/platform/mt6789",
-        "include",
         "include/drivers/gpu/mediatek/gpu_bm",
+        "include/drivers/misc/mediatek/tinysys_scmi",
         "include/drivers/misc/mediatek/sspm/v3",
         "include/drivers/misc/mediatek/sspm",
+        "include/drivers/misc/mediatek/qos",
+        "include",
     ],
     local_defines = [
         "CONFIG_MALI_REAL_HW=1",
         "CONFIG_MALI_MIDGARD_DVFS=1",
-        "MALI_KERNEL_TEST_API=0",
-        "MALI_UNIT_TEST=0",
-        "MALI_CUSTOMER_RELEASE=1",
         "CONFIG_MALI_DEVFREQ=1",
-        "CONFIG_DEBUG_FS=1",
-        "CONFIG_SYNC_FILE=1",
         "CONFIG_GPU_MT6789=1",
-        "MALI_USE_CSF=0",
-        "MALI_JIT_PRESSURE_LIMIT_BASE=0",
-        "MALI_INCREMENTAL_RENDERING=0",
-        "MALI_KBASE_BUILD=1",
+        "CONFIG_MALI_MTK_COMMON=1",
+        "CONFIG_MALI_TRACE_POWER_GPU_WORK_PERIOD=1",
+        "CONFIG_MALI_GATOR_SUPPORT=1",
+        "CONFIG_MALI_MTK_PREVENT_PRINTK_TOO_MUCH=1",
+        "CONFIG_MALI_MTK_MEMTRACK=1",
+        "CONFIG_MALI_MTK_DEVFREQ_GOVERNOR=1",
+        "CONFIG_MALI_MTK_DEVFREQ_THERMAL=1",
+        "CONFIG_MALI_MTK_PROC_FS=1",
+        "CONFIG_MTK_GPU_SWPM_SUPPORT=1",
+        "CONFIG_MALI_MTK_GPU_BM_2=1",
+        "CONFIG_MALI_MTK_GPU_FREQUENCY_TRACE=1",
         "CONFIG_MTK_GPUFREQ_V2=1",
         "CONFIG_MALI_MTK_DVFS_POLICY=1",
         "CONFIG_MALI_MTK_DVFS_LOADING_MODE=1",
-        "MALI_RELEASE_NAME=\"r32p1-01eac0\"",
-        "CONFIG_MALI_MTK_GPU_BM_JM=1",
+        "CONFIG_MTK_GPU_COMMON_DVFS_SUPPORT=1",
+        "CONFIG_DEBUG_FS=1",
+        "CONFIG_SYNC_FILE=1",
         "CONFIG_MTK_TINYSYS_SSPM_SUPPORT=1",
+        "MALI_USE_CSF=0",
+        "MALI_UNIT_TEST=0",
+        "MALI_KERNEL_TEST_API=0",
+        "MALI_COVERAGE=0",
+        "MALI_HAS_CL=0",
+        "MALI_HAS_GLES=0",
+        "MALI_CUSTOMER_RELEASE=0",
+        "MALI_JIT_PRESSURE_LIMIT_BASE=1",
+        "DEFAULT_PM_POWEROFF_TICK_SHADER=25",
+        "MALI_RELEASE_NAME=\"r54p1-12eac0\"",
+        "MALI_KBASE_BUILD=1",
     ],
     copts = _MINDONE_COPTS,
     deps = [
@@ -2963,6 +2959,7 @@ ddk_module(
         ":mtk_gpu_qos",
         ":mtk_gpufreq_wrapper",
         ":sspm_v3",
+        ":mtk_qos",
     ],
 )
 
@@ -3259,64 +3256,8 @@ ddk_module(
         ":mtk_smi",
         ":mtk_smi_dbg",
         ":mtk_sync",
+        ":clk_mediatek",
     ],
-)
-
-ddk_module(
-    name = "meta",
-    srcs = [
-        "meta/meta.c",
-    ],
-    out = "meta.ko",
-    hdrs = glob([
-        "meta/**/*.h",
-        "meta/**/.gitkeep",
-    ]),
-    kernel_build = "//common/mindone:mindone",
-    includes = [
-        "meta",
-        "include/drivers/usb/gadget",
-        "include/drivers/usb/gadget/function",
-        "include",
-    ],
-    copts = _MINDONE_COPTS,
-    deps = [":mindone_headers"],
-)
-
-ddk_module(
-    name = "mindone_thermal",
-    srcs = [
-        "mindone_thermal/mindone_thermal.c",
-    ],
-    out = "mindone_thermal.ko",
-    hdrs = glob([
-        "mindone_thermal/**/*.h",
-        "mindone_thermal/**/.gitkeep",
-    ]),
-    kernel_build = "//common/mindone:mindone",
-    includes = [
-        "include/drivers/gpu/mediatek/gpufreq/v2/include",
-    ],
-    copts = _MINDONE_COPTS,
-    deps = [
-        ":mindone_headers",
-        ":mtk_gpufreq_wrapper",
-    ],
-)
-
-ddk_module(
-    name = "mindone_thermal_hook",
-    srcs = [
-        "mindone_thermal_hook/mindone_thermal_hook.c",
-    ],
-    out = "mindone_thermal_hook.ko",
-    hdrs = glob([
-        "mindone_thermal_hook/**/*.h",
-        "mindone_thermal_hook/**/.gitkeep",
-    ]),
-    kernel_build = "//common/mindone:mindone",
-    copts = _MINDONE_COPTS,
-    deps = [":mindone_headers"],
 )
 
 ddk_module(
@@ -3426,50 +3367,6 @@ ddk_module(
         ":mindone_headers",
         ":mmqos_common",
     ],
-)
-
-ddk_module(
-    name = "mrdump",
-    srcs = [
-        "mrdump/mboot_params.c",
-        "mrdump/mrdump_control.c",
-        "mrdump/mrdump_mini.c",
-        "mrdump/mrdump_panic.c",
-        "mrdump/mrdump_helper.c",
-        "mrdump/mrdump_arm64.c",
-    ],
-    out = "mrdump.ko",
-    hdrs = glob([
-        "mrdump/**/*.h",
-        "mrdump/**/.gitkeep",
-    ]),
-    kernel_build = "//common/mindone:mindone",
-    includes = [
-        "mrdump",
-        "include/drivers/misc/mediatek/include",
-    ],
-    local_defines = [
-        "CONFIG_64BIT=1",
-        "CONFIG_ARM64=1",
-        "CONFIG_CGROUP_SCHED=1",
-        "CONFIG_FAIR_GROUP_SCHED=1",
-        "CONFIG_KALLSYMS=1",
-        "CONFIG_MODULES=1",
-        "CONFIG_MTK_AEE_HANGDET=1",
-        "CONFIG_MTK_AEE_IPANIC=1",
-        "CONFIG_RANDOMIZE_BASE=1",
-        "CONFIG_SCHEDSTATS=1",
-        "CONFIG_SMP=1",
-        "CONFIG_SPARSEMEM_VMEMMAP=1",
-        "CONFIG_SYSFS=1",
-        "CONFIG_MTK_AEE_AED=1",
-        "CONFIG_MTK_HANG_DETECT=1",
-    ],
-    copts = _MINDONE_COPTS + [
-        "-include",
-        "linux/sched/cputime.h",
-    ],
-    deps = [":mindone_headers"],
 )
 
 ddk_module(
@@ -3809,20 +3706,36 @@ ddk_module(
     ],
 )
 
+ddk_headers(
+    name = "mindone_video_v2_headers",
+    hdrs = glob([
+        "mtk_vcu_v2/**/*.h",
+        "mtk_vcodec_common_v2/**/*.h",
+        "mtk_vcodec_dec_v2/**/*.h",
+        "mtk_vcodec_enc_v2/**/*.h",
+    ]),
+    includes = [
+        "mtk_vcodec_dec_v2",
+        "mtk_vcodec_enc_v2",
+        "mtk_vcodec_common_v2",
+        "mtk_vcu_v2",
+    ],
+)
+
 ddk_module(
     name = "mtk-vcu",
     srcs = [
-        "mtk_vcu/mtk_vcu.c",
-        "mtk_vcu/mtk_vcodec_mem.c",
+        "mtk_vcu_v2/mtk_vcu.c",
+        "mtk_vcu_v2/mtk_vcodec_mem.c",
     ],
     out = "mtk-vcu.ko",
     hdrs = glob([
-        "mtk_vcu/**/*.h",
-        "mtk_vcu/**/.gitkeep",
+        "mtk_vcu_v2/**/*.h",
+        "mtk_vcu_v2/**/.gitkeep",
     ]),
     kernel_build = "//common/mindone:mindone",
     includes = [
-        "mtk_vcu",
+        "mtk_vcu_v2",
         "include/drivers/misc/mediatek/smi",
         "include/drivers/misc/mediatek/cmdq",
         "include/arch/arm",
@@ -3841,6 +3754,7 @@ ddk_module(
     ],
     copts = _MINDONE_COPTS,
     deps = [
+        ":mindone_video_v2_headers",
         ":mindone_headers",
         ":cmdq_sec_drv",
         ":iommu_gz",
@@ -4017,7 +3931,8 @@ ddk_module(
 ddk_module(
     name = "mtk_chg_det",
     srcs = [
-        "mtk_chg_det/mtk_chg_det.c",
+        "mtk_chg_det/adapter.c",
+        "mtk_chg_det/controller.c",
     ],
     out = "mtk_chg_det.ko",
     hdrs = glob([
@@ -4544,6 +4459,7 @@ ddk_module(
         "include/drivers/misc/mediatek/sspm/v3",
     ],
     local_defines = [
+        "CONFIG_MTK_GPUFREQ_V2=1",
         "CONFIG_MTK_QOS_FRAMEWORK=1",
         "MTK_SCMI",
         "CONFIG_MTK_TINYSYS_SSPM_V3=1",
@@ -4552,7 +4468,7 @@ ddk_module(
     deps = [
         ":mindone_headers",
         ":mtk_gpu_hal",
-        ":mtk_gpufreq_mt6789",
+        ":mtk_gpufreq_wrapper",
         ":mtk_qos",
     ],
 )
@@ -4560,11 +4476,9 @@ ddk_module(
 ddk_module(
     name = "mtk_gpufreq_mt6789",
     srcs = [
-        "mtk_gpufreq_mt6789/gpufreq_history_common.c",
         "mtk_gpufreq_mt6789/gpufreq_history_mt6789.c",
         "mtk_gpufreq_mt6789/gpuppm.c",
         "mtk_gpufreq_mt6789/gpufreq_mt6789.c",
-        "mtk_gpufreq_mt6789/gpudfd_mt6789.c",
     ],
     out = "mtk_gpufreq_mt6789.ko",
     hdrs = glob([
@@ -4574,9 +4488,12 @@ ddk_module(
     kernel_build = "//common/mindone:mindone",
     includes = [
         "mtk_gpufreq_mt6789",
-        "include/drivers/gpu/mediatek/gpufreq/v2/include",
+        "include/drivers/gpu/mediatek/gpufreq/v2_legacy/include",
         "include/drivers/gpu/mediatek/mt-plat",
         "include/drivers/clk/mediatek",
+    ],
+    local_defines = [
+        "CONFIG_MTK_DEVINFO=1",
     ],
     copts = _MINDONE_COPTS,
     deps = [
@@ -4584,6 +4501,7 @@ ddk_module(
         ":clk_fmeter_mt6789",
         ":mtk_gpu_hal",
         ":mtk_gpufreq_wrapper",
+        ":clk_mediatek",
     ],
 )
 
@@ -4592,6 +4510,7 @@ ddk_module(
     srcs = [
         "mtk_gpufreq_wrapper/gpufreq_v2.c",
         "mtk_gpufreq_wrapper/gpufreq_debug.c",
+        "mtk_gpufreq_wrapper/gpufreq_history_legacy.c",
         "mtk_gpufreq_wrapper/gpu_misc.c",
     ],
     out = "mtk_gpufreq_wrapper.ko",
@@ -4604,6 +4523,7 @@ ddk_module(
         "mtk_gpufreq_wrapper",
         "include/include",
         "include/drivers/gpu/mediatek/gpufreq/v2/include",
+        "include/drivers/gpu/mediatek/gpufreq/v2_legacy/include",
         "include/drivers/gpu/mediatek/mt-plat",
         "include",
     ],
@@ -4638,6 +4558,7 @@ ddk_module(
     deps = [
         ":mindone_headers",
         ":system_heap",
+        ":deferred_free_helper",
     ],
 )
 
@@ -5307,7 +5228,6 @@ ddk_module(
     includes = [
         "mtk_printk_ctrl",
         "include/drivers/misc/mediatek/include/mt-plat",
-        "include/kernel",
     ],
     local_defines = [
         "CONFIG_MTK_PRINTK=1",
@@ -5486,32 +5406,6 @@ ddk_module(
 )
 
 ddk_module(
-    name = "mtk_scp_vow",
-    srcs = [
-        "mtk_scp_vow/mtk_scp_vow.c",
-    ],
-    out = "mtk_scp_vow.ko",
-    hdrs = glob([
-        "mtk_scp_vow/**/*.h",
-        "mtk_scp_vow/**/.gitkeep",
-    ]),
-    kernel_build = "//common/mindone:mindone",
-    includes = [
-        "mtk_scp_vow",
-        "include/sound/soc/mediatek/common",
-        "include/sound/soc/mediatek/vow",
-        "include/drivers/misc/mediatek/scp/include",
-        "include/drivers/misc/mediatek/vow/ver02",
-    ],
-    copts = _MINDONE_COPTS,
-    deps = [
-        ":mindone_headers",
-        ":mtk_afe_external",
-        ":mtk_vow",
-    ],
-)
-
-ddk_module(
     name = "mtk_scpsys",
     srcs = [
         "mtk_scpsys/mtk-scpsys-common.c",
@@ -5531,7 +5425,10 @@ ddk_module(
         "CONFIG_PM=1",
     ],
     copts = _MINDONE_COPTS,
-    deps = [":mindone_headers"],
+    deps = [
+        ":mindone_headers",
+        "//common/mindone:mindone_dt_bindings_common",
+    ],
 )
 
 ddk_module(
@@ -5589,6 +5486,7 @@ ddk_module(
         ":system_heap",
         ":trusted_mem",
         ":mtk_iommu",
+        "//common/mindone:mindone_dt_bindings_common",
     ],
 )
 
@@ -5904,17 +5802,17 @@ ddk_module(
 ddk_module(
     name = "mtk_vcodec_common",
     srcs = [
-        "mtk_vcodec_common/mtk_vcodec_intr.c",
-        "mtk_vcodec_common/mtk_vcodec_util.c",
+        "mtk_vcodec_dec_v2/common/mtk_vcodec_intr.c",
+        "mtk_vcodec_dec_v2/common/mtk_vcodec_util.c",
     ],
     out = "mtk_vcodec_common.ko",
     hdrs = glob([
-        "mtk_vcodec_common/**/*.h",
-        "mtk_vcodec_common/**/.gitkeep",
+        "mtk_vcodec_dec_v2/common/**/*.h",
+        "mtk_vcodec_dec_v2/common/**/.gitkeep",
     ]),
     kernel_build = "//common/mindone:mindone",
     includes = [
-        "mtk_vcodec_common",
+        "mtk_vcodec_dec_v2/common",
         "include/drivers/media/platform/mtk-vcu",
         "include/drivers/media/platform/mtk-vcodec",
         "include/drivers/media/platform/mtk-videobuf",
@@ -5938,30 +5836,31 @@ ddk_module(
         "CONFIG_VIDEO_MEDIATEK_VCU=1",
     ],
     copts = _MINDONE_COPTS,
-    deps = [":mindone_headers"],
+    deps = [":mindone_headers", ":mindone_video_v2_headers"],
 )
 
 ddk_module(
     name = "mtk_vcodec_dec_v1",
     srcs = [
-        "mtk_vcodec_dec_v1/mtk_vcodec_dec_pm_plat.c",
-        "mtk_vcodec_dec_v1/vcodec_dvfs.c",
-        "mtk_vcodec_dec_v1/mtk-vcodec-dec.c",
-        "mtk_vcodec_dec_v1/mtk_vcodec_dec_drv.c",
-        "mtk_vcodec_dec_v1/vdec_drv_if.c",
-        "mtk_vcodec_dec_v1/mtk_vcodec_dec_pm.c",
-        "mtk_vcodec_dec_v1/vdec/vdec_common_if.c",
-        "mtk_vcodec_dec_v1/vdec/vdec_vcu_if.c",
-        "mtk_vcodec_dec_v1/vdec/vdec_vcp_if.c",
+        "mtk_vcodec_dec_v2/mtk_vcodec_dec_pm_plat.c",
+        "mtk_vcodec_dec_v2/vcodec_dvfs.c",
+        "mtk_vcodec_dec_v2/mtk_vcodec_fence.c",
+        "mtk_vcodec_dec_v2/mtk-vcodec-dec.c",
+        "mtk_vcodec_dec_v2/mtk_vcodec_dec_drv.c",
+        "mtk_vcodec_dec_v2/vdec_drv_if.c",
+        "mtk_vcodec_dec_v2/mtk_vcodec_dec_pm.c",
+        "mtk_vcodec_dec_v2/vdec/vdec_common_if.c",
+        "mtk_vcodec_dec_v2/vdec/vdec_vcu_if.c",
+        "mtk_vcodec_dec_v2/vdec/vdec_vcp_if.c",
     ],
     out = "mtk_vcodec_dec_v1.ko",
     hdrs = glob([
-        "mtk_vcodec_dec_v1/**/*.h",
-        "mtk_vcodec_dec_v1/**/.gitkeep",
+        "mtk_vcodec_dec_v2/**/*.h",
+        "mtk_vcodec_dec_v2/**/.gitkeep",
     ]),
     kernel_build = "//common/mindone:mindone",
     includes = [
-        "mtk_vcodec_dec_v1",
+        "mtk_vcodec_dec_v2",
         "include/drivers/media/platform/mtk-vcu",
         "include/drivers/media/platform/mtk-vcodec",
         "include/drivers/media/platform/mtk-videobuf",
@@ -5989,6 +5888,7 @@ ddk_module(
     ],
     copts = _MINDONE_COPTS,
     deps = [
+        ":mindone_video_v2_headers",
         ":mindone_headers",
         ":iommu_gz",
         ":mtk_sec_heap",
@@ -6004,25 +5904,25 @@ ddk_module(
 ddk_module(
     name = "mtk_vcodec_enc_v1",
     srcs = [
-        "mtk_vcodec_enc_v1/mtk_vcodec_enc_pm_plat.c",
-        "mtk_vcodec_dec_v1/vcodec_dvfs.c",
-        "mtk_vcodec_enc_v1/mtk-vcodec-enc.c",
-        "mtk_vcodec_enc_v1/mtk_vcodec_enc_drv.c",
-        "mtk_vcodec_enc_v1/venc_drv_if.c",
-        "mtk_vcodec_enc_v1/mtk_vcodec_enc_pm.c",
-        "mtk_vcodec_enc_v1/venc/venc_common_if.c",
-        "mtk_vcodec_enc_v1/venc/venc_vcu_if.c",
-        "mtk_vcodec_enc_v1/venc/venc_vcp_if.c",
+        "mtk_vcodec_enc_v2/mtk_vcodec_enc_pm_plat.c",
+        "mtk_vcodec_dec_v2/vcodec_dvfs.c",
+        "mtk_vcodec_enc_v2/mtk-vcodec-enc.c",
+        "mtk_vcodec_enc_v2/mtk_vcodec_enc_drv.c",
+        "mtk_vcodec_enc_v2/venc_drv_if.c",
+        "mtk_vcodec_enc_v2/mtk_vcodec_enc_pm.c",
+        "mtk_vcodec_enc_v2/venc/venc_common_if.c",
+        "mtk_vcodec_enc_v2/venc/venc_vcu_if.c",
+        "mtk_vcodec_enc_v2/venc/venc_vcp_if.c",
     ],
     out = "mtk_vcodec_enc_v1.ko",
     hdrs = glob([
-        "mtk_vcodec_enc_v1/**/*.h",
-        "mtk_vcodec_enc_v1/**/.gitkeep",
+        "mtk_vcodec_enc_v2/**/*.h",
+        "mtk_vcodec_enc_v2/**/.gitkeep",
     ]),
     kernel_build = "//common/mindone:mindone",
     includes = [
-        "mtk_vcodec_enc_v1/local_iommu",
-        "mtk_vcodec_enc_v1",
+        "mtk_vcodec_enc_v2/local_iommu",
+        "mtk_vcodec_enc_v2",
         "include/include",
         "include/drivers/media/platform/mtk-vcu",
         "include/drivers/media/platform/mtk-vcodec",
@@ -6052,6 +5952,7 @@ ddk_module(
     ],
     copts = _MINDONE_COPTS,
     deps = [
+        ":mindone_video_v2_headers",
         ":mindone_headers",
         ":iommu_gz",
         ":mtk_sec_heap",
@@ -6061,44 +5962,6 @@ ddk_module(
         ":mtk_vcodec_common",
         ":vcp",
         ":mtk_icc_core",
-    ],
-)
-
-ddk_module(
-    name = "mtk_vow",
-    srcs = [
-        "mtk_vow/vow.c",
-        "mtk_vow/vow_scp.c",
-    ],
-    out = "mtk_vow.ko",
-    hdrs = glob([
-        "mtk_vow/**/*.h",
-        "mtk_vow/**/.gitkeep",
-    ]),
-    kernel_build = "//common/mindone:mindone",
-    includes = [
-        "mtk_vow",
-        "include/drivers/misc/mediatek/scp",
-        "include/drivers/misc/mediatek/vow",
-        "include/include",
-    ],
-    local_defines = [
-        "MINDONE_NO_COMPAT_IOCTL=1",
-        "CONFIG_COMPAT=1",
-        "CONFIG_MTK_TINYSYS_SCP_SUPPORT=1",
-        "CONFIG_MTK_VOW_AMAZON_SUPPORT=1",
-        "CONFIG_MTK_VOW_DUAL_MIC_SUPPORT=1",
-        "CONFIG_MTK_VOW_GVA_SUPPORT=1",
-        "CONFIG_OF=1",
-        "CONFIG_PM=1",
-        "CONFIG_MTK_TINYSYS_SCP_LOGGER_SUPPORT=1",
-    ],
-    copts = _MINDONE_COPTS,
-    deps = [
-        ":mindone_headers",
-        ":audio_ipi",
-        ":mtk_tinysys_ipi",
-        ":scp",
     ],
 )
 
@@ -6278,15 +6141,19 @@ ddk_module(
     name = "panel-sd5302h-fhd1240-dsi-vdo-amoled-ocp2133",
     srcs = [
         "panel_sd5302h_fhd1240_dsi_vdo_amoled_ocp2133_61/panel-sd5302h-fhd1240-dsi-vdo-amoled-ocp2133.c",
+        "panel_sd5302h_fhd1240_dsi_vdo_amoled_ocp2133_61/board.c",
+        "panel_control/panel_control.c",
     ],
     out = "panel-sd5302h-fhd1240-dsi-vdo-amoled-ocp2133.ko",
     hdrs = glob([
         "panel_sd5302h_fhd1240_dsi_vdo_amoled_ocp2133_61/**/*.h",
         "panel_sd5302h_fhd1240_dsi_vdo_amoled_ocp2133_61/**/.gitkeep",
+        "panel_control/*.h",
     ]),
     kernel_build = "//common/mindone:mindone",
     includes = [
         "panel_sd5302h_fhd1240_dsi_vdo_amoled_ocp2133_61",
+        "panel_control",
         "include/include/uapi",
         "include",
     ],
@@ -6301,15 +6168,19 @@ ddk_module(
     name = "panel_ch13721c_fhd_dsi_vdo_amoled_ocp2133",
     srcs = [
         "panel_ch13721c_fhd_dsi_vdo_amoled_ocp2133/panel_ch13721c_fhd_dsi_vdo_amoled_ocp2133.c",
+        "panel_ch13721c_fhd_dsi_vdo_amoled_ocp2133/board.c",
+        "panel_control/panel_control.c",
     ],
     out = "panel_ch13721c_fhd_dsi_vdo_amoled_ocp2133.ko",
     hdrs = glob([
         "panel_ch13721c_fhd_dsi_vdo_amoled_ocp2133/**/*.h",
         "panel_ch13721c_fhd_dsi_vdo_amoled_ocp2133/**/.gitkeep",
+        "panel_control/*.h",
     ]),
     kernel_build = "//common/mindone:mindone",
     includes = [
         "panel_ch13721c_fhd_dsi_vdo_amoled_ocp2133",
+        "panel_control",
         "include",
         "include/include/uapi",
     ],
@@ -7221,7 +7092,12 @@ ddk_module(
         "-include",
         "dt-bindings/memory/mt6789-memory-port-full.h",
     ],
-    deps = [":mindone_headers"],
+    deps = [
+        ":mindone_headers",
+        ":deferred_free_helper",
+        ":dmabuf_page_pool",
+        "//common/mindone:mindone_dt_bindings_common",
+    ],
 )
 
 ddk_module(
@@ -7912,6 +7788,7 @@ ddk_module(
         "include",
     ],
     local_defines = [
+        "DYNAMIC_DEBUG_MODULE",
         "CFG_ANDROID_AOSP_PRIV_CMD",
         "CONFIG_MTK_EMI=1",
         "CONFIG_WLAN_MTK_EMI=1",
@@ -7964,10 +7841,10 @@ ddk_module(
         "CFG_TC1_FEATURE=0",
         "CFG_SUPPORT_NAN=0",
         "DBG=0",
-        "CFG_MTK_MDDP_SUPPORT=0",
+        "CFG_MTK_MDDP_SUPPORT=1",
         "CONFIG_WLAN_DRV_BUILD_IN=0",
         "CFG_SUPPORT_PKT_OFLD=1",
-        "CFG_SUPPORT_APF=0",
+        "CFG_SUPPORT_APF=1",
         "CONFIG_WLAN_SERVICE=1",
         "CONFIG_TEST_ENGINE_OFFLOAD=1",
         "CONFIG_PMIC_LBAT_SERVICE=1",
@@ -7990,6 +7867,9 @@ ddk_module(
     ],
     deps = [
         ":mindone_headers",
+        ":mddp_headers",
+        ":mddp",
+        ":ccci_md_all",
         ":connadp",
         ":emi",
         ":mtk_disp_notify",
@@ -8120,6 +8000,7 @@ ddk_module(
         "include",
     ],
     local_defines = [
+        "DYNAMIC_DEBUG_MODULE",
         "CONFIG_MTK_WCN_ARM64",
         "CONFIG_MTK_COMBO_GPS=1",
         "WMT_IDC_SUPPORT=0",
@@ -8140,31 +8021,178 @@ ddk_module(
     ],
 )
 
+ddk_module(
+    name = "clk_mediatek",
+    srcs = [
+        "clk_mediatek/clk-apmixed.c",
+        "clk_mediatek/clk-cpumux.c",
+        "clk_mediatek/clk-gate.c",
+        "clk_mediatek/clk-mtk.c",
+        "clk_mediatek/clk-mux.c",
+        "clk_mediatek/clk-pll.c",
+        "clk_mediatek/reset.c",
+    ],
+    out = "clk-mediatek.ko",
+    hdrs = glob(["clk_mediatek/*.h"]),
+    kernel_build = "//common/mindone:mindone",
+    includes = ["clk_mediatek"],
+    copts = _MINDONE_COPTS,
+    deps = [":mindone_headers"],
+)
+
+ddk_module(
+    name = "clk_mt6789",
+    srcs = ["clk_mt6789/clk-mt6789.c"],
+    out = "clk-mt6789.ko",
+    kernel_build = "//common/mindone:mindone",
+    copts = _MINDONE_COPTS,
+    deps = [
+        ":clk_mediatek",
+        ":mindone_headers",
+        "//common/mindone:mindone_dt_bindings_common",
+    ],
+)
+
+ddk_module(
+    name = "mtk_eint",
+    srcs = ["pinctrl_mediatek/mtk-eint.c"],
+    out = "mtk-eint.ko",
+    hdrs = glob(["pinctrl_mediatek/*.h"]),
+    kernel_build = "//common/mindone:mindone",
+    includes = ["pinctrl_mediatek"],
+    copts = _MINDONE_COPTS,
+    deps = [":mindone_headers"],
+)
+
+ddk_module(
+    name = "pinctrl_mtk_common_v2",
+    srcs = ["pinctrl_mediatek/pinctrl-mtk-common-v2.c"],
+    out = "pinctrl-mtk-common-v2.ko",
+    kernel_build = "//common/mindone:mindone",
+    copts = _MINDONE_COPTS,
+    deps = [
+        ":mindone_headers",
+        ":mtk_eint",
+    ],
+)
+
+ddk_module(
+    name = "pinctrl_paris",
+    srcs = ["pinctrl_mediatek/pinctrl-paris.c"],
+    out = "pinctrl-paris.ko",
+    kernel_build = "//common/mindone:mindone",
+    copts = _MINDONE_COPTS,
+    deps = [
+        ":mindone_headers",
+        ":mtk_eint",
+        ":pinctrl_mtk_common_v2",
+    ],
+)
+
+ddk_module(
+    name = "pinctrl_mt6789",
+    srcs = ["pinctrl_mediatek/pinctrl-mt6789.c"],
+    out = "pinctrl-mt6789.ko",
+    kernel_build = "//common/mindone:mindone",
+    copts = _MINDONE_COPTS,
+    deps = [
+        ":mindone_headers",
+        ":mtk_eint",
+        ":pinctrl_mtk_common_v2",
+        ":pinctrl_paris",
+    ],
+)
+
+ddk_module(
+    name = "ufs_mediatek",
+    srcs = ["ufs_mediatek/ufs-mediatek.c"],
+    out = "ufs-mediatek.ko",
+    hdrs = glob(["ufs_mediatek/*.h"]),
+    kernel_build = "//common/mindone:mindone",
+    includes = ["ufs_mediatek"],
+    copts = _MINDONE_COPTS,
+    deps = [":mindone_headers"],
+)
+
+ddk_module(
+    name = "deferred_free_helper",
+    srcs = ["dmabuf_heap_helpers/deferred-free-helper.c"],
+    out = "deferred-free-helper.ko",
+    hdrs = ["dmabuf_heap_helpers/deferred-free-helper.h"],
+    kernel_build = "//common/mindone:mindone",
+    includes = ["dmabuf_heap_helpers"],
+    copts = _MINDONE_COPTS,
+    deps = [":mindone_headers"],
+)
+
+ddk_module(
+    name = "dmabuf_page_pool",
+    srcs = ["dmabuf_heap_helpers/page_pool.c"],
+    out = "dmabuf_page_pool.ko",
+    hdrs = ["dmabuf_heap_helpers/page_pool.h"],
+    kernel_build = "//common/mindone:mindone",
+    includes = ["dmabuf_heap_helpers"],
+    copts = _MINDONE_COPTS,
+    deps = [":mindone_headers"],
+)
+
+ddk_module(
+    name = "mtk_vow",
+    srcs = [
+        "mtk_vow/vow.c",
+        "mtk_vow/vow_scp.c",
+    ],
+    out = "mtk_vow.ko",
+    hdrs = glob(["mtk_vow/*.h"]),
+    kernel_build = "//common/mindone:mindone",
+    includes = [
+        "mtk_vow",
+        "include/sound/soc/mediatek/common",
+        "include/drivers/misc/mediatek/scp/include",
+        "include/include",
+    ],
+    copts = _MINDONE_COPTS,
+    deps = [
+        ":mindone_headers",
+        ":mtk_afe_external",
+        ":mtk_tinysys_ipi",
+        ":scp",
+    ],
+)
+
+ddk_module(
+    name = "mtk_scp_vow",
+    srcs = ["mtk_scp_vow/mtk_scp_vow.c"],
+    out = "mtk_scp_vow.ko",
+    kernel_build = "//common/mindone:mindone",
+    includes = [
+        "include/sound/soc/mediatek/common",
+        "include/drivers/misc/mediatek/scp/include",
+        "include/include",
+    ],
+    copts = _MINDONE_COPTS,
+    deps = [
+        ":mindone_headers",
+        ":mtk_afe_external",
+        ":scp",
+    ],
+)
+
 kernel_module_group(
     name = "mindone_modules",
     srcs = [
         ":adapter_class",
         ":adsp",
-        ":aee_aed",
-        ":aee_hangdet",
-        ":aee_rs",
         ":archcounter_timesync",
         ":arm_dsu_pmu",
         ":atf_logger",
         ":audio_ipi",
-        ":aw_haptic_nv",
+        ":haptic_nv",
         ":backlight_cooling",
-        ":blocktag",
-        ":board_temp",
         ":bootprof",
         ":bt_drv_connac1x",
         ":btif_drv",
-        ":c2k_usb",
-        ":c2k_usb_f_via_atc",
-        ":c2k_usb_f_via_ets",
-        ":c2k_usb_f_via_gps",
-        ":c2k_usb_f_via_modem",
-        ":c2k_usb_f_via_pcv",
+        ":cache_parity",
         ":cam_qos",
         ":camera_dip_isp6s",
         ":camera_eeprom",
@@ -8177,16 +8205,16 @@ kernel_module_group(
         ":ccci_dpmaif",
         ":ccci_fsm_scp",
         ":ccci_md_all",
-        ":ccci_md_clk",
-        ":ccci_rtc",
         ":ccci_util_lib",
         ":ccmni",
+        ":mddp",
         ":charger_class",
         ":charger_cooling",
-        ":clk-mt6789-disp_dsc",
         ":clk_bringup",
         ":clk_disable_unused",
         ":clk_fmeter_mt6789",
+        ":clk_mediatek",
+        ":clk_mt6789",
         ":clk_mt6789_audiosys",
         ":clk_mt6789_bus",
         ":clk_mt6789_cam",
@@ -8201,12 +8229,11 @@ kernel_module_group(
         ":cmdq_platform_mt6789",
         ":cmdq_sec_drv",
         ":connadp",
-        ":connfem",
         ":cpudvfs",
-        ":cpufreq_sugov_ext",
-        ":cpuqos_v3",
+        ":mtk_cpu_capacity",
         ":cqhci",
         ":dbgtop_drm",
+        ":deferred_free_helper",
         ":device_apc_common",
         ":device_apc_mt6789",
         ":devmpu",
@@ -8217,6 +8244,7 @@ kernel_module_group(
         ":fhctl",
         ":flashlight",
         ":flashlights-dummy-gpio",
+        ":flashlights-lm3643",
         ":ged",
         ":gps_drv_stp",
         ":gps_pwr",
@@ -8235,14 +8263,10 @@ kernel_module_group(
         ":iommu_debug",
         ":iommu_gz",
         ":iommu_secure",
-        ":iommu_test",
         ":irq_dbg",
         ":leds-mtk",
-        ":leds-mtk-pwm",
         ":leds_mtk_disp",
         ":log_store",
-        ":main2af",
-        ":main3af",
         ":mainaf",
         ":mali_kbase_mt6789",
         ":mcDrvModule",
@@ -8251,14 +8275,10 @@ kernel_module_group(
         ":mdp_drv_mt6789",
         ":mediatek_cpufreq_hw",
         ":mediatek_drm",
-        ":meta",
-        ":mindone_thermal",
-        ":mindone_thermal_hook",
         ":mindone_ufs_screen",
         ":mmprofile",
         ":mmqos_common",
         ":mmqos_mt6789",
-        ":mrdump",
         ":mt6358_accdet",
         ":mt6358_battery",
         ":mt6358_regulator",
@@ -8280,7 +8300,6 @@ kernel_module_group(
         ":mtk_charger_algorithm_class",
         ":mtk_charger_framework",
         ":mtk_chg_det",
-        ":mtk_chg_type_det",
         ":mtk_cm_ipi",
         ":mtk_cm_mgr",
         ":mtk_cm_mgr_mt6789",
@@ -8296,6 +8315,7 @@ kernel_module_group(
         ":mtk_dvfsrc_regulator",
         ":mtk_dvfsrc_start",
         ":mtk_dynamic_loading_throttling",
+        ":mtk_eint",
         ":mtk_emi",
         ":mtk_gpu_hal",
         ":mtk_gpu_power_throttling",
@@ -8314,9 +8334,7 @@ kernel_module_group(
         ":mtk_mbox_mailbox",
         ":mtk_md_power_throttling",
         ":mtk_mdpm",
-        ":mtk_mm_heap",
         ":mtk_mmc",
-        ":mtk_mmc_autok",
         ":mtk_mmdvfs",
         ":mtk_mmdvfs_debug",
         ":mtk_mml",
@@ -8332,22 +8350,17 @@ kernel_module_group(
         ":mtk_pwm",
         ":mtk_qos",
         ":mtk_rpmsg_mbox",
-        ":mtk_scp_audio",
         ":mtk_scp_audiocommon",
         ":mtk_scp_ultra",
         ":mtk_scp_vow",
         ":mtk_scpsys",
-        ":mtk_scpsys_bringup",
         ":mtk_sec_heap",
         ":mtk_slbc",
         ":mtk_smi",
         ":mtk_smi_dbg",
         ":mtk_socinfo",
         ":mtk_sp_spk_amp",
-        ":mtk_spmi_pmic",
         ":mtk_ssc",
-        ":mtk_swpm",
-        ":mtk_swpm_perf_arm_pmu",
         ":mtk_sync",
         ":mtk_tinysys_ipi",
         ":mtk_u_ether",
@@ -8363,12 +8376,16 @@ kernel_module_group(
         ":musb_main",
         ":nvmem_mt635x_efuse",
         ":nvmem_mtk_devinfo",
+        ":dmabuf_page_pool",
         ":panel-sd5302h-fhd1240-dsi-vdo-amoled-ocp2133",
         ":panel_ch13721c_fhd_dsi_vdo_amoled_ocp2133",
         ":pd_dbg_info",
         ":phy_generic",
         ":phy_mtk_tphy",
         ":pidmap",
+        ":pinctrl_mt6789",
+        ":pinctrl_mtk_common_v2",
+        ":pinctrl_paris",
         ":pmic_lbat_service",
         ":pmic_lvsys_notify",
         ":pmic_temp",
@@ -8376,7 +8393,6 @@ kernel_module_group(
         ":pn553",
         ":pwm_mtk_disp",
         ":reboot_mode",
-        ":rpmb",
         ":rpmb_mtk",
         ":rps_perf",
         ":rt4831a_drv",
@@ -8394,11 +8410,8 @@ kernel_module_group(
         ":snd_soc_mtk_scp_ultra",
         ":soc_temp_lvts",
         ":spi_mt65xx",
-        ":spmi_mtk_pmif",
         ":spmtwam",
         ":sspm_v3",
-        ":sub2af",
-        ":subaf",
         ":syscon_reboot_mode",
         ":system_heap",
         ":task_turbo",
@@ -8413,6 +8426,7 @@ kernel_module_group(
         ":tkcore",
         ":tkcore_drv",
         ":trusted_mem",
+        ":ufs_mediatek",
         ":ufs_mtk_rpmb",
         ":vcp",
         ":vcp_status",

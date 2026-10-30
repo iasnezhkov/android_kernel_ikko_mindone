@@ -120,6 +120,10 @@ static void cpu_limit_default_setting(struct device *dev, enum cpu_pt_type type)
 	if (!pt_info_p->max_lv)
 		return;
 	pt_info_p->freq_limit = kzalloc(sizeof(u32) * pt_info_p->max_lv * CLUSTER_NUM, GFP_KERNEL);
+	if (!pt_info_p->freq_limit) {
+		pt_info_p->max_lv = 0;
+		return;
+	}
 	for (i = 0; i < CLUSTER_NUM; i++)
 		pt_info_p->freq_limit[i] = CPU_LIMIT_FREQ;
 	if (type == LBAT_POWER_THROTTLING) {
@@ -141,7 +145,7 @@ static void cpu_limit_default_setting(struct device *dev, enum cpu_pt_type type)
 static int parse_cpu_limit_table(struct device *dev)
 {
 	struct device_node *np = dev->of_node;
-	int i, j, num, ret;
+	int i, j, k, num, ret;
 	struct cpu_pt_priv *pt_info_p;
 	char buf[32];
 	for (i = 0; i < POWER_THROTTLING_TYPE_MAX; i++) {
@@ -166,8 +170,12 @@ static int parse_cpu_limit_table(struct device *dev)
 				pr_notice("can't merge %s %d\n", pt_info_p->limit_name, j+1);
 			ret = of_property_read_u32_array(np, buf,
 				&pt_info_p->freq_limit[j * CLUSTER_NUM], CLUSTER_NUM);
-			if (ret < 0)
+			if (ret < 0) {
 				pr_notice("%s: get lbat cpu limit fail %d\n", __func__, ret);
+				for (k = 0; k < CLUSTER_NUM; k++)
+					pt_info_p->freq_limit[j * CLUSTER_NUM + k] =
+						FREQ_QOS_MAX_DEFAULT_VALUE;
+			}
 		}
 	}
 	return 0;

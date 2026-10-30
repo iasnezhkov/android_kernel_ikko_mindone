@@ -4,7 +4,6 @@
  */
 
 #include <drm/drm_fourcc.h>
-#include "mindone_log.h"
 #include <linux/kthread.h>
 #include <linux/wait.h>
 #include <linux/mutex.h>
@@ -28,8 +27,6 @@
 
 static void mtk_drm_idlemgr_enable_crtc(struct drm_crtc *crtc);
 static void mtk_drm_idlemgr_disable_crtc(struct drm_crtc *crtc);
-
-int mindone_vb_watch;
 
 #ifdef SHARE_WROT_SRAM
 static int register_share_sram;
@@ -243,7 +240,6 @@ static void mtk_drm_vdo_mode_enter_idle(struct drm_crtc *crtc)
 	}
 	cmdq_pkt_flush(handle);
 	cmdq_pkt_destroy(handle);
-	drm_crtc_vblank_off(crtc);
 }
 
 static void mtk_drm_cmd_mode_enter_idle(struct drm_crtc *crtc)
@@ -279,7 +275,6 @@ static void mtk_drm_vdo_mode_leave_idle(struct drm_crtc *crtc)
 
 	cmdq_pkt_flush(handle);
 	cmdq_pkt_destroy(handle);
-	drm_crtc_vblank_on(crtc);
 }
 
 static void mtk_drm_cmd_mode_leave_idle(struct drm_crtc *crtc)
@@ -325,14 +320,12 @@ static void mtk_drm_idlemgr_leave_idle_nolock(struct drm_crtc *crtc)
 
 	mode = mtk_dsi_is_cmd_mode(output_comp);
 	CRTC_MMP_EVENT_START(index, leave_idle, mode, 0);
-	MINDONE_PR("MINDONE-VB: leave-idle-nolock begin crtc=%d cmd_mode=%d\n", index, mode);
 
 	if (mode)
 		mtk_drm_cmd_mode_leave_idle(crtc);
 	else
 		mtk_drm_vdo_mode_leave_idle(crtc);
 
-	MINDONE_PR("MINDONE-VB: leave-idle-nolock end crtc=%d cmd_mode=%d\n", index, mode);
 	CRTC_MMP_EVENT_END(index, leave_idle, mode, 0);
 }
 
@@ -388,9 +381,6 @@ void mtk_drm_idlemgr_kick(const char *source, struct drm_crtc *crtc,
 		DDPINFO("[LP] kick idle from [%s]\n", source);
 		if (mtk_crtc->esd_ctx)
 			atomic_set(&mtk_crtc->esd_ctx->target_time, 0);
-		mindone_vb_watch = 1;
-		MINDONE_PR("MINDONE-VB: idle-leave triggered source=%s crtc=%d\n",
-			source, drm_crtc_index(crtc));
 		mtk_drm_idlemgr_leave_idle_nolock(crtc);
 		idlemgr_ctx->is_idle = 0;
 
@@ -534,7 +524,7 @@ static int mtk_drm_async_kick_idlemgr_thread(void *data)
 
 static int mtk_drm_idlemgr_monitor_thread(void *data)
 {
-	int ret = 0;
+	long ret = 0;
 	unsigned long long t_idle;
 	struct drm_crtc *crtc = (struct drm_crtc *)data;
 	struct mtk_drm_crtc *mtk_crtc = to_mtk_crtc(crtc);
@@ -559,7 +549,7 @@ static int mtk_drm_idlemgr_monitor_thread(void *data)
 			DDP_MUTEX_UNLOCK(&mtk_crtc->lock, __func__, __LINE__);
 			ret = mtk_crtc_wait_status(crtc, 1, MAX_SCHEDULE_TIMEOUT);
 			if (ret < 0)
-				DDPPR_ERR("%s mtk_crtc_wait_status fail%d\n", __func__, ret);
+				DDPPR_ERR("%s mtk_crtc_wait_status fail%ld\n", __func__, ret);
 			continue;
 		}
 
@@ -612,7 +602,10 @@ static int mtk_drm_idlemgr_monitor_thread(void *data)
 			vblank = &crtc->dev->vblank[crtc_id];
 
 			/* enter idle state */
-			if (!vblank || atomic_read(&vblank->refcount) == 0) {
+			if ((!vblank || (atomic_read(&vblank->refcount) == 0 &&
+			     (mtk_crtc_is_frame_trigger_mode(crtc) ||
+			      !READ_ONCE(vblank->enabled)))) &&
+			    !READ_ONCE(mtk_crtc->hwvsync_en)) {
 				DDPINFO("[LP] enter idle\n");
 				mtk_drm_idlemgr_enter_idle_nolock(crtc);
 				idlemgr_ctx->is_idle = 1;
@@ -663,7 +656,7 @@ int mtk_drm_idlemgr_init(struct drm_crtc *crtc, int index)
 	idlemgr_ctx->enterulps = 0;
 	idlemgr_ctx->idlemgr_last_kick_time = ~(0ULL);
 	idlemgr_ctx->cur_lp_cust_mode = 0;
-	idlemgr_ctx->idle_check_interval = 1000000;
+	idlemgr_ctx->idle_check_interval = 50;
 
 	if (snprintf(name, LEN, "mtk_drm_disp_idlemgr-%d", index) < 0)
 		DDPPR_ERR("%s:%d snprintf fail\n", __func__, __LINE__);
@@ -798,7 +791,6 @@ static void mtk_drm_idlemgr_enable_crtc(struct drm_crtc *crtc)
 	struct mtk_crtc_state *mtk_state = to_mtk_crtc_state(crtc->state);
 
 	DDPINFO("crtc%d do %s+\n", crtc_id, __func__);
-	MINDONE_PR("MINDONE-VB: enable-crtc begin crtc=%d\n", crtc_id);
 
 	if (mode) {
 		DDPINFO("crtc%d mode:%d bypass exit idle\n", crtc_id, mode);
@@ -807,23 +799,15 @@ static void mtk_drm_idlemgr_enable_crtc(struct drm_crtc *crtc)
 	}
 
 	/* 0. CMDQ power on */
-	MINDONE_PR("MINDONE-VB: enable-crtc pre-cmdq-mbox crtc=%d\n", crtc_id);
 	cmdq_mbox_enable(mtk_crtc->gce_obj.client[CLIENT_CFG]->chan);
-	MINDONE_PR("MINDONE-VB: enable-crtc post-cmdq-mbox crtc=%d\n", crtc_id);
 
 	/* 1. power on mtcmos */
-	MINDONE_PR("MINDONE-VB: enable-crtc pre-top-clk crtc=%d\n", crtc_id);
 	mtk_drm_top_clk_prepare_enable(crtc->dev);
-	MINDONE_PR("MINDONE-VB: enable-crtc post-top-clk pre-gce-restore crtc=%d\n", crtc_id);
 	mtk_gce_backup_slot_restore(mtk_crtc, __func__);
-	MINDONE_PR("MINDONE-VB: enable-crtc post-gce-restore crtc=%d\n", crtc_id);
 
 	/* 2. prepare modules would be used in this CRTC */
-	MINDONE_PR("MINDONE-VB: enable-crtc pre-connector-enable crtc=%d\n", crtc_id);
 	mtk_drm_idlemgr_enable_connector(crtc);
-	MINDONE_PR("MINDONE-VB: enable-crtc post-connector pre-ddp-prepare crtc=%d\n", crtc_id);
 	mtk_crtc_ddp_prepare(mtk_crtc);
-	MINDONE_PR("MINDONE-VB: enable-crtc post-ddp-prepare crtc=%d\n", crtc_id);
 
 	//mtk_gce_backup_slot_init(mtk_crtc);
 
@@ -842,17 +826,12 @@ static void mtk_drm_idlemgr_enable_crtc(struct drm_crtc *crtc)
 			(mtk_crtc_is_frame_trigger_mode(crtc)))
 			mtk_crtc_start_event_loop(crtc);
 
-		MINDONE_PR("MINDONE-VB: enable-crtc pre-trig-loop crtc=%d\n", crtc_id);
 		mtk_crtc_start_trig_loop(crtc);
-		MINDONE_PR("MINDONE-VB: enable-crtc post-trig-loop pre-hw-block-ready crtc=%d\n", crtc_id);
 		mtk_crtc_hw_block_ready(crtc);
-		MINDONE_PR("MINDONE-VB: enable-crtc post-hw-block-ready crtc=%d\n", crtc_id);
 	}
 
 	/* 4. connect path */
-	MINDONE_PR("MINDONE-VB: enable-crtc pre-connect-path crtc=%d\n", crtc_id);
 	mtk_crtc_connect_default_path(mtk_crtc);
-	MINDONE_PR("MINDONE-VB: enable-crtc post-connect-path crtc=%d\n", crtc_id);
 
 #ifdef SHARE_WROT_SRAM
 	if (mtk_drm_helper_get_opt(priv->helper_opt, MTK_DRM_OPT_SHARE_SRAM))
@@ -860,9 +839,7 @@ static void mtk_drm_idlemgr_enable_crtc(struct drm_crtc *crtc)
 #endif
 
 	/* 5. config ddp engine & set dirty for cmd mode */
-	MINDONE_PR("MINDONE-VB: enable-crtc pre-config-path crtc=%d\n", crtc_id);
 	mtk_crtc_config_default_path(mtk_crtc);
-	MINDONE_PR("MINDONE-VB: enable-crtc post-config-path crtc=%d\n", crtc_id);
 
 	/* 6. conect addon module and config */
 	mtk_crtc_connect_addon_module(crtc);
@@ -895,13 +872,10 @@ static void mtk_drm_idlemgr_enable_crtc(struct drm_crtc *crtc)
 				&en);
 
 	/* 11. set vblank */
-	MINDONE_PR("MINDONE-VB: enable-crtc pre-vblank-on crtc=%d\n", crtc_id);
 	drm_crtc_vblank_on(crtc);
-	MINDONE_PR("MINDONE-VB: enable-crtc post-vblank-on crtc=%d\n", crtc_id);
 
 	/* 12. enable fake vsync if need */
 	mtk_drm_fake_vsync_switch(crtc, true);
 
-	MINDONE_PR("MINDONE-VB: enable-crtc end crtc=%d\n", crtc_id);
 	DDPINFO("crtc%d do %s-\n", crtc_id, __func__);
 }

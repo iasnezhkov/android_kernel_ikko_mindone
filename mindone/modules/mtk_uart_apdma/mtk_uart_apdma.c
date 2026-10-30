@@ -23,7 +23,7 @@
 #include <linux/slab.h>
 #include <linux/spinlock.h>
 
-#include <virt-dma.h>
+#include "virt-dma-kmi.h"
 
 /* The default number of virtual channel */
 #define MTK_UART_APDMA_NR_VCHANS	8
@@ -230,6 +230,7 @@ static void mtk_uart_apdma_tx_handler(struct mtk_chan *c)
 
 	list_del(&d->vd.node);
 	vchan_cookie_complete(&d->vd);
+	c->desc = NULL;
 }
 
 static void mtk_uart_apdma_rx_handler(struct mtk_chan *c)
@@ -239,6 +240,9 @@ static void mtk_uart_apdma_rx_handler(struct mtk_chan *c)
 	int cnt;
 
 	mtk_uart_apdma_write(c, VFF_INT_FLAG, VFF_RX_INT_CLR_B);
+
+	if (unlikely(d == NULL))
+		return;
 
 	if (!mtk_uart_apdma_read(c, VFF_VALID_SIZE))
 		return;
@@ -263,6 +267,7 @@ static void mtk_uart_apdma_rx_handler(struct mtk_chan *c)
 
 	list_del(&d->vd.node);
 	vchan_cookie_complete(&d->vd);
+	c->desc = NULL;
 }
 
 static irqreturn_t mtk_uart_apdma_irq_handler(int irq, void *dev_id)
@@ -303,18 +308,23 @@ static int mtk_uart_apdma_alloc_chan_resources(struct dma_chan *chan)
 	ret = readx_poll_timeout(readl, c->base + VFF_EN,
 			  status, !status, 10, 100);
 	if (ret)
-		return ret;
+		goto err_pm;
 
 	ret = request_irq(c->irq, mtk_uart_apdma_irq_handler,
 			  IRQF_TRIGGER_NONE, KBUILD_MODNAME, chan);
 	if (ret < 0) {
 		dev_err(chan->device->dev, "Can't request dma IRQ\n");
-		return -EINVAL;
+		ret = -EINVAL;
+		goto err_pm;
 	}
 
 	if (mtkd->support_bits > VFF_ORI_ADDR_BITS_NUM)
 		mtk_uart_apdma_write(c, VFF_4G_SUPPORT, VFF_4G_SUPPORT_CLR_B);
 
+	return ret;
+
+err_pm:
+	pm_runtime_put_sync(mtkd->ddev.dev);
 	return ret;
 }
 
@@ -328,6 +338,7 @@ static void mtk_uart_apdma_free_chan_resources(struct dma_chan *chan)
 	tasklet_kill(&c->vc.task);
 
 	vchan_free_chan_resources(&c->vc);
+	c->desc = NULL;
 
 	pm_runtime_put_sync(mtkd->ddev.dev);
 }
@@ -382,7 +393,7 @@ static void mtk_uart_apdma_issue_pending(struct dma_chan *chan)
 	unsigned long flags;
 
 	spin_lock_irqsave(&c->vc.lock, flags);
-	if (vchan_issue_pending(&c->vc)) {
+	if (vchan_issue_pending(&c->vc) && !c->desc) {
 		vd = vchan_next_desc(&c->vc);
 		c->desc = to_mtk_uart_apdma_desc(&vd->tx);
 
@@ -412,7 +423,6 @@ static int mtk_uart_apdma_terminate_all(struct dma_chan *chan)
 	unsigned int status;
 	LIST_HEAD(head);
 	int ret;
-	bool state;
 
 	if (mtk_uart_apdma_read(c, VFF_INT_BUF_SIZE)) {
 		mtk_uart_apdma_write(c, VFF_FLUSH, VFF_FLUSH_B);
@@ -420,19 +430,6 @@ static int mtk_uart_apdma_terminate_all(struct dma_chan *chan)
 				  status, status != VFF_FLUSH_B, 10, 100);
 		dev_info(c->vc.chan.device->dev, "flush %s[%d]: %d\n",
 			c->dir == DMA_DEV_TO_MEM ? "RX":"TX", c->irq, ret);
-		/*
-		 * DMA hardware will generate a interrupt immediately
-		 * once flush done, so we need to wait the interrupt to be
-		 * handled before free resources.
-		 */
-		state = true;
-		while (state)
-			irq_get_irqchip_state(c->irq,
-				IRQCHIP_STATE_PENDING, &state);
-		state = true;
-		while (state)
-			irq_get_irqchip_state(c->irq,
-				IRQCHIP_STATE_ACTIVE, &state);
 	}
 
 	/*
@@ -459,6 +456,7 @@ static int mtk_uart_apdma_terminate_all(struct dma_chan *chan)
 	synchronize_irq(c->irq);
 
 	spin_lock_irqsave(&c->vc.lock, flags);
+	c->desc = NULL;
 	vchan_get_all_descriptors(&c->vc, &head);
 	spin_unlock_irqrestore(&c->vc.lock, flags);
 

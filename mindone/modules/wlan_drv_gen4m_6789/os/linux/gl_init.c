@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0 OR BSD-3-Clause
 /*******************************************************************************
  *
  * This file is provided under a dual license.  When you use or
@@ -918,7 +919,7 @@ static const struct wiphy_vendor_command
 		.doit = mtk_cfg80211_vendor_packet_keep_alive_start
 		,
 		.policy = nla_parse_offloading_policy,
-		.maxattr = MKEEP_ALIVE_ATTRIBUTE_MAX
+		.maxattr = MKEEP_ALIVE_ATTRIBUTE_PERIOD_MSEC
 	},
 	{
 		{
@@ -930,7 +931,7 @@ static const struct wiphy_vendor_command
 		.doit = mtk_cfg80211_vendor_packet_keep_alive_stop
 		,
 		.policy = nla_parse_offloading_policy,
-		.maxattr = MKEEP_ALIVE_ATTRIBUTE_MAX
+		.maxattr = MKEEP_ALIVE_ATTRIBUTE_PERIOD_MSEC
 	},
 	/* Get Driver Version or Firmware Version */
 	{
@@ -2760,14 +2761,14 @@ static void wlanCreateWirelessDevice(void)
 		goto free_wiphy;
 	}
 	kalMemSet(prGlueInfo, 0, sizeof(struct GLUE_INFO));
+	kalFwkBlacklistInit(prGlueInfo);
 	*((struct GLUE_INFO **) wiphy_priv(prWiphy)) = prGlueInfo;
 
 	/* 4 <1.3> configure wireless_dev & wiphy */
 	prWiphy->iface_combinations = p_mtk_iface_combinations_sta;
 	prWiphy->n_iface_combinations =
 		mtk_iface_combinations_sta_num;
-	prWiphy->max_scan_ssids = SCN_SSID_MAX_NUM +
-				  1; /* include one wildcard ssid */
+	prWiphy->max_scan_ssids = SCN_SSID_MAX_NUM;
 	prWiphy->max_scan_ie_len = 512;
 #if CFG_SUPPORT_SCHED_SCAN
 	prWiphy->max_sched_scan_ssids     =
@@ -3121,7 +3122,8 @@ struct wireless_dev *wlanNetCreate(void *pvData,
 
 	/* 4 <2> Create Glue structure */
 	WIPHY_PRIV(prWdev->wiphy, prGlueInfo);
-	kalMemZero(prGlueInfo, sizeof(struct GLUE_INFO));
+	if (kalFwkBlacklistResetGlue(prGlueInfo))
+		return NULL;
 
 	/* 4 <2.1> Create Adapter structure */
 	prAdapter = (struct ADAPTER *) wlanAdapterCreate(
@@ -3558,19 +3560,21 @@ static void wlan_late_resume(struct early_suspend *h)
 
 #if (CFG_MTK_ANDROID_WMT || WLAN_INCLUDE_PROC)
 
-void reset_p2p_mode(struct GLUE_INFO *prGlueInfo)
+static int wlanResetP2pMode(struct GLUE_INFO *prGlueInfo,
+	u_int8_t fgIsRtnlLockAcquired)
 {
 	struct PARAM_CUSTOM_P2P_SET_STRUCT rSetP2P;
 	uint32_t rWlanStatus = WLAN_STATUS_SUCCESS;
 	uint32_t u4BufLen = 0;
 
 	if (!prGlueInfo)
-		return;
+		return -ENODEV;
 
 	rSetP2P.u4Enable = 0;
 	rSetP2P.u4Mode = 0;
 
-	p2pNetUnregister(prGlueInfo, FALSE);
+	if (!p2pNetUnregister(prGlueInfo, fgIsRtnlLockAcquired))
+		return -EBUSY;
 
 	rWlanStatus = kalIoctl(prGlueInfo, wlanoidSetP2pMode,
 			(void *) &rSetP2P,
@@ -3579,28 +3583,36 @@ void reset_p2p_mode(struct GLUE_INFO *prGlueInfo)
 
 	if (rWlanStatus != WLAN_STATUS_SUCCESS) {
 		DBGLOG(INIT, ERROR, "set p2p mode failed\n");
-		p2pRemove(prGlueInfo);
+		return -EIO;
 	}
 	DBGLOG(INIT, INFO,
 			"ret = 0x%08x\n", (uint32_t) rWlanStatus);
+	return 0;
 }
 
-int set_p2p_mode_handler(struct net_device *netdev,
-			 struct PARAM_CUSTOM_P2P_SET_STRUCT p2pmode)
+int wlanSetP2pMode(struct net_device *netdev,
+	struct PARAM_CUSTOM_P2P_SET_STRUCT p2pmode,
+	u_int8_t fgIsRtnlLockAcquired)
 {
-	struct GLUE_INFO *prGlueInfo = *((struct GLUE_INFO **)
-					 netdev_priv(netdev));
+	struct GLUE_INFO *prGlueInfo;
 	struct PARAM_CUSTOM_P2P_SET_STRUCT rSetP2P;
 	uint32_t rWlanStatus = WLAN_STATUS_SUCCESS;
 	uint32_t u4BufLen = 0;
+	int ret;
 
+	if (!netdev || p2pmode.u4Enable > 1 ||
+	    p2pmode.u4Mode >= RUNNING_P2P_MODE_NUM)
+		return -EINVAL;
+	prGlueInfo = *((struct GLUE_INFO **)netdev_priv(netdev));
 	if (!prGlueInfo)
-		return -1;
+		return -ENODEV;
+	if (fgIsRtnlLockAcquired)
+		ASSERT_RTNL();
 
 #if (CFG_MTK_ANDROID_WMT)
 	if (prGlueInfo->u4ReadyFlag == 0) {
 		DBGLOG(INIT, ERROR, "adapter is not ready\n");
-		return -1;
+		return -ESHUTDOWN;
 	}
 #endif /*CFG_MTK_ANDROID_WMT*/
 
@@ -3636,14 +3648,17 @@ int set_p2p_mode_handler(struct net_device *netdev,
 		&& prGlueInfo->prAdapter->fgIsP2PRegistered
 		&& !kalIsResetting()) {
 		DBGLOG(INIT, WARN, "Resetting p2p mode\n");
-		reset_p2p_mode(prGlueInfo);
+		ret = wlanResetP2pMode(prGlueInfo, fgIsRtnlLockAcquired);
+		if (ret)
+			return ret;
 	}
 
 	rSetP2P.u4Enable = p2pmode.u4Enable;
 	rSetP2P.u4Mode = p2pmode.u4Mode;
 
-	if ((!rSetP2P.u4Enable) && (kalIsResetting() == FALSE))
-		p2pNetUnregister(prGlueInfo, FALSE);
+	if (!rSetP2P.u4Enable && !kalIsResetting() &&
+	    !p2pNetUnregister(prGlueInfo, fgIsRtnlLockAcquired))
+		return -EBUSY;
 
 	rWlanStatus = kalIoctl(prGlueInfo, wlanoidSetP2pMode,
 			(void *) &rSetP2P,
@@ -3655,18 +3670,33 @@ int set_p2p_mode_handler(struct net_device *netdev,
 			(uint32_t) rWlanStatus,
 			prGlueInfo->prAdapter->fgIsP2PRegistered,
 			kalIsResetting());
+	if (rWlanStatus != WLAN_STATUS_SUCCESS)
+		return -EIO;
 
 
 	/* Need to check fgIsP2PRegistered, in case of whole chip reset.
 	 * in this case, kalIOCTL return success always,
 	 * and prGlueInfo->prP2PInfo[0] may be NULL
 	 */
-	if ((rSetP2P.u4Enable)
-	    && (prGlueInfo->prAdapter->fgIsP2PRegistered)
-	    && (kalIsResetting() == FALSE))
-		p2pNetRegister(prGlueInfo, FALSE);
+	if (rSetP2P.u4Enable && !kalIsResetting()) {
+		if (!prGlueInfo->prAdapter->fgIsP2PRegistered)
+			return -EIO;
+		if (!p2pNetRegister(prGlueInfo, fgIsRtnlLockAcquired)) {
+			ret = wlanResetP2pMode(prGlueInfo, fgIsRtnlLockAcquired);
+			if (ret)
+				DBGLOG(INIT, ERROR,
+					"P2P registration cleanup failed: %d\n", ret);
+			return -EIO;
+		}
+	}
 
 	return 0;
+}
+
+int set_p2p_mode_handler(struct net_device *netdev,
+	struct PARAM_CUSTOM_P2P_SET_STRUCT p2pmode)
+{
+	return wlanSetP2pMode(netdev, p2pmode, FALSE);
 }
 
 #endif
@@ -4567,6 +4597,7 @@ void wlanOnPreAdapterStart(struct GLUE_INFO *prGlueInfo,
 #endif
 
 	DBGLOG(INIT, TRACE, "start.\n");
+	kalFwkBlacklistClose(prGlueInfo);
 	prGlueInfo->u4ReadyFlag = 0;
 #if CFG_MTK_ANDROID_WMT
 	update_driver_loaded_status(prGlueInfo->u4ReadyFlag);
@@ -4972,6 +5003,10 @@ int32_t wlanOnWhenProbeSuccess(struct GLUE_INFO *prGlueInfo,
 #endif
 	kalSetHalted(FALSE);
 
+#if CFG_MTK_MDDP_SUPPORT
+	mddpSetCallbacksReady(true);
+#endif
+
 
 #ifdef CONFIG_MTK_CONNSYS_DEDICATED_LOG_PATH
 #if (CFG_SUPPORT_ICS == 1)
@@ -5083,6 +5118,7 @@ void wlanOffWaitWlanThreads(IN struct completion *prComp,
 
 void wlanOffStopWlanThreads(IN struct GLUE_INFO *prGlueInfo)
 {
+	kalFwkBlacklistClose(prGlueInfo);
 	DBGLOG(INIT, TRACE, "start.\n");
 
 #if CFG_SUPPORT_MULTITHREAD
@@ -5112,6 +5148,7 @@ void wlanOffStopWlanThreads(IN struct GLUE_INFO *prGlueInfo)
 		DBGLOG(NIC, TRACE, "rPendComp=%p", &prGlueInfo->rPendComp);
 		complete(&prGlueInfo->rPendComp);
 	}
+	kalFwkBlacklistCallerDrain(prGlueInfo);
 }
 
 
@@ -5160,6 +5197,7 @@ static int32_t wlanOffAtReset(void)
 	}
 
 	/* to avoid that wpa_supplicant/hostapd triogger new cfg80211 command */
+	kalFwkBlacklistClose(prGlueInfo);
 	prGlueInfo->u4ReadyFlag = 0;
 #if CFG_MTK_ANDROID_WMT
 	update_driver_loaded_status(prGlueInfo->u4ReadyFlag);
@@ -5695,6 +5733,7 @@ static int32_t wlanProbe(void *pvData, void *pvDriverData)
 			wlanUnregisterInetAddrNotifier();
 			fallthrough;
 		case NET_REGISTER_FAIL:
+			kalFwkBlacklistClose(prGlueInfo);
 			set_bit(GLUE_FLAG_HALT_BIT, &prGlueInfo->ulFlag);
 #if CFG_SUPPORT_MULTITHREAD
 			wake_up_interruptible(&prGlueInfo->waitq_hif);
@@ -5709,6 +5748,7 @@ static int32_t wlanProbe(void *pvData, void *pvDriverData)
 			/* wait main thread stops */
 			wait_for_completion_interruptible(
 							&prGlueInfo->rHaltComp);
+			kalFwkBlacklistCallerDrain(prGlueInfo);
 			wlanAdapterStop(prAdapter, FALSE);
 			fallthrough;
 		case ADAPTER_START_FAIL:
@@ -5786,6 +5826,10 @@ static void wlanRemove(void)
 
 	DBGLOG(INIT, INFO, "Remove wlan!\n");
 
+#if CFG_MTK_MDDP_SUPPORT
+	mddpSetCallbacksReady(false);
+#endif
+
 	kalSetHalted(TRUE);
 
 	/*reset NVRAM State to ready for the next wifi-no*/
@@ -5845,6 +5889,7 @@ static void wlanRemove(void)
 	}
 
 	/* to avoid that wpa_supplicant/hostapd triogger new cfg80211 command */
+	kalFwkBlacklistClose(prGlueInfo);
 	prGlueInfo->u4ReadyFlag = 0;
 #if CFG_MTK_ANDROID_WMT
 	update_driver_loaded_status(prGlueInfo->u4ReadyFlag);
@@ -6184,6 +6229,10 @@ static void exitWlan(void)
 	glResetUninit();
 #endif
 
+#if CFG_MODIFY_TX_POWER_BY_BAT_VOLT
+	kalBatNotifierUnReg();
+#endif
+
 	glUnregisterBus(wlanRemove);
 
 #if CFG_SUPPORT_PERSIST_NETDEV
@@ -6208,9 +6257,6 @@ static void exitWlan(void)
 	kalFbNotifierUnReg();
 	wlanUnregisterNetdevNotifier();
 
-#if CFG_MODIFY_TX_POWER_BY_BAT_VOLT
-	kalBatNotifierUnReg();
-#endif
 
 	/* free pre-allocated memory */
 	kalUninitIOBuffer();

@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: GPL-2.0 OR BSD-3-Clause */
 /*******************************************************************************
  *
  * This file is provided under a dual license.  When you use or
@@ -328,6 +329,9 @@
 #endif
 
 #include "ie_sort.h"
+#if CFG_MTK_MDDP_SUPPORT
+#include "mddp.h"
+#endif
 /*******************************************************************************
  *                              C O N S T A N T S
  *******************************************************************************

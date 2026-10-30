@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0 OR BSD-3-Clause
 /*******************************************************************************
  *
  * This file is provided under a dual license.  When you use or
@@ -105,6 +106,7 @@
 #include <net/sch_generic.h>
 #include <linux/skbuff.h>
 #include <linux/module.h>
+#include <linux/mutex.h>
 #include <linux/debugfs.h>
 
 /* for uevent */
@@ -213,6 +215,8 @@ static struct KAL_HALT_CTRL_T rHaltCtrl = {
 u_int8_t wlan_fb_power_down = FALSE;
 #if CFG_MODIFY_TX_POWER_BY_BAT_VOLT
 void *wlan_bat_volt_notifier_priv_data;
+static struct lbat_user *wlan_lbat_user;
+static DEFINE_MUTEX(wlan_lbat_mutex);
 unsigned int wlan_bat_volt;
 bool fgIsTxPowerDecreased = FALSE;
 #endif
@@ -4503,6 +4507,346 @@ int rx_thread(void *data)
  */
 /*----------------------------------------------------------------------------*/
 
+int kalScanRequestSsidStatus(const struct cfg80211_scan_request *request)
+{
+	int i;
+
+	if (!request || request->n_ssids < 0)
+		return -EINVAL;
+	if (request->n_ssids > SCN_SSID_MAX_NUM)
+		return -E2BIG;
+	if (request->n_ssids && !request->ssids)
+		return -EINVAL;
+	for (i = 0; i < request->n_ssids; i++)
+		if (request->ssids[i].ssid_len > ELEM_MAX_LEN_SSID)
+			return -EINVAL;
+	return 0;
+}
+
+static int kalFwkBlacklistAdmissionStatus(struct GLUE_INFO *glue,
+	struct GL_FWK_BLACKLIST_SLOT *slot)
+{
+	lockdep_assert_held(&slot->state_lock);
+	if (!slot->accepting || !slot->owner_live ||
+	    !READ_ONCE(glue->u4ReadyFlag) ||
+	    test_bit(GLUE_FLAG_HALT_BIT, &glue->ulFlag) || kalIsResetting())
+		return -ESHUTDOWN;
+	if (slot->role_blocked)
+		return -EBUSY;
+	return 0;
+}
+
+static int kalFwkBlacklistCancelStatus(struct GLUE_INFO *glue,
+	struct GL_FWK_BLACKLIST_SLOT *slot)
+{
+	int result = kalFwkBlacklistAdmissionStatus(glue, slot);
+
+	if (result)
+		return result;
+	if (slot->cancelled || time_after_eq(jiffies, slot->deadline))
+		return -ETIMEDOUT;
+	return 0;
+}
+
+static void kalFwkBlacklistFinish(struct GL_FWK_BLACKLIST_SLOT *slot,
+	int result)
+{
+	lockdep_assert_held(&slot->state_lock);
+	slot->result = result;
+	slot->state = slot->cancelled ? GL_FWK_BLACKLIST_IDLE :
+		GL_FWK_BLACKLIST_DONE;
+	complete(&slot->done);
+	complete_all(&slot->owner_idle);
+}
+
+void kalFwkBlacklistInit(struct GLUE_INFO *glue)
+{
+	struct GL_FWK_BLACKLIST_SLOT *slot = &glue->rFwkBlacklist;
+
+	mutex_init(&slot->caller_lock);
+	mutex_init(&slot->state_lock);
+	init_completion(&slot->done);
+	init_completion(&slot->owner_idle);
+	complete_all(&slot->owner_idle);
+	slot->state = GL_FWK_BLACKLIST_IDLE;
+	slot->accepting = false;
+	slot->cancelled = false;
+	slot->owner_live = false;
+	slot->role_blocked = false;
+}
+
+int kalFwkBlacklistOwnerStart(struct GLUE_INFO *glue)
+{
+	struct GL_FWK_BLACKLIST_SLOT *slot = &glue->rFwkBlacklist;
+	int result = 0;
+
+	mutex_lock(&slot->caller_lock);
+	mutex_lock(&slot->state_lock);
+	if (slot->owner_live || slot->state != GL_FWK_BLACKLIST_IDLE)
+		result = -EBUSY;
+	else {
+		slot->accepting = true;
+		slot->owner_live = true;
+	}
+	mutex_unlock(&slot->state_lock);
+	mutex_unlock(&slot->caller_lock);
+	return result;
+}
+
+int kalFwkBlacklistResetGlue(struct GLUE_INFO *glue)
+{
+	struct GL_FWK_BLACKLIST_SLOT *slot = &glue->rFwkBlacklist;
+	int result = 0;
+
+	mutex_lock(&slot->caller_lock);
+	mutex_lock(&slot->state_lock);
+	if (slot->owner_live || slot->state != GL_FWK_BLACKLIST_IDLE)
+		result = -EBUSY;
+	else
+		slot->accepting = false;
+	mutex_unlock(&slot->state_lock);
+	if (!result) {
+		memset(glue, 0, offsetof(struct GLUE_INFO, rFwkBlacklist));
+		memset((uint8_t *)glue + offsetofend(struct GLUE_INFO, rFwkBlacklist),
+			0, sizeof(*glue) - offsetofend(struct GLUE_INFO, rFwkBlacklist));
+	}
+	mutex_unlock(&slot->caller_lock);
+	return result;
+}
+
+int kalFwkBlacklistRoleBegin(struct GLUE_INFO *glue)
+{
+	struct GL_FWK_BLACKLIST_SLOT *slot = &glue->rFwkBlacklist;
+	int result = 0;
+	unsigned long idle;
+
+	if (in_interrupt() || irqs_disabled() || in_atomic())
+		return -EWOULDBLOCK;
+	if (current == READ_ONCE(glue->main_thread))
+		return -EDEADLK;
+	if (!mutex_trylock(&slot->caller_lock))
+		return -EBUSY;
+	mutex_lock(&slot->state_lock);
+	if (!slot->owner_live || !slot->accepting ||
+	    !READ_ONCE(glue->u4ReadyFlag) ||
+	    test_bit(GLUE_FLAG_HALT_BIT, &glue->ulFlag) || kalIsResetting())
+		result = -ESHUTDOWN;
+	else if (slot->role_blocked)
+		result = -EBUSY;
+	if (result) {
+		mutex_unlock(&slot->state_lock);
+		mutex_unlock(&slot->caller_lock);
+		return result;
+	}
+	slot->role_blocked = true;
+	if (slot->state == GL_FWK_BLACKLIST_QUEUED ||
+	    slot->state == GL_FWK_BLACKLIST_RUNNING) {
+		slot->cancelled = true;
+		complete(&slot->done);
+	}
+	mutex_unlock(&slot->state_lock);
+	wake_up_interruptible(&glue->waitq);
+	idle = wait_for_completion_timeout(&slot->owner_idle,
+		msecs_to_jiffies(5000));
+	mutex_lock(&slot->state_lock);
+	if (!idle)
+		result = -EBUSY;
+	else if (!slot->owner_live || !slot->accepting ||
+		 !READ_ONCE(glue->u4ReadyFlag) ||
+		 test_bit(GLUE_FLAG_HALT_BIT, &glue->ulFlag) || kalIsResetting())
+		result = -ESHUTDOWN;
+	if (result)
+		slot->role_blocked = false;
+	mutex_unlock(&slot->state_lock);
+	if (result)
+		mutex_unlock(&slot->caller_lock);
+	return result;
+}
+
+int kalFwkBlacklistRoleEnd(struct GLUE_INFO *glue)
+{
+	struct GL_FWK_BLACKLIST_SLOT *slot = &glue->rFwkBlacklist;
+	int result = 0;
+
+	lockdep_assert_held(&slot->caller_lock);
+	mutex_lock(&slot->state_lock);
+	if (!slot->owner_live || !slot->accepting ||
+	    !READ_ONCE(glue->u4ReadyFlag) ||
+	    test_bit(GLUE_FLAG_HALT_BIT, &glue->ulFlag) || kalIsResetting())
+		result = -ESHUTDOWN;
+	slot->role_blocked = false;
+	mutex_unlock(&slot->state_lock);
+	mutex_unlock(&slot->caller_lock);
+	return result;
+}
+
+void kalFwkBlacklistClose(struct GLUE_INFO *glue)
+{
+	struct GL_FWK_BLACKLIST_SLOT *slot = &glue->rFwkBlacklist;
+
+	mutex_lock(&slot->state_lock);
+	slot->accepting = false;
+	if (slot->state == GL_FWK_BLACKLIST_QUEUED ||
+	    slot->state == GL_FWK_BLACKLIST_RUNNING) {
+		slot->cancelled = true;
+		complete(&slot->done);
+	}
+	mutex_unlock(&slot->state_lock);
+}
+
+void kalFwkBlacklistOwnerDrain(struct GLUE_INFO *glue)
+{
+	struct GL_FWK_BLACKLIST_SLOT *slot = &glue->rFwkBlacklist;
+
+	mutex_lock(&slot->state_lock);
+	slot->accepting = false;
+	slot->owner_live = false;
+	if (slot->state == GL_FWK_BLACKLIST_QUEUED ||
+	    slot->state == GL_FWK_BLACKLIST_RUNNING) {
+		slot->cancelled = true;
+		slot->result = -ESHUTDOWN;
+		slot->state = GL_FWK_BLACKLIST_IDLE;
+	}
+	clear_bit(GLUE_FLAG_FWK_BLACKLIST_BIT, &glue->ulFlag);
+	complete(&slot->done);
+	complete_all(&slot->owner_idle);
+	mutex_unlock(&slot->state_lock);
+}
+
+void kalFwkBlacklistCallerDrain(struct GLUE_INFO *glue)
+{
+	mutex_lock(&glue->rFwkBlacklist.caller_lock);
+	mutex_unlock(&glue->rFwkBlacklist.caller_lock);
+}
+
+int kalFwkBlacklistGetEnabled(struct GLUE_INFO *glue, bool *enabled)
+{
+	struct GL_FWK_BLACKLIST_SLOT *slot;
+	int result;
+
+	if (!glue || !enabled)
+		return -EINVAL;
+	if (in_interrupt() || irqs_disabled() || in_atomic())
+		return -EWOULDBLOCK;
+	if (current == READ_ONCE(glue->main_thread))
+		return -EDEADLK;
+	slot = &glue->rFwkBlacklist;
+	if (!mutex_trylock(&slot->caller_lock))
+		return -EBUSY;
+	mutex_lock(&slot->state_lock);
+	result = kalFwkBlacklistAdmissionStatus(glue, slot);
+	if (!result)
+		*enabled = READ_ONCE(glue->u4FWRoamingEnable) != 0;
+	mutex_unlock(&slot->state_lock);
+	mutex_unlock(&slot->caller_lock);
+	return result;
+}
+
+int kalFwkBlacklistSubmit(struct GLUE_INFO *glue, uint32_t count,
+	const uint8_t bssid[][PARAM_MAC_ADDR_LEN])
+{
+	struct GL_FWK_BLACKLIST_SLOT *slot;
+	unsigned long timeout = msecs_to_jiffies(5000);
+	int result;
+
+	if (!glue || count > CFG_FW_ROAMING_BLACKLIST_SIZE || (count && !bssid))
+		return -EINVAL;
+	if (in_interrupt() || irqs_disabled() || in_atomic())
+		return -EWOULDBLOCK;
+	if (current == READ_ONCE(glue->main_thread))
+		return -EDEADLK;
+	slot = &glue->rFwkBlacklist;
+	if (!mutex_trylock(&slot->caller_lock))
+		return -EBUSY;
+	mutex_lock(&slot->state_lock);
+	result = kalFwkBlacklistAdmissionStatus(glue, slot);
+	if (result)
+		goto unlock;
+	if (slot->state != GL_FWK_BLACKLIST_IDLE) {
+		result = -EBUSY;
+		goto unlock;
+	}
+	if (!READ_ONCE(glue->u4FWRoamingEnable)) {
+		result = 0;
+		goto unlock;
+	}
+	reinit_completion(&slot->done);
+	reinit_completion(&slot->owner_idle);
+	memset(&slot->request, 0, sizeof(slot->request));
+	slot->request.count = count;
+	if (count)
+		memcpy(slot->request.bssid, bssid, count * PARAM_MAC_ADDR_LEN);
+	slot->cancelled = false;
+	slot->deadline = jiffies + timeout;
+	slot->result = -EINPROGRESS;
+	slot->state = GL_FWK_BLACKLIST_QUEUED;
+	set_bit(GLUE_FLAG_FWK_BLACKLIST_BIT, &glue->ulFlag);
+	mutex_unlock(&slot->state_lock);
+	wake_up_interruptible(&glue->waitq);
+	wait_for_completion_timeout(&slot->done, timeout);
+	mutex_lock(&slot->state_lock);
+	if (slot->state == GL_FWK_BLACKLIST_DONE) {
+		result = slot->result;
+		slot->state = GL_FWK_BLACKLIST_IDLE;
+	} else {
+		slot->cancelled = true;
+		result = kalFwkBlacklistCancelStatus(glue, slot);
+		if (!result)
+			result = -ETIMEDOUT;
+	}
+unlock:
+	mutex_unlock(&slot->state_lock);
+	mutex_unlock(&slot->caller_lock);
+	return result;
+}
+
+static void kalFwkBlacklistProcess(struct GLUE_INFO *glue)
+{
+	struct GL_FWK_BLACKLIST_SLOT *slot = &glue->rFwkBlacklist;
+	struct GL_FWK_BLACKLIST_REQUEST request;
+	struct AIS_FWK_BLACKLIST_PLAN *plan = NULL;
+	int result, cancelled;
+
+	BUILD_BUG_ON(PARAM_MAC_ADDR_LEN != MAC_ADDR_LEN);
+	mutex_lock(&slot->state_lock);
+	if (slot->state != GL_FWK_BLACKLIST_QUEUED) {
+		mutex_unlock(&slot->state_lock);
+		return;
+	}
+	result = kalFwkBlacklistCancelStatus(glue, slot);
+	if (result) {
+		slot->cancelled = true;
+		kalFwkBlacklistFinish(slot, result);
+		mutex_unlock(&slot->state_lock);
+		return;
+	}
+	request = slot->request;
+	slot->state = GL_FWK_BLACKLIST_RUNNING;
+	mutex_unlock(&slot->state_lock);
+	result = aisPrepareFwkBlacklist(glue->prAdapter,
+		request.count, request.bssid, &plan);
+	if (!result && !plan)
+		result = -EIO;
+	mutex_lock(&slot->state_lock);
+	cancelled = kalFwkBlacklistCancelStatus(glue, slot);
+	if (!result && !cancelled) {
+		aisCommitFwkBlacklist(plan);
+		kalFwkBlacklistFinish(slot, 0);
+		mutex_unlock(&slot->state_lock);
+		return;
+	}
+	if (cancelled) {
+		slot->cancelled = true;
+		result = cancelled;
+	}
+	mutex_unlock(&slot->state_lock);
+	if (plan)
+		aisAbortFwkBlacklist(plan);
+	mutex_lock(&slot->state_lock);
+	kalFwkBlacklistFinish(slot, result);
+	mutex_unlock(&slot->state_lock);
+}
+
 int main_thread(void *data)
 {
 	struct net_device *dev = data;
@@ -4511,6 +4855,7 @@ int main_thread(void *data)
 	struct GL_IO_REQ *prIoReq = NULL;
 	int ret = 0;
 	u_int8_t fgNeedHwAccess = FALSE;
+	u_int8_t fgFwkBlacklistOwner;
 #if defined(CONFIG_ANDROID) && (CFG_ENABLE_WAKE_LOCK)
 	KAL_WAKE_LOCK_T *prTxThreadWakeLock;
 #endif
@@ -4530,6 +4875,10 @@ int main_thread(void *data)
 	current->flags |= PF_NOFREEZE;
 	ASSERT(prGlueInfo);
 	ASSERT(prGlueInfo->prAdapter);
+	ret = kalFwkBlacklistOwnerStart(prGlueInfo);
+	fgFwkBlacklistOwner = ret == 0;
+	if (ret)
+		DBGLOG(INIT, ERROR, "Roaming request owner unavailable: %d\n", ret);
 	set_user_nice(current,
 		      prGlueInfo->prAdapter->rWifiVar.cThreadNice);
 
@@ -4711,6 +5060,11 @@ int main_thread(void *data)
 			TRACE(halUpdateTxMaxQuota(prGlueInfo->prAdapter),
 					"UPDATE_WMM");
 #endif
+		if (fgFwkBlacklistOwner &&
+		    test_and_clear_bit(GLUE_FLAG_FWK_BLACKLIST_BIT,
+			&prGlueInfo->ulFlag))
+			kalFwkBlacklistProcess(prGlueInfo);
+
 		/* transfer ioctl to OID request */
 #ifdef UT_TEST_MODE
 		testProcessOid(prGlueInfo->prAdapter);
@@ -4910,6 +5264,8 @@ int main_thread(void *data)
 	/* remove pending oid */
 	wlanReleasePendingOid(prGlueInfo->prAdapter, 0);
 
+	if (fgFwkBlacklistOwner)
+		kalFwkBlacklistOwnerDrain(prGlueInfo);
 	complete(&prGlueInfo->rHaltComp);
 #if defined(CONFIG_ANDROID) && (CFG_ENABLE_WAKE_LOCK)
 	if (KAL_WAKE_LOCK_ACTIVE(prGlueInfo->prAdapter,
@@ -6536,17 +6892,17 @@ kalGetIPv4Address(IN struct net_device *prDev,
 
 	/* 4 <2> copy the IPv4 address */
 	while ((u4NumIPv4 < u4MaxNumOfAddr) && prIfa) {
-		kalMemCopy(&pucIpv4Addrs[u4NumIPv4 * u4AddrLen],
+		kalMemCopy(&pucIpv4Addrs[u4NumIPv4 * u4AddrLen * 2],
 			&prIfa->ifa_local, u4AddrLen);
-		kalMemCopy(&pucIpv4Addrs[(u4NumIPv4+1) * u4AddrLen],
+		kalMemCopy(&pucIpv4Addrs[(u4NumIPv4 * 2 + 1) * u4AddrLen],
 			&prIfa->ifa_mask, u4AddrLen);
 		prIfa = prIfa->ifa_next;
 
 		DBGLOG(INIT, INFO,
 			"IPv4 addr [%u][" IPV4STR "] mask [" IPV4STR "]\n",
 			u4NumIPv4,
-			IPV4TOSTR(&pucIpv4Addrs[u4NumIPv4*u4AddrLen]),
-			IPV4TOSTR(&pucIpv4Addrs[(u4NumIPv4+1)*u4AddrLen]));
+			IPV4TOSTR(&pucIpv4Addrs[u4NumIPv4 * u4AddrLen * 2]),
+			IPV4TOSTR(&pucIpv4Addrs[(u4NumIPv4 * 2 + 1) * u4AddrLen]));
 
 		u4NumIPv4++;
 	}
@@ -6585,11 +6941,16 @@ kalGetIPv6Address(IN struct net_device *prDev,
 	/* 4 <2> copy the IPv6 address */
 	read_lock_bh(&prIn6Dev->lock);
 	LIST_FOR_EACH_IPV6_ADDR(prIfa, prIn6Dev) {
+		uint32_t flags = READ_ONCE(prIfa->flags);
+
 		if (u4NumIPv6 >= u4MaxNumOfAddr)
 			break;
-		if (READ_ONCE(prIfa->flags) &
-		    (IFA_F_TENTATIVE | IFA_F_DADFAILED))
+		if (flags & (IFA_F_TENTATIVE | IFA_F_DADFAILED)) {
+			if ((flags & IFA_F_TENTATIVE) &&
+			    !(flags & IFA_F_DADFAILED))
+				wlanScheduleNetAddrUpdate(HZ);
 			continue;
+		}
 		kalMemCopy(&pucIpv6Addrs[u4NumIPv6 * u4AddrLen],
 			   &prIfa->addr, u4AddrLen);
 
@@ -8712,13 +9073,11 @@ static int wlan_fb_notifier_callback(struct notifier_block
 	case MTK_DISP_BLANK_UNBLANK:
 		kalSetPerMonEnable(prGlueInfo);
 		wlan_fb_power_down = FALSE;
-		wlanSetSuspendMode(prGlueInfo, FALSE);
 		break;
 	case MTK_DISP_BLANK_POWERDOWN:
 		wlan_fb_power_down = TRUE;
 		if (!wlan_perf_monitor_force_enable)
 			kalSetPerMonDisable(prGlueInfo);
-		wlanSetSuspendMode(prGlueInfo, TRUE);
 		break;
 	default:
 		break;
@@ -8730,57 +9089,11 @@ end:
 	return 0;
 }
 
-static uint32_t mindone_wifi_os_filter;
-static bool mindone_wifi_os_filter_saved;
-
-static int mindone_wifi_pm_event(struct notifier_block *nb,
-				 unsigned long event, void *unused)
-{
-	struct GLUE_INFO *prGlueInfo = wlan_fb_notifier_priv_data;
-
-	if (!prGlueInfo || !wlanIsDriverReady(prGlueInfo))
-		return NOTIFY_DONE;
-	if (event == PM_SUSPEND_PREPARE) {
-		uint32_t f = PARAM_PACKET_FILTER_DIRECTED, len = 0, i;
-
-		mindone_wifi_os_filter = prGlueInfo->prAdapter->u4OsPacketFilter &
-					 PARAM_PACKET_FILTER_SUPPORTED;
-		mindone_wifi_os_filter_saved = true;
-		wlanSetSuspendMode(prGlueInfo, TRUE);
-		kalIoctl(prGlueInfo, wlanoidSetCurrentPacketFilter, &f,
-			 sizeof(f), FALSE, FALSE, TRUE, &len);
-		for (i = 0; i < 20 && !READ_ONCE(prGlueInfo->prAdapter->fgIsFwOwn); i++)
-			usleep_range(5000, 6000);
-		if (!READ_ONCE(prGlueInfo->prAdapter->fgIsFwOwn))
-			pr_info("wlan pm: suspend with driver own held\n");
-		pr_debug("wlan pm: suspend -> unicast-only filter (0x%x), OS filter 0x%x saved\n",
-			f, mindone_wifi_os_filter);
-	} else if (event == PM_POST_SUSPEND) {
-		uint32_t f = prGlueInfo->prAdapter->u4OsPacketFilter &
-			     PARAM_PACKET_FILTER_SUPPORTED, len = 0;
-
-		if (mindone_wifi_os_filter_saved)
-			f = mindone_wifi_os_filter;
-		mindone_wifi_os_filter_saved = false;
-		kalIoctl(prGlueInfo, wlanoidSetCurrentPacketFilter, &f,
-			 sizeof(f), FALSE, FALSE, TRUE, &len);
-		wlanSetSuspendMode(prGlueInfo, FALSE);
-		pr_debug("wlan pm: resume -> restore filter (0x%x)\n", f);
-	}
-	return NOTIFY_DONE;
-}
-
-static struct notifier_block mindone_wifi_pm_nb = {
-	.notifier_call = mindone_wifi_pm_event,
-};
-
 int32_t kalFbNotifierReg(IN struct GLUE_INFO *prGlueInfo)
 {
 	int32_t i4Ret;
 
 	wlan_fb_notifier_priv_data = prGlueInfo;
-
-	register_pm_notifier(&mindone_wifi_pm_nb);
 
 	i4Ret = mtk_disp_notifier_register("wlan_fb_notifier",
 			&wlan_fb_notifier);
@@ -8794,7 +9107,6 @@ int32_t kalFbNotifierReg(IN struct GLUE_INFO *prGlueInfo)
 
 void kalFbNotifierUnReg(void)
 {
-	unregister_pm_notifier(&mindone_wifi_pm_nb);
 	mtk_disp_notifier_unregister(&wlan_fb_notifier);
 	wlan_fb_notifier_priv_data = NULL;
 }
@@ -10442,27 +10754,37 @@ static void kal_bat_volt_notifier_callback(unsigned int volt)
 
 int32_t kalBatNotifierReg(IN struct GLUE_INFO *prGlueInfo)
 {
-	int32_t i4Ret = 0;
-	static struct lbat_user *lbat_pt;
+	struct lbat_user *user;
+	int32_t ret = 0;
+
+	mutex_lock(&wlan_lbat_mutex);
+	if (wlan_lbat_user) {
+		ret = -EBUSY;
+		goto out;
+	}
 	wlan_bat_volt_notifier_priv_data = prGlueInfo;
 	wlan_bat_volt = 0;
-	lbat_pt = lbat_user_register("WiFi Get Battery Voltage", RESTORE_VOLT,
-				BACKOFF_VOLT, 2000,
-				kal_bat_volt_notifier_callback);
-	if (IS_ERR(lbat_pt))
-		i4Ret = PTR_ERR(lbat_pt);
-
-	if (i4Ret)
-		DBGLOG(SW4, ERROR, "Register rWifiBatVolt failed:%d\n", i4Ret);
-	else
-		DBGLOG(SW4, INFO, "Register rWifiBatVolt succeed\n");
-
-	return i4Ret;
+	user = lbat_user_register("WiFi Get Battery Voltage", RESTORE_VOLT,
+				  BACKOFF_VOLT, 2000,
+				  kal_bat_volt_notifier_callback);
+	if (IS_ERR_OR_NULL(user)) {
+		ret = user ? PTR_ERR(user) : -ENODEV;
+		wlan_bat_volt_notifier_priv_data = NULL;
+	} else {
+		wlan_lbat_user = user;
+	}
+out:
+	mutex_unlock(&wlan_lbat_mutex);
+	return ret;
 }
 
 void kalBatNotifierUnReg(void)
 {
+	mutex_lock(&wlan_lbat_mutex);
+	lbat_user_unregister(wlan_lbat_user);
+	wlan_lbat_user = NULL;
 	wlan_bat_volt_notifier_priv_data = NULL;
+	mutex_unlock(&wlan_lbat_mutex);
 }
 
 #endif

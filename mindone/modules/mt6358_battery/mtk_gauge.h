@@ -295,6 +295,8 @@ struct mtk_gauge {
 	wait_queue_head_t  wait_que;
 	unsigned int gauge_update_flag;
 	struct hrtimer gauge_hrtimer;
+	struct iio_channel *chan_ptim_sample;
+	u64 ptim_sequence;
 
 };
 
@@ -309,5 +311,18 @@ struct mtk_gauge_sysfs_field_info {
 
 int gauge_get_charge_counter(struct mtk_gauge *gauge, int seed_uah,
 	int full_uah);
+
+struct gauge_ptim_sample {
+	u64 sequence;
+	u64 started_ns;
+	u64 acquired_ns;
+	int voltage_01mv;
+	int current_01ma;
+	int r_fg_value;
+	int car_tune_value;
+};
+
+int gauge_read_ptim_sample(struct mtk_gauge *gauge,
+	struct gauge_ptim_sample *sample);
 
 #endif /* __MTK_GAUGE_INTF_H__ */

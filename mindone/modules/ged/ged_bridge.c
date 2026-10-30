@@ -2,15 +2,13 @@
 /*
  * Copyright (c) 2019 MediaTek Inc.
  */
-
 #include <linux/kernel.h>
-#include <mt-plat/mtk_gpu_utility.h>
-
-#include <mt-plat/fpsgo_common.h>
+#include <mtk_gpu_utility.h>
 
 #include "ged_base.h"
 #include "ged_bridge.h"
 #include "ged_log.h"
+#include "ged_tracepoint.h"
 #include "ged_monitor_3D_fence.h"
 #include "ged_notify_sw_vsync.h"
 #include "ged_dvfs.h"
@@ -18,8 +16,16 @@
 #include "ged_kpi.h"
 #include "ged.h"
 
+#ifndef CONFIG_MTK_GPU_LEGACY
+#if IS_ENABLED(CONFIG_MTK_GPU_LEGACY)
+#include <gpufreq_v2_legacy.h>
+#else
+#include <gpufreq_v2.h>
+#endif
+#endif
+
 static unsigned int ged_boost_enable = 1;
-//-----------------------------------------------------------------------------
+
 int ged_bridge_log_buf_get(
 	struct GED_BRIDGE_IN_LOGBUFGET *psLogBufGetIN,
 	struct GED_BRIDGE_OUT_LOGBUFGET *psLogBufGetOUT)
@@ -29,7 +35,7 @@ int ged_bridge_log_buf_get(
 		psLogBufGetOUT->hLogBuf ? GED_OK : GED_ERROR_FAIL;
 	return 0;
 }
-//-----------------------------------------------------------------------------
+
 int ged_bridge_log_buf_write(
 	struct GED_BRIDGE_IN_LOGBUFWRITE *psLogBufWriteIN,
 	struct GED_BRIDGE_OUT_LOGBUFWRITE *psLogBufWriteOUT)
@@ -40,7 +46,7 @@ int ged_bridge_log_buf_write(
 		psLogBufWriteIN->attrs, "%s", psLogBufWriteIN->acLogBuf);
 	return 0;
 }
-//-----------------------------------------------------------------------------
+
 int ged_bridge_log_buf_reset(
 	struct GED_BRIDGE_IN_LOGBUFRESET *psLogBufResetIn,
 	struct GED_BRIDGE_OUT_LOGBUFRESET *psLogBufResetOUT)
@@ -48,7 +54,7 @@ int ged_bridge_log_buf_reset(
 	psLogBufResetOUT->eError = ged_log_buf_reset(psLogBufResetIn->hLogBuf);
 	return 0;
 }
-//-----------------------------------------------------------------------------
+
 int ged_bridge_boost_gpu_freq(
 	struct GED_BRIDGE_IN_BOOSTGPUFREQ *psBoostGpuFreqIN,
 	struct GED_BRIDGE_OUT_BOOSTGPUFREQ *psBoostGpuFreqOUT)
@@ -58,12 +64,11 @@ int ged_bridge_boost_gpu_freq(
 		GED_OK : GED_ERROR_FAIL;
 	return 0;
 }
-//-----------------------------------------------------------------------------
+
 int ged_bridge_monitor_3D_fence(
 	struct GED_BRIDGE_IN_MONITOR3DFENCE *psMonitor3DFenceINT,
 	struct GED_BRIDGE_OUT_MONITOR3DFENCE *psMonitor3DFenceOUT)
 {
-	unsigned int force_timeout_setting = force_fence_timeout_dump(true);
 	if (psMonitor3DFenceINT->dump_flag == 1) {
 		mtk_gpu_fence_debug_dump(
 			psMonitor3DFenceINT->fd,
@@ -71,20 +76,10 @@ int ged_bridge_monitor_3D_fence(
 			psMonitor3DFenceINT->eType,
 			psMonitor3DFenceINT->timeouts);
 		psMonitor3DFenceOUT->eError = GED_OK;
-	} else if (force_timeout_setting > 0){
-		mtk_gpu_fence_debug_dump(
-			psMonitor3DFenceINT->fd,
-			psMonitor3DFenceINT->pid,
-			psMonitor3DFenceINT->eType,
-			force_timeout_setting);
-		psMonitor3DFenceOUT->eError = GED_OK;
-	} else {
-		psMonitor3DFenceOUT->eError =
-			ged_monitor_3D_fence_add(psMonitor3DFenceINT->fd);
 	}
 	return 0;
 }
-//-----------------------------------------------------------------------------
+
 int ged_bridge_query_info(
 	struct GED_BRIDGE_IN_QUERY_INFO *psQueryInfoINT,
 	struct GED_BRIDGE_OUT_QUERY_INFO *psQueryInfoOUT)
@@ -92,7 +87,7 @@ int ged_bridge_query_info(
 	psQueryInfoOUT->retrieve = ged_query_info(psQueryInfoINT->eType);
 	return 0;
 }
-//-----------------------------------------------------------------------------
+
 int ged_bridge_notify_vsync(
 	struct GED_BRIDGE_IN_NOTIFY_VSYNC *psNotifyVsyncINT,
 	struct GED_BRIDGE_OUT_NOTIFY_VSYNC *psNotifyVsyncOUT)
@@ -103,7 +98,7 @@ int ged_bridge_notify_vsync(
 
 	return 0;
 }
-//-----------------------------------------------------------------------------
+
 int ged_bridge_dvfs_probe(
 	struct GED_BRIDGE_IN_DVFS_PROBE *psDVFSProbeINT,
 	struct GED_BRIDGE_OUT_DVFS_PROBE *psDVFSProbeOUT)
@@ -112,7 +107,6 @@ int ged_bridge_dvfs_probe(
 	return 0;
 }
 
-//-----------------------------------------------------------------------------
 int ged_bridge_dvfs_um_retrun(
 	struct GED_BRIDGE_IN_DVFS_UM_RETURN *psDVFS_UM_returnINT,
 	struct GED_BRIDGE_OUT_DVFS_UM_RETURN *psDVFS_UM_returnOUT)
@@ -123,7 +117,6 @@ int ged_bridge_dvfs_um_retrun(
 	return 0;
 }
 
-//-----------------------------------------------------------------------------
 int ged_bridge_event_notify(
 	struct GED_BRIDGE_IN_EVENT_NOTIFY *psEVENT_NOTIFYINT,
 	struct GED_BRIDGE_OUT_EVENT_NOTIFY *psEVENT_NOTIFYOUT)
@@ -139,7 +132,6 @@ int ged_bridge_event_notify(
 	return 0;
 }
 
-/* -------------------------------------------------------------------------- */
 int ged_bridge_gpu_timestamp(
 	struct GED_BRIDGE_IN_GPU_TIMESTAMP *psGpuBeginINT,
 	struct GED_BRIDGE_OUT_GPU_TIMESTAMP *psGpuBeginOUT)
@@ -152,6 +144,12 @@ int ged_bridge_gpu_timestamp(
 					psGpuBeginINT->i32FrameID,
 					psGpuBeginINT->fence_fd,
 					psGpuBeginINT->isSF);
+		} else if (psGpuBeginINT->fence_fd == -1 &&
+				   psGpuBeginINT->i32FrameID == -1 &&
+				   psGpuBeginINT->isSF == -3 &&
+				   psGpuBeginINT->pid == -1 ) {
+			psGpuBeginOUT->eError =
+				ged_kpi_target_fps_hint(psGpuBeginINT->ullWnd, psGpuBeginINT->QedBuffer_length);
 		} else if (psGpuBeginINT->QedBuffer_length != -1) {
 			psGpuBeginOUT->eError =
 				ged_kpi_queue_buffer_ts(psGpuBeginINT->pid,
@@ -173,36 +171,44 @@ int ged_bridge_gpu_timestamp(
 	return 0;
 }
 
-//-----------------------------------------------------------------------------
 int ged_bridge_gpu_hint_to_cpu(
 		struct GED_BRIDGE_IN_GPU_HINT_TO_CPU *in,
 		struct GED_BRIDGE_OUT_GPU_HINT_TO_CPU *out)
 {
 	int ret = 0;
-#if defined(CONFIG_MTK_FPSGO_V3) && IS_MODULE(CONFIG_MTK_GPU_SUPPORT)
-	ret = fpsgo_notify_gpu_block(in->tid, in->i32BridgeFD, in->hint);
-#endif
+	trace_GPU_DVFS__Policy__Common__Sync_Api(in->hint);
+	trace_tracing_mark_write(5566, "Sync_Api", in->hint);
 	out->eError = GED_OK;
 	out->boost_flag = ret;
-	out->boost_value = ged_dvfs_boost_value();
+
+#ifndef CONFIG_MTK_GPU_LEGACY
+	if (in->hint == 10)
+		out->boost_flag = gpufreq_get_cur_temperature();
+#endif
+
+	if (in->hint <= 1)
+		out->boost_value = ged_dvfs_boost_value();
+	else
+		out->boost_value = -1;
+
+	set_api_sync_flag(in->hint);
 
 	return 0;
 }
 
-//-----------------------------------------------------------------------------
 static int ged_force_mdp_enable;
 int ged_bridge_hint_force_mdp(
 	struct GED_BRIDGE_IN_HINT_FORCE_MDP *psHintForceMdpIn,
 	struct GED_BRIDGE_OUT_HINT_FORCE_MDP *psHintForceMdpOut)
 {
-	/* Set flag */
+
 	if (psHintForceMdpIn->hint != -1) {
 		ged_force_mdp_enable = psHintForceMdpIn->hint;
 		psHintForceMdpOut->eError =
 			(ged_force_mdp_enable == psHintForceMdpIn->hint) ?
 			GED_OK : GED_ERROR_FAIL;
 	}
-	/* Get flag */
+
 	else {
 		psHintForceMdpOut->mdp_flag = ged_force_mdp_enable;
 		psHintForceMdpOut->eError =
@@ -213,7 +219,6 @@ int ged_bridge_hint_force_mdp(
 	return 0;
 }
 
-//-----------------------------------------------------------------------------
 int ged_bridge_query_dvfs_freq_pred(
 	struct GED_BRIDGE_IN_QUERY_DVFS_FREQ_PRED *QueryDVFSFreqPredIn,
 	struct GED_BRIDGE_OUT_QUERY_DVFS_FREQ_PRED *QueryDVFSFreqPredOut)
@@ -232,7 +237,6 @@ int ged_bridge_query_dvfs_freq_pred(
 	return 0;
 }
 
-//-----------------------------------------------------------------------------
 int ged_bridge_query_gpu_dvfs_info(
 	struct GED_BRIDGE_IN_QUERY_GPU_DVFS_INFO *QueryGPUDVFSInfoIn,
 	struct GED_BRIDGE_OUT_QUERY_GPU_DVFS_INFO *QueryGPUDVFSInfoOut)
@@ -254,6 +258,24 @@ int ged_bridge_query_gpu_dvfs_info(
 	return 0;
 }
 
-//-----------------------------------------------------------------------------
+int ged_bridge_hint_frame_info(
+	struct GED_BRIDGE_IN_HINT_FRAME_INFO *HintFrameInfoIn,
+	struct GED_BRIDGE_OUT_HINT_FRAME_INFO *HintFrameInfoOut)
+{
+	GED_LOGD("HintFrameInfoIn %llu,%d,%d,%d--%u,%d,%d--%llu,%d--%d,%d,%d,%d",
+			(unsigned long long)HintFrameInfoIn->BBQ_id, HintFrameInfoIn->target_fps,
+			HintFrameInfoIn->target_fps_margin, HintFrameInfoIn->enable, HintFrameInfoIn->cmd,
+			HintFrameInfoIn->pid, HintFrameInfoIn->tid, (unsigned long long)HintFrameInfoIn->core,
+			HintFrameInfoIn->by_mask, HintFrameInfoIn->reserved1, HintFrameInfoIn->reserved2,
+			HintFrameInfoIn->reserved3, HintFrameInfoIn->reserved4);
+
+	if (HintFrameInfoIn->cmd == GED_FRAME_INFO_TARGET_FPS && HintFrameInfoIn->target_fps)
+		ged_kpi_set_target_FPS_api(HintFrameInfoIn->BBQ_id, HintFrameInfoIn->target_fps,
+			HintFrameInfoIn->target_fps_margin);
+	HintFrameInfoOut->eError = ged_kpi_hint_frame_info(HintFrameInfoOut);
+
+	return 0;
+}
+
 module_param(ged_boost_enable, uint, 0644);
 module_param(ged_force_mdp_enable, int, 0644);

@@ -685,9 +685,12 @@ static int __register_tcp_dev_notifier(struct tcpc_device *tcp_dev,
 	}
 	retval = __add_wrapper_to_managed_res_list(
 				tcp_dev, nb_wrapper, nb, idx);
-	if (retval < 0)
-		dev_warn(&tcp_dev->dev,
-			"Failed to add resource to manager(%d)\n", retval);
+	if (retval < 0) {
+		srcu_notifier_chain_unregister(tcp_dev->evt_nh + idx,
+					&nb_wrapper->stub_nb);
+		devm_kfree(&tcp_dev->dev, nb_wrapper);
+		return retval;
+	}
 
 	return 0;
 }
@@ -706,14 +709,19 @@ int register_tcp_dev_notifier(struct tcpc_device *tcp_dev,
 			struct notifier_block *nb, uint8_t flags)
 {
 	int ret = 0, i = 0;
+	uint8_t registered = 0;
 
 	if (__is_mulit_bits_set(flags)) {
 		for (i = 0; i < TCP_NOTIFY_IDX_NR; i++) {
 			if (flags & (1 << i)) {
 				ret = __register_tcp_dev_notifier(
 							tcp_dev, nb, i);
-				if (ret < 0)
+				if (ret < 0) {
+					if (registered)
+						unregister_tcp_dev_notifier(tcp_dev, nb, registered);
 					return ret;
+				}
+				registered |= 1 << i;
 			}
 		}
 	} else { /* single bit */
@@ -725,6 +733,9 @@ int register_tcp_dev_notifier(struct tcpc_device *tcp_dev,
 			}
 		}
 	}
+
+	if (ret < 0)
+		return ret;
 
 #if !CONFIG_TCPC_NOTIFIER_LATE_SYNC
 	if (tcp_dev->desc.notifier_supply_num == 0) {
@@ -750,10 +761,11 @@ static void *__remove_wrapper_from_managed_res_list(
 	struct tcpc_device *tcp_dev, void *key, int prv_id)
 {
 	void *retval = NULL;
-	struct tcpc_managed_res *mres = tcp_dev->mr_head;
+	struct tcpc_managed_res *mres;
 	struct tcpc_managed_res *prev = NULL;
 
 	mutex_lock(&tcp_dev->mr_lock);
+	mres = tcp_dev->mr_head;
 	if (mres) {
 		while (mres) {
 			if (mres->key == key && mres->prv_id == prv_id) {
@@ -761,7 +773,7 @@ static void *__remove_wrapper_from_managed_res_list(
 				if (prev)
 					prev->next = mres->next;
 				else
-					tcp_dev->mr_head = NULL;
+					tcp_dev->mr_head = mres->next;
 				devm_kfree(&tcp_dev->dev, mres);
 				break;
 			}
@@ -794,7 +806,7 @@ static int __unregister_tcp_dev_notifier(struct tcpc_device *tcp_dev,
 int unregister_tcp_dev_notifier(struct tcpc_device *tcp_dev,
 				struct notifier_block *nb, uint8_t flags)
 {
-	int i = 0, ret = 0;
+	int i = 0, ret = 0, first_error = 0;
 
 	for (i = 0; i < TCP_NOTIFY_IDX_NR; i++) {
 		if (flags & (1 << i)) {
@@ -802,11 +814,11 @@ int unregister_tcp_dev_notifier(struct tcpc_device *tcp_dev,
 			if (ret == -ENOENT)
 				ret = srcu_notifier_chain_unregister(
 					tcp_dev->evt_nh + i, nb);
-			if (ret < 0)
-				return ret;
+			if (ret < 0 && !first_error)
+				first_error = ret;
 		}
 	}
-	return ret;
+	return first_error;
 }
 EXPORT_SYMBOL(unregister_tcp_dev_notifier);
 

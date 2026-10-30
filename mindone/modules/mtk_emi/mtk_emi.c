@@ -340,11 +340,6 @@ static int emi_icc_probe(struct platform_device *pdev)
 	data->num_nodes = num_nodes;
 
 	icc_provider_init(provider);
-	ret = icc_provider_register(provider);
-	if (ret) {
-		dev_err(dev, "error adding interconnect provider\n");
-		return ret;
-	}
 
 	for (i = 0; i < num_nodes; i++) {
 		node = icc_node_create(mnodes[i]->id);
@@ -364,12 +359,17 @@ static int emi_icc_probe(struct platform_device *pdev)
 		data->nodes[i] = node;
 	}
 
+	ret = icc_provider_register(provider);
+	if (ret) {
+		dev_err(dev, "error adding interconnect provider\n");
+		goto err;
+	}
+
 	platform_set_drvdata(pdev, provider);
 
 	return 0;
 err:
 	icc_nodes_remove(provider);
-	icc_provider_deregister(provider);
 	return ret;
 }
 
@@ -377,8 +377,8 @@ static void emi_icc_remove(struct platform_device *pdev)
 {
 	struct icc_provider *provider = platform_get_drvdata(pdev);
 
-	icc_nodes_remove(provider);
 	icc_provider_deregister(provider);
+	icc_nodes_remove(provider);
 
 	return;
 }

@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: GPL-2.0 */
 #ifndef _AW86017CSR_H_
 #define _AW86017CSR_H_
 

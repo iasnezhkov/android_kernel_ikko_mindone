@@ -1,0 +1,10 @@
+# SPDX-License-Identifier: GPL-2.0
+# SPDX-FileCopyrightText: 2026 The LineageOS Project
+config MINDONE_DRM_HELPERS
+	tristate "MindOne DRM display and GEM DMA helper modules"
+	depends on DRM
+	select DRM_DISPLAY_HELPER
+	select DRM_GEM_DMA_HELPER
+	help
+	  Builds drm_display_helper.ko and drm_dma_helper.ko from the
+	  unmodified ACK sources for the out-of-tree MediaTek display driver.

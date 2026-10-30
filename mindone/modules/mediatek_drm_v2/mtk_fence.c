@@ -10,6 +10,7 @@
 
 #include <linux/wait.h>
 #include <linux/file.h>
+#include <linux/fdtable.h>
 #include <linux/sched/clock.h>
 #include <linux/sync_file.h>
 #include <linux/workqueue.h>
@@ -19,9 +20,6 @@
 #include "mtk_sync.h"
 #include <linux/moduleparam.h>
 #include <drivers/gpu/drm/mediatek/mediatek_v2/mtk_fence.h>
-unsigned long mindone_pf_time_fix;
-module_param(mindone_pf_time_fix, ulong, 0444);
-MODULE_PARM_DESC(mindone_pf_time_fix, "present fence timestamps replaced by ktime_get()");
 #include "mtk_drm_ddp_comp.h"
 #include "mtk_drm_session.h"
 #include "mtk_drm_plane.h"
@@ -381,6 +379,11 @@ static struct mtk_fence_buf_info *mtk_get_buf_info(void)
 		mtk_init_buf_info(info);
 	} else {
 		info = kzalloc(sizeof(struct mtk_fence_buf_info), GFP_KERNEL);
+		if (!info) {
+			mutex_unlock(&fence_buffer_mutex);
+			DDPPR_ERR("%s mtk_fence_buf_info allocate fail\n", __func__);
+			return NULL;
+		}
 		mtk_init_buf_info(info);
 		MTK_FENCE_LOG("create new mtk_fence_buf_info node %p\n", info);
 	}
@@ -555,7 +558,6 @@ int mtk_release_present_fence(unsigned int session_id, unsigned int fence_idx, k
 
 		if (time == 0 || time == mindone_last_pf_time) {
 			time = ktime_get();
-			mindone_pf_time_fix++;
 		}
 		mindone_last_pf_time = time;
 	}
@@ -790,9 +792,6 @@ int mtk_fence_convert_input_to_fence_layer_info(
  * @buf struct @fb_overlay_buffer
  * @return struct @mtk_fence_buf_info
  */
-unsigned long mindone_fence_timeout_fired;
-module_param(mindone_fence_timeout_fired, ulong, 0444);
-MODULE_PARM_DESC(mindone_fence_timeout_fired, "layer fences force-released by kernel timeout");
 unsigned int mindone_fence_timeout_ms = 500;
 module_param(mindone_fence_timeout_ms, uint, 0644);
 MODULE_PARM_DESC(mindone_fence_timeout_ms, "layer fence timeout in ms, 0 = disabled");
@@ -808,9 +807,6 @@ unsigned long mindone_empty_commit_jiffies;
 unsigned int mindone_wd_window_ms = 3000;
 module_param(mindone_wd_window_ms, uint, 0644);
 MODULE_PARM_DESC(mindone_wd_window_ms, "fence timeouts armed only within this window after an empty commit");
-unsigned long mindone_wd_gated;
-module_param(mindone_wd_gated, ulong, 0444);
-MODULE_PARM_DESC(mindone_wd_gated, "fence timeout firings suppressed by the empty-commit gate");
 
 static inline bool mindone_wd_armed(void)
 {
@@ -829,7 +825,6 @@ static void mindone_fence_wd_fn(struct work_struct *w)
 	if (!li || !li->timeline)
 		return;
 	if (!mindone_wd_armed()) {
-		mindone_wd_gated++;
 		return;
 	}
 	mutex_lock(&li->sync_lock);
@@ -838,10 +833,6 @@ static void mindone_fence_wd_fn(struct work_struct *w)
 	mutex_unlock(&li->sync_lock);
 	if (cur < target) {
 		mindone_empty_commit_jiffies = jiffies;
-		mindone_fence_timeout_fired++;
-		if ((mindone_fence_timeout_fired & 0xf) == 1)
-			pr_notice("MINDONE-FENCEWD: L%u timeline %u < fence_idx %u — force release (n=%lu)\n",
-				  wd->layer_id, cur, target, mindone_fence_timeout_fired);
 		mtk_release_fence(wd->session_id, wd->layer_id, target);
 	}
 }
@@ -907,6 +898,8 @@ struct mtk_fence_buf_info *mtk_fence_prepare_buf(struct drm_device *dev,
 	}
 
 	buf_info = mtk_get_buf_info();
+	if (!buf_info)
+		return NULL;
 	mutex_lock(&layer_info->sync_lock);
 	data.fence = MTK_INVALID_FENCE_FD;
 	data.value = ++(layer_info->fence_idx);
@@ -927,6 +920,11 @@ struct mtk_fence_buf_info *mtk_fence_prepare_buf(struct drm_device *dev,
 		buf_info->buf_hnd = mtk_drm_gem_ion_import_handle(buf->ion_fd);
 	if (buf_info->buf_hnd == NULL) {
 		DDPPR_ERR("import buf handle fail\n");
+		if (buf_info->fence >= 0)
+			close_fd(buf_info->fence);
+		mutex_lock(&fence_buffer_mutex);
+		list_add_tail(&buf_info->list, &info_pool_head);
+		mutex_unlock(&fence_buffer_mutex);
 		return NULL;
 	}
 

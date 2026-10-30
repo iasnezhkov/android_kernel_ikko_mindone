@@ -2477,7 +2477,7 @@ static ssize_t dual_activate_store(struct device *dev, struct device_attribute *
 }
 #endif
 
-static char *mindone_vib_name = "aw_vibrator";
+static char *mindone_vib_name = "vibrator";
 module_param_named(vib_name, mindone_vib_name, charp, 0444);
 MODULE_PARM_DESC(vib_name, "LED class device name (aw_vibrator for the stock HAL, vibrator for libhardware)");
 

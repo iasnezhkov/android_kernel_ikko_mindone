@@ -483,6 +483,8 @@ static ssize_t attr_store(struct device *dev, struct device_attribute *attr,
 	}
 
 	ret = kstrtol(buf, 0, &tmp);
+	if (ret)
+		return ret;
 
 	switch (idx) {
 	/* normal usage */

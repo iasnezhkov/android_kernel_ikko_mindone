@@ -43,6 +43,7 @@
 #define WDT_MODE_IRQ_EN		(1 << 3)
 #define WDT_MODE_AUTO_START	(1 << 4)
 #define WDT_MODE_DUAL_EN	(1 << 6)
+#define WDT_MODE_CNT_SEL	(1 << 8)
 #define WDT_MODE_KEY		0x22000000
 
 #define WDT_SWRST		0x14
@@ -73,6 +74,8 @@ struct mtk_wdt_dev {
 	void __iomem *wdt_base;
 	spinlock_t lock; /* protects WDT_SWSYSRST reg */
 	struct reset_controller_dev rcdev;
+	bool disable_wdt_extrst;
+	bool reset_by_toprgu;
 };
 
 struct mtk_wdt_data {
@@ -186,6 +189,16 @@ static void mtk_wdt_parse_dt(struct device_node *np,
 	}
 }
 
+static u32 mtk_wdt_reset_mode(struct mtk_wdt_dev *mtk_wdt, u32 reg)
+{
+	reg &= ~(WDT_MODE_IRQ_EN | WDT_MODE_DUAL_EN);
+	if (mtk_wdt->disable_wdt_extrst)
+		reg &= ~WDT_MODE_EXRST_EN;
+	if (mtk_wdt->reset_by_toprgu)
+		reg |= WDT_MODE_CNT_SEL;
+	return reg | WDT_MODE_KEY;
+}
+
 static void mtk_wdt_init(struct device_node *np,
 			struct watchdog_device *wdt_dev)
 {
@@ -200,6 +213,8 @@ static void mtk_wdt_init(struct device_node *np,
 	if (readl(wdt_base + WDT_MODE) & WDT_MODE_EN) {
 		set_bit(WDOG_HW_RUNNING, &wdt_dev->status);
 		mtk_wdt_set_timeout(wdt_dev, wdt_dev->timeout);
+		writel(mtk_wdt_reset_mode(mtk_wdt, readl(wdt_base + WDT_MODE)),
+		       wdt_base + WDT_MODE);
 	}
 }
 
@@ -278,9 +293,8 @@ static int mtk_wdt_start(struct watchdog_device *wdt_dev)
 	if (ret < 0)
 		return ret;
 
-	reg = ioread32(wdt_base + WDT_MODE);
-	reg |= (WDT_MODE_EN | WDT_MODE_KEY);
-	iowrite32(reg, wdt_base + WDT_MODE);
+	reg = mtk_wdt_reset_mode(mtk_wdt, ioread32(wdt_base + WDT_MODE));
+	iowrite32(reg | WDT_MODE_EN, wdt_base + WDT_MODE);
 
 	set_bit(WDOG_HW_RUNNING, &wdt_dev->status);
 
@@ -332,6 +346,10 @@ static int mtk_wdt_probe(struct platform_device *pdev)
 	watchdog_set_restart_priority(&mtk_wdt->wdt_dev, 128);
 
 	watchdog_set_drvdata(&mtk_wdt->wdt_dev, mtk_wdt);
+	mtk_wdt->disable_wdt_extrst =
+		of_property_read_bool(dev->of_node, "mediatek,disable-extrst");
+	mtk_wdt->reset_by_toprgu =
+		of_property_read_bool(dev->of_node, "mediatek,reset-by-toprgu");
 
 	mtk_wdt_init(pdev->dev.of_node, &mtk_wdt->wdt_dev);
 

@@ -121,11 +121,11 @@ int pd_dbg_info(const char *fmt, ...)
 	left_size = PD_INFO_BUF_SIZE - used;
 	r1 = snprintf(pd_dbg_buffer[index].buf + used, left_size, "<%5lu.%03lu>",
 		(unsigned long)ts, rem_usec);
-	if (r1 <= 0 || r1 == left_size)
+	if (r1 <= 0 || r1 >= left_size)
 		goto out;
 	left_size = PD_INFO_BUF_SIZE - (used + r1);
 	r2 = vsnprintf(pd_dbg_buffer[index].buf + used + r1, left_size, fmt, args);
-	if (r2 <= 0 || r2 == left_size)
+	if (r2 <= 0 || r2 >= left_size)
 		goto out;
 	used += r1 + r2 + 1;
 

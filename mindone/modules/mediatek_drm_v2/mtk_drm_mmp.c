@@ -422,9 +422,6 @@ void *mtk_drm_buffer_map_kernel(struct drm_framebuffer *fb)
 	struct drm_gem_object *gem_obj = NULL;
 	struct dma_buf *dmabuf = NULL;
 	void *dma_va;
-	/* dma_buf_vmap() signature changed upstream: takes an output
-	 * struct iosys_map * and returns an int status instead of
-	 * returning the pointer directly (real DMA-BUF API modernization). */
 	struct iosys_map map = {};
 	int ret;
 
@@ -439,13 +436,17 @@ void *mtk_drm_buffer_map_kernel(struct drm_framebuffer *fb)
 		return 0;
 	}
 
+	if (!gem_obj->import_attach) {
+		DDPINFO("%s: [MMP]gem is not imported\n", __func__);
+		return 0;
+	}
 	dmabuf = gem_obj->import_attach->dmabuf;
 	if (!dmabuf) {
 		DDPINFO("%s: [MMP]dmabuf is null\n", __func__);
 		return 0;
 	}
 
-	ret = dma_buf_vmap(dmabuf, &map);
+	ret = dma_buf_vmap_unlocked(dmabuf, &map);
 	if (ret) {
 		DDPINFO("[MMP]dma_buf_vmap failed: %d\n", ret);
 		return NULL;
@@ -459,16 +460,13 @@ int mtk_drm_buffer_unmap_kernel(struct drm_framebuffer *fb, void *dma_va)
 {
 	struct drm_gem_object *gem_obj;
 	struct dma_buf *dmabuf;
-	/* dma_buf_vunmap() also moved to the struct iosys_map * API (real,
-	 * paired with dma_buf_vmap() above) -- wrap the raw pointer this
-	 * function already receives back into a map to call the real fn. */
 	struct iosys_map map;
 
 	gem_obj = mtk_fb_get_gem_obj(fb);
 	dmabuf = gem_obj->import_attach->dmabuf;
 
 	iosys_map_set_vaddr(&map, dma_va);
-	dma_buf_vunmap(dmabuf, &map);
+	dma_buf_vunmap_unlocked(dmabuf, &map);
 
 	return 0;
 }

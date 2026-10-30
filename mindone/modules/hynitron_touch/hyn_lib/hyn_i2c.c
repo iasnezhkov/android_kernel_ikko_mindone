@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0
 #include "../hyn_core.h"
 
 #ifdef I2C_PORT

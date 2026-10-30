@@ -170,7 +170,11 @@ int mtk_pe_reset_ta_vchr(struct chg_alg_device *alg)
 		msleep(250);
 
 		/* Check charger's voltage */
-		chr_volt = pe_hal_get_vbus(alg);
+		ret = pe_hal_get_vbus(alg, &chr_volt);
+		if (ret < 0) {
+			pe_hal_enable_vbus_ovp(alg, true);
+			return ret;
+		}
 		if (abs(chr_volt - pe->ta_vchr_org) <= 1000000)
 			break;
 
@@ -274,7 +278,9 @@ static int pe_increase_ta_vchr(struct chg_alg_device *alg, u32 vchr_target)
 			}
 		}
 
-		vchr_before = pe_hal_get_vbus(alg);
+		ret = pe_hal_get_vbus(alg, &vchr_before);
+		if (ret < 0)
+			return ret;
 //prize begin
 		vchr_tmp = abs_ex(vchr_before,vchr_target);
 		
@@ -284,7 +290,9 @@ static int pe_increase_ta_vchr(struct chg_alg_device *alg, u32 vchr_target)
 		}
 		__pe_increase_ta_vchr(alg);
 		msleep(500);//drv mod by liuruiqian for PE shouln't increase 12V,20241210
-		vchr_after = pe_hal_get_vbus(alg);
+		ret = pe_hal_get_vbus(alg, &vchr_after);
+		if (ret < 0)
+			return ret;
 		
 		vchr_tmp = abs_ex(vchr_before,vchr_after);
 
@@ -328,15 +336,21 @@ static int pe_detect_ta(struct chg_alg_device *alg)
 	if (ret < 0)
 		goto _err;
 
-	pe->ta_vchr_org = pe_hal_get_vbus(alg);
+	ret = pe_hal_get_vbus(alg, &pe->ta_vchr_org);
+	if (ret < 0)
+		goto restore;
 //prize begin
 	//ret = pe_increase_ta_vchr(alg, 9000000);
 	
 	do {
 		//pe->ta_vchr_org = pe_hal_get_vbus(alg);
 		ret = pe_increase_ta_vchr(alg, 9000000);
+		if (ret < 0)
+			goto restore;
 		msleep(100);
-		vchar = pe_hal_get_vbus(alg);
+		ret = pe_hal_get_vbus(alg, &vchar);
+		if (ret < 0)
+			goto restore;
 		
 		if((vchar > pe->ta_vchr_org) && ((vchar - pe->ta_vchr_org) > 1000000)){
 			pr_debug("111---pe->ta_vchr_org = %d,vchar = %d\n",pe->ta_vchr_org,vchar);
@@ -360,6 +374,7 @@ static int pe_detect_ta(struct chg_alg_device *alg)
 	/* Detect PE+ TA failed */
 	ret = -1;
 	
+restore:
 	pdpe_set_state(pe,PDPE_WORK_PE_NOT_SUPPORT);//prize
 
 	/* Enable OVP */
@@ -503,7 +518,9 @@ int mtk_pe_set_charging_current(struct chg_alg_device *alg)
 
 	pe = dev_get_drvdata(&alg->dev);
 
-	chr_volt = pe_hal_get_vbus(alg);
+	ret = pe_hal_get_vbus(alg, &chr_volt);
+	if (ret < 0)
+		return ret;
 	if ((chr_volt - pe->ta_vchr_org) > 6000000) { /* TA = 12V */
 		pe->input_current = pe->ta_ac_12v_input_current;
 		pe->charging_current = pe->ta_ac_charger_current;
@@ -781,7 +798,11 @@ static int __pe_run(struct chg_alg_device *alg)
 	if (pe->is_cable_out_occur)
 		goto _out;
 
-	chr_volt = pe_hal_get_vbus(alg);
+	ret = pe_hal_get_vbus(alg, &chr_volt);
+	if (ret < 0) {
+		ret_value = ALG_TA_NOT_SUPPORT;
+		goto _err;
+	}
 	//chr_volt2 = pe_get_conditional_vbus(alg, 500000);
 	chr_volt2 = chr_volt;//prize
 
@@ -841,9 +862,13 @@ static int __pe_run(struct chg_alg_device *alg)
 			}
 
 			/* Successfully, increase to 9V */
+			ret = pe_hal_get_vbus(alg, &chr_volt);
+			if (ret < 0) {
+				ret_value = ALG_TA_NOT_SUPPORT;
+				goto _err;
+			}
 			pe_dbg("%s: output 9V ok,vbus:%d\n",
-				__func__,
-				pe_hal_get_vbus(alg));
+				__func__, chr_volt);
 		}
 
 		/* Increase TA voltage to 12V */
@@ -857,9 +882,13 @@ static int __pe_run(struct chg_alg_device *alg)
 			}
 
 			/* Successfully, increase to 12V */
+			ret = pe_hal_get_vbus(alg, &chr_volt);
+			if (ret < 0) {
+				ret_value = ALG_TA_NOT_SUPPORT;
+				goto _err;
+			}
 			pe_dbg("%s: output 12V ok,vbus:%d\n",
-				__func__,
-				pe_hal_get_vbus(alg));
+				__func__, chr_volt);
 		}
 	} else {
 		ichg = pe_hal_get_ibat(alg);
@@ -878,10 +907,18 @@ static int __pe_run(struct chg_alg_device *alg)
 		}
 	}
 
-	mtk_pe_set_charging_current(alg);
+	ret = mtk_pe_set_charging_current(alg);
+	if (ret < 0) {
+		ret_value = ALG_TA_NOT_SUPPORT;
+		goto _err;
+	}
 	pdpe_set_state(pe,PDPE_WORK_PE_RUN);//prize
 	
-	chr_volt = pe_hal_get_vbus(alg);
+	ret = pe_hal_get_vbus(alg, &chr_volt);
+	if (ret < 0) {
+		ret_value = ALG_TA_NOT_SUPPORT;
+		goto _err;
+	}
 	mivr = chr_volt - 1000000;
 	if (mivr < pe->min_charger_voltage)
 		mivr = pe->min_charger_voltage;
@@ -906,10 +943,13 @@ _out:
 
 	if (ret_value != 0)
 		ret_value = ALG_TA_NOT_SUPPORT;
-	chr_volt = pe_hal_get_vbus(alg);
-	pr_debug("%s: vchr_org = %d, vchr_after = %d, delta = %d\n",
-		__func__, pe->ta_vchr_org / 1000, chr_volt / 1000,
-		(chr_volt - pe->ta_vchr_org) / 1000);
+	ret = pe_hal_get_vbus(alg, &chr_volt);
+	if (ret < 0)
+		pr_debug("%s: vbus unavailable: %d\n", __func__, ret);
+	else
+		pr_debug("%s: vchr_org = %d, vchr_after = %d, delta = %d\n",
+			__func__, pe->ta_vchr_org / 1000, chr_volt / 1000,
+			(chr_volt - pe->ta_vchr_org) / 1000);
 
 	return ret_value;
 }

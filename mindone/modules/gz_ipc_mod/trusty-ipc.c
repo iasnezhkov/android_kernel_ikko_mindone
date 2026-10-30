@@ -427,20 +427,20 @@ static int vds_select_cpu(struct tipc_virtio_dev *vds, int32_t cpu_affinity)
 		cpu = ffs(online_cpus & atomic_read(&vds->allowed_cpus) &
 			  vds->default_cpumask) - 1;
 
-		if (!cpu_online(cpu))
+		if (cpu < 0 || !cpu_online(cpu))
 			cpu = fls(online_cpus &
 				  atomic_read(&vds->allowed_cpus)) - 1;
 
-		if (!cpu_online(cpu))
+		if (cpu < 0 || !cpu_online(cpu))
 			cpu = fls(online_cpus) - 1;
 	} else if (cpu_affinity > 0) {
 		cpu = ffs(online_cpus & atomic_read(&vds->allowed_cpus) &
 			  cpu_affinity) - 1;
 
-		if (!cpu_online(cpu))
+		if (cpu < 0 || !cpu_online(cpu))
 			cpu = fls(online_cpus & cpu_affinity) - 1;
 
-		if (!cpu_online(cpu))
+		if (cpu < 0 || !cpu_online(cpu))
 			cpu = fls(online_cpus) - 1;
 	}
 	preempt_enable();
@@ -1609,7 +1609,7 @@ static int _create_cdev_node(struct device *parent,
 	}
 
 	/* Create a device node */
-	cdn->dev = device_create(tipc_class, parent, devt, NULL, name);
+	cdn->dev = device_create(tipc_class, parent, devt, NULL, "%s", name);
 
 	if (IS_ERR(cdn->dev)) {
 		ret = PTR_ERR(cdn->dev);
@@ -2009,6 +2009,9 @@ static int tipc_setup_virtqueue(struct tipc_virtio_dev *vds,
 
 	vds->txvq = devm_kcalloc(&vdev->dev, vds->txvq_num,
 				 sizeof(struct virtqueue *), GFP_KERNEL);
+	if (!vds->txvq)
+		return -ENOMEM;
+
 	for (i = 0; i < vds->txvq_num; i++) {
 		int txvq_start_idx = vds->rxvq_num;
 
@@ -2161,6 +2164,7 @@ static int tipc_virtio_probe(struct virtio_device *vdev)
 		err = virtqueue_add_inbuf(vds->rxvq, &sg, 1, rxbuf, GFP_KERNEL);
 		if (err) {
 			WARN_ON(err);	/* sanity check; this can't really happen */
+			_free_msg_buf(rxbuf);
 			goto err_free_rx_buffers;
 		}
 	}
@@ -2176,6 +2180,8 @@ static int tipc_virtio_probe(struct virtio_device *vdev)
 err_free_rx_buffers:
 	_cleanup_vq(vds->rxvq);
 err_setup_vqs:
+	if (vds->rxvq)
+		vdev->config->del_vqs(vdev);
 	kref_put(&vds->refcount, _free_vds);
 	return err;
 }

@@ -5,10 +5,8 @@
 
 #include <linux/skbuff.h>
 #include <linux/wait.h>
-#include <linux/sched/clock.h> /* local_clock() */
 #include <linux/delay.h>
 #include <linux/module.h>
-#include <linux/stacktrace.h>
 
 #include "mt-plat/mtk_ccci_common.h"
 #include "ccci_config.h"
@@ -21,7 +19,6 @@
 
 /*#define CCCI_WP_DEBUG*/
 /*#define CCCI_MEM_BM_DEBUG*/
-/*#define CCCI_SAVE_STACK_TRACE*/
 
 #define SKB_MAGIC_HEADER 0xF333F333
 #define SKB_MAGIC_FOOTER 0xF444F444
@@ -162,74 +159,6 @@ void ccci_magic_checker(void)
 }
 #endif
 
-#ifdef CCCI_SAVE_STACK_TRACE
-#define CCCI_TRACK_ADDRS_COUNT 8
-#define CCCI_TRACK_HISTORY_COUNT 8
-
-struct ccci_stack_trace {
-	void *who;
-	int cpu;
-	int pid;
-	unsigned long long when;
-	unsigned long addrs[CCCI_TRACK_ADDRS_COUNT];
-};
-
-void ccci_get_back_trace(void *who, struct ccci_stack_trace *trace)
-{
-	struct stack_trace stack_trace;
-
-	if (trace == NULL)
-		return;
-	stack_trace.max_entries = CCCI_TRACK_ADDRS_COUNT;
-	stack_trace.nr_entries = 0;
-	stack_trace.entries = trace->addrs;
-	stack_trace.skip = 3;
-	save_stack_trace(&stack_trace);
-	trace->who = who;
-	trace->when = sched_clock();
-	trace->cpu = smp_processor_id();
-	trace->pid = current->pid;
-}
-void ccci_print_back_trace(struct ccci_stack_trace *trace)
-{
-	int i;
-
-	if (trace->who != NULL) {
-		CCCI_ERROR_LOG(-1, BM, "<<<<<who:%p when:%lld cpu:%d pid:%d\n",
-			trace->who,	trace->when, trace->cpu, trace->pid);
-	}
-	for (i = 0; i < CCCI_TRACK_ADDRS_COUNT; i++) {
-		if (trace->addrs[i] != 0)
-			CCCI_ERROR_LOG(-1, BM, "[<%p>] %pS\n",
-			(void *)trace->addrs[i], (void *)trace->addrs[i]);
-	}
-}
-
-static unsigned int backtrace_idx;
-static struct ccci_stack_trace
-	backtrace_history[CCCI_TRACK_HISTORY_COUNT];
-
-static void ccci_add_bt_hisory(void *ptr)
-{
-	ccci_get_back_trace(ptr, &backtrace_history[backtrace_idx]);
-	backtrace_idx++;
-	if (backtrace_idx == CCCI_TRACK_HISTORY_COUNT)
-		backtrace_idx = 0;
-}
-
-static void ccci_print_bt_history(char *info)
-{
-	int i, k;
-
-	CCCI_ERROR_LOG(-1, BM, "<<<<<%s>>>>>\n", info);
-	for (i = 0, k = backtrace_idx; i < CCCI_TRACK_HISTORY_COUNT; i++) {
-		if (k == CCCI_TRACK_HISTORY_COUNT)
-			k = 0;
-		ccci_print_back_trace(&backtrace_history[k]);
-		k++;
-	}
-}
-#endif
 
 static inline struct sk_buff *__alloc_skb_from_pool(int size)
 {

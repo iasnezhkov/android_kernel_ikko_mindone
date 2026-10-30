@@ -1151,6 +1151,7 @@ extern int gauge_get_property(enum gauge_property gp,
 			    int *val);
 extern int gauge_set_property(enum gauge_property gp,
 			    int val);
+extern void mtk_battery_lbat_release(struct mtk_battery *gm);
 extern int battery_init(struct platform_device *pdev);
 extern int battery_psy_init(struct platform_device *pdev);
 extern void battery_psy_unregister_thermal(struct battery_data *bs_data);

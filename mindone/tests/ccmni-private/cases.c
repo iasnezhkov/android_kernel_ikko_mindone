@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-2.0
+// SPDX-FileCopyrightText: 2026 The LineageOS Project
 static struct net_device device, other_device;
 static struct ccmni_instance instance, second, target_instance;
 static struct ccmni_ccci_ops ops, target_ops;

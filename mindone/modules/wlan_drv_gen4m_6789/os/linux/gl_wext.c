@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0 OR BSD-3-Clause
 /*******************************************************************************
  *
  * This file is provided under a dual license.  When you use or
@@ -1800,6 +1801,26 @@ static inline int snprintf_hex(char *buf, size_t buf_size,
  *       pData->length.
  */
 /*----------------------------------------------------------------------------*/
+static int wext_get_variable_ies(struct PARAM_BSSID_EX *prBss,
+	uint32_t u4AvailableLen, uint8_t **ppucVariableIEs)
+{
+	uint32_t u4Offset = OFFSET_OF(struct PARAM_BSSID_EX, aucIEs);
+
+	*ppucVariableIEs = NULL;
+	if (u4AvailableLen < u4Offset || prBss->u4Length < u4Offset ||
+		prBss->u4Length > u4AvailableLen ||
+		prBss->u4IELength > prBss->u4Length - u4Offset)
+		return -EINVAL;
+	if (!prBss->u4IELength)
+		return 0;
+	if (prBss->u4IELength < sizeof(struct PARAM_FIXED_IEs))
+		return -EINVAL;
+
+	*ppucVariableIEs = (uint8_t *)prBss + u4Offset +
+		sizeof(struct PARAM_FIXED_IEs);
+	return 0;
+}
+
 static int
 wext_get_scan(IN struct net_device *prNetDev,
 	      IN struct iw_request_info *prIwrInfo,
@@ -1810,6 +1831,7 @@ wext_get_scan(IN struct net_device *prNetDev,
 	struct PARAM_BSSID_LIST_EX *prList = NULL;
 	struct PARAM_BSSID_EX *prBss = NULL;
 	struct PARAM_VARIABLE_IE *prDesiredIE = NULL;
+	uint8_t *pucVariableIEs;
 	struct iw_event iwEvent;	/* local iw_event buffer */
 
 	/* write pointer of extra buffer */
@@ -1927,6 +1949,11 @@ wext_get_scan(IN struct net_device *prNetDev,
 	/* Copy required data from pList to pcExtra */
 	prBss = &prList->arBssid[0];	/* set to the first entry */
 	for (i = 0; i < prList->u4NumberOfItems; ++i) {
+		ret = wext_get_variable_ies(prBss, u4AllocBufLen -
+			((uint8_t *)prBss - (uint8_t *)prList),
+			&pucVariableIEs);
+		if (ret)
+			break;
 		/* BSSID */
 		iwEvent.cmd = SIOCGIWAP;
 		iwEvent.len = IW_EV_ADDR_LEN;
@@ -2080,8 +2107,7 @@ wext_get_scan(IN struct net_device *prNetDev,
 		pcCur += iwEvent.len;
 #endif /* WIRELESS_EXT >= 15 */
 
-		if (wextSrchDesiredWPAIE(prBss->aucIEs +
-		    sizeof(struct PARAM_FIXED_IEs),
+		if (pucVariableIEs && wextSrchDesiredWPAIE(pucVariableIEs,
 		    prBss->u4IELength - sizeof(struct PARAM_FIXED_IEs), 0xDD,
 		    (uint8_t **) &prDesiredIE)) {
 			iwEvent.cmd = IWEVGENIE;
@@ -2104,8 +2130,7 @@ wext_get_scan(IN struct net_device *prNetDev,
 			pcCur += iwEvent.len;
 		}
 #if CFG_SUPPORT_WPS		/* search WPS IE (0xDD, 221, OUI: 0x0050f204) */
-		if (wextSrchDesiredWPSIE(prBss->aucIEs +
-		    sizeof(struct PARAM_FIXED_IEs),
+		if (pucVariableIEs && wextSrchDesiredWPSIE(pucVariableIEs,
 		    prBss->u4IELength - sizeof(struct PARAM_FIXED_IEs), 0xDD,
 		    (uint8_t **) &prDesiredIE)) {
 			iwEvent.cmd = IWEVGENIE;
@@ -2131,8 +2156,7 @@ wext_get_scan(IN struct net_device *prNetDev,
 
 		/* Search RSN IE (0x30, 48). pBss->IEs starts from timestamp. */
 		/* pBss->IEs starts from timestamp */
-		if (wextSrchDesiredWPAIE(prBss->aucIEs +
-		    sizeof(struct PARAM_FIXED_IEs),
+		if (pucVariableIEs && wextSrchDesiredWPAIE(pucVariableIEs,
 		    prBss->u4IELength - sizeof(struct PARAM_FIXED_IEs), 0x30,
 		    (uint8_t **) &prDesiredIE)) {
 
@@ -2156,8 +2180,7 @@ wext_get_scan(IN struct net_device *prNetDev,
 			pcCur += iwEvent.len;
 		}
 #if CFG_SUPPORT_WAPI		/* Android+ */
-		if (wextSrchDesiredWAPIIE(prBss->aucIEs +
-		    sizeof(struct PARAM_FIXED_IEs),
+		if (pucVariableIEs && wextSrchDesiredWAPIIE(pucVariableIEs,
 		    prBss->u4IELength - sizeof(struct PARAM_FIXED_IEs),
 		    (uint8_t **) &prDesiredIE)) {
 

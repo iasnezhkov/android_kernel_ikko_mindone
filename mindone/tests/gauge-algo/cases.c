@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-2.0
+// SPDX-FileCopyrightText: 2026 The LineageOS Project
 static struct mtk_battery fixture(void)
 {
 	memset(gauge_values, 0, sizeof(gauge_values));

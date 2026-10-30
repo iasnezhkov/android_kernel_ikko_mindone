@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: GPL-2.0 */
 #ifndef HYNITRON_FIRMWARE_H
 #define HYNITRON_FIRMWARE_H
 

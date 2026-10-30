@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-2.0
+// SPDX-FileCopyrightText: 2026 The LineageOS Project
 static struct mtk_gauge fixture_gauge;
 
 static struct mtk_battery fixture(void)
@@ -7,6 +9,7 @@ static struct mtk_battery fixture(void)
 	gm.gauge = &fixture_gauge;
 	gm.soc = 61;
 	gm.fg_cust_data.vbat2_det_voltage1 = 34000;
+	gm.fg_cust_data.qmax_sel = 1;
 	io_calls = io_fail_at = io_errno = background_error = 0;
 	mismatch_property = -1;
 	memset(gauge_writes, 0, sizeof(gauge_writes));
@@ -31,6 +34,7 @@ static struct mtk_battery fixture(void)
 	gm.tracking_timer.active = true;
 	gauge_values[GAUGE_PROP_BATTERY_EXIST] = 1;
 	gauge_values[GAUGE_PROP_PTIM_BATTERY_VOLTAGE] = 4050;
+	gauge_values[GAUGE_PROP_PTIM_RESIST] = 100;
 	gauge_values[GAUGE_PROP_CON0_SOC] = 61;
 	gauge_values[GAUGE_PROP_RTC_UI_SOC] = 63;
 	gauge_values[GAUGE_PROP_COULOMB] = 2000;
@@ -41,6 +45,7 @@ static struct mtk_battery fixture(void)
 	setup_calls = 0;
 	publication_calls = 0;
 	temperature_error = 0;
+	sample_error = 0;
 	allocation_error = false;
 	profile_error = false;
 	profile_order_error = false;
@@ -75,6 +80,7 @@ static void verify_recovery(struct mtk_battery *gm)
 	memset(gauge_errors, 0, sizeof(gauge_errors));
 	reset_error = 0;
 	temperature_error = 0;
+	sample_error = 0;
 	allocation_error = false;
 	profile_error = false;
 	profile_order_error = false;
@@ -103,9 +109,8 @@ static void verify_recovery(struct mtk_battery *gm)
 int main(void)
 {
 	const int required[] = { GAUGE_PROP_BATTERY_EXIST, GAUGE_PROP_CON0_SOC,
-		GAUGE_PROP_RTC_UI_SOC, GAUGE_PROP_PTIM_BATTERY_VOLTAGE,
-		GAUGE_PROP_PTIM_RESIST, GAUGE_PROP_BATTERY_CURRENT, GAUGE_PROP_COULOMB };
-	const int errors[] = { -EIO, -ETIMEDOUT, -EACCES };
+		GAUGE_PROP_RTC_UI_SOC, GAUGE_PROP_PTIM_RESIST, GAUGE_PROP_COULOMB };
+	const int errors[] = { -EIO, -ETIMEDOUT, -EACCES, -EPERM };
 	for (size_t i = 0; i < sizeof(required) / sizeof(required[0]); i++) {
 		for (size_t j = 0; j < sizeof(errors) / sizeof(errors[0]); j++) {
 			struct mtk_battery gm = fixture();
@@ -125,6 +130,10 @@ int main(void)
 		reset_error = 0;
 		assert(activate() == -EUCLEAN && reset_calls == 1 && !gm.algo.active);
 		gm = fixture();
+		verify_recovery(&gm);
+		gm = fixture();
+		sample_error = errors[i];
+		verify_failure(&gm, errors[i]);
 		verify_recovery(&gm);
 		gm = fixture();
 		temperature_error = errors[i];
@@ -165,6 +174,30 @@ int main(void)
 	gauge_values[GAUGE_PROP_PTIM_BATTERY_VOLTAGE] = 4050;
 	verify_recovery(&gm);
 	puts("PASS absent battery, invalid stored percentage and unavailable voltage");
+	for (int selection = 0; selection <= 2; selection++) {
+		for (int unavailable = 0; unavailable < 3; unavailable++) {
+			gm = fixture();
+			gm.fg_cust_data.qmax_sel = selection;
+			gauge_values[GAUGE_PROP_PTIM_RESIST] = unavailable == 2 ? -1 : 0;
+			gauge_errors[GAUGE_PROP_PTIM_RESIST] = unavailable == 0 ? -ENODATA : 0;
+			if (selection == 1) {
+				active_gm = &gm;
+				assert(activate() == 6 && gm.algo.active);
+			} else
+				verify_failure(&gm, -ENODATA);
+		}
+	}
+	for (int source = 0; source < 2; source++) {
+		gm = fixture();
+		gauge_errors[GAUGE_PROP_PTIM_RESIST] = -ENODATA;
+		if (source == 0)
+			temperature_error = -ENODATA;
+		else
+			sample_error = -ENODATA;
+		verify_failure(&gm, -ENODATA);
+		verify_recovery(&gm);
+	}
+	puts("PASS unavailable RAC permits profile activation only for qmax_sel=1; temperature and PTIM remain required");
 	gm = fixture();
 	gauge_values[GAUGE_PROP_COULOMB] = 0;
 	active_gm = &gm;

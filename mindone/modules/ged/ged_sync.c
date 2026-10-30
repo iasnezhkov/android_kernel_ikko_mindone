@@ -2,7 +2,6 @@
 /*
  * Copyright (C) 2021 MediaTek Inc.
  */
-
 #include <linux/anon_inodes.h>
 #include <linux/file.h>
 #include <linux/fs.h>
@@ -15,40 +14,10 @@
 #define GED_PDEBUG(fmt, ...)\
 	pr_debug("[GRALLOC_EXTRA,%s:%d]" fmt, __FILE__, __LINE__, ##__VA_ARGS__)
 
-/*
- * SW SYNC validation framework
- *
- * A sync object driver that uses a 32bit counter to coordinate
- * synchronization.  Useful when there is no hardware primitive backing
- * the synchronization.
- *
- * To start the framework just open:
- *
- * libged / ged_create_timeline()
- *
- * That will create a sync timeline, all fences created under this timeline
- * file descriptor will belong to the this timeline.
- *
- * The 'sw_sync' file can be opened many times as to create different
- * timelines.
- *
- * Fences can be created with SW_SYNC_IOC_CREATE_FENCE ioctl with struct
- * sw_sync_ioctl_create_fence as parameter.
- *
- * To increment the timeline counter, SW_SYNC_IOC_INC ioctl should be used
- * with the increment as u32. This will update the last signaled value
- * from the timeline and signal any fence that has a seqno smaller or equal
- * to it.
- *
- * struct sw_sync_ioctl_create_fence
- * @value:	the seqno to initialise the fence with
- * @name:	the name of the new sync point
- * @fence:	return the fd of the new sync_file with the created fence
- */
 struct sw_sync_create_fence_data {
 	__u32	value;
 	char	name[32];
-	__s32	fence; /* fd of new fence */
+	__s32	fence;
 };
 
 #define SW_SYNC_IOC_MAGIC	'W'
@@ -58,20 +27,10 @@ struct sw_sync_create_fence_data {
 
 #define SW_SYNC_IOC_INC			_IOW(SW_SYNC_IOC_MAGIC, 1, __u32)
 
-/**
- * struct sync_timeline - sync object
- * @kref:		reference count on fence.
- * @name:		name of the sync_timeline. Useful for debugging
- * @lock:		lock protecting @pt_list and @value
- * @pt_tree:		rbtree of active (unsignaled/errored) sync_pts
- * @pt_list:		list of active (unsignaled/errored) sync_pts
- * @sync_timeline_list:	membership in global sync_timeline_list
- */
 struct sync_timeline {
 	struct kref		kref;
 	char			name[32];
 
-	/* protected by lock */
 	u64			context;
 	int			value;
 
@@ -82,12 +41,6 @@ struct sync_timeline {
 	struct list_head	sync_timeline_list;
 };
 
-/**
- * struct sync_pt - sync_pt object
- * @base: base dma_fence object
- * @link: link on the sync timeline's list
- * @node: node in the sync timeline's tree
- */
 struct sync_pt {
 	struct dma_fence base;
 	struct list_head link;
@@ -108,13 +61,6 @@ static inline struct sync_pt *dma_fence_to_sync_pt(struct dma_fence *fence)
 	return container_of(fence, struct sync_pt, base);
 }
 
-/**
- * sync_timeline_create() - creates a sync object
- * @name:	sync_timeline name
- *
- * Creates a new sync_timeline. Returns the sync_timeline object or NULL in
- * case of error.
- */
 static struct sync_timeline *sync_timeline_create(const char *name)
 {
 	struct sync_timeline *obj;
@@ -218,14 +164,6 @@ static const struct dma_fence_ops timeline_fence_ops = {
 	.timeline_value_str = timeline_fence_timeline_value_str,
 };
 
-/**
- * sync_timeline_signal() - signal a status change on a sync_timeline
- * @obj:	sync_timeline to signal
- * @inc:	num to increment on timeline->value
- *
- * A sync implementation should call this any time one of it's fences
- * has signaled or has an error condition.
- */
 static void sync_timeline_signal(struct sync_timeline *obj, unsigned int inc)
 {
 	struct sync_pt *pt, *next;
@@ -241,30 +179,12 @@ static void sync_timeline_signal(struct sync_timeline *obj, unsigned int inc)
 		list_del_init(&pt->link);
 		rb_erase(&pt->node, &obj->pt_tree);
 
-		/*
-		 * A signal callback may release the last reference to this
-		 * fence, causing it to be freed. That operation has to be
-		 * last to avoid a use after free inside this loop, and must
-		 * be after we remove the fence from the timeline in order to
-		 * prevent deadlocking on timeline->lock inside
-		 * timeline_fence_release().
-		 */
 		dma_fence_signal_locked(&pt->base);
 	}
 
 	spin_unlock_irq(&obj->lock);
 }
 
-/**
- * sync_pt_create() - creates a sync pt
- * @parent:	fence's parent sync_timeline
- * @inc:	value of the fence
- *
- * Creates a new sync_pt as a child of @parent.  @size bytes will be
- * allocated allowing for implementation specific data to be kept after
- * the generic sync_timeline struct. Returns the sync_pt object or
- * NULL in case of error.
- */
 static struct sync_pt *sync_pt_create(struct sync_timeline *obj,
 				      unsigned int value)
 {

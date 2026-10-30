@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0 OR BSD-3-Clause
 /******************************************************************************
  *
  * This file is provided under a dual license.  When you use or
@@ -3478,6 +3479,10 @@ void nicInitMGMT(IN struct ADAPTER *prAdapter,
 
 	/* SCN Module - initialization */
 	scnInit(prAdapter);
+	if (!prAdapter->rWifiVar.fgAisBlacklistInitialized) {
+		LINK_MGMT_INIT(&prAdapter->rWifiVar.rBlackList);
+		prAdapter->rWifiVar.fgAisBlacklistInitialized = TRUE;
+	}
 
 	for (i = 0; i < KAL_AIS_NUM; i++) {
 		/* AIS Module - intiailization */
@@ -3528,6 +3533,11 @@ void nicUninitMGMT(IN struct ADAPTER *prAdapter)
 
 	/* SCN Module - unintiailization */
 	scnUninit(prAdapter);
+	if (prAdapter->rWifiVar.fgAisBlacklistInitialized) {
+		LINK_MGMT_UNINIT(&prAdapter->rWifiVar.rBlackList,
+			struct AIS_BLACKLIST_ITEM, VIR_MEM_TYPE);
+		prAdapter->rWifiVar.fgAisBlacklistInitialized = FALSE;
+	}
 
 	wmmUnInit(prAdapter);
 

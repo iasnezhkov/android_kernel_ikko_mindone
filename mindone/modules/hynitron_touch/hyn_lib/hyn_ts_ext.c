@@ -1,9 +1,55 @@
+// SPDX-License-Identifier: GPL-2.0
 
 #include "../hyn_core.h"
 
+int hyn_protocol_begin(struct hyn_ts_data *ts_data)
+{
+    if (READ_ONCE(ts_data->stopping) || !READ_ONCE(ts_data->irq_registered))
+        return -ENODEV;
+    mutex_lock(&ts_data->mutex_control);
+    disable_irq(ts_data->gpio_irq);
+    mutex_lock(&ts_data->mutex_protocol);
+    if (READ_ONCE(ts_data->stopping)) {
+        mutex_unlock(&ts_data->mutex_protocol);
+        enable_irq(ts_data->gpio_irq);
+        mutex_unlock(&ts_data->mutex_control);
+        return -ENODEV;
+    }
+    return 0;
+}
+
+int hyn_protocol_try_begin(struct hyn_ts_data *ts_data)
+{
+    if (READ_ONCE(ts_data->stopping) || !READ_ONCE(ts_data->irq_registered))
+        return -ENODEV;
+    if (!mutex_trylock(&ts_data->mutex_control))
+        return -EAGAIN;
+    disable_irq(ts_data->gpio_irq);
+    if (!mutex_trylock(&ts_data->mutex_protocol)) {
+        enable_irq(ts_data->gpio_irq);
+        mutex_unlock(&ts_data->mutex_control);
+        return -EAGAIN;
+    }
+    if (READ_ONCE(ts_data->stopping)) {
+        mutex_unlock(&ts_data->mutex_protocol);
+        enable_irq(ts_data->gpio_irq);
+        mutex_unlock(&ts_data->mutex_control);
+        return -ENODEV;
+    }
+    return 0;
+}
+
+void hyn_protocol_end(struct hyn_ts_data *ts_data)
+{
+    mutex_unlock(&ts_data->mutex_protocol);
+    enable_irq(ts_data->gpio_irq);
+    mutex_unlock(&ts_data->mutex_control);
+}
+
 void hyn_irq_set(struct hyn_ts_data *ts_data, u8 value)
 {
-	// HYN_ENTER();
+    if (READ_ONCE(ts_data->stopping) || !READ_ONCE(ts_data->irq_registered))
+        return;
     if(atomic_read(&ts_data->irq_is_disable) != value){
         if(value ==0){
 			disable_irq(ts_data->gpio_irq);
@@ -43,6 +89,8 @@ void hyn_esdcheck_switch(struct hyn_ts_data *ts_data, u8 enable)
 #if ESD_CHECK_EN
 	if(IS_ERR_OR_NULL(ts_data->hyn_workqueue) || IS_ERR_OR_NULL(&ts_data->esdcheck_work)) return;
 	if(enable){
+		if (READ_ONCE(ts_data->stopping))
+			return;
 		ts_data->esd_fail_cnt = 0;
 		queue_delayed_work(ts_data->hyn_workqueue, &ts_data->esdcheck_work,
 						msecs_to_jiffies(1000));
@@ -56,57 +104,32 @@ void hyn_esdcheck_switch(struct hyn_ts_data *ts_data, u8 enable)
 int copy_for_updata(struct hyn_ts_data *ts_data,u8 *buf,u32 offset,u16 len)
 {
 	int ret = -1;
-#if (HYN_GKI_VER==0)
-	struct file *fp;
-	loff_t pos;
-	u8 *pdata;
-
-	// HYN_ENTER();
-
-	if(strlen(ts_data->fw_file_name) == 0) 
-		return ret;
-	fp = filp_open(ts_data->fw_file_name,O_RDONLY, 0);//
-	if (IS_ERR(fp)) {
-		HYN_INFO("open file %s failed \r\n", ts_data->fw_file_name);
-		return -EIO;
-	}
-
-    // fp->f_op->llseek(fp, offset, 0);
-	fp->f_op->llseek(fp, 0, 0);
-	pdata = kzalloc(len, GFP_KERNEL);
-	if(IS_ERR_OR_NULL(pdata)){
-		HYN_ERROR("kzalloc failed");
-		filp_close(fp, NULL);
-		return -1;
-	}
-	pos = offset;
-	ret = hyn_fs_read(fp,pdata, len,&pos);
-	filp_close(fp, NULL);
-	// HYN_INFO("rlen = %d nlen = %d",ret,len);
-	if(ret <= len){
-		memcpy(buf,pdata,len);
-		ret = 0;
-	}
-	else{
-		ret = -3;
-	}
-	kfree(pdata);
-#endif
 	return ret;
 }
 	
-int hyn_wait_irq_timeout(struct hyn_ts_data *ts_data,int msec)
+int hyn_wait_irq_timeout(struct hyn_ts_data *ts_data, int msec)
 {
-	atomic_set(&ts_data->hyn_irq_flg,0);
-	while(msec--){
-		msleep(1);
-		if(atomic_read(&ts_data->hyn_irq_flg)==1){
-			atomic_set(&ts_data->hyn_irq_flg,0);
-			msec = -1;
-			break;
-		}
-	}
-	return msec == -1 ? 0:-1;
+    long ret;
+
+    lockdep_assert_held(&ts_data->mutex_control);
+    lockdep_assert_held(&ts_data->mutex_protocol);
+    if (msec <= 0 || READ_ONCE(ts_data->work_mode) < DIFF_MODE)
+        return -EINVAL;
+    if (READ_ONCE(ts_data->stopping))
+        return -ENODEV;
+    atomic_set(&ts_data->hyn_irq_flg, 0);
+    enable_irq(ts_data->gpio_irq);
+    ret = wait_event_timeout(ts_data->wait_irq,
+                             atomic_read(&ts_data->hyn_irq_flg) ||
+                             READ_ONCE(ts_data->stopping),
+                             msecs_to_jiffies(msec));
+    disable_irq(ts_data->gpio_irq);
+    if (READ_ONCE(ts_data->stopping))
+        return -ENODEV;
+    if (!ret)
+        return -ETIMEDOUT;
+    atomic_set(&ts_data->hyn_irq_flg, 0);
+    return 0;
 }
 
 #define MAX_WROD_LEN	(64)
@@ -177,76 +200,6 @@ static int hyn_get_threshold(char *filename,char *match_string,s16 *pstore, u16 
 {
 	int ret = 0;
 	HYN_ENTER();
-#if (HYN_GKI_VER==0)
-	{
-	u8 *buf = NULL,*ptr = NULL;
-	u8 tmp_word[66];
-	u16 i;
-	int dec,cnt;
-	off_t fsize;
-	struct file *fp;
-	loff_t pos;
-	
-	if(strlen(filename) == 0) 
-		return ret;
-		
-	fp = filp_open(filename, O_RDONLY, 0);
-	if (IS_ERR(fp)) {
-		HYN_INFO("error occured while opening file %s.\n", filename);
-		return -EIO;
-	}
-	fp->f_op->llseek(fp, 0, 0);
-	fsize = fp->f_inode->i_size;
-	buf = vmalloc(fsize);
-	if(IS_ERR_OR_NULL(buf)){
-		HYN_ERROR("vmalloc failed");
-		filp_close(fp, NULL);
-		return -1;
-	}
-	pos = 0;
-	ret = hyn_fs_read(fp,buf,fsize,&pos);
-	HYN_INFO("read %s %s.ret:%d.\n",filename,ret==fsize ? "success":"failed",ret);
-	filp_close(fp, NULL);
-
-////read finsh start match key string
-	i = fsize;
-	ptr = buf;
-	while(--i){
-		if(*ptr++ == '\n'){
-			cnt = strlen(match_string);
-			while(--cnt){
-				if(ptr[cnt]!= match_string[cnt]) break;
-			}
-			if(cnt ==0) break; //ignor idx 0,1
-		}
-	}
-	if(i == 0){
-		ret = -1;
-		goto MATCH_FAIL1;
-	}
-
-///////match key string end
-	i = 0;
-	while(i<10){
-		cnt = get_word(&ptr,tmp_word);
-		if(cnt==0){
-			i++;
-			continue;
-		}
-		// HYN_INFO("@@%s",tmp_word);
-		dec = str_2_num(tmp_word,10);
-		if(dec == 0xAC5AC5AC) continue;
-		*pstore = dec;
-		pstore++;
-		i = 0;
-		if(--len == 0) break;
-	}
-	ret = len ? -1:0;
-
-MATCH_FAIL1:
-	if(!IS_ERR_OR_NULL(buf)) vfree(buf);
-	}
-#endif
 	return ret;
 }
 
@@ -343,98 +296,10 @@ int factory_multitest(struct hyn_ts_data *ts_data ,char *cfg_path, u8 *data,s16 
     return 0;
 }
 
-#if (HYN_GKI_VER==0)
-static int arry_to_string(s16 *from,u16 cnt,u8 *des,u16 maxlen)
-{
-	int str_cnt = 0;
-	int ret;
-	while(cnt--){
-		ret = snprintf(&des[str_cnt],maxlen, "%d,",*from++);
-		str_cnt += ret;
-		if(str_cnt > maxlen-ret){
-			str_cnt = maxlen;
-			HYN_ERROR("str full");
-			break;
-		}
-	}
-	return str_cnt;
-}
-#endif
 
 int fac_test_log_save(char *log_name,struct hyn_ts_data *ts_data,s16 *test_data, int test_ret, u8 test_item)
 {
 	HYN_ENTER();
-#if (HYN_GKI_VER==0)
-	{
-	struct file *fp;
-	u8 w_buf[256],i;
-	int ret = -1;
-	if(strlen(log_name) == 0) 
-		return ret;
-		
-	fp = filp_open(log_name, O_RDWR | O_CREAT, 0644);
-	if (IS_ERR(fp)) {
-		HYN_INFO("error occured while opening file %s.\n", log_name);
-		return -EIO;
-	}
-
-	ret = snprintf(w_buf,sizeof(w_buf), test_ret ==0 ? "factory test pass\n":"factory test ng\n");
-	hyn_fs_write(fp, w_buf, ret, &fp->f_pos); 
-	if(test_ret == FAC_GET_DATA_FAIL){
-		ret = snprintf(w_buf,sizeof(w_buf), "read fac_test data fail\n");
-		hyn_fs_write(fp, w_buf, ret, &fp->f_pos); 
-	}
-	else{
-
-		if(test_item & MULTI_OPEN_TEST){
-			ret = snprintf(w_buf,sizeof(w_buf), "open high test data\n");
-			hyn_fs_write(fp, w_buf, ret, &fp->f_pos); 
-			for(i = 0; i< ts_data->hw_info.fw_sensor_txnum; i++){
-				ret = arry_to_string(test_data,ts_data->hw_info.fw_sensor_rxnum,w_buf,sizeof(w_buf)-2);
-				w_buf[ret+1] = '\n';
-				hyn_fs_write(fp, w_buf, ret+2, &fp->f_pos); 
-				test_data += ts_data->hw_info.fw_sensor_rxnum;
-			}
-
-			ret = snprintf(w_buf,sizeof(w_buf), "open low test data\n");
-			hyn_fs_write(fp, w_buf, ret, &fp->f_pos); 
-			for(i = 0; i< ts_data->hw_info.fw_sensor_txnum; i++){
-				ret = arry_to_string(test_data,ts_data->hw_info.fw_sensor_rxnum,w_buf,sizeof(w_buf)-2);
-				w_buf[ret+1] = '\n';
-				hyn_fs_write(fp, w_buf, ret+2, &fp->f_pos); 
-				test_data += ts_data->hw_info.fw_sensor_rxnum;
-			}
-		}
-
-		if(test_item & MULTI_SHORT_TEST){
-			ret = snprintf(w_buf,sizeof(w_buf), "short test data\n");
-			hyn_fs_write(fp, w_buf, ret, &fp->f_pos); 
-			ret = arry_to_string(test_data,ts_data->hw_info.fw_sensor_rxnum,w_buf,sizeof(w_buf)-2);
-			w_buf[ret+1] = '\n';
-			hyn_fs_write(fp, w_buf, ret+2, &fp->f_pos); 
-			test_data += ts_data->hw_info.fw_sensor_rxnum;
-			ret = arry_to_string(test_data,ts_data->hw_info.fw_sensor_txnum,w_buf,sizeof(w_buf)-2);
-			w_buf[ret+1] = '\n';
-			hyn_fs_write(fp, w_buf, ret+2, &fp->f_pos); 
-			test_data += ts_data->hw_info.fw_sensor_txnum;
-		}
-
-		if(test_item & MULTI_SCAP_TEST){
-			ret = snprintf(w_buf,sizeof(w_buf), "scap test data\n");
-			hyn_fs_write(fp, w_buf, ret, &fp->f_pos); 
-			ret = arry_to_string(test_data,ts_data->hw_info.fw_sensor_rxnum,w_buf,sizeof(w_buf)-2);
-			w_buf[ret+1] = '\n';
-			hyn_fs_write(fp, w_buf, ret+2, &fp->f_pos); 
-			test_data += ts_data->hw_info.fw_sensor_rxnum;
-			ret = arry_to_string(test_data,ts_data->hw_info.fw_sensor_txnum,w_buf,sizeof(w_buf)-2);
-			w_buf[ret+1] = '\n';
-			hyn_fs_write(fp, w_buf, ret+2, &fp->f_pos); 
-			test_data += ts_data->hw_info.fw_sensor_txnum;
-		}
-	}
-	filp_close(fp, NULL);
-	}
-#endif
 	return 0;
 }
 

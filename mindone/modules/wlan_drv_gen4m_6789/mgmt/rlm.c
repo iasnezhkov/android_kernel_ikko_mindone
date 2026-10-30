@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0 OR BSD-3-Clause
 /******************************************************************************
  *
  * This file is provided under a dual license.  When you use or
@@ -1908,7 +1909,7 @@ rlmGetSupportRxNssInVhtCap(struct IE_VHT_CAP *prVhtCap)
 			!= VHT_CAP_INFO_MCS_NOT_SUPPORTED)
 			ucRxNss = 8;
 		} else
-			DBGLOG(RLM, WARN, "null prVhtCap, assume RxNss=1\n");
+			pr_debug("null prVhtCap, assume RxNss=1\n");
 
 	return ucRxNss;
 }

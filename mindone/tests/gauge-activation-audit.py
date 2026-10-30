@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: GPL-2.0
+# SPDX-FileCopyrightText: 2026 The LineageOS Project
 import argparse
 from pathlib import Path
 import runpy
@@ -20,7 +22,7 @@ def main():
     text = (fixtures / "stubs.h").read_text()
     text = text.replace("struct mtk_battery_algo {", "struct mtk_battery_algo {\n\tint fg_bat_int1_gap, prev_car_bat0, ht_gap, lt_gap, uisoc_ht_en, uisoc_lt_en, fg_vbat2_lt;\n\tbool active;\n\tint fg_bat_tmp_c_gap;\n\tint DC_ratio;\n\tint last_temp;", 1)
     text = text.replace("struct mtk_battery {", "struct mtk_gauge { struct mutex ops_lock; };\nstruct mtk_battery {\n\tstruct mtk_gauge *gauge;\n\tint soc;\n\tbool kernel_setup_in_progress, kernel_setup_mutated;\n\tint kernel_setup_error;\n\tint init_flag;\n\tunsigned int BAT_EC_cmd;\n\tunsigned int BAT_EC_param;", 1)
-    text = text.replace("struct fuel_gauge_custom_data {", "struct fuel_gauge_custom_data {\n\tint vbat2_det_voltage1;", 1)
+    text = text.replace("struct fuel_gauge_custom_data {", "struct fuel_gauge_custom_data {\n\tint vbat2_det_voltage1, qmax_sel;", 1)
     text = text.replace("struct fuel_gauge_table_custom_data {\n\tint unused;", "struct fuel_gauge_table_custom_data {\n\tint temperature_tb1;", 1)
     text = text.replace("\tGAUGE_PROP_COUNT,", "\tGAUGE_PROP_BATTERY_EXIST,\n\tGAUGE_PROP_IS_NVRAM_FAIL_MODE,\n\tGAUGE_PROP_PTIM_RESIST,\n\tGAUGE_PROP_BATTERY_CURRENT,\n\tGAUGE_PROP_VBAT_LT_INTR_THRESHOLD,\n\tGAUGE_PROP_EN_LOW_VBAT_INTERRUPT,\n\tGAUGE_PROP_COUNT,", 1)
     text = text.replace("\tBAT_PROP_COUNT,", "\tBAT_PROP_INIT_DONE,\n\tBAT_PROP_COULOMB_INT_GAP,\n\tBAT_PROP_UISOC_HT_INT_GAP,\n\tBAT_PROP_UISOC_LT_INT_GAP,\n\tBAT_PROP_TEMP_TH_GAP,\n\tBAT_PROP_COUNT,", 1)
@@ -30,7 +32,12 @@ def main():
     text = text.replace("\tgauge_reads[property]++;", "\tgauge_reads[property]++;\n\tint ret = io_step(false);\n\tif (ret) return ret;", 1)
     text = text.replace("\t*value = gauge_values[property];\n\treturn property", "\t*value = gauge_values[property];\n\tif (mismatch_property == property && gauge_writes[property]) (*value)++;\n\treturn property", 1)
     text = text.replace("\tbattery_values[property] = value;", "\tint ret = io_step(property != BAT_PROP_UISOC);\n\tif (ret) return ret;\n\tbattery_values[property] = value;", 1)
+    gauge_header = (base / "mtk_gauge.h").read_text()
+    text += "typedef unsigned long long u64;\n"
+    text += re.search(r"struct gauge_ptim_sample \{.*?\n\};", gauge_header, re.S).group(0) + "\n"
+    text += re.search(r"struct fgr_vboot_sample \{.*?\n\};", algorithm, re.S).group(0) + "\n"
     text += (Path(__file__).with_name("gauge-activation") / "stubs.h").read_text()
+    text += function(algorithm, "fgr_read_vboot_sample")
     for name in ("fg_adc_reset", "get_d0_c_soc_cust", "get_uisoc_cust", "Set_fg_c_d0_by_ocv", "fgr_set_soc_by_vc_mode"):
         text += function(algorithm, name)
     if "static void fgr_update_c_dod_car(" in algorithm:

@@ -1,3 +1,5 @@
+/* SPDX-License-Identifier: GPL-2.0 */
+/* SPDX-FileCopyrightText: 2026 The LineageOS Project */
 static struct md_ccif_ctrl ctrl;
 static struct ccci_per_md per;
 static struct sk_buff packet;

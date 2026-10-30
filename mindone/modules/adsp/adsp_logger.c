@@ -25,12 +25,24 @@ unsigned int adsp_log_poll(struct log_ctrl_s *ctrl)
 {
 	struct log_info_s *log_info;
 	struct buffer_info_s *buf_info;
+	int info_ofs = ALIGN(sizeof(struct log_info_s), 128);
 
 	if (!ctrl || !ctrl->inited)
 		return 0;
 
 	log_info = (struct log_info_s *)ctrl->priv;
-	buf_info = (struct buffer_info_s *)(ctrl->priv + log_info->info_ofs);
+
+	if (!log_info)
+		return POLLERR;
+
+	if (log_info->base != PLT_LOG_ENABLE)
+		return POLLERR;
+
+	buf_info = (struct buffer_info_s *)(ctrl->priv + info_ofs);
+
+	if (buf_info->r_pos >= log_info->buff_size ||
+	    buf_info->w_pos >= log_info->buff_size)
+		return POLLERR;
 
 	if (buf_info->r_pos != buf_info->w_pos)
 		return POLLIN | POLLRDNORM;
@@ -52,6 +64,15 @@ ssize_t adsp_log_read(struct log_ctrl_s *ctrl, char __user *userbuf, size_t len)
 
 	addr = ctrl->priv;
 	log_info = (struct log_info_s *)ctrl->priv;
+
+	if (!log_info)
+		return 0;
+
+	if (log_info->base != PLT_LOG_ENABLE) {
+		pr_info("%s, logger magic error\n", __func__);
+		return 0;
+	}
+
 	buf_info = (struct buffer_info_s *)(ctrl->priv + log_info->info_ofs);
 
 	mutex_lock(&ctrl->lock);

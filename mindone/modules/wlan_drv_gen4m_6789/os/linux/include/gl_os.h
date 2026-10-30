@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: GPL-2.0 OR BSD-3-Clause */
 
 /*******************************************************************************
  *
@@ -322,6 +323,8 @@ extern void update_driver_loaded_status(uint8_t loaded);
 #define GLUE_FLAG_TIMEOUT_BIT           (3)
 #define GLUE_FLAG_TXREQ_BIT             (4)
 #define GLUE_FLAG_SER_TIMEOUT_BIT       (5)
+#define GLUE_FLAG_FWK_BLACKLIST_BIT     (6)
+#define GLUE_FLAG_FWK_BLACKLIST         BIT(6)
 #define GLUE_FLAG_SUB_MOD_MULTICAST_BIT (7)
 #define GLUE_FLAG_FRAME_FILTER_BIT      (8)
 #define GLUE_FLAG_FRAME_FILTER_AIS_BIT  (9)
@@ -599,6 +602,33 @@ struct FT_IES {
 struct GL_P2P_INFO;	/* declare GL_P2P_INFO_T */
 struct GL_P2P_DEV_INFO;	/* declare GL_P2P_DEV_INFO_T */
 
+enum GL_FWK_BLACKLIST_STATE {
+	GL_FWK_BLACKLIST_IDLE,
+	GL_FWK_BLACKLIST_QUEUED,
+	GL_FWK_BLACKLIST_RUNNING,
+	GL_FWK_BLACKLIST_DONE,
+};
+
+struct GL_FWK_BLACKLIST_REQUEST {
+	uint32_t count;
+	uint8_t bssid[CFG_FW_ROAMING_BLACKLIST_SIZE][PARAM_MAC_ADDR_LEN];
+};
+
+struct GL_FWK_BLACKLIST_SLOT {
+	struct mutex caller_lock;
+	struct mutex state_lock;
+	struct completion done;
+	struct completion owner_idle;
+	enum GL_FWK_BLACKLIST_STATE state;
+	bool accepting;
+	bool cancelled;
+	bool owner_live;
+	bool role_blocked;
+	unsigned long deadline;
+	int result;
+	struct GL_FWK_BLACKLIST_REQUEST request;
+};
+
 struct GLUE_INFO {
 	/* Device handle */
 	struct net_device *prDevHandler;
@@ -687,6 +717,7 @@ struct GLUE_INFO {
 	enum PARAM_DEVICE_POWER_STATE ePowerState;
 
 	struct completion rScanComp;	/* indicate scan complete */
+	struct GL_FWK_BLACKLIST_SLOT rFwkBlacklist;
 	struct completion
 		rHaltComp;	/* indicate main thread halt complete */
 	struct completion
@@ -1413,6 +1444,7 @@ extern char *gprifnamep2p;
 extern char *gprifnamesta;
 #endif /* CFG_DRIVER_INF_NAME_CHANGE */
 
+void wlanScheduleNetAddrUpdate(unsigned long delay);
 void wlanRegisterInetAddrNotifier(void);
 void wlanUnregisterInetAddrNotifier(void);
 void wlanRegisterNetdevNotifier(void);
@@ -1451,6 +1483,9 @@ void wlanUpdateDfsChannelTable(struct GLUE_INFO *prGlueInfo,
 #endif
 
 #if (CFG_MTK_ANDROID_WMT || WLAN_INCLUDE_PROC)
+int wlanSetP2pMode(struct net_device *netdev,
+	struct PARAM_CUSTOM_P2P_SET_STRUCT p2pmode,
+	u_int8_t fgIsRtnlLockAcquired);
 int set_p2p_mode_handler(struct net_device *netdev,
 			 struct PARAM_CUSTOM_P2P_SET_STRUCT p2pmode);
 #endif

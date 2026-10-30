@@ -127,7 +127,8 @@ static struct dma_buf *mtk_dma_buf_init(struct device *dev, void **vaddr)
 	dmabuf = dma_buf_export(&exp_info);
 	if (IS_ERR_OR_NULL(dmabuf)) {
 		dev_info(dev, "%s() couldn't export dma_buf", __func__);
-		kfree(vaddr);
+		kfree(*vaddr);
+		*vaddr = NULL;
 		return NULL;
 	}
 	return dmabuf;

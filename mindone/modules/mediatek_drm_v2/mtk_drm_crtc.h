@@ -373,6 +373,10 @@ enum MTK_CRTC_PROP {
 	CRTC_PROP_MSYNC2_0_ENABLE,
 	CRTC_PROP_SKIP_CONFIG,
 	CRTC_PROP_OVL_DSI_SEQ,
+	CRTC_PROP_PARTIAL_UPDATE_ENABLE,
+	CRTC_PROP_DYNAMIC_WCG_OFF,
+	CRTC_PROP_WCG_BY_COLOR_MODE,
+	CRTC_PROP_AOSP_CCORR_LINEAR,
 	CRTC_PROP_MAX,
 };
 
@@ -793,6 +797,8 @@ struct mtk_drm_crtc {
 	bool mipi_hopping_sta;
 	bool panel_osc_hopping_sta;
 	bool vblank_en;
+	unsigned int hwvsync_en;
+	struct drm_file *hwvsync_owner;
 
 	atomic_t already_config;
 

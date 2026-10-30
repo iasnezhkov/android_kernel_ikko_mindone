@@ -1,8 +1,10 @@
+// SPDX-License-Identifier: GPL-2.0
 #include "hyn_core.h"
 #include "mtk_disp_notify.h"
 #define HYN_DRIVER_NAME  "hyn_ts"
 
 static struct hyn_ts_data *hyn_data = NULL;
+static DEFINE_MUTEX(hyn_lifecycle_lock);
 static const struct hyn_ts_fuc* hyn_fun = NULL;
 static const struct of_device_id hyn_of_match_table[] = {
     {.compatible = "hyn,66xx", .data = &cst66xx_fuc,},   /*suport 36xx 35xx 66xx 68xx 148E*/
@@ -178,11 +180,13 @@ static int hyn_poweron(struct hyn_ts_data *ts_data)
     }
 
     ret = gpio_request(dt->irq_gpio, "hyn_irq_gpio");
-    ret |= gpio_request(dt->reset_gpio, "hyn_reset_gpio");
-    if(ret < 0){
-        HYN_ERROR("gpio_request failed");
+    if (ret)
         goto GPIO_SET_FAILE;
-    }
+    ts_data->irq_gpio_requested = true;
+    ret = gpio_request(dt->reset_gpio, "hyn_reset_gpio");
+    if (ret)
+        goto GPIO_SET_FAILE;
+    ts_data->reset_gpio_requested = true;
     
     ret = gpio_direction_input(dt->irq_gpio);
     ret |= gpio_direction_output(dt->reset_gpio, 0);
@@ -192,9 +196,10 @@ static int hyn_poweron(struct hyn_ts_data *ts_data)
     }
 
     if(dt->vdd_gpio >= 0){
-        if(gpio_request(dt->vdd_gpio, "hyn_vdd_gpio")){
-            HYN_ERROR("vdd gpio_request failed, gpio=%d", dt->vdd_gpio);
-        }
+        ret = gpio_request(dt->vdd_gpio, "hyn_vdd_gpio");
+        if (ret)
+            goto GPIO_SET_FAILE;
+        ts_data->vdd_gpio_requested = true;
         if(gpio_direction_output(dt->vdd_gpio, 1)){
             HYN_ERROR("vdd gpio_direction_output failed, gpio=%d", dt->vdd_gpio);
         }
@@ -343,6 +348,8 @@ static void hyn_irq_report_work(struct work_struct *work)
     struct input_dev *dev = hyn_data->input_dev;
     struct hyn_plat_data *dt = &hyn_data->plat_data;
     u16 xpos,ypos;
+    if (READ_ONCE(ts_data->stopping))
+        return;
     hyn_fun->tp_report();
     mutex_lock(&ts_data->mutex_report);
     if(rep_frame->report_need & REPORT_KEY){ //key
@@ -422,6 +429,13 @@ static void hyn_esdcheck_work(struct work_struct *work)
 #if ESD_CHECK_EN
     int ret;
     HYN_ENTER(); 
+    ret = hyn_protocol_try_begin(hyn_data);
+    if (ret) {
+        if (ret == -EAGAIN && !READ_ONCE(hyn_data->stopping))
+            queue_delayed_work(hyn_data->hyn_workqueue, &hyn_data->esdcheck_work,
+                               msecs_to_jiffies(1000));
+        return;
+    }
     ret = hyn_fun->tp_check_esd();
     // HYN_INFO("esd:%04x",ret);
     if(hyn_data->esd_last_value != ret){
@@ -438,7 +452,9 @@ static void hyn_esdcheck_work(struct work_struct *work)
             hyn_fun->tp_rest();
         }
     }
-    queue_delayed_work(hyn_data->hyn_workqueue, &hyn_data->esdcheck_work,
+    hyn_protocol_end(hyn_data);
+    if (!READ_ONCE(hyn_data->stopping))
+        queue_delayed_work(hyn_data->hyn_workqueue, &hyn_data->esdcheck_work,
                            msecs_to_jiffies(1000));
 #endif
 }
@@ -459,6 +475,11 @@ static void hyn_resum(struct device *dev)
     };
     /* drv add by chenjiaxi, support glove mode, end */
     HYN_ENTER();
+    mutex_lock(&hyn_data->mutex_fs);
+    if (hyn_protocol_begin(hyn_data)) {
+        mutex_unlock(&hyn_data->mutex_fs);
+        return;
+    }
 #if (HYN_WAKE_LOCK_EN==1)
     wake_unlock(&hyn_data->tp_wakelock);
 #endif
@@ -490,12 +511,19 @@ static void hyn_resum(struct device *dev)
         ret |= hyn_wr_reg(hyn_data, 0xD0000DAB, 4, 0, 0);
     }
     /* drv add by chenjiaxi, support glove mode, end */
+    hyn_protocol_end(hyn_data);
+    mutex_unlock(&hyn_data->mutex_fs);
 }
 
 static void hyn_suspend(struct device *dev)
 {
     int ret = 0;
     HYN_ENTER();
+    mutex_lock(&hyn_data->mutex_fs);
+    if (hyn_protocol_begin(hyn_data)) {
+        mutex_unlock(&hyn_data->mutex_fs);
+        return;
+    }
 #if (HYN_WAKE_LOCK_EN==1)
     wake_lock(&hyn_data->tp_wakelock);
 #endif
@@ -519,39 +547,57 @@ static void hyn_suspend(struct device *dev)
         }
         hyn_power_source_ctrl(0);
     }
+    hyn_protocol_end(hyn_data);
+    mutex_unlock(&hyn_data->mutex_fs);
 }
 
 static void hyn_updata_fw_work(struct work_struct *work)
 {
     int ret = 0;
+    mutex_lock(&hyn_data->mutex_fs);
+    if (hyn_protocol_begin(hyn_data)) {
+        mutex_unlock(&hyn_data->mutex_fs);
+        return;
+    }
     if(!IS_ERR_OR_NULL(hyn_data->fw_updata_addr)){
         ret = hyn_fun->tp_updata_fw(hyn_data->fw_updata_addr,hyn_data->fw_updata_len);
     }
     else{
         HYN_ERROR("fw_updata_addr is erro");
     }
+    hyn_protocol_end(hyn_data);
+    mutex_unlock(&hyn_data->mutex_fs);
 }
 
 static void hyn_resum_work(struct work_struct *work)
 {
+    if (READ_ONCE(hyn_data->stopping))
+        return;
     hyn_resum(hyn_data->dev);
 }
 
 static irqreturn_t hyn_irq_handler(int irq, void *data)
 {
-	if (READ_ONCE(hyn_data->suspended) &&
-	    !wait_event_timeout(hyn_data->wait_resume,
-				!READ_ONCE(hyn_data->suspended),
-				msecs_to_jiffies(1000)))
-		return IRQ_HANDLED;
-	atomic_set(&hyn_data->hyn_irq_flg,1);
-    if(hyn_data->work_mode < DIFF_MODE){
-        // queue_work(hyn_data->hyn_workqueue,&hyn_data->work_report);
-        flush_workqueue(hyn_data->hyn_workqueue);
-        hyn_irq_report_work(NULL);
-    }
-    else{
-        wake_up(&hyn_data->wait_irq);
+    struct hyn_ts_data *ts_data = data;
+
+    if (READ_ONCE(ts_data->stopping))
+        return IRQ_HANDLED;
+    if (READ_ONCE(ts_data->suspended) &&
+        !wait_event_timeout(ts_data->wait_resume,
+                            !READ_ONCE(ts_data->suspended) ||
+                            READ_ONCE(ts_data->stopping),
+                            msecs_to_jiffies(1000)))
+        return IRQ_HANDLED;
+    if (READ_ONCE(ts_data->stopping))
+        return IRQ_HANDLED;
+    atomic_set(&ts_data->hyn_irq_flg, 1);
+    if (ts_data->work_mode < DIFF_MODE) {
+        mutex_lock(&ts_data->mutex_protocol);
+        if (!READ_ONCE(ts_data->stopping))
+            hyn_irq_report_work(NULL);
+        mutex_unlock(&ts_data->mutex_protocol);
+    } else {
+        wake_up(&ts_data->wait_irq);
     }
     return IRQ_HANDLED;
 }
@@ -625,7 +671,7 @@ static int mindone_disp_notifier_callback(struct notifier_block *self,
 {
     int *blank = (int *)v;
 
-    if (!blank)
+    if (!blank || READ_ONCE(hyn_data->stopping))
         return NOTIFY_DONE;
     if (val == MTK_DISP_EARLY_EVENT_BLANK && *blank == MTK_DISP_BLANK_POWERDOWN) {
         cancel_work_sync(&hyn_data->work_resume);
@@ -641,8 +687,8 @@ static int mindone_disp_notifier_callback(struct notifier_block *self,
 #endif
 
 #ifdef I2C_PORT
-static void hyn_ts_remove(struct i2c_client *client);
-static int hyn_ts_probe(struct i2c_client *client)
+static void hyn_ts_remove_locked(struct i2c_client *client);
+static int hyn_ts_probe_locked(struct i2c_client *client)
 #else
 
 #ifdef CONFIG_BUS_SPI
@@ -668,8 +714,8 @@ static struct mt_chip_conf hyn_mt_spi_conf = {
 };
 #endif
 
-static void hyn_ts_remove(struct spi_device *client);
-static int hyn_ts_probe(struct spi_device *client)
+static void hyn_ts_remove_locked(struct spi_device *client);
+static int hyn_ts_probe_locked(struct spi_device *client)
 #endif
 {
     int ret = 0;
@@ -717,6 +763,11 @@ static int hyn_ts_probe(struct spi_device *client)
     ts_data->client = client;
     ts_data->dev = &client->dev;
     dev_set_drvdata(ts_data->dev, ts_data);
+    ts_data->plat_data.irq_gpio = -EINVAL;
+    ts_data->plat_data.reset_gpio = -EINVAL;
+    ts_data->plat_data.vdd_gpio = -EINVAL;
+    init_waitqueue_head(&ts_data->wait_irq);
+    init_waitqueue_head(&ts_data->wait_resume);
 
     #if (I2C_USE_DMA==2)
         ts_data->dev->coherent_dma_mask = DMA_BIT_MASK(32);
@@ -741,9 +792,8 @@ static int hyn_ts_probe(struct spi_device *client)
     mutex_init(&ts_data->mutex_report);
     mutex_init(&ts_data->mutex_bus);
     mutex_init(&ts_data->mutex_fs);
-    init_waitqueue_head(&ts_data->wait_irq);
-    init_waitqueue_head(&ts_data->wait_resume);
-
+    mutex_init(&ts_data->mutex_protocol);
+    mutex_init(&ts_data->mutex_control);
     ret = hyn_check_ic(ts_data);
     if(ret){
         HYN_ERROR("hyn_check_ic failed");
@@ -758,6 +808,7 @@ static int hyn_ts_probe(struct spi_device *client)
     ts_data->hyn_workqueue = create_singlethread_workqueue("hyn_wq");
     if (IS_ERR_OR_NULL(ts_data->hyn_workqueue)){
         HYN_ERROR("create work queue failed");
+        ret = -ENOMEM;
         goto FREE_RESOURCE;
     }
     
@@ -777,6 +828,7 @@ static int hyn_ts_probe(struct spi_device *client)
         goto FREE_RESOURCE;
     }
 
+    ts_data->input_registered = true;
 #if (HYN_WAKE_LOCK_EN==1)
     wake_lock_init(&ts_data->tp_wakelock, WAKE_LOCK_SUSPEND, "suspend_tp_lock");
 #endif
@@ -787,6 +839,7 @@ static int hyn_ts_probe(struct spi_device *client)
         HYN_ERROR("gesture_init failed");
         goto FREE_RESOURCE;
     }
+    ts_data->gesture_registered = true;
 #endif
 
     ts_data->gpio_irq =  gpio_to_irq(ts_data->plat_data.irq_gpio);
@@ -796,6 +849,7 @@ static int hyn_ts_probe(struct spi_device *client)
         HYN_ERROR("request_threaded_irq failed");
         goto FREE_RESOURCE;
     }
+    ts_data->irq_registered = true;
     atomic_set(&ts_data->irq_is_disable,ENABLE);
     hyn_irq_set(ts_data , DISABLE);
 #if defined(CONFIG_FB)
@@ -816,17 +870,28 @@ static int hyn_ts_probe(struct spi_device *client)
     ts_data->early_suspend.suspend = hyn_ts_early_suspend;
     ts_data->early_suspend.resume = hyn_ts_late_resume;
     register_early_suspend(&ts_data->early_suspend);
+    ret = 0;
 #else
     ts_data->mindone_disp_nb.notifier_call = mindone_disp_notifier_callback;
     ret = mtk_disp_notifier_register("hyn_ts", &ts_data->mindone_disp_nb);
     if (ret)
         HYN_ERROR("mtk_disp_notifier_register failed: %d", ret);
 #endif
-    hyn_create_sysfs(ts_data);
+    if (ret)
+        goto FREE_RESOURCE;
+    ts_data->notifier_registered = true;
+    ret = hyn_create_sysfs(ts_data);
+    if (ret)
+        goto FREE_RESOURCE;
 #if (HYN_APK_DEBUG_EN)
-    hyn_tool_fs_int(ts_data);
+    ret = hyn_tool_fs_int(ts_data);
+    if (ret)
+        goto FREE_RESOURCE;
 #endif
-    hyn_proximity_int(ts_data);
+    ret = hyn_proximity_int(ts_data);
+    if (ret)
+        goto FREE_RESOURCE;
+    ts_data->proximity_initialized = true;
     hyn_irq_set(ts_data,ENABLE);
     hyn_esdcheck_switch(ts_data,ENABLE);
 
@@ -837,10 +902,104 @@ static int hyn_ts_probe(struct spi_device *client)
 #endif
     return 0;
 FREE_RESOURCE:
-    hyn_ts_remove(client);
-    return -1;
+    hyn_ts_remove_locked(client);
+    return ret;
 }
 
+
+#ifdef I2C_PORT
+static void hyn_ts_remove_locked(struct i2c_client *client)
+#else
+static void hyn_ts_remove_locked(struct spi_device *client)
+#endif
+{
+    struct hyn_ts_data *ts_data = dev_get_drvdata(&client->dev);
+
+    if (!ts_data)
+        return;
+    WRITE_ONCE(ts_data->stopping, true);
+    wake_up(&ts_data->wait_resume);
+    wake_up(&ts_data->wait_irq);
+    if (ts_data->notifier_registered) {
+#if defined(CONFIG_FB)
+        fb_unregister_client(&ts_data->fb_notif);
+#elif IS_ENABLED(CONFIG_DRM_MEDIATEK_V2)
+        drv_mtk_disp_sub_notifier_unregister(&ts_data->drv_mtk_disp_sub_notif);
+#elif defined(CONFIG_HAS_EARLYSUSPEND)
+        unregister_early_suspend(&ts_data->early_suspend);
+#else
+        mtk_disp_notifier_unregister(&ts_data->mindone_disp_nb);
+#endif
+        ts_data->notifier_registered = false;
+    }
+#if HYN_APK_DEBUG_EN
+    hyn_tool_fs_exit();
+#endif
+    hyn_release_sysfs(ts_data);
+    if (ts_data->proximity_initialized)
+        hyn_proximity_exit();
+#if HYN_GESTURE_EN
+    if (ts_data->gesture_registered)
+        hyn_gesture_exit(ts_data);
+#endif
+    if (ts_data->irq_registered)
+        disable_irq(ts_data->gpio_irq);
+    if (ts_data->hyn_workqueue) {
+        cancel_work_sync(&ts_data->work_resume);
+        cancel_work_sync(&ts_data->work_updata_fw);
+        cancel_delayed_work_sync(&ts_data->esdcheck_work);
+        cancel_work_sync(&ts_data->work_report);
+        destroy_workqueue(ts_data->hyn_workqueue);
+        ts_data->hyn_workqueue = NULL;
+    }
+    if (ts_data->irq_registered) {
+        free_irq(ts_data->gpio_irq, ts_data);
+        ts_data->irq_registered = false;
+    }
+    if (ts_data->input_dev) {
+        if (ts_data->input_registered)
+            input_unregister_device(ts_data->input_dev);
+        else
+            input_free_device(ts_data->input_dev);
+        ts_data->input_dev = NULL;
+    }
+    if (ts_data->irq_gpio_requested)
+        gpio_free(ts_data->plat_data.irq_gpio);
+    if (ts_data->reset_gpio_requested)
+        gpio_free(ts_data->plat_data.reset_gpio);
+    if (ts_data->vdd_gpio_requested)
+        gpio_free(ts_data->plat_data.vdd_gpio);
+    hyn_power_source_ctrl(0);
+    if (!IS_ERR_OR_NULL(ts_data->plat_data.vdd_ana))
+        regulator_put(ts_data->plat_data.vdd_ana);
+    if (!IS_ERR_OR_NULL(ts_data->plat_data.vdd_i2c))
+        regulator_put(ts_data->plat_data.vdd_i2c);
+#if I2C_USE_DMA == 2
+    if (ts_data->dma_buff_va)
+        dma_free_coherent(ts_data->dev, 2048,
+                          ts_data->dma_buff_va, ts_data->dma_buff_pa);
+#endif
+    vfree(ts_data->fw_dump_buffer);
+    ts_data->fw_dump_buffer = NULL;
+    dev_set_drvdata(ts_data->dev, NULL);
+    hyn_data = NULL;
+    hyn_fun = NULL;
+    kfree(ts_data);
+}
+
+#ifdef I2C_PORT
+static int hyn_ts_probe(struct i2c_client *client)
+#else
+static int hyn_ts_probe(struct spi_device *client)
+#endif
+{
+    int ret;
+
+    mutex_lock(&hyn_lifecycle_lock);
+    ret = hyn_ts_probe_locked(client);
+    mutex_unlock(&hyn_lifecycle_lock);
+    return ret;
+}
 
 #ifdef I2C_PORT
 static void hyn_ts_remove(struct i2c_client *client)
@@ -848,69 +1007,9 @@ static void hyn_ts_remove(struct i2c_client *client)
 static void hyn_ts_remove(struct spi_device *client)
 #endif
 {
-    struct hyn_ts_data *ts_data = hyn_data;
-    HYN_ENTER();    
-    if(!IS_ERR_OR_NULL(ts_data)){
-        if (ts_data->hyn_workqueue){
-            flush_workqueue(ts_data->hyn_workqueue);
-            hyn_esdcheck_switch(ts_data,DISABLE);
-            destroy_workqueue(ts_data->hyn_workqueue);
-        } 
-        HYN_INFO("ts_remove1");
-#if (HYN_APK_DEBUG_EN)
-        hyn_tool_fs_exit();
-#endif
-        hyn_proximity_exit();
-#if (HYN_GESTURE_EN)
-        hyn_gesture_exit(ts_data);
-#endif
-        hyn_release_sysfs(ts_data);
-        HYN_INFO("ts_remove2");
-        if(ts_data->gpio_irq != 0)
-            free_irq(ts_data->gpio_irq, ts_data);
-        HYN_INFO("ts_remove3");
-        if(!IS_ERR_OR_NULL(ts_data->input_dev)){
-            input_unregister_device(ts_data->input_dev);
-        }
-        HYN_INFO("ts_remove4");
-#if defined(CONFIG_FB) 
-        fb_unregister_client(&ts_data->fb_notif);
-/* drv add by chenjiaxi, add drm mediatek v2, begin */
-#elif IS_ENABLED(CONFIG_DRM_MEDIATEK_V2)
-        drv_mtk_disp_sub_notifier_unregister(&ts_data->drv_mtk_disp_sub_notif);
-/* drv add by chenjiaxi, add drm mediatek v2, end */
-#elif defined(CONFIG_HAS_EARLYSUSPEND)
-        unregister_early_suspend(&ts_data->early_suspend);
-#else
-        mtk_disp_notifier_unregister(&ts_data->mindone_disp_nb);
-#endif
-        if(gpio_is_valid(ts_data->plat_data.irq_gpio))
-            gpio_free(ts_data->plat_data.irq_gpio);
-        if(gpio_is_valid(ts_data->plat_data.reset_gpio))
-            gpio_free(ts_data->plat_data.reset_gpio);
-        HYN_INFO("ts_remove5"); 
-        hyn_power_source_ctrl(0);
-        if(!IS_ERR_OR_NULL(ts_data->plat_data.vdd_ana)){
-            regulator_put(ts_data->plat_data.vdd_ana);
-        }
-        if(!IS_ERR_OR_NULL(ts_data->plat_data.vdd_i2c)){
-            regulator_put(ts_data->plat_data.vdd_i2c);
-        }
-        HYN_INFO("ts_remove6");
-#if (I2C_USE_DMA==2)
-        if(!IS_ERR_OR_NULL(ts_data->dma_buff_va)){
-            dma_free_coherent(NULL, 2048, ts_data->dma_buff_va, ts_data->dma_buff_pa);
-        }
-#endif
-        kfree(ts_data);
-        hyn_data = NULL;
-        HYN_INFO("ts_remove7");
-    }
-#ifdef I2C_PORT
-    return;
-#else
-    return 0;
-#endif
+    mutex_lock(&hyn_lifecycle_lock);
+    hyn_ts_remove_locked(client);
+    mutex_unlock(&hyn_lifecycle_lock);
 }
 
 #ifdef I2C_PORT

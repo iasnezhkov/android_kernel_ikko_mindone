@@ -527,7 +527,7 @@ static void mtk_spi_prepare_transfer(struct spi_controller *master,
 	struct spi_device *spi = master->cur_msg->spi;
 	struct mtk_chip_config *chip_config = spi->controller_data;
 
-	if (xfer->speed_hz < mdata->spi_clk_hz / 2)
+	if (xfer->speed_hz && xfer->speed_hz < mdata->spi_clk_hz / 2)
 		div = DIV_ROUND_UP(mdata->spi_clk_hz, xfer->speed_hz);
 	else
 		div = 1;

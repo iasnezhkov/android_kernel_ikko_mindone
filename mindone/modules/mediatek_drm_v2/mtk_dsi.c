@@ -7,7 +7,6 @@
 #include <drm/drm_atomic_helper.h>
 #include <linux/vmalloc.h>
 #include <drivers/misc/mediatek/smi/mtk-smi-dbg.h>
-#include "mindone_log.h"
 #include <drm/drm_crtc_helper.h>
 #include <drm/drm_mipi_dsi.h>
 #include <drm/drm_panel.h>
@@ -15,6 +14,10 @@
 #include <drm/drm_probe_helper.h>
 #include <drm/drm_bridge.h>
 #include <drm/drm_encoder.h>
+#include <drm/drm_device.h>
+#include <drm/drm_file.h>
+#include <linux/device.h>
+#include <linux/kobject.h>
 #include <linux/delay.h>
 #include <linux/iopoll.h>
 #include <linux/clk.h>
@@ -2346,8 +2349,6 @@ void clear_dsi_underrun_event(void)
 	dsi_underrun_trigger = 1;
 }
 
-extern int mindone_vb_watch;
-
 irqreturn_t mtk_dsi_irq_status(int irq, void *dev_id)
 {
 	struct mtk_dsi *dsi = dev_id;
@@ -2372,22 +2373,14 @@ irqreturn_t mtk_dsi_irq_status(int irq, void *dev_id)
 	IF_DEBUG_IRQ_TS(find_work,
 		dsi->ddp_comp.ts_works[work_id].irq_time, i)
 
-	if (mindone_vb_watch)
-		MINDONE_PR("MINDONE-VB: dsi-irq enter\n");
 	if (mtk_drm_top_clk_isr_get("dsi_irq") == false) {
-		if (mindone_vb_watch)
-			MINDONE_PR("MINDONE-VB: dsi-irq clk-gate-fail\n");
 		DDPIRQ("%s, top clk off\n", __func__);
 		return IRQ_NONE;
 	}
 
 	IF_DEBUG_IRQ_TS(find_work,
 		dsi->ddp_comp.ts_works[work_id].irq_time, i)
-	if (mindone_vb_watch)
-		MINDONE_PR("MINDONE-VB: dsi-irq pre-readl\n");
 	status = readl(dsi->regs + DSI_INTSTA);
-	if (mindone_vb_watch)
-		MINDONE_PR("MINDONE-VB: dsi-irq post-readl status=0x%x\n", status);
 	if (!status) {
 		ret = IRQ_NONE;
 		goto out;
@@ -2568,8 +2561,6 @@ irqreturn_t mtk_dsi_irq_status(int irq, void *dev_id)
 	ret = IRQ_HANDLED;
 
 out:
-	if (mindone_vb_watch)
-		MINDONE_PR("MINDONE-VB: dsi-irq exit ret=%d\n", ret);
 	mtk_drm_top_clk_isr_put("dsi_irq");
 
 	IF_DEBUG_IRQ_TS(find_work,
@@ -2779,48 +2770,7 @@ static void mtk_dsi_exit_ulps(struct mtk_dsi *dsi)
 static int mtk_dsi_stop_vdo_mode(struct mtk_dsi *dsi, void *handle);
 static int mtk_dsi_start_vdo_mode(struct mtk_ddp_comp *comp, void *handle);
 
-static void mindone_lk_panelon_work_fn(struct work_struct *work)
-{
-	static const u8 dcs_exit_sleep = 0x11;
-	static const u8 dcs_display_on = 0x29;
-	struct mtk_ddic_dsi_msg msg;
-	int ret;
-
-	memset(&msg, 0, sizeof(msg));
-	msg.channel = 0;
-	msg.flags = 0;			/* no MIPI_DSI_MSG_USE_LPM -> VM_CMD, stream stays up */
-	msg.type[0] = MIPI_DSI_DCS_SHORT_WRITE;
-	msg.tx_len[0] = 1;
-	msg.tx_buf[0] = &dcs_exit_sleep;
-	msg.tx_cmd_num = 1;
-	ret = mtk_ddic_dsi_send_cmd(&msg, true);
-	DDPMSG("MINDONE-LK-PANELON: exit_sleep(0x11) ret=%d\n", ret);
-	if (ret < 0)
-		return;
-
-	msleep(120);			/* datasheet wait after sleep-out before display-on */
-
-	msg.tx_buf[0] = &dcs_display_on;
-	ret = mtk_ddic_dsi_send_cmd(&msg, true);
-	DDPMSG("MINDONE-LK-PANELON: display_on(0x29) ret=%d\n", ret);
-	if (ret < 0)
-		return;
-
-	msleep(20);
-	ret = mtk_disp_notifier_call_chain(MTK_DISP_EVENT_LK_PANEL_ON, NULL);
-	DDPMSG("MINDONE-LK-PANELON: notified LK_PANEL_ON ret=%d\n", ret);
-}
-static DECLARE_DELAYED_WORK(mindone_lk_panelon_work, mindone_lk_panelon_work_fn);
-
-static int mindone_lk_panelon = 1;
-static int mindone_lk_panelon_delay_ms = 2000;
-module_param(mindone_lk_panelon_delay_ms, int, 0644);
-module_param(mindone_lk_panelon, int, 0644);
-static bool mindone_lk_panel_pending;
-
-static int mindone_lk_recycle = 1;
 static int mindone_lk_recycle_delay_ms = 700;
-module_param(mindone_lk_recycle, int, 0644);
 module_param(mindone_lk_recycle_delay_ms, int, 0644);
 static bool mindone_lk_recycle_pending;
 static struct mtk_dsi *mindone_lk_recycle_dsi;
@@ -3841,22 +3791,13 @@ static void mtk_output_dsi_enable(struct mtk_dsi *dsi,
 		(unsigned long long)mtk_state->prop_val[CRTC_PROP_USER_SCEN]);
 
 	if (dsi->output_en) {
-		if (!mindone_lk_recycle)
-			WRITE_ONCE(mindone_lk_esd_hold_flag, false);
-		if (mindone_lk_recycle && mindone_lk_recycle_pending) {
+		if (mindone_lk_recycle_pending) {
 			mindone_lk_recycle_pending = false;
-			mindone_lk_panel_pending = false;
 			mindone_lk_recycle_dsi = dsi;
 			DDPMSG("MINDONE-LK-RECYCLE: scheduling full display cycle in %d ms\n",
 			       mindone_lk_recycle_delay_ms);
 			schedule_delayed_work(&mindone_lk_recycle_work,
 					      msecs_to_jiffies(mindone_lk_recycle_delay_ms));
-		}
-		if (mindone_lk_panelon && mindone_lk_panel_pending && dsi->panel) {
-			mindone_lk_panel_pending = false;
-			DDPMSG("MINDONE-LK-PANELON: scheduling panel display-on after takeover\n");
-			schedule_delayed_work(&mindone_lk_panelon_work,
-					      msecs_to_jiffies(mindone_lk_panelon_delay_ms));
 		}
 		if (mtk_dsi_doze_status_change(dsi)) {
 			mtk_dsi_pre_cmd(dsi, crtc);
@@ -4156,8 +4097,6 @@ static bool mtk_dsi_encoder_mode_fixup(struct drm_encoder *encoder,
 				       const struct drm_display_mode *mode,
 				       struct drm_display_mode *adjusted_mode)
 {
-	MINDONE_PR("MINDONE-AC: dsi-mode-fixup begin encoder=%d\n", encoder->base.id);
-	MINDONE_PR("MINDONE-AC: dsi-mode-fixup end ret=true\n");
 	return true;
 }
 
@@ -4183,11 +4122,9 @@ static void mtk_dsi_encoder_mode_set(struct drm_encoder *encoder,
 {
 	struct mtk_dsi *dsi = encoder_to_dsi(encoder);
 
-	MINDONE_PR("MINDONE-AC: dsi-mode-set begin encoder=%d\n", encoder->base.id);
 	mtk_dsi_mode_set(dsi, adjusted);
 	if (dsi->slave_dsi)
 		mtk_dsi_mode_set(dsi->slave_dsi, adjusted);
-	MINDONE_PR("MINDONE-AC: dsi-mode-set end\n");
 }
 
 static void mtk_dsi_encoder_disable(struct drm_encoder *encoder)
@@ -4198,7 +4135,6 @@ static void mtk_dsi_encoder_disable(struct drm_encoder *encoder)
 	int index = drm_crtc_index(crtc);
 	int data = MTK_DISP_BLANK_POWERDOWN;
 
-	MINDONE_PR("MINDONE-AC: dsi-encoder-disable begin crtc=%d\n", index);
 	CRTC_MMP_EVENT_START(index, dsi_suspend,
 			(unsigned long)crtc, index);
 
@@ -4223,7 +4159,6 @@ static void mtk_dsi_encoder_disable(struct drm_encoder *encoder)
 		mtk_disp_sub_notifier_call_chain(MTK_DISP_EVENT_BLANK,
 					&data);
 
-	MINDONE_PR("MINDONE-AC: dsi-encoder-disable end crtc=%d\n", index);
 	CRTC_MMP_EVENT_END(index, dsi_suspend,
 			(unsigned long)dsi->output_en, 0);
 }
@@ -4249,9 +4184,8 @@ static void mtk_dsi_encoder_enable(struct drm_encoder *encoder)
 	struct mtk_ddp_comp *comp = &dsi->ddp_comp;
 	int index = drm_crtc_index(crtc);
 	int data = MTK_DISP_BLANK_UNBLANK;
+	bool output_was_enabled = dsi->output_en;
 
-	MINDONE_PR("MINDONE-AC: dsi-encoder-enable begin crtc=%d comp_id=%d\n",
-		index, comp->id);
 	CRTC_MMP_EVENT_START(index, dsi_resume,
 			(unsigned long)crtc, index);
 
@@ -4272,9 +4206,7 @@ static void mtk_dsi_encoder_enable(struct drm_encoder *encoder)
 	if (is_bdg_supported())
 		mtk_output_bdg_enable(dsi, false);
 
-	MINDONE_PR("MINDONE-AC: dsi-encoder-enable step pre-output-dsi-enable\n");
 	mtk_output_dsi_enable(dsi, false);
-	MINDONE_PR("MINDONE-AC: dsi-encoder-enable step post-output-dsi-enable\n");
 	DDPINFO("%s-\n", __func__);
 
 	if (comp->id == DDP_COMPONENT_DSI0) {
@@ -4289,7 +4221,19 @@ static void mtk_dsi_encoder_enable(struct drm_encoder *encoder)
 		DDP_PROFILE("[PROFILE] %s after notify end\n", __func__);
 	}
 
-	MINDONE_PR("MINDONE-AC: dsi-encoder-enable end crtc=%d\n", index);
+	if (index == 0 && comp->id == DDP_COMPONENT_DSI0 &&
+	    !output_was_enabled && dsi->output_en) {
+		char *envp[] = { "MINDONE_DISPLAY_ACTIVE=1", NULL };
+		int ret = -ENODEV;
+
+		if (crtc->dev->primary && crtc->dev->primary->kdev)
+			ret = kobject_uevent_env(&crtc->dev->primary->kdev->kobj,
+						 KOBJ_CHANGE, envp);
+		if (ret)
+			DDPPR_ERR("%s: display activation uevent failed: %d\n",
+				  __func__, ret);
+	}
+
 	CRTC_MMP_EVENT_END(index, dsi_resume,
 			(unsigned long)dsi->output_en, 0);
 }
@@ -4297,9 +4241,6 @@ static void mtk_dsi_encoder_enable(struct drm_encoder *encoder)
 static enum drm_connector_status
 mtk_dsi_connector_detect(struct drm_connector *connector, bool force)
 {
-	MINDONE_PR("MINDONE-AC: dsi-connector-detect begin conn=%d force=%d\n",
-		connector->base.id, force);
-	MINDONE_PR("MINDONE-AC: dsi-connector-detect end ret=connected\n");
 	return connector_status_connected;
 }
 
@@ -4345,8 +4286,6 @@ static int mtk_dsi_connector_set_property(struct drm_connector *connector,
 				   struct drm_property *property,
 				   uint64_t val)
 {
-	MINDONE_PR("MINDONE-AC: dsi-set-prop begin conn=%d\n", connector->base.id);
-	MINDONE_PR("MINDONE-AC: dsi-set-prop end ret=0\n");
 	return 0;
 }
 static int mtk_dsi_connector_get_property(struct drm_connector *connector,
@@ -4357,17 +4296,14 @@ static int mtk_dsi_connector_get_property(struct drm_connector *connector,
 	struct mtk_dsi *dsi = connector_to_dsi(connector);
 	int i;
 
-	MINDONE_PR("MINDONE-AC: dsi-get-prop begin conn=%d\n", connector->base.id);
 	for (i = 0; i < CONNECTOR_PROP_MAX; i++) {
 		if (dsi->connector_property[i] == property) {
 			*val = dsi->prop_val[i];
 			DDPINFO("get property:%s %lld\n", property->name, *val);
-			MINDONE_PR("MINDONE-AC: dsi-get-prop end ret=0\n");
 			return 0;
 		}
 	}
 
-	MINDONE_PR("MINDONE-AC: dsi-get-prop end ret=-EINVAL\n");
 	return -EINVAL;
 }
 
@@ -4376,10 +4312,7 @@ static int mtk_dsi_connector_get_modes(struct drm_connector *connector)
 	struct mtk_dsi *dsi = connector_to_dsi(connector);
 	int ret;
 
-	MINDONE_PR("MINDONE-AC: dsi-get-modes begin conn=%d panel=%px\n",
-		connector->base.id, dsi->panel);
 	ret = drm_panel_get_modes(dsi->panel, connector);
-	MINDONE_PR("MINDONE-AC: dsi-get-modes end ret=%d\n", ret);
 	return ret;
 }
 
@@ -4392,7 +4325,6 @@ static int mtk_dsi_atomic_check(struct drm_encoder *encoder,
 		container_of(conn_state->crtc, struct mtk_drm_crtc, base);
 	struct mtk_dsi *dsi = encoder_to_dsi(encoder);
 
-	MINDONE_PR("MINDONE-AC: dsi-atomic-check begin encoder=%d\n", encoder->base.id);
 	if (mtk_crtc->bpc != 10) {	/* no MIPI_DSI_FMT_RGB101010 in kernel-5.10 */
 		switch (dsi->format) {
 		case MIPI_DSI_FMT_RGB565:
@@ -4408,7 +4340,6 @@ static int mtk_dsi_atomic_check(struct drm_encoder *encoder,
 			break;
 		}
 	}
-	MINDONE_PR("MINDONE-AC: dsi-atomic-check end ret=0\n");
 	return 0;
 }
 
@@ -7275,7 +7206,7 @@ static ssize_t mtk_dsi_host_transfer(struct mipi_dsi_host *host,
 	}
 
 	if (!MTK_DSI_HOST_IS_READ(msg->type))
-		return 0;
+		return msg->tx_len;
 
 	if (!msg->rx_buf) {
 		DRM_ERROR("dsi receive buffer size may be NULL\n");
@@ -8656,6 +8587,8 @@ static void mtk_dsi_get_panels_info(struct mtk_dsi *dsi, struct mtk_drm_panels_i
 
 		mtk_dsi = container_of(encoder, struct mtk_dsi, encoder);
 		if (only_check_mode == false) {
+			if (dsi_cnt >= panel_ctx->connector_cnt)
+				break;
 			mtk_ddp_comp_io_cmd(&mtk_dsi->ddp_comp, NULL, GET_PANEL_NAME,
 					&panel_name);
 
@@ -8663,6 +8596,9 @@ static void mtk_dsi_get_panels_info(struct mtk_dsi *dsi, struct mtk_drm_panels_i
 				strncpy(panel_ctx->panel_name[dsi_cnt], panel_name,
 					GET_PANELS_STR_LEN - 1);
 				panel_ctx->connector_obj_id[dsi_cnt] = mtk_dsi->conn.base.id;
+				panel_ctx->possible_crtc[dsi_cnt][0] = encoder->possible_crtcs;
+				panel_ctx->dsi_mode[dsi_cnt] = mtk_dsi_is_cmd_mode(&mtk_dsi->ddp_comp) ?
+					MTK_PANEL_DSI_MODE_CMD : MTK_PANEL_DSI_MODE_VDO;
 			} else {
 				DDPPR_ERR("%s NULL panel_name\n", __func__);
 				break;
@@ -9922,21 +9858,6 @@ static const struct of_device_id mtk_dsi_of_match[] = {
 };
 
 #ifdef CONFIG_MTK_DISP_NO_LK
-static int mindone_lk_panelon_early;
-module_param(mindone_lk_panelon_early, int, 0644);
-
-static void mindone_lk_dcs_early(struct mtk_dsi *dsi, u8 cmd)
-{
-	struct mipi_dsi_msg msg;
-
-	memset(&msg, 0, sizeof(msg));
-	msg.channel = 0;
-	msg.type = MIPI_DSI_DCS_SHORT_WRITE;
-	msg.tx_len = 1;
-	msg.tx_buf = &cmd;
-	mtk_dsi_vm_cmdq(dsi, &msg, NULL);
-}
-
 static void mindone_lk_probe_check(struct mtk_dsi *dsi, struct device *dev)
 {
 	unsigned int alias = mtk_ddp_comp_get_alias(dsi->ddp_comp.id);
@@ -9945,10 +9866,6 @@ static void mindone_lk_probe_check(struct mtk_dsi *dsi, struct device *dev)
 	bool alive;
 	int ret;
 
-	if (!mindone_lk_takeover) {
-		mindone_lk_set_alive(0);
-		return;
-	}
 	if (disp_helper_get_stage() != DISP_HELPER_STAGE_NORMAL ||
 	    !(found & BIT(alias))) {
 		DDPMSG("MINDONE-LK-TAKEOVER: islcmfound=0x%x alias=%u -> cold init\n",
@@ -9984,16 +9901,9 @@ static void mindone_lk_probe_check(struct mtk_dsi *dsi, struct device *dev)
 	if (dsi->ext && dsi->ext->is_connected == -1)
 		dsi->ext->is_connected = found & BIT(alias);
 	mindone_lk_set_alive(1);
-	mindone_lk_panel_pending = true;
 	mindone_lk_recycle_pending = true;
-	WRITE_ONCE(mindone_lk_esd_hold_flag, !!mindone_lk_recycle);
+	WRITE_ONCE(mindone_lk_esd_hold_flag, true);
 
-	if (mindone_lk_panelon_early) {
-		mindone_lk_dcs_early(dsi, 0x11);
-		msleep(120);				/* datasheet-mandated pause before display_on */
-		mindone_lk_dcs_early(dsi, 0x29);
-		DDPMSG("MINDONE-LK-PANELON-EARLY: DCS 0x11+0x29 sent on takeover\n");
-	}
 }
 #endif
 

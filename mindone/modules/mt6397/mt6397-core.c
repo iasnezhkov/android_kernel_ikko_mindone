@@ -828,7 +828,8 @@ static int mt6397_probe(struct platform_device *pdev)
 				   pmic_core->cells, pmic_core->cell_size,
 				   NULL, 0, pmic->irq_domain);
 	if (ret) {
-		irq_domain_remove(pmic->irq_domain);
+		if (pmic_core->irq_init != mt6358_irq_init)
+			irq_domain_remove(pmic->irq_domain);
 		dev_err(&pdev->dev, "failed to add child devices: %d\n", ret);
 	}
 	pr_info("mt6397 probe success!n");

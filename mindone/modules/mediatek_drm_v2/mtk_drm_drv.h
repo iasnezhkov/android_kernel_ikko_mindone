@@ -348,7 +348,6 @@ size_t mtk_gce_get_dummy_table(unsigned int mmsys_id, struct dummy_mapping **tab
 
 int _parse_tag_videolfb(unsigned int *vramsize, phys_addr_t *fb_base,
 	unsigned int *fps);
-extern int mindone_lk_takeover;
 unsigned int mindone_lk_islcmfound(void);
 bool mindone_lk_display_alive(void);
 void mindone_lk_set_alive(int alive);

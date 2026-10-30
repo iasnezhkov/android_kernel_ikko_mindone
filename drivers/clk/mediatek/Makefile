@@ -1,6 +1,5 @@
 # SPDX-License-Identifier: GPL-2.0
-obj-$(CONFIG_COMMON_CLK_MEDIATEK) += clk-mediatek.o
-clk-mediatek-y := clk-mtk.o clk-pll.o clk-gate.o clk-apmixed.o clk-cpumux.o reset.o clk-mux.o
+obj-$(CONFIG_COMMON_CLK_MEDIATEK) += clk-mtk.o clk-pll.o clk-gate.o clk-apmixed.o clk-cpumux.o reset.o clk-mux.o
 obj-$(CONFIG_COMMON_CLK_MEDIATEK_FHCTL) += clk-fhctl.o clk-pllfh.o
 
 obj-$(CONFIG_COMMON_CLK_MT6765) += clk-mt6765.o
@@ -155,13 +154,3 @@ obj-$(CONFIG_COMMON_CLK_MT8365_VDEC) += clk-mt8365-vdec.o
 obj-$(CONFIG_COMMON_CLK_MT8365_VENC) += clk-mt8365-venc.o
 obj-$(CONFIG_COMMON_CLK_MT8516) += clk-mt8516-apmixedsys.o clk-mt8516.o
 obj-$(CONFIG_COMMON_CLK_MT8516_AUDSYS) += clk-mt8516-aud.o
-obj-$(CONFIG_COMMON_CLK_MT6789) += clk-mt6789.o
-obj-$(CONFIG_COMMON_CLK_MT6789_AUDIOSYS) += clk-mt6789-audiosys.o
-obj-$(CONFIG_COMMON_CLK_MT6789_BUS) += clk-mt6789-bus.o
-obj-$(CONFIG_COMMON_CLK_MT6789_CAM) += clk-mt6789-cam.o
-obj-$(CONFIG_COMMON_CLK_MT6789_I2C) += clk-mt6789-i2c.o
-obj-$(CONFIG_COMMON_CLK_MT6789_IMG) += clk-mt6789-img.o
-obj-$(CONFIG_COMMON_CLK_MT6789_IMPEN) += clk-mt6789-impen.o
-obj-$(CONFIG_COMMON_CLK_MT6789_MFGCFG) += clk-mt6789-mfgcfg.o
-obj-$(CONFIG_COMMON_CLK_MT6789_MMSYS) += clk-mt6789-mmsys.o
-obj-$(CONFIG_COMMON_CLK_MT6789_VCODEC) += clk-mt6789-vcodec.o

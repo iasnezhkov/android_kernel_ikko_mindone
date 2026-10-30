@@ -12,6 +12,7 @@
 #include <linux/platform_device.h>
 #include <linux/power_supply.h>
 #include <linux/slab.h>
+#include <linux/srcu.h>
 
 #include "mtk_low_battery_throttling.h"
 #include "pmic_lbat_service.h"
@@ -60,7 +61,10 @@ struct low_bat_thl_priv {
 	unsigned int ppb_mode;
 	struct lbat_user *lbat_pt;
 	struct work_struct temp_work;
-	struct power_supply *psy;
+	bool psy_registered;
+	bool lvsys_registered;
+	unsigned int sysfs_count;
+	int last_temp;
 	int *temp_thd;
 	int temp_max_stage;
 	int temp_cur_stage;
@@ -77,6 +81,14 @@ struct low_battery_callback_table {
 
 static struct notifier_block lbat_nb;
 static struct low_bat_thl_priv *low_bat_thl_data;
+static struct low_bat_thl_priv __rcu *low_bat_thl_active;
+DEFINE_STATIC_SRCU(low_bat_srcu);
+static DEFINE_MUTEX(low_bat_probe_lock);
+
+static bool low_battery_admit(void)
+{
+	return smp_load_acquire(&low_bat_thl_active) != NULL;
+}
 static struct low_battery_callback_table lbcb_tb[LBCB_MAX_NUM] = { {0} };
 static DEFINE_MUTEX(exe_thr_lock);
 
@@ -245,7 +257,7 @@ static void apply_aging_factor(unsigned int aging_factor)
 }
 
 
-int register_low_battery_notify(low_battery_callback lb_cb,
+static int register_low_battery_notify_active(low_battery_callback lb_cb,
 				enum LOW_BATTERY_PRIO_TAG prio_val)
 {
 	int ret = 2;
@@ -278,6 +290,18 @@ int register_low_battery_notify(low_battery_callback lb_cb,
 		pr_info("[%s] notify lv=%d\n", __func__, low_bat_thl_data->low_bat_thl_level);
 	}
 
+	return ret;
+}
+
+int register_low_battery_notify(low_battery_callback lb_cb,
+				enum LOW_BATTERY_PRIO_TAG prio_val)
+{
+	int index = srcu_read_lock(&low_bat_srcu);
+	int ret = -EINVAL;
+
+	if (low_battery_admit())
+		ret = register_low_battery_notify_active(lb_cb, prio_val);
+	srcu_read_unlock(&low_bat_srcu, index);
 	return ret;
 }
 EXPORT_SYMBOL(register_low_battery_notify);
@@ -411,7 +435,7 @@ static unsigned int thd_to_level(unsigned int thd, unsigned int temp_stage)
 	return level;
 }
 
-void exec_low_battery_callback(unsigned int thd)
+static void exec_low_battery_callback_active(unsigned int thd)
 {
 	unsigned int level = 0;
 	struct lbat_thd_tbl *thd_info;
@@ -430,7 +454,15 @@ void exec_low_battery_callback(unsigned int thd)
 	decide_and_throttle(LBAT_INTR, level);
 }
 
-void low_battery_vbat_callback(unsigned int thd)
+void exec_low_battery_callback(unsigned int thd)
+{
+	int index = srcu_read_lock(&low_bat_srcu);
+	if (low_battery_admit())
+		exec_low_battery_callback_active(thd);
+	srcu_read_unlock(&low_bat_srcu, index);
+}
+
+static void low_battery_vbat_callback_active(unsigned int thd)
 {
 	if (!low_bat_thl_data) {
 		pr_info("[%s] low_bat_thl_data not allocate\n", __func__);
@@ -447,17 +479,36 @@ void low_battery_vbat_callback(unsigned int thd)
 		pr_notice("[%s] wrong threshold=%d\n", __func__, thd);
 }
 
-int lbat_set_ppb_mode(unsigned int mode)
+void low_battery_vbat_callback(unsigned int thd)
+{
+	int index = srcu_read_lock(&low_bat_srcu);
+	if (low_battery_admit())
+		low_battery_vbat_callback_active(thd);
+	srcu_read_unlock(&low_bat_srcu, index);
+}
+
+static int lbat_set_ppb_mode_active(unsigned int mode)
 {
 	decide_and_throttle(PPB, mode);
 	return 0;
+}
+
+int lbat_set_ppb_mode(unsigned int mode)
+{
+	int index = srcu_read_lock(&low_bat_srcu);
+	int ret = -ENODEV;
+
+	if (low_battery_admit())
+		ret = lbat_set_ppb_mode_active(mode);
+	srcu_read_unlock(&low_bat_srcu, index);
+	return ret;
 }
 EXPORT_SYMBOL(lbat_set_ppb_mode);
 
 /*****************************************************************************
  * low battery protect UT
  ******************************************************************************/
-static ssize_t low_battery_protect_ut_show(
+static ssize_t low_battery_protect_ut_show_active(
 		struct device *dev, struct device_attribute *attr,
 		char *buf)
 {
@@ -466,7 +517,20 @@ static ssize_t low_battery_protect_ut_show(
 	return sprintf(buf, "%u\n", low_bat_thl_data->low_bat_thl_level);
 }
 
-static ssize_t low_battery_protect_ut_store(
+static ssize_t low_battery_protect_ut_show(
+		struct device *dev, struct device_attribute *attr,
+		char *buf)
+{
+	int index = srcu_read_lock(&low_bat_srcu);
+	ssize_t ret = -ENODEV;
+
+	if (low_battery_admit())
+		ret = low_battery_protect_ut_show_active(dev, attr, buf);
+	srcu_read_unlock(&low_bat_srcu, index);
+	return ret;
+}
+
+static ssize_t low_battery_protect_ut_store_active(
 		struct device *dev, struct device_attribute *attr,
 		const char *buf, size_t size)
 {
@@ -492,12 +556,25 @@ static ssize_t low_battery_protect_ut_store(
 	return size;
 }
 
+static ssize_t low_battery_protect_ut_store(
+		struct device *dev, struct device_attribute *attr,
+		const char *buf, size_t size)
+{
+	int index = srcu_read_lock(&low_bat_srcu);
+	ssize_t ret = -ENODEV;
+
+	if (low_battery_admit())
+		ret = low_battery_protect_ut_store_active(dev, attr, buf, size);
+	srcu_read_unlock(&low_bat_srcu, index);
+	return ret;
+}
+
 static DEVICE_ATTR_RW(low_battery_protect_ut);
 
 /*****************************************************************************
  * low battery protect stop
  ******************************************************************************/
-static ssize_t low_battery_protect_stop_show(
+static ssize_t low_battery_protect_stop_show_active(
 		struct device *dev, struct device_attribute *attr,
 		char *buf)
 {
@@ -506,7 +583,20 @@ static ssize_t low_battery_protect_stop_show(
 	return sprintf(buf, "%u\n", low_bat_thl_data->low_bat_thl_stop);
 }
 
-static ssize_t low_battery_protect_stop_store(struct device *dev,
+static ssize_t low_battery_protect_stop_show(
+		struct device *dev, struct device_attribute *attr,
+		char *buf)
+{
+	int index = srcu_read_lock(&low_bat_srcu);
+	ssize_t ret = -ENODEV;
+
+	if (low_battery_admit())
+		ret = low_battery_protect_stop_show_active(dev, attr, buf);
+	srcu_read_unlock(&low_bat_srcu, index);
+	return ret;
+}
+
+static ssize_t low_battery_protect_stop_store_active(struct device *dev,
 		struct device_attribute *attr, const char *buf, size_t size)
 {
 	unsigned int val = 0;
@@ -531,12 +621,24 @@ static ssize_t low_battery_protect_stop_store(struct device *dev,
 	return size;
 }
 
+static ssize_t low_battery_protect_stop_store(struct device *dev,
+		struct device_attribute *attr, const char *buf, size_t size)
+{
+	int index = srcu_read_lock(&low_bat_srcu);
+	ssize_t ret = -ENODEV;
+
+	if (low_battery_admit())
+		ret = low_battery_protect_stop_store_active(dev, attr, buf, size);
+	srcu_read_unlock(&low_bat_srcu, index);
+	return ret;
+}
+
 static DEVICE_ATTR_RW(low_battery_protect_stop);
 
 /*****************************************************************************
  * low battery protect level
  ******************************************************************************/
-static ssize_t low_battery_protect_level_show(struct device *dev,
+static ssize_t low_battery_protect_level_show_active(struct device *dev,
 		struct device_attribute *attr, char *buf)
 {
 	dev_dbg(dev, "low_bat_thl_level=%d\n",
@@ -544,7 +646,19 @@ static ssize_t low_battery_protect_level_show(struct device *dev,
 	return sprintf(buf, "%u\n", low_bat_thl_data->low_bat_thl_level);
 }
 
-static ssize_t low_battery_protect_level_store(struct device *dev,
+static ssize_t low_battery_protect_level_show(struct device *dev,
+		struct device_attribute *attr, char *buf)
+{
+	int index = srcu_read_lock(&low_bat_srcu);
+	ssize_t ret = -ENODEV;
+
+	if (low_battery_admit())
+		ret = low_battery_protect_level_show_active(dev, attr, buf);
+	srcu_read_unlock(&low_bat_srcu, index);
+	return ret;
+}
+
+static ssize_t low_battery_protect_level_store_active(struct device *dev,
 		struct device_attribute *attr,
 		const char *buf, size_t size)
 {
@@ -553,12 +667,25 @@ static ssize_t low_battery_protect_level_store(struct device *dev,
 	return size;
 }
 
+static ssize_t low_battery_protect_level_store(struct device *dev,
+		struct device_attribute *attr,
+		const char *buf, size_t size)
+{
+	int index = srcu_read_lock(&low_bat_srcu);
+	ssize_t ret = -ENODEV;
+
+	if (low_battery_admit())
+		ret = low_battery_protect_level_store_active(dev, attr, buf, size);
+	srcu_read_unlock(&low_bat_srcu, index);
+	return ret;
+}
+
 static DEVICE_ATTR_RW(low_battery_protect_level);
 
 /*****************************************************************************
  * low battery modify threshold
  ******************************************************************************/
-static ssize_t low_battery_modify_threshold_show(struct device *dev,
+static ssize_t low_battery_modify_threshold_show_active(struct device *dev,
 		struct device_attribute *attr, char *buf)
 {
 	struct lbat_thd_tbl *thd_info = &low_bat_thl_data->lbat_thd_info[0];
@@ -571,7 +698,19 @@ static ssize_t low_battery_modify_threshold_show(struct device *dev,
 			thd_info->thd_volts[LOW_BATTERY_LEVEL_3]);
 }
 
-static ssize_t low_battery_modify_threshold_store(struct device *dev,
+static ssize_t low_battery_modify_threshold_show(struct device *dev,
+		struct device_attribute *attr, char *buf)
+{
+	int index = srcu_read_lock(&low_bat_srcu);
+	ssize_t ret = -ENODEV;
+
+	if (low_battery_admit())
+		ret = low_battery_modify_threshold_show_active(dev, attr, buf);
+	srcu_read_unlock(&low_bat_srcu, index);
+	return ret;
+}
+
+static ssize_t low_battery_modify_threshold_store_active(struct device *dev,
 		struct device_attribute *attr,
 		const char *buf, size_t size)
 {
@@ -619,18 +758,43 @@ static ssize_t low_battery_modify_threshold_store(struct device *dev,
 
 	return size;
 }
+
+static ssize_t low_battery_modify_threshold_store(struct device *dev,
+		struct device_attribute *attr,
+		const char *buf, size_t size)
+{
+	int index = srcu_read_lock(&low_bat_srcu);
+	ssize_t ret = -ENODEV;
+
+	if (low_battery_admit())
+		ret = low_battery_modify_threshold_store_active(dev, attr, buf, size);
+	srcu_read_unlock(&low_bat_srcu, index);
+	return ret;
+}
 static DEVICE_ATTR_RW(low_battery_modify_threshold);
 
 /*****************************************************************************
  * low battery aging factor
  ******************************************************************************/
-static ssize_t low_battery_aging_factor_show(struct device *dev,
+static ssize_t low_battery_aging_factor_show_active(struct device *dev,
 		struct device_attribute *attr, char *buf)
 {
 	return sprintf(buf, "aging factor: %d\n", low_bat_thl_data->aging_factor);
 }
 
-static ssize_t low_battery_aging_factor_store(struct device *dev,
+static ssize_t low_battery_aging_factor_show(struct device *dev,
+		struct device_attribute *attr, char *buf)
+{
+	int index = srcu_read_lock(&low_bat_srcu);
+	ssize_t ret = -ENODEV;
+
+	if (low_battery_admit())
+		ret = low_battery_aging_factor_show_active(dev, attr, buf);
+	srcu_read_unlock(&low_bat_srcu, index);
+	return ret;
+}
+
+static ssize_t low_battery_aging_factor_store_active(struct device *dev,
 		struct device_attribute *attr,
 		const char *buf, size_t size)
 {
@@ -650,16 +814,40 @@ static ssize_t low_battery_aging_factor_store(struct device *dev,
 	apply_aging_factor(val);
 	return size;
 }
+
+static ssize_t low_battery_aging_factor_store(struct device *dev,
+		struct device_attribute *attr,
+		const char *buf, size_t size)
+{
+	int index = srcu_read_lock(&low_bat_srcu);
+	ssize_t ret = -ENODEV;
+
+	if (low_battery_admit())
+		ret = low_battery_aging_factor_store_active(dev, attr, buf, size);
+	srcu_read_unlock(&low_bat_srcu, index);
+	return ret;
+}
 static DEVICE_ATTR_RW(low_battery_aging_factor);
 
-static int lbat_psy_event(struct notifier_block *nb, unsigned long event, void *v)
+static int lbat_psy_event_active(struct notifier_block *nb, unsigned long event, void *v)
 {
 	if (!low_bat_thl_data)
 		return NOTIFY_DONE;
 
-	low_bat_thl_data->psy = v;
-	schedule_work(&low_bat_thl_data->temp_work);
+	if (v && !strcmp(((struct power_supply *)v)->desc->name, "battery"))
+		schedule_work(&low_bat_thl_data->temp_work);
 	return NOTIFY_DONE;
+}
+
+static int lbat_psy_event(struct notifier_block *nb, unsigned long event, void *v)
+{
+	int index = srcu_read_lock(&low_bat_srcu);
+	int ret = NOTIFY_DONE;
+
+	if (low_battery_admit())
+		ret = lbat_psy_event_active(nb, event, v);
+	srcu_read_unlock(&low_bat_srcu, index);
+	return ret;
 }
 
 static int check_duplicate(unsigned int *volt_thd)
@@ -677,31 +865,29 @@ static int check_duplicate(unsigned int *volt_thd)
 	return 0;
 }
 
-static void temp_handler(struct work_struct *work)
+static void temp_handler_active(struct work_struct *work)
 {
 	struct power_supply *psy;
 	union power_supply_propval val;
 	int ret, temp, temp_stage, temp_thd;
-	static int last_temp = MAX_INT;
+	int last_temp;
 	bool loop;
 	struct lbat_thd_tbl *thd_info;
 
 	if (!low_bat_thl_data)
 		return;
 
-	if (!low_bat_thl_data->psy)
-		return;
-
-	psy = low_bat_thl_data->psy;
-
-	if (strcmp(psy->desc->name, "battery") != 0)
+	psy = power_supply_get_by_name("battery");
+	if (!psy)
 		return;
 
 	ret = power_supply_get_property(psy, POWER_SUPPLY_PROP_TEMP, &val);
+	power_supply_put(psy);
 	if (ret)
 		return;
 
 	temp = val.intval / 10;
+	last_temp = low_bat_thl_data->last_temp;
 	temp_stage = low_bat_thl_data->temp_cur_stage;
 
 	do {
@@ -726,6 +912,7 @@ static void temp_handler(struct work_struct *work)
 	} while (loop);
 
 	last_temp = temp;
+	low_bat_thl_data->last_temp = temp;
 
 	if (temp_stage <= low_bat_thl_data->temp_max_stage &&
 		temp_stage != low_bat_thl_data->temp_cur_stage) {
@@ -746,7 +933,15 @@ static void temp_handler(struct work_struct *work)
 		low_bat_thl_data->temp_cur_stage);
 }
 
-static int lvsys_notifier_call(struct notifier_block *this,
+static void temp_handler(struct work_struct *work)
+{
+	int index = srcu_read_lock(&low_bat_srcu);
+	if (low_battery_admit())
+		temp_handler_active(work);
+	srcu_read_unlock(&low_bat_srcu, index);
+}
+
+static int lvsys_notifier_call_active(struct notifier_block *this,
 				unsigned long event, void *ptr)
 {
 	event = event & ~(1 << 15);
@@ -759,6 +954,18 @@ static int lvsys_notifier_call(struct notifier_block *this,
 		pr_notice("[%s] wrong lvsys thd = %lu\n", __func__, event);
 
 	return NOTIFY_DONE;
+}
+
+static int lvsys_notifier_call(struct notifier_block *this,
+				unsigned long event, void *ptr)
+{
+	int index = srcu_read_lock(&low_bat_srcu);
+	int ret = NOTIFY_DONE;
+
+	if (low_battery_admit())
+		ret = lvsys_notifier_call_active(this, event, ptr);
+	srcu_read_unlock(&low_bat_srcu, index);
+	return ret;
 }
 
 static struct notifier_block lvsys_notifier = {
@@ -818,9 +1025,9 @@ static int low_battery_thd_setting(struct platform_device *pdev, struct low_bat_
 		}
 	}
 
-	gauge_np = of_find_node_by_name(gauge_np, "mtk-gauge");
+	gauge_np = of_find_node_by_name(of_node_get(gauge_np), "mtk_gauge");
 	if (!gauge_np)
-		pr_notice("[%s] get mtk-gauge node fail\n", __func__);
+		pr_notice("[%s] get mtk_gauge node fail\n", __func__);
 	else {
 		ret = of_property_read_u32(gauge_np, "bat_type", &bat_type);
 		if (ret)
@@ -838,6 +1045,7 @@ static int low_battery_thd_setting(struct platform_device *pdev, struct low_bat_
 				pr_info("%s:%d: snprintf error %d\n", __func__, __LINE__, ret);
 		}
 	}
+	of_node_put(gauge_np);
 	dev_notice(&pdev->dev, "[%s] bat_type = %d\n", __func__, bat_type);
 
 	num = of_property_count_elems_of_size(np, thd_volts_l, sizeof(u32));
@@ -916,8 +1124,9 @@ static int low_battery_register_setting(struct platform_device *pdev,
 	priv->lbat_pt = lbat_user_register_ext("power throttling", thd_info->thd_volts,
 						thd_info->thd_volts_size, exec_low_battery_callback);
 
-	if (IS_ERR(priv->lbat_pt)) {
-		ret = PTR_ERR(priv->lbat_pt);
+	if (IS_ERR_OR_NULL(priv->lbat_pt)) {
+		ret = priv->lbat_pt ? PTR_ERR(priv->lbat_pt) : -ENODEV;
+		priv->lbat_pt = NULL;
 		if (ret != -EPROBE_DEFER) {
 			dev_notice(&pdev->dev, "[%s] error ret=%d\n", __func__, ret);
 		}
@@ -928,6 +1137,47 @@ static int low_battery_register_setting(struct platform_device *pdev,
 	return 0;
 }
 
+static struct device_attribute * const low_bat_attrs[] = {
+	&dev_attr_low_battery_protect_ut,
+	&dev_attr_low_battery_protect_stop,
+	&dev_attr_low_battery_protect_level,
+	&dev_attr_low_battery_modify_threshold,
+	&dev_attr_low_battery_aging_factor,
+};
+
+static void low_battery_throttling_cleanup(struct platform_device *pdev,
+					   struct low_bat_thl_priv *priv)
+{
+	if (low_bat_thl_data == priv) {
+		rcu_assign_pointer(low_bat_thl_active, NULL);
+		synchronize_srcu(&low_bat_srcu);
+		low_bat_thl_data = NULL;
+	}
+	while (priv->sysfs_count)
+		device_remove_file(&pdev->dev, low_bat_attrs[--priv->sysfs_count]);
+	if (priv->psy_registered) {
+		power_supply_unreg_notifier(&lbat_nb);
+		priv->psy_registered = false;
+	}
+	if (priv->lvsys_registered) {
+		lvsys_unregister_notifier(&lvsys_notifier);
+		priv->lvsys_registered = false;
+	}
+	cancel_work_sync(&priv->temp_work);
+	lbat_user_unregister(priv->lbat_pt);
+	priv->lbat_pt = NULL;
+}
+
+static void low_battery_throttling_remove(struct platform_device *pdev)
+{
+	struct low_bat_thl_priv *priv = platform_get_drvdata(pdev);
+
+	mutex_lock(&low_bat_probe_lock);
+	if (priv)
+		low_battery_throttling_cleanup(pdev, priv);
+	mutex_unlock(&low_bat_probe_lock);
+}
+
 static int low_battery_throttling_probe(struct platform_device *pdev)
 {
 	int ret, num;
@@ -935,12 +1185,20 @@ static int low_battery_throttling_probe(struct platform_device *pdev)
 	struct low_bat_thl_priv *priv;
 	struct device_node *np = pdev->dev.of_node;
 
+	mutex_lock(&low_bat_probe_lock);
+	if (low_bat_thl_data) {
+		mutex_unlock(&low_bat_probe_lock);
+		return -EBUSY;
+	}
 	priv = devm_kzalloc(&pdev->dev, sizeof(*priv), GFP_KERNEL);
-	if (!priv)
+	if (!priv) {
+		mutex_unlock(&low_bat_probe_lock);
 		return -ENOMEM;
+	}
 	dev_set_drvdata(&pdev->dev, priv);
 
 	INIT_WORK(&priv->temp_work, temp_handler);
+	priv->last_temp = MAX_INT;
 
 	ret = of_property_read_u32(np, "lvsys-thd-enable", &lvsys_thd_enable);
 	if (ret) {
@@ -960,8 +1218,10 @@ static int low_battery_throttling_probe(struct platform_device *pdev)
 	if (num == LOW_BATTERY_LEVEL_NUM) {
 		priv->aging_factor_volts = devm_kmalloc_array(&pdev->dev, LOW_BATTERY_LEVEL_NUM,
 				sizeof(u32), GFP_KERNEL);
-		if (!priv->aging_factor_volts)
-			return -ENOMEM;
+		if (!priv->aging_factor_volts) {
+			ret = -ENOMEM;
+			goto failed;
+		}
 
 		ret = of_property_read_u32_array(np, "aging-factor-volts",
 				priv->aging_factor_volts, num);
@@ -991,21 +1251,26 @@ static int low_battery_throttling_probe(struct platform_device *pdev)
 			if (ret)
 				priv->lv2_thd_volt = POWER_INT2_VOLT;
 
-			lbat_user_register("power throttling", priv->hv_thd_volt,
+			priv->lbat_pt = lbat_user_register("power throttling", priv->hv_thd_volt,
 				priv->lv1_thd_volt, priv->lv2_thd_volt, low_battery_vbat_callback);
+			if (IS_ERR_OR_NULL(priv->lbat_pt)) {
+				ret = priv->lbat_pt ? PTR_ERR(priv->lbat_pt) : -ENODEV;
+				priv->lbat_pt = NULL;
+				goto failed;
+			}
 		} else {
 			priv->isThreeLevel = 1;
 			ret = low_battery_thd_setting(pdev, priv);
 			if (ret) {
 				pr_info("[%s] thd_setting error, ret=%d\n", __func__,ret);
-				return ret;
+				goto failed;
 			}
 
 			ret = low_battery_register_setting(pdev, priv, 0);
 			if (ret) {
 				pr_info("[%s] low_battery_register_setting failed, ret=%d\n",
 					__func__, ret);
-				return ret;
+				goto failed;
 			}
 
 			if (priv->temp_max_stage > 0) {
@@ -1014,8 +1279,9 @@ static int low_battery_throttling_probe(struct platform_device *pdev)
 				if (ret) {
 					dev_notice(&pdev->dev, "[%s] power_supply_reg fail\n",
 						__func__);
-					return ret;
+					goto failed;
 				}
+				priv->psy_registered = true;
 			}
 		}
 	}
@@ -1040,26 +1306,23 @@ static int low_battery_throttling_probe(struct platform_device *pdev)
 
 		ret = lvsys_register_notifier(&lvsys_notifier);
 		if (ret)
-			dev_notice(&pdev->dev, "lvsys_register_notifier error ret=%d\n", ret);
+			goto failed;
+		priv->lvsys_registered = true;
 	}
 
-	ret = device_create_file(&(pdev->dev),
-		&dev_attr_low_battery_protect_ut);
-	ret |= device_create_file(&(pdev->dev),
-		&dev_attr_low_battery_protect_stop);
-	ret |= device_create_file(&(pdev->dev),
-		&dev_attr_low_battery_protect_level);
-	ret |= device_create_file(&(pdev->dev),
-		&dev_attr_low_battery_modify_threshold);
-	ret |= device_create_file(&(pdev->dev),
-		&dev_attr_low_battery_aging_factor);
-	if (ret) {
-		dev_notice(&pdev->dev, "create file error ret=%d\n", ret);
-		return ret;
+	for (priv->sysfs_count = 0; priv->sysfs_count < ARRAY_SIZE(low_bat_attrs); priv->sysfs_count++) {
+		ret = device_create_file(&pdev->dev, low_bat_attrs[priv->sysfs_count]);
+		if (ret)
+			goto failed;
 	}
-
 	low_bat_thl_data = priv;
+	rcu_assign_pointer(low_bat_thl_active, priv);
+	mutex_unlock(&low_bat_probe_lock);
 	return 0;
+failed:
+	low_battery_throttling_cleanup(pdev, priv);
+	mutex_unlock(&low_bat_probe_lock);
+	return ret;
 }
 
 static const struct of_device_id low_bat_thl_of_match[] = {
@@ -1074,6 +1337,7 @@ static struct platform_driver low_battery_throttling_driver = {
 		.of_match_table = low_bat_thl_of_match,
 	},
 	.probe = low_battery_throttling_probe,
+	.remove_new = low_battery_throttling_remove,
 };
 
 module_platform_driver(low_battery_throttling_driver);

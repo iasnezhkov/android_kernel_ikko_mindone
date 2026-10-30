@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0 OR BSD-3-Clause
 /******************************************************************************
  *
  * This file is provided under a dual license.  When you use or
@@ -70,7 +71,7 @@
  *******************************************************************************
  */
 #include "precomp.h"
-#include "wsys_cmd_handler_fw.h"
+#include "mindone_wsys_cmd.h"
 
 /*******************************************************************************
  *                              C O N S T A N T S

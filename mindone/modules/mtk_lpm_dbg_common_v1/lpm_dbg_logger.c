@@ -252,11 +252,13 @@ static ssize_t lpm_logger_debugfs_write(char *FromUserBuf,
 		unsigned int val = 0;
 
 		if (!kstrtouint(FromUserBuf, 10, &val)) {
-			if (val == 0)
+			if (val == 0) {
 				lpm_timer_stop(&lpm_log_timer.tm);
-			else
+			} else {
 				lpm_timer_interval_update(
 						&lpm_log_timer.tm, val);
+				lpm_timer_start(&lpm_log_timer.tm);
+			}
 		}
 	}
 
@@ -386,7 +388,6 @@ int lpm_logger_init(void)
 	lpm_timer_init(&lpm_log_timer.tm, LPM_TIMER_REPEAT);
 	lpm_timer_interval_update(&lpm_log_timer.tm,
 					LPM_LOG_DEFAULT_MS);
-	lpm_timer_start(&lpm_log_timer.tm);
 
 	ret = spm_cond_init();
 	if (ret)

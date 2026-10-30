@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-2.0
+// SPDX-FileCopyrightText: 2026 The LineageOS Project
 #include <errno.h>
 #include <stdbool.h>
 #include <stdio.h>

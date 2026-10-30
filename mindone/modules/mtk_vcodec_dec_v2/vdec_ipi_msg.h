@@ -1,0 +1,1 @@
+../mtk_vcodec_common_v2/vdec_ipi_msg.h

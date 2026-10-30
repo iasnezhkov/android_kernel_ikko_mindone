@@ -7,6 +7,7 @@
 #define _MT_SEC_FDVT_H
 
 #include <linux/ioctl.h>
+#include <linux/iosys-map.h>
 
 #if IS_ENABLED(CONFIG_COMPAT)
 /* 64 bit */
@@ -17,6 +18,7 @@
 struct imem_buf_info {
 	void *va;
 	unsigned long long iova;
+	struct iosys_map map;
 	unsigned int size;
 	struct dma_buf *dmabuf;
 	struct dma_buf_attachment *attach;

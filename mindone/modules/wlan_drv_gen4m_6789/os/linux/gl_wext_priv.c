@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0 OR BSD-3-Clause
 /*******************************************************************************
  *
  * This file is provided under a dual license.  When you use or
@@ -1157,24 +1158,10 @@ __priv_set_int(IN struct net_device *prNetDev,
 #if CFG_ENABLE_WIFI_DIRECT
 	case PRIV_CMD_P2P_MODE: {
 		struct PARAM_CUSTOM_P2P_SET_STRUCT rSetP2P;
-		uint32_t rWlanStatus = WLAN_STATUS_SUCCESS;
 
 		rSetP2P.u4Enable = pu4IntBuf[1];
 		rSetP2P.u4Mode = pu4IntBuf[2];
-#if 1
-		if (!rSetP2P.u4Enable)
-			p2pNetUnregister(prGlueInfo, TRUE);
-
-		/* pu4IntBuf[0] is used as input SubCmd */
-		rWlanStatus = kalIoctl(prGlueInfo, wlanoidSetP2pMode,
-				(void *)&rSetP2P,
-				sizeof(struct PARAM_CUSTOM_P2P_SET_STRUCT),
-				FALSE, FALSE, TRUE, &u4BufLen);
-
-		if ((rSetP2P.u4Enable)
-		    && (rWlanStatus == WLAN_STATUS_SUCCESS))
-			p2pNetRegister(prGlueInfo, TRUE);
-#endif
+		status = wlanSetP2pMode(prNetDev, rSetP2P, TRUE);
 
 	}
 	break;
@@ -9109,9 +9096,7 @@ int priv_driver_set_ap_start(IN struct net_device *prNetDev, IN char *pcCommand,
 
 		u4Ret = kalkStrtou32(apcArgv[1], 0, &(rSetP2P.u4Mode));
 		if (u4Ret)
-			DBGLOG(REQ, LOUD,
-			       "parse ap-start error (u4Enable) u4Ret=%d\n",
-			       u4Ret);
+			return -EINVAL;
 
 		if (rSetP2P.u4Mode >= RUNNING_P2P_MODE_NUM) {
 			rSetP2P.u4Mode = 0;
@@ -9119,10 +9104,10 @@ int priv_driver_set_ap_start(IN struct net_device *prNetDev, IN char *pcCommand,
 		} else
 			rSetP2P.u4Enable = 1;
 
-		set_p2p_mode_handler(prNetDev, rSetP2P);
+		return wlanSetP2pMode(prNetDev, rSetP2P, TRUE);
 	}
 
-	return 0;
+	return -EINVAL;
 }
 
 #if CFG_SUPPORT_NAN
@@ -15551,6 +15536,7 @@ int32_t priv_driver_cmds(IN struct net_device *prNetDev, IN int8_t *pcCommand,
 	int32_t i4CmdFound = 0;
 	int i;
 
+	ASSERT_RTNL();
 	if (g_u4HaltFlag) {
 		DBGLOG(REQ, WARN, "wlan is halt, skip priv_driver_cmds\n");
 		return -1;

@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: GPL-2.0
+# SPDX-FileCopyrightText: 2026 The LineageOS Project
 import argparse
 from pathlib import Path
 import re
@@ -23,7 +25,14 @@ FUNCTIONS = (
     ("mtk_battery.c", "battery_init"),
     ("mt6358-gauge.c", "mt6358_gauge_probe"),
 )
-MUTATIONS = (
+LIFECYCLE_MUTATIONS = (
+    ("omit-daemon-lbat-drain", "mtk_battery_daemon_init", "mtk_battery_lbat_release(gm);", "(void)gm;"),
+    ("omit-service-lbat-drain", "battery_init", "mtk_battery_lbat_release(gm);", "(void)gm;"),
+    ("late-service-lbat-drain", "battery_init", "mtk_battery_lbat_release(gm);\n\t\trelease_gauge_irqs(gm);", "release_gauge_irqs(gm);\n\t\tmtk_battery_lbat_release(gm);"),
+    ("ignore-ptim-channel-defer", "mt6358_gauge_probe", "PTR_ERR(gauge->chan_ptim_sample) == -EPROBE_DEFER", "PTR_ERR(gauge->chan_ptim_sample) == -EPROBE_DEFER && false"),
+    ("reject-optional-ptim-absence", "mt6358_gauge_probe", "PTR_ERR(gauge->chan_ptim_sample) == -EPROBE_DEFER", "true"),
+)
+MUTATIONS = LIFECYCLE_MUTATIONS + (
     ("auto-enable-before-ready", "request_gauge_irq", " | IRQF_NO_AUTOEN", ""),
     ("hide-request-errno", "request_gauge_irq", "if (ret)\n\t\treturn ret;\n\tgauge->irq_requested", "if (ret && false)\n\t\treturn ret;\n\tgauge->irq_requested"),
     ("free-existing-batch-member", "mtk_battery_request_irqs", "acquired[i] = !gauge->irq_requested[requests[i].irq];", "acquired[i] = true;"),

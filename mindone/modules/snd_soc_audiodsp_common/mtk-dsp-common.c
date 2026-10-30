@@ -228,7 +228,8 @@ int afe_get_pcmdir(int dir, struct audio_hw_buffer buf)
 	memif = buf.audio_memiftype;
 	for (i = 0; i < AUDIO_TASK_DAI_NUM; i++) {
 		if (get_afememref_by_afe_taskid(i) == memif &&
-		   buf.hw_buffer == BUFFER_TYPE_HW_MEM) {
+		   buf.hw_buffer == BUFFER_TYPE_HW_MEM &&
+		   get_task_attr(i, ADSP_TASK_ATTR_REF_RUNTIME) == 1) {
 			ret = AUDIO_DSP_TASK_PCM_HWPARAM_REF;
 			break;
 		}

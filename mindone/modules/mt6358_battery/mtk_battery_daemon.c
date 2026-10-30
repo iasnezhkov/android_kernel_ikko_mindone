@@ -121,22 +121,18 @@ int gauge_get_average_current(struct mtk_battery *gm, bool *valid)
 	return iavg;
 }
 
-void mtk_battery_send_to_user(struct mtk_battery *gm,
+static void mtk_battery_send_to_port(struct mtk_battery *gm, u32 pid,
 	int seq, struct fgd_nl_msg_t *reply_msg)
 {
 	struct sk_buff *skb;
 	struct nlmsghdr *nlh;
-	u32 pid = 0;
 	int size = reply_msg->fgd_data_len + FGD_NL_HDR_LEN;
 	int len = NLMSG_SPACE(size);
 	void *data;
 	int ret = -1;
 
 	if (gm == NULL)
-		gm = get_mtk_battery();
-
-	if (gm != NULL)
-		pid = gm->fgd_pid;
+		return;
 
 	reply_msg->identity = FGD_NL_MAGIC;
 
@@ -162,6 +158,16 @@ void mtk_battery_send_to_user(struct mtk_battery *gm,
 		bm_err("[%s]send failed ret=%d pid=%d\n", __func__, ret, pid);
 		return;
 	}
+}
+
+void mtk_battery_send_to_user(struct mtk_battery *gm,
+	int seq, struct fgd_nl_msg_t *reply_msg)
+{
+	if (gm == NULL)
+		gm = get_mtk_battery();
+
+	if (gm != NULL)
+		mtk_battery_send_to_port(gm, gm->fgd_pid, seq, reply_msg);
 }
 
 void fg_cmd_check(struct fgd_nl_msg_t *msg)
@@ -2530,6 +2536,33 @@ static int mtk_battery_setup_files(struct platform_device *pdev)
 
 
 
+static void fg_daemon_get_ptim_sample(struct mtk_battery *gm,
+	struct fgd_ptim_sample_v1 *reply)
+{
+	struct gauge_ptim_sample sample = {};
+
+	memset(reply, 0, sizeof(*reply));
+	reply->version = 1;
+	reply->size = sizeof(*reply);
+	if (!gm || !gm->gauge)
+		reply->status = -ENODEV;
+	else if (READ_ONCE(gm->disableGM30))
+		reply->status = -EOPNOTSUPP;
+	else
+		reply->status = gauge_read_ptim_sample(gm->gauge, &sample);
+	if (reply->status)
+		return;
+
+	reply->sequence = sample.sequence;
+	reply->started_ns = sample.started_ns;
+	reply->acquired_ns = sample.acquired_ns;
+	reply->voltage_01mv = sample.voltage_01mv;
+	reply->current_01ma = sample.current_01ma;
+	reply->r_fg_value = sample.r_fg_value;
+	reply->car_tune_value = sample.car_tune_value;
+	reply->flags = FGD_PTIM_SAMPLE_VALID;
+}
+
 static void mtk_battery_daemon_handler(struct mtk_battery *gm, void *nl_data,
 	struct fgd_nl_msg_t *ret_msg)
 {
@@ -2546,6 +2579,15 @@ static void mtk_battery_daemon_handler(struct mtk_battery *gm, void *nl_data,
 	ret_msg->fgd_cmd = msg->fgd_cmd;
 
 	switch (msg->fgd_cmd) {
+	case FG_DAEMON_CMD_GET_PTIM_SAMPLE_V1:
+	{
+		struct fgd_ptim_sample_v1 reply;
+
+		fg_daemon_get_ptim_sample(gm, &reply);
+		memcpy(ret_msg->fgd_data, &reply, sizeof(reply));
+		ret_msg->fgd_data_len = sizeof(reply);
+	}
+	break;
 	case FG_DAEMON_CMD_IS_BAT_EXIST:
 	{
 		int is_bat_exist = gm->bs_data.bat_present;
@@ -3442,12 +3484,12 @@ static void mtk_battery_daemon_handler(struct mtk_battery *gm, void *nl_data,
 		}
 
 		gm->fg_cust_data.ui_old_soc = daemon_ui_soc;
-		old_uisoc = gm->ui_soc;
+		old_uisoc = READ_ONCE(gm->ui_soc);
 
 		if (gm->disableGM30 == true)
-			gm->ui_soc = 50;
+			WRITE_ONCE(gm->ui_soc, 50);
 		else
-			gm->ui_soc = (daemon_ui_soc + 50) / 100;
+			WRITE_ONCE(gm->ui_soc, (daemon_ui_soc + 50) / 100);
 		smp_store_release(&gm->cc_soc_ready, true);
 
 		/* when UISOC changes, check the diff time for smooth */
@@ -4115,6 +4157,7 @@ void mtk_battery_netlink_handler(struct sk_buff *skb)
 	struct nlmsghdr *nlh;
 	struct fgd_nl_msg_t *fgd_msg, *fgd_ret_msg;
 	int size = 0;
+	bool ptim;
 	static struct mtk_battery *gm;
 
 	if (gm == NULL)
@@ -4151,7 +4194,16 @@ void mtk_battery_netlink_handler(struct sk_buff *skb)
 		return;
 	}
 
-	if (gm->fgd_pid != pid &&
+	ptim = fgd_msg->fgd_cmd == FG_DAEMON_CMD_GET_PTIM_SAMPLE_V1;
+	if (ptim &&
+	    (fgd_msg->fgd_data_len || fgd_msg->fgd_subcmd ||
+	     fgd_msg->fgd_subcmd_para1 ||
+	     fgd_msg->fgd_ret_data_len != sizeof(struct fgd_ptim_sample_v1) ||
+	     nlh->nlmsg_len != NLMSG_HDRLEN + FGD_NL_HDR_LEN ||
+	     skb->len != NLMSG_HDRLEN + FGD_NL_HDR_LEN))
+		return;
+
+	if (!ptim && gm->fgd_pid != pid &&
 		fgd_msg->fgd_cmd > FG_DAEMON_CMD_SET_DAEMON_PID) {
 		bm_err("[%s]drop rev netlink pid:%d:%d  cmd:%d:%d\n",
 			__func__,
@@ -4186,8 +4238,12 @@ void mtk_battery_netlink_handler(struct sk_buff *skb)
 
 	memset(fgd_ret_msg, 0, size);
 	mtk_battery_daemon_handler(gm, data, fgd_ret_msg);
-	mtk_battery_send_to_user(gm, seq, fgd_ret_msg);
-	fg_daemon_init_complete(gm, fgd_msg->fgd_cmd);
+	if (ptim) {
+		mtk_battery_send_to_port(gm, NETLINK_CB(skb).portid, seq, fgd_ret_msg);
+	} else {
+		mtk_battery_send_to_user(gm, seq, fgd_ret_msg);
+		fg_daemon_init_complete(gm, fgd_msg->fgd_cmd);
+	}
 
 	kvfree(fgd_ret_msg);
 }
@@ -5073,6 +5129,14 @@ release:
 	return ret;
 }
 
+void mtk_battery_lbat_release(struct mtk_battery *gm)
+{
+#if IS_ENABLED(CONFIG_PMIC_LBAT_SERVICE)
+	if (gm)
+		lbat_user_unregister(xchg(&gm->lowbat_service, NULL));
+#endif
+}
+
 int mtk_battery_daemon_init(struct platform_device *pdev)
 {
 	bool previous_irq_requested[GAUGE_IRQ_MAX];
@@ -5132,8 +5196,13 @@ int mtk_battery_daemon_init(struct platform_device *pdev)
 				fg_cust_data->vbat2_det_voltage1,
 				fg_cust_data->vbat2_det_voltage2);
 
+			if (IS_ERR_OR_NULL(gm->lowbat_service)) {
+				ret = gm->lowbat_service ? PTR_ERR(gm->lowbat_service) : -ENODEV;
+				gm->lowbat_service = NULL;
+				goto failed;
+			}
 			if (gm->lowbat_service != NULL) {
-				lbat_user_set_debounce(gm->lowbat_service,
+				ret = lbat_user_set_debounce(gm->lowbat_service,
 				fg_cust_data->vbat2_det_time * 1000,
 				fg_cust_data->vbat2_det_counter,
 				fg_cust_data->vbat2_det_time * 1000,
@@ -5142,6 +5211,8 @@ int mtk_battery_daemon_init(struct platform_device *pdev)
 				bm_err("[%s]lbat set_debounce,time:%d,counter:%d\n",
 					__func__, fg_cust_data->vbat2_det_time,
 					fg_cust_data->vbat2_det_counter);
+				if (ret)
+					goto failed;
 			} else
 				bm_err("[%s]lowbat_service null\n", __func__);
 
@@ -5157,9 +5228,12 @@ int mtk_battery_daemon_init(struct platform_device *pdev)
 
 	sw_iavg_init(gm);
 	ret = mtk_battery_setup_files(pdev);
-	if (ret)
+failed:
+	if (ret) {
+		mtk_battery_lbat_release(gm);
 		for (i = GAUGE_IRQ_MAX - 1; i >= 0; i--)
 			if (!previous_irq_requested[i])
 				release_gauge_irq(gm, i);
+	}
 	return ret;
 }

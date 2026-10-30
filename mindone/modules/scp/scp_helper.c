@@ -555,6 +555,7 @@ static void scp_A_notify_ws(struct work_struct *ws)
 		writel(0xff, SCP_TO_SPM_REG); /* patch: clear SPM interrupt */
 
 		scp_ready[SCP_A_ID] = 1;
+		scp_timeout_times = 0;
 
 #if SCP_DVFS_INIT_ENABLE
 		if (scp_dvfs_feature_enable()) {
@@ -1752,6 +1753,19 @@ void scp_awake_init(void)
 }
 
 #if SCP_RECOVERY_SUPPORT
+bool scp_claim_reset(void)
+{
+	unsigned long spin_flags;
+	bool claimed;
+
+	spin_lock_irqsave(&scp_reset_spinlock, spin_flags);
+	claimed = atomic_read(&scp_reset_status) == RESET_STATUS_STOP;
+	if (claimed)
+		atomic_set(&scp_reset_status, RESET_STATUS_START);
+	spin_unlock_irqrestore(&scp_reset_spinlock, spin_flags);
+	return claimed;
+}
+
 /*
  * scp_set_reset_status, set and return scp reset status function
  * return value: scp reset original status

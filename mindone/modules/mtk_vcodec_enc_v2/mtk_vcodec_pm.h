@@ -1,0 +1,1 @@
+../mtk_vcodec_dec_v2/mtk_vcodec_pm.h

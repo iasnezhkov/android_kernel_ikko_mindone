@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: GPL-2.0
+# SPDX-FileCopyrightText: 2026 The LineageOS Project
 import argparse
 import hashlib
 import json
@@ -119,18 +121,19 @@ def main():
     if not args.baseline:
         bodies += function(cooler, "charger_curr_show")
     cases = (fixture / "cases.c").read_text()
+    cc_predecessor = "TEMP" if args.baseline else "VOLTAGE_NOW"
     mutations = (
         ("drop-cc-request", "info->chg_data[idx].thermal_charging_current_limit = val->intval;", "info->chg_data[idx].thermal_charging_current_limit = -1;"),
         ("drop-iin-request", "info->chg_data[idx].thermal_input_current_limit = val->intval;", "info->chg_data[idx].thermal_input_current_limit = -1;"),
         ("drop-hv-disable", "info->enable_hv_charging = false;", "info->enable_hv_charging = true;"),
         ("drop-worker-wake", "\t_wake_up_charger(info);", "\tif (false) _wake_up_charger(info);"),
-        ("unregister-cc-property", "\tPOWER_SUPPLY_PROP_TEMP,\n\tPOWER_SUPPLY_PROP_CONSTANT_CHARGE_CURRENT_MAX,", "\tPOWER_SUPPLY_PROP_TEMP,\n\tPOWER_SUPPLY_PROP_CAPACITY,"),
+        ("unregister-cc-property", "\tPOWER_SUPPLY_PROP_" + cc_predecessor + ",\n\tPOWER_SUPPLY_PROP_CONSTANT_CHARGE_CURRENT_MAX,", "\tPOWER_SUPPLY_PROP_" + cc_predecessor + ",\n\tPOWER_SUPPLY_PROP_CAPACITY,"),
         ("hide-callback-first-error", 'pr_notice("set bat curr fail\\n");\n\t\treturn ret;', 'pr_notice("set bat curr fail\\n");\n\t\treturn 0;'),
         ("ignore-dead-provider", "atomic_read(&psy->use_cnt) <= 0 || !psy->desc->set_property", "(atomic_read(&psy->use_cnt) <= 0 && false) || !psy->desc->set_property"),
         ("drop-secondary-request", "prop_s_bat_chr.intval = slave_charger_state_to_current_limit[chg->target_state];", "prop_s_bat_chr.intval = -1;"),
         ("fake-current-readback", ("ret = " if not args.baseline else "val->intval = ") + "get_charger_charging_current(info, chg);", ("ret = " if not args.baseline else "val->intval = ") + "info->chg_data[0].thermal_charging_current_limit;"),
-        ("missing-ops-guard", "if (chg_dev != NULL && chg_dev->ops != NULL &&\n\t    chg_dev->ops->get_charging_current)", "if (chg_dev->ops->get_charging_current)"),
-        ("wrong-current-callback", "return chg_dev->ops->get_charging_current(chg_dev, uA);", "return chg_dev->ops->get_input_current(chg_dev, uA);"),
+        ("missing-ops-guard", "if (ops && ops->get_charging_current)", "if (ops->get_charging_current)"),
+        ("wrong-current-callback", "ret = ops->get_charging_current(chg_dev, uA);", "ret = ops->get_input_current(chg_dev, uA);"),
     )
     if not args.baseline:
         mutations += (

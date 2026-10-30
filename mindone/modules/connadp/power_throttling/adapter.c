@@ -385,7 +385,7 @@ int conn_pwr_notify_event(enum conn_pwr_drv_type drv, enum conn_pwr_event_type e
 	int ret;
 	struct conn_pwr_event_max_temp *d;
 
-	if (drv >= CONN_PWR_DRV_MAX || event >= CONN_PWR_EVENT_MAX) {
+	if (drv < 0 || drv >= CONN_PWR_DRV_MAX || event < 0 || event >= CONN_PWR_EVENT_MAX) {
 		pr_info("drv %d or event %d is out of range.\n", drv, event);
 		return -1;
 	}

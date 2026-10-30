@@ -2,7 +2,6 @@
 /*
  * Copyright (c) 2021 MediaTek Inc.
  */
-
 #ifndef __MTK_GPUFREQ_H__
 #define __MTK_GPUFREQ_H__
 
@@ -13,4 +12,4 @@
 #include <v1/include/mtk_gpufreq_v1.h>
 #endif
 
-#endif /* __MTK_GPUFREQ_H__ */
+#endif

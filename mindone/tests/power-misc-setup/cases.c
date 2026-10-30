@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-2.0
+// SPDX-FileCopyrightText: 2026 The LineageOS Project
 static void misc_reset(void)
 {
     reset();
@@ -181,6 +183,8 @@ static void completion_interleaving(void)
 
 int main(void)
 {
+    lbat_cleanup();
+    ptim_channel();
     startup_errors();
     duplicate_notifier();
     combined_errors();

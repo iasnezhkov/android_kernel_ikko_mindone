@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: GPL-2.0
 # Makefile.none: Makefile for build without linux kernel only gcc
 # hif = virtual, empty hif
 # Examples:

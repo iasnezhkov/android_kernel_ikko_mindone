@@ -281,10 +281,11 @@ void fsm_ee_message_handler(struct ccci_fsm_ee *ee_ctl, struct sk_buff *skb)
 				|= (MD_EE_FLOW_START | MD_EE_OK_MSG_GET);
 			spin_unlock_irqrestore(&ee_ctl->ctrl_lock, flags);
 			/* Keep exception info package from MD*/
-			if (ee_ctl->ops->set_ee_pkg)
-				ee_ctl->ops->set_ee_pkg(ee_ctl,
-				skb_pull(skb, sizeof(struct ccci_header)),
-				skb->len - sizeof(struct ccci_header));
+			if (ee_ctl->ops->set_ee_pkg) {
+				char *ee_pkg = skb_pull(skb, sizeof(struct ccci_header));
+
+				ee_ctl->ops->set_ee_pkg(ee_ctl, ee_pkg, skb->len);
+			}
 
 			fsm_append_event(ctl,
 				CCCI_EVENT_MD_EX_REC_OK, NULL, 0);

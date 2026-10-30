@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: GPL-2.0 OR BSD-3-Clause */
 /******************************************************************************
  *
  * This file is provided under a dual license.  When you use or
@@ -130,6 +131,7 @@ extern struct wireless_dev *gprP2pRoleWdev[KAL_P2P_NUM];
  */
 
 struct GL_P2P_INFO {
+	u_int8_t fgSetupCommitted;
 
 	/* P2P Device interface handle */
 	/*only first p2p have this devhandler*/
@@ -374,6 +376,8 @@ int glSetupP2P(struct GLUE_INFO *prGlueInfo,
 
 u_int8_t glUnregisterP2P(struct GLUE_INFO *prGlueInfo, uint8_t ucIdx);
 
+u_int8_t p2pNetIsRegistered(struct GLUE_INFO *prGlueInfo);
+
 u_int8_t p2pNetRegister(struct GLUE_INFO *prGlueInfo,
 		u_int8_t fgIsRtnlLockAcquired);
 
@@ -381,7 +385,8 @@ u_int8_t p2pNetUnregister(struct GLUE_INFO *prGlueInfo,
 		u_int8_t fgIsRtnlLockAcquired);
 
 
-u_int8_t p2PAllocInfo(IN struct GLUE_INFO *prGlueInfo, IN uint8_t ucIdex);
+u_int8_t p2PAllocInfo(IN struct GLUE_INFO *prGlueInfo, IN uint8_t ucIdex,
+	struct GL_P2P_INFO **pprInfo);
 u_int8_t p2PFreeInfo(struct GLUE_INFO *prGlueInfo, uint8_t ucIdx);
 void p2pFreeMemSafe(struct GLUE_INFO *prGlueInfo,
 		void **pprMemInfo, uint32_t size);

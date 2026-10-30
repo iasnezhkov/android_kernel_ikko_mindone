@@ -14,7 +14,6 @@
 #include <linux/skbuff.h>
 #include <linux/inet.h>
 #include <linux/fdtable.h>
-#include <linux/file.h>
 #include <linux/rhashtable.h>
 
 #include <net/sock.h>
@@ -169,13 +168,12 @@ static bool remove_pending(struct handshake_net *hn, struct handshake_req *req)
 {
 	bool ret = false;
 
-	spin_lock_bh(&hn->hn_lock);
-	if (!test_bit(HANDSHAKE_F_NET_DRAINING, &hn->hn_flags) &&
-	    !list_empty(&req->hr_list)) {
+	spin_lock(&hn->hn_lock);
+	if (!list_empty(&req->hr_list)) {
 		__remove_pending_locked(hn, req);
 		ret = true;
 	}
-	spin_unlock_bh(&hn->hn_lock);
+	spin_unlock(&hn->hn_lock);
 
 	return ret;
 }
@@ -185,7 +183,7 @@ struct handshake_req *handshake_req_next(struct handshake_net *hn, int class)
 	struct handshake_req *req, *pos;
 
 	req = NULL;
-	spin_lock_bh(&hn->hn_lock);
+	spin_lock(&hn->hn_lock);
 	list_for_each_entry(pos, &hn->hn_requests, hr_list) {
 		if (pos->hr_proto->hp_handler_class != class)
 			continue;
@@ -193,7 +191,7 @@ struct handshake_req *handshake_req_next(struct handshake_net *hn, int class)
 		req = pos;
 		break;
 	}
-	spin_unlock_bh(&hn->hn_lock);
+	spin_unlock(&hn->hn_lock);
 
 	return req;
 }
@@ -239,9 +237,6 @@ int handshake_req_submit(struct socket *sock, struct handshake_req *req,
 		kfree(req);
 		return -EINVAL;
 	}
-
-	req->hr_file = get_file(sock->file);
-
 	req->hr_odestruct = req->hr_sk->sk_destruct;
 	req->hr_sk->sk_destruct = handshake_sk_destruct;
 
@@ -255,7 +250,7 @@ int handshake_req_submit(struct socket *sock, struct handshake_req *req,
 	if (READ_ONCE(hn->hn_pending) >= hn->hn_pending_max)
 		goto out_err;
 
-	spin_lock_bh(&hn->hn_lock);
+	spin_lock(&hn->hn_lock);
 	ret = -EOPNOTSUPP;
 	if (test_bit(HANDSHAKE_F_NET_DRAINING, &hn->hn_flags))
 		goto out_unlock;
@@ -264,7 +259,7 @@ int handshake_req_submit(struct socket *sock, struct handshake_req *req,
 		goto out_unlock;
 	if (!__add_pending_locked(hn, req))
 		goto out_unlock;
-	spin_unlock_bh(&hn->hn_lock);
+	spin_unlock(&hn->hn_lock);
 
 	ret = handshake_genl_notify(net, req->hr_proto, flags);
 	if (ret) {
@@ -280,35 +275,28 @@ int handshake_req_submit(struct socket *sock, struct handshake_req *req,
 	return 0;
 
 out_unlock:
-	spin_unlock_bh(&hn->hn_lock);
+	spin_unlock(&hn->hn_lock);
 out_err:
+	/* Restore original destructor so socket teardown still runs on failure */
+	req->hr_sk->sk_destruct = req->hr_odestruct;
 	trace_handshake_submit_err(net, req, req->hr_sk, ret);
-	if (!test_and_set_bit(HANDSHAKE_F_REQ_COMPLETED, &req->hr_flags)) {
-		/* Restore original destructor so socket teardown still runs on failure */
-		req->hr_sk->sk_destruct = req->hr_odestruct;
-		fput(req->hr_file);
-		handshake_req_destroy(req);
-	}
+	handshake_req_destroy(req);
 	return ret;
 }
 EXPORT_SYMBOL(handshake_req_submit);
 
-void handshake_complete(struct handshake_req *req, int status,
+void handshake_complete(struct handshake_req *req, unsigned int status,
 			struct genl_info *info)
 {
 	struct sock *sk = req->hr_sk;
 	struct net *net = sock_net(sk);
 
 	if (!test_and_set_bit(HANDSHAKE_F_REQ_COMPLETED, &req->hr_flags)) {
-		struct file *file = req->hr_file;
-
 		trace_handshake_complete(net, req, sk, status);
 		req->hr_proto->hp_done(req, status, info);
 
 		/* Handshake request is no longer pending */
 		sock_put(sk);
-
-		fput(file);
 	}
 }
 EXPORT_SYMBOL_IF_KUNIT(handshake_complete);
@@ -357,7 +345,6 @@ out_true:
 
 	/* Handshake request is no longer pending */
 	sock_put(sk);
-	fput(req->hr_file);
 	return true;
 }
 EXPORT_SYMBOL(handshake_req_cancel);

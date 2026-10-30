@@ -2,7 +2,6 @@
 /*
  * Copyright (c) 2019 MediaTek Inc.
  */
-
 #include "ged_base.h"
 #include "ged_hashtable.h"
 #include <linux/hashtable.h>
@@ -25,7 +24,7 @@ struct GED_HASHNODE {
 	struct list_head	sList;
 };
 
-#define GED_HASHTABLE_INIT_ID 1234 // 0 = invalid
+#define GED_HASHTABLE_INIT_ID 1234
 
 static struct GED_HASHTABLE
 *__ged_hashtable_verify(GED_HASHTABLE_HANDLE hHashTable)
@@ -61,8 +60,7 @@ GED_HASHTABLE_HANDLE ged_hashtable_create(unsigned int ui32Bits)
 	unsigned long i;
 
 	if (ui32Bits > 20) {
-		// 1048576 slots !?
-		// Need to check the necessary
+
 		return NULL;
 	}
 
@@ -73,7 +71,7 @@ GED_HASHTABLE_HANDLE ged_hashtable_create(unsigned int ui32Bits)
 		psHT->ui32Bits = ui32Bits;
 		psHT->ulLength = (unsigned long)(1 << ui32Bits);
 		psHT->ulCount = 0;
-		psHT->ulCurrentID = GED_HASHTABLE_INIT_ID; /* 0 = invalid */
+		psHT->ulCurrentID = GED_HASHTABLE_INIT_ID;
 		psHT->psHashTable = (struct list_head *)
 		ged_alloc_atomic(psHT->ulLength * sizeof(struct list_head));
 
@@ -115,7 +113,6 @@ void ged_hashtable_destroy(GED_HASHTABLE_HANDLE hHashTable)
 
 		psHT->version = 0xf2eef2ee;
 
-		/* free the hash table */
 		ged_free(psHT->psHashTable,
 			psHT->ulLength * sizeof(struct list_head));
 		ged_free(psHT, sizeof(struct GED_HASHTABLE));
@@ -140,7 +137,7 @@ GED_ERROR ged_hashtable_insert(GED_HASHTABLE_HANDLE hHashTable,
 		psHN = __ged_hashtable_find(&psHT->psHashTable[ulHash], ulID);
 		if (psHN != NULL) {
 			ulID++;
-			if (ulID == 0) /*skip the value 0 */
+			if (ulID == 0)
 				ulID = 1;
 			if (ulID == psHT->ulCurrentID) {
 				bFindSlot = GED_FALSE;
@@ -344,4 +341,3 @@ unsigned long ged_hashtable_get_count(GED_HASHTABLE_HANDLE hHashTable)
 		return psHT->ulCount;
 	return 0;
 }
-

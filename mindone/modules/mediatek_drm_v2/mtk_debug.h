@@ -48,6 +48,17 @@ enum mtk_pq_persist_property {
 	DISP_PQ_PROPERTY_MAX,
 };
 
+enum MTK_DRM_DEBUG_LOG_SWITCH_OPS {
+	MTK_DRM_OTHER = 0,
+	MTK_DRM_MOBILE_LOG,
+	MTK_DRM_DETAIL_LOG,
+	MTK_DRM_FENCE_LOG,
+	MTK_DRM_IRQ_LOG,
+};
+
+int mtk_disp_ioctl_debug_log_switch(struct drm_device *dev, void *data,
+				    struct drm_file *file_priv);
+
 int mtk_drm_ioctl_pq_get_persist_property(struct drm_device *dev, void *data,
 	struct drm_file *file_priv);
 

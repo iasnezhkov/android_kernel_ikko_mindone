@@ -638,12 +638,11 @@ static ssize_t target_tpcb_store(struct kobject *kobj,
 {
 	int target_tpcb = 0;
 
-	if(sscanf(buf, "%d", &target_tpcb) == 1)
-		therm_intf_write_csram(target_tpcb, TARGET_TPCB_OFFSET);
-	else {
+	if (kstrtoint(buf, 10, &target_tpcb)) {
 		pr_info("[target_tpcb_store] invalid input\n");
 		return -EINVAL;
 	}
+	therm_intf_write_csram(target_tpcb, TARGET_TPCB_OFFSET);
 
 	return count;
 }
@@ -1111,9 +1110,12 @@ static int therm_intf_probe(struct platform_device *pdev)
 		ret = of_parse_phandle_with_args(cpu_np, "performance-domains",
 						 "#performance-domain-cells", 0,
 						 &args);
-
-		if (ret < 0)
-			dev_err(tm_data.dev, "can't get cpu cluster by dts\n");
+		of_node_put(cpu_np);
+		if (ret < 0) {
+			dev_err(tm_data.dev, "can't get cpu %d cluster by dts\n", cpu);
+			continue;
+		}
+		of_node_put(args.np);
 
 		max_perf_domain = max(max_perf_domain, args.args[0]);
 	}

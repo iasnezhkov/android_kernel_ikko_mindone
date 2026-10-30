@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: GPL-2.0 OR BSD-3-Clause */
 /******************************************************************************
  *
  * This file is provided under a dual license.  When you use or
@@ -378,7 +379,8 @@ u_int8_t p2pNetUnregister(struct GLUE_INFO *prGlueInfo,
 		u_int8_t fgIsRtnlLockAcquired);
 
 
-u_int8_t p2PAllocInfo(IN struct GLUE_INFO *prGlueInfo, IN uint8_t ucIdex);
+u_int8_t p2PAllocInfo(IN struct GLUE_INFO *prGlueInfo, IN uint8_t ucIdex,
+	struct GL_P2P_INFO **pprInfo);
 u_int8_t p2PFreeInfo(struct GLUE_INFO *prGlueInfo, uint8_t ucIdx);
 void p2PFreeMemSafe(struct GLUE_INFO *prGlueInfo,
 		void **pprMemInfo, uint32_t size);

@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: GPL-2.0
+# SPDX-FileCopyrightText: 2026 The LineageOS Project
 import os, subprocess, json, glob
 SET = os.path.expanduser('~/opt/k6set-2009g')
 kos = sorted(glob.glob(os.path.join(SET, '*.ko')))

@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: GPL-2.0 */
 #ifndef __UPM6722_HEADER__
 #define __UPM6722_HEADER__
 

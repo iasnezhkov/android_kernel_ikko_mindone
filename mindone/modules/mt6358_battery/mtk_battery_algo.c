@@ -44,31 +44,6 @@ int get_uisoc_cust(struct mtk_battery *gm, int value)
 	return value;
 }
 
-int get_ptimrac(void)
-{
-	return gauge_get_int_property(
-				GAUGE_PROP_PTIM_RESIST);
-}
-
-int get_ptim_vbat(void)
-{
-	return gauge_get_int_property(GAUGE_PROP_PTIM_BATTERY_VOLTAGE) * 10;
-}
-
-int get_ptim_i(struct mtk_battery *gm)
-{
-	struct power_supply *psy;
-	union power_supply_propval val;
-
-	psy = gm->gauge->psy;
-
-	if (psy != NULL)
-		power_supply_get_property(psy,
-				POWER_SUPPLY_PROP_CURRENT_NOW, &val);
-
-	return val.intval;
-}
-
 void get_hw_info(void)
 {
 	gauge_set_property(GAUGE_PROP_HW_INFO, 0);
@@ -458,18 +433,24 @@ void fg_construct_battery_profile_by_qmax(struct mtk_battery *gm,
 	ptable = &gm->fg_table_cust_data;
 	pdata = &gm->fg_cust_data;
 	profile_p = fg_get_profile(gm, table_index);
+	if (profile_p == NULL) {
+		bm_err("[%s] no profile for table %d\n", __func__, table_index);
+		return;
+	}
 
 	if (table_index == ptable->temperature_tb0) {
 		algo->qmax_t_0ma = qmax;
 
-		for (i = 0; i < 100; i++)
-			profile_p[i].percentage =
-			profile_p[i].mah * 10000 / algo->qmax_t_0ma;
+		if (algo->qmax_t_0ma > 0)
+			for (i = 0; i < 100; i++)
+				profile_p[i].percentage =
+				profile_p[i].mah * 10000 / algo->qmax_t_0ma;
 	} else if (table_index == ptable->temperature_tb1) {
 		algo->qmax_t_0ma_tb1 = qmax;
-		for (i = 0; i < 100; i++)
-			profile_p[i].percentage =
-			profile_p[i].mah * 10000 / algo->qmax_t_0ma_tb1;
+		if (algo->qmax_t_0ma_tb1 > 0)
+			for (i = 0; i < 100; i++)
+				profile_p[i].percentage =
+				profile_p[i].mah * 10000 / algo->qmax_t_0ma_tb1;
 	}
 
 	bm_debug("[%s] qmax:%d qmax_t_0ma:%d\n",
@@ -490,6 +471,10 @@ void fg_construct_battery_profile_by_vboot(struct mtk_battery *gm,
 	ptable = &gm->fg_table_cust_data;
 	pdata = &gm->fg_cust_data;
 	profile_p = fg_get_profile(gm, table_index);
+	if (profile_p == NULL) {
+		bm_err("[%s] no profile for table %d\n", __func__, table_index);
+		return;
+	}
 
 	for (j = 0; j < 100; j++)
 		if (profile_p[j].voltage < _vboot)
@@ -509,6 +494,8 @@ void fg_construct_battery_profile_by_vboot(struct mtk_battery *gm,
 				profile_p[j-1].mah,
 				_vboot);
 		}
+		if (j > 99)
+			j = 99;
 
 		if (algo->qmax_t_0ma < 3000) {
 			bm_err("[ERR][%s]index %d idx:%d _vboot:%d %d qmax_t_0ma:[%d => 3000]\n",
@@ -524,9 +511,10 @@ void fg_construct_battery_profile_by_vboot(struct mtk_battery *gm,
 				_vboot, profile_p[j].voltage, algo->qmax_t_0ma);
 		}
 
-		for (i = 0; i < 100; i++)
-			profile_p[i].percentage =
-			profile_p[i].mah * 10000 / algo->qmax_t_0ma;
+		if (algo->qmax_t_0ma > 0)
+			for (i = 0; i < 100; i++)
+				profile_p[i].percentage =
+				profile_p[i].mah * 10000 / algo->qmax_t_0ma;
 
 	} else if (table_index == ptable->temperature_tb1) {
 		if (j == 0) {
@@ -542,6 +530,8 @@ void fg_construct_battery_profile_by_vboot(struct mtk_battery *gm,
 			profile_p[j-1].voltage,
 			profile_p[j-1].mah, _vboot);
 		}
+		if (j > 99)
+			j = 99;
 
 		if (algo->qmax_t_0ma_tb1 < 3000) {
 			bm_err("[ERR][%s]index %d idx:%d _vboot:%d %d qmax_t_0ma_tb1:[%d => 3000]\n",
@@ -559,9 +549,10 @@ void fg_construct_battery_profile_by_vboot(struct mtk_battery *gm,
 				algo->qmax_t_0ma_tb1);
 		}
 
-		for (i = 0; i < 100; i++)
-			profile_p[i].percentage =
-			profile_p[i].mah * 10000 / algo->qmax_t_0ma_tb1;
+		if (algo->qmax_t_0ma_tb1 > 0)
+			for (i = 0; i < 100; i++)
+				profile_p[i].percentage =
+				profile_p[i].mah * 10000 / algo->qmax_t_0ma_tb1;
 	}
 
 	if (table_index == ptable->temperature_tb1) {
@@ -716,9 +707,9 @@ static void fgr_construct_vboot_sample(struct mtk_battery *gm, int table_idx,
 			fg_construct_battery_profile_by_qmax(gm,
 			algo->qmax_t_0ma_h_tb1, table_idx);
 	} else if (pdata->qmax_sel == 1) {
-		vboot_t =
-			ptable->fg_profile[0].pmic_min_vol
-			+ iboot * rac / 10000;
+		vboot_t = ptable->fg_profile[0].pmic_min_vol;
+		if (rac > 0)
+			vboot_t += iboot * rac / 10000;
 
 		fg_construct_battery_profile_by_vboot(gm, vboot_t, table_idx);
 		if (table_idx == 255) {
@@ -736,6 +727,11 @@ static void fgr_construct_vboot_sample(struct mtk_battery *gm, int table_idx,
 			fg_construct_battery_profile_by_vboot(gm,
 				algo->vboot_c, table_idx);
 		}
+		if (!rac && (table_idx == 255 || table_idx == 254))
+			pr_notice_once("[%s] source=profile temperature=%d vboot=%d iboot=%d\n",
+				__func__, curr_temp,
+				table_idx == 255 ? algo->vboot : algo->vboot_c,
+				iboot);
 		bm_debug("[%s]idx %d T_NEW %d T_table %d T_table_c %d qmax_sel %d vboot_t=[%d:%d:%d] %d %d rac %d\n",
 			__func__,
 			table_idx, curr_temp,
@@ -774,10 +770,35 @@ static void fgr_construct_vboot_sample(struct mtk_battery *gm, int table_idx,
 	}
 }
 
-void fgr_construct_vboot(struct mtk_battery *gm, int table_idx)
+struct fgr_vboot_sample {
+	struct gauge_ptim_sample ptim;
+	int temperature;
+	int rac;
+};
+
+static int fgr_read_vboot_sample(struct mtk_battery *gm,
+	struct fgr_vboot_sample *sample)
 {
-	fgr_construct_vboot_sample(gm, table_idx, force_get_tbat(gm, true),
-		get_ptimrac(), get_ptim_vbat(), get_ptim_i(gm));
+	struct fgr_vboot_sample next = {};
+	int ret;
+
+	lockdep_assert_held(&gm->algo_lock);
+	ret = force_get_tbat_internal(gm, true, &next.temperature);
+	if (ret < 0)
+		return ret;
+	ret = gauge_get_property(GAUGE_PROP_PTIM_RESIST, &next.rac);
+	if (ret < 0 && ret != -ENODATA)
+		return ret;
+	if (ret == -ENODATA || next.rac <= 0) {
+		if (gm->fg_cust_data.qmax_sel != 1)
+			return -ENODATA;
+		next.rac = 0;
+	}
+	ret = gauge_read_ptim_sample(gm->gauge, &next.ptim);
+	if (ret)
+		return ret;
+	*sample = next;
+	return 0;
 }
 
 void fgr_dump_table(struct mtk_battery *gm, int idx)
@@ -786,6 +807,10 @@ void fgr_dump_table(struct mtk_battery *gm, int idx)
 	int i;
 
 	profile_p = fg_get_profile(gm, idx);
+	if (profile_p == NULL) {
+		bm_err("[%s] no profile for table %d\n", __func__, idx);
+		return;
+	}
 
 	bm_err("[%s]table idx:%d (i,mah,voltage,resistance,percentage)\n",
 		__func__,
@@ -1441,23 +1466,33 @@ void fgr_int_end_flow(struct mtk_battery *gm, unsigned int intr_no)
 		algo->T_table_c, algo->car);
 }
 
-void fgr_temp_c_int_handler(struct mtk_battery *gm)
+static int fgr_temp_c_int_handler(struct mtk_battery *gm)
 {
 	struct mtk_battery_algo *algo;
 	struct fuel_gauge_table_custom_data *ptable;
+	struct fgr_vboot_sample sample;
+	int ret;
+
+	ret = fgr_read_vboot_sample(gm, &sample);
+	if (ret) {
+		bm_err("[%s] measurement unavailable: %d\n", __func__, ret);
+		return ret;
+	}
 
 	algo = &gm->algo;
 	ptable = &gm->fg_table_cust_data;
 
-	/* int curr_temp; */
-	fgr_construct_table_by_temp(gm, true, ptable->temperature_tb1);
-	fgr_construct_vboot(gm, ptable->temperature_tb1);
-	/* fg_debug_dump(ptable->temperature_tb1);*/
+	algo->last_temp = sample.temperature;
+	fgr_construct_battery_profile(gm, ptable->temperature_tb1);
+	fgr_construct_vboot_sample(gm, ptable->temperature_tb1,
+		sample.temperature, sample.rac, sample.ptim.voltage_01mv,
+		sample.ptim.current_01ma);
 	fgr_update_c_dod(gm);
 
 	fgr_set_soc_by_vc_mode(gm);
 	algo->fg_bat_tmp_c_gap = 1;
 	set_fg_bat_tmp_c_gap(algo->fg_bat_tmp_c_gap);
+	return 0;
 }
 
 void fgr_update_fg_bat_int1_threshold(struct mtk_battery *gm)
@@ -1990,12 +2025,12 @@ void do_fg_algo(struct mtk_battery *gm, unsigned int intr_num,
 		fgr_int_end_flow(gm, FG_INTR_IAVG);
 		break;
 	case FG_INTR_BAT_TMP_C_HT:
-		fgr_temp_c_int_handler(gm);
-		fgr_int_end_flow(gm, FG_INTR_BAT_TMP_HT);
+		if (!fgr_temp_c_int_handler(gm))
+			fgr_int_end_flow(gm, FG_INTR_BAT_TMP_HT);
 		break;
 	case FG_INTR_BAT_TMP_C_LT:
-		fgr_temp_c_int_handler(gm);
-		fgr_int_end_flow(gm, FG_INTR_BAT_TMP_LT);
+		if (!fgr_temp_c_int_handler(gm))
+			fgr_int_end_flow(gm, FG_INTR_BAT_TMP_LT);
 		break;
 	case FG_INTR_BAT_INT1_HT:
 		fgr_bat_int1_handler(gm);
@@ -2107,7 +2142,8 @@ int battery_algo_init(struct mtk_battery *gm)
 	struct mtk_battery_algo saved = gm->algo;
 	struct fuel_gauge_table_custom_data *ptable = &gm->fg_table_cust_data;
 	struct fuelgauge_profile_struct *profile, *saved_profile;
-	int is_bat_exist, temperature, rac, vbat, current_sample;
+	struct fgr_vboot_sample sample;
+	int is_bat_exist;
 	int ascending, descending, ret, handoff;
 	int saved_soc = gm->soc;
 
@@ -2117,20 +2153,9 @@ int battery_algo_init(struct mtk_battery *gm)
 		return ret;
 	if (!is_bat_exist)
 		return -ENODEV;
-	ret = force_get_tbat_internal(gm, true, &temperature);
+	ret = fgr_read_vboot_sample(gm, &sample);
 	if (ret < 0)
 		return ret;
-	ret = gauge_get_property(GAUGE_PROP_PTIM_RESIST, &rac);
-	if (ret < 0)
-		return ret;
-	ret = gauge_get_property(GAUGE_PROP_PTIM_BATTERY_VOLTAGE, &vbat);
-	if (ret < 0)
-		return ret;
-	ret = gauge_get_property(GAUGE_PROP_BATTERY_CURRENT, &current_sample);
-	if (ret < 0)
-		return ret;
-	if (vbat <= 0)
-		return -ENODATA;
 	profile = fg_get_profile(gm, ptable->temperature_tb1);
 	if (!profile || fg_check_temperature_order(gm, &ascending, &descending))
 		return -EINVAL;
@@ -2141,10 +2166,11 @@ int battery_algo_init(struct mtk_battery *gm)
 	gm->algo.fg_bat_tmp_c_gap = 1;
 	gm->algo.aging_factor = 10000;
 	gm->algo.DC_ratio = 100;
-	gm->algo.last_temp = temperature;
+	gm->algo.last_temp = sample.temperature;
 	fgr_construct_battery_profile(gm, ptable->temperature_tb1);
-	fgr_construct_vboot_sample(gm, ptable->temperature_tb1, temperature,
-		rac, vbat * 10, current_sample);
+	fgr_construct_vboot_sample(gm, ptable->temperature_tb1,
+		sample.temperature, sample.rac, sample.ptim.voltage_01mv,
+		sample.ptim.current_01ma);
 	fgr_update_quse(gm, 1);
 	if (gm->algo.quse_tb1 <= 0) {
 		ret = -ENODATA;

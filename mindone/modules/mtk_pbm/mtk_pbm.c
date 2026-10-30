@@ -261,7 +261,7 @@ static void mtk_gpufreq_get_max_min_pb(void)
 static void pbm_allocate_budget_manager(void)
 {
 	int _dlpt, md1, dlpt, cpu, gpu, flash, tocpu, togpu;
-	int multiple;
+	int multiple = 0;
 	int cpu_lower_bound = MIN_CPU_POWER;
 	static int pre_tocpu, pre_togpu;
 
@@ -461,6 +461,9 @@ static void pbm_timer_add(int enable)
 
 void pbm_check_and_run_polling(int uisoc, int pbm_stop)
 {
+	if (!pbm_func_enable_check())
+		return;
+
 	if (((uisoc <= BAT_PERCENT_LIMIT && uisoc >= 0 && pbm_stop == 0)
 				|| pbm_stop == 2) && g_start_polling == 0) {
 		g_start_polling = 1;
@@ -647,10 +650,8 @@ static void pbm_cpu_frequency_tracer(void *ignore, unsigned int frequency, unsig
 
 		if (cpu == cpu_id)
 			pbm_policy->freq = frequency;
-		else if (pbm_policy->freq == 0)
-			pbm_policy->freq = cpufreq_quick_get(cpu);
 		else
-			continue;
+			pbm_policy->freq = cpufreq_quick_get(cpu);
 
 		pbm_policy->num_cpus = cpumask_weight(pbm_policy->policy->cpus);
 		pbm_policy->power = cpu_freq_to_power(pbm_policy, pbm_policy->freq) *
@@ -977,6 +978,7 @@ static int pbm_probe(struct platform_device *pdev)
 			if (!i) {
 				pr_info("%s: CPUFreq table not found or has no valid entries\n",
 					 __func__);
+				kfree(pbm_policy);
 				return -ENODEV;
 			}
 
@@ -998,6 +1000,7 @@ static int pbm_probe(struct platform_device *pdev)
 			if (ret < 0) {
 				pr_notice("%s: Fail to add freq constraint (%d)\n",
 					__func__, ret);
+				kfree(pbm_policy);
 				return ret;
 			}
 			list_add_tail(&pbm_policy->cpu_pbm_list, &pbm_policy_list);

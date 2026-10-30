@@ -1,3 +1,5 @@
+/* SPDX-License-Identifier: GPL-2.0 */
+/* SPDX-FileCopyrightText: 2026 The LineageOS Project */
 struct net_device {
     const struct net_device_ops *netdev_ops;
     void *private;

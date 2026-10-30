@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-2.0
+// SPDX-FileCopyrightText: 2026 The LineageOS Project
 static void invalid(struct mtk_gauge *gauge, enum gauge_irq irq, int expected)
 {
     int calls = enable_calls + disable_calls;

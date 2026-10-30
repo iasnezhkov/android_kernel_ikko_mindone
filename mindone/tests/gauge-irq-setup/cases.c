@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-2.0
+// SPDX-FileCopyrightText: 2026 The LineageOS Project
 static void reset(void)
 {
     for (int i = 0; i < allocation_count; i++)
@@ -12,7 +14,10 @@ static void reset(void)
     thermal_live = supply_live = gauge_groups = netlink_live = misc_calls = activation_calls = 0;
     request_errno = -EIO;
     hw_id = 0x5800;
+    property_hw_version = -1;
     battery_thread_errno = battery_notifier_errno = battery_sysfs_errno = 0;
+    lbat_release_calls = lbat_register_errno = lbat_debounce_errno = ptim_channel_errno = 0;
+    lbat.live = false;
     kernel_algo = false;
     active_gauge = NULL;
 }
@@ -149,6 +154,7 @@ static void probe(void)
         assert(worker_live == 0 && battery_worker_live == 0 && wake_live == 0 && notifier_live == 0);
         assert(requested_live == 0 && thermal_live == 0 && supply_live == 0 && gauge_groups == 0 && netlink_live == 0);
         assert(misc_calls == 0 && activation_calls == 0);
+        assert(lbat_release_calls == (fault >= 7));
     }
     reset();
     struct mt6397_chip chip = {0};
@@ -159,7 +165,7 @@ static void probe(void)
     assert(gauge->gm->is_probe_done && gauge->gm->cs.init);
     assert(requested_live == 12 && worker_live == 1 && battery_worker_live == 1);
     assert(wake_live == 1 && thermal_live == 1 && supply_live == 2 && gauge_groups == 1 && netlink_live == 1);
-    assert(misc_calls == 1 && activation_calls == 0);
+    assert(misc_calls == 1 && activation_calls == 0 && lbat_release_calls == 0);
     puts("PASS actual init-to-probe caller propagation and cleanup before workers; full healthy N startup");
 }
 static void service_readiness(void)
@@ -188,6 +194,63 @@ static void service_readiness(void)
         assert(battery_worker_live == !(fault == 0 || fault == 3));
     }
     puts("PASS actual battery worker/PM/sysfs setup faults retain diagnostic N lifetimes and repeatedly refuse Y with first errno");
+}
+static void lbat_cleanup(void)
+{
+    for (int fault = 0; fault < 4; fault++) {
+        reset();
+        struct mtk_battery gm;
+        struct mtk_gauge gauge;
+        struct platform_device pdev;
+        fixture(&gm, &gauge, &pdev);
+        property_hw_version = GAUGE_HW_V1000;
+        if (fault == 0) lbat_register_errno = -EPROBE_DEFER;
+        if (fault == 1) lbat_debounce_errno = -EIO;
+        if (fault == 2) files_errno = -EACCES;
+        int expected = fault == 0 ? -EPROBE_DEFER : fault == 1 ? -EIO : -EACCES;
+        if (fault < 3) {
+            assert(mtk_battery_daemon_init(&pdev) == expected);
+            assert(lbat_release_calls == 1 && !lbat.live && !gm.lowbat_service);
+            assert(requested_live == 0 && free_calls == 2);
+        } else {
+            car_errno = -EREMOTEIO;
+            assert(battery_init(&pdev) == -EREMOTEIO);
+            assert(lbat_release_calls == 1 && !lbat.live && !gm.lowbat_service);
+            assert(requested_live == 0 && free_calls == 2);
+        }
+    }
+    reset();
+    struct mtk_battery gm;
+    struct mtk_gauge gauge;
+    struct platform_device pdev;
+    fixture(&gm, &gauge, &pdev);
+    property_hw_version = GAUGE_HW_V1000;
+    assert(mtk_battery_daemon_init(&pdev) == 0);
+    assert(lbat.live && gm.lowbat_service == &lbat && lbat_release_calls == 0);
+    mtk_battery_lbat_release(&gm);
+    release_gauge_irqs(&gm);
+    puts("PASS owned LBAT registration/debounce/files/service fault drain before IRQ release and successful retention");
+}
+static void ptim_channel(void)
+{
+    const int errors[] = {-EPROBE_DEFER, -ENODEV, 0};
+    for (unsigned int i = 0; i < ARRAY_SIZE(errors); i++) {
+        reset();
+        struct mt6397_chip chip = {0};
+        struct device parent = { .data = &chip };
+        struct platform_device pdev = { .dev.parent = &parent };
+        ptim_channel_errno = errors[i];
+        int ret = mt6358_gauge_probe(&pdev);
+        struct mtk_gauge *gauge = pdev.dev.data;
+        if (errors[i] == -EPROBE_DEFER) {
+            assert(ret == -EPROBE_DEFER);
+            assert(!gauge->gm && !supply_live && !thermal_live && !requested_live && !netlink_live);
+        } else {
+            assert(ret == 0 && gauge->gm->is_probe_done && worker_live == 1);
+        }
+        assert(gauge->chan_ptim_sample == (errors[i] ? (void *)(intptr_t)errors[i] : &channel));
+    }
+    puts("PASS optional PTIM channel retains absence, accepts success and defers before consumer allocation");
 }
 static void readiness(void)
 {
@@ -232,6 +295,8 @@ int main(void)
     probe();
     service_readiness();
     readiness();
+    lbat_cleanup();
+    ptim_channel();
     reset();
     return 0;
 }

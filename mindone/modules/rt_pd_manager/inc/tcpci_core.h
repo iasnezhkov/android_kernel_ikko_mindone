@@ -435,6 +435,7 @@ struct tcpc_device {
 
 #if CONFIG_TCPC_SOURCE_VCONN
 	bool tcpc_source_vconn;
+	bool tcpc_source_vconn_dirty;
 #endif	/* CONFIG_TCPC_SOURCE_VCONN */
 
 	uint32_t tcpc_flags;

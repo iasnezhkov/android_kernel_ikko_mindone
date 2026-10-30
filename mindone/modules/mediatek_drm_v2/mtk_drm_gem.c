@@ -4,7 +4,6 @@
  */
 
 #include <drm/drm_gem.h>
-#include "mindone_log.h"
 MODULE_IMPORT_NS(DMA_BUF);
 #include <drm/drm_gem_dma_helper.h> /* drm_gem_dma_vm_ops, real DMA GEM helper */
 #include <linux/dma-buf.h>
@@ -15,7 +14,6 @@ MODULE_IMPORT_NS(DMA_BUF);
 #include <drm/drm_file.h>
 #include <linux/kmemleak.h>
 
-#include "drm_internal.h"
 #include "mtk_drm_drv.h"
 #include <drivers/gpu/drm/mediatek/mediatek_v2/mtk_drm_gem.h>
 #include <drivers/gpu/drm/mediatek/mediatek_v2/mtk_fence.h>
@@ -275,8 +273,6 @@ int mtk_drm_gem_dumb_create(struct drm_file *file_priv, struct drm_device *dev,
 	struct mtk_drm_gem_obj *mtk_gem;
 	int ret;
 
-	MINDONE_PR("MINDONE-AC: dumb-create begin w=%u h=%u bpp=%u\n",
-		args->width, args->height, args->bpp);
 	args->pitch = DIV_ROUND_UP(args->width * args->bpp, 8);
 	args->size = (__u64)args->pitch * (__u64)args->height;
 
@@ -297,12 +293,10 @@ int mtk_drm_gem_dumb_create(struct drm_file *file_priv, struct drm_device *dev,
 
 	mtk_gem->is_dumb = 1;
 
-	MINDONE_PR("MINDONE-AC: dumb-create end ret=0\n");
 	return 0;
 
 err_handle_create:
 	mtk_drm_gem_free_object(&mtk_gem->base);
-	MINDONE_PR("MINDONE-AC: dumb-create end ret=%d (handle-create-fail)\n", ret);
 	return ret;
 }
 
@@ -313,7 +307,6 @@ int mtk_drm_gem_dumb_map_offset(struct drm_file *file_priv,
 	struct drm_gem_object *obj;
 	int ret;
 
-	MINDONE_PR("MINDONE-AC: dumb-map-offset begin handle=%u\n", handle);
 	obj = drm_gem_object_lookup(file_priv, handle);
 	if (!obj) {
 		DDPPR_ERR("failed to lookup gem object.\n");
@@ -329,7 +322,6 @@ int mtk_drm_gem_dumb_map_offset(struct drm_file *file_priv,
 
 out:
 	drm_gem_object_put(obj);
-	MINDONE_PR("MINDONE-AC: dumb-map-offset end ret=%d\n", ret);
 	return ret;
 }
 
@@ -363,15 +355,12 @@ int mtk_drm_gem_mmap_buf(struct drm_gem_object *obj, struct vm_area_struct *vma)
 {
 	int ret;
 
-	MINDONE_PR("MINDONE-AC: gem-mmap-buf begin obj=%px size=%zu\n", obj, obj->size);
 	ret = drm_gem_mmap_obj(obj, obj->size, vma);
 	if (ret) {
-		MINDONE_PR("MINDONE-AC: gem-mmap-buf end ret=%d (mmap-obj-fail)\n", ret);
 		return ret;
 	}
 
 	ret = mtk_drm_gem_object_mmap(obj, vma);
-	MINDONE_PR("MINDONE-AC: gem-mmap-buf end ret=%d\n", ret);
 	return ret;
 }
 
@@ -480,8 +469,6 @@ mtk_gem_prime_import_sg_table(struct drm_device *dev,
 	dma_addr_t expected, last_iova = 0;
 #endif
 
-	MINDONE_PR("MINDONE-AC: gem-prime-import begin dev=%px attach=%px sg=%px\n",
-		dev, attach, sg);
 	DDPDBG("%s:%d dev:0x%p, attach:0x%p, sg:0x%p +\n",
 			__func__, __LINE__,
 			dev,
@@ -493,7 +480,6 @@ mtk_gem_prime_import_sg_table(struct drm_device *dev,
 		DDPPR_ERR("%s:%d mtk_gem error:0x%p\n",
 				__func__, __LINE__,
 				mtk_gem);
-		MINDONE_PR("MINDONE-AC: gem-prime-import end ret=err (gem-init-fail)\n");
 		return ERR_PTR(PTR_ERR(mtk_gem));
 	}
 
@@ -536,7 +522,6 @@ mtk_gem_prime_import_sg_table(struct drm_device *dev,
 			mtk_gem->size,
 			mtk_gem->sg);
 
-	MINDONE_PR("MINDONE-AC: gem-prime-import end ret=0 obj=%px\n", &mtk_gem->base);
 	return &mtk_gem->base;
 
 #ifdef IF_ZERO
@@ -883,158 +868,9 @@ err_handle_create:
 	return ret;
 }
 
-/*for mtee architecture of svp*/
-struct drm_prime_member {
-	struct dma_buf *dma_buf;
-	uint32_t handle;
-
-	struct rb_node dmabuf_rb;
-	struct rb_node handle_rb;
-};
-
-static int __prime_add_buf_handle(struct drm_prime_file_private *prime_fpriv,
-	struct dma_buf *dma_buf, uint32_t handle)
-{
-	struct drm_prime_member *member;
-	struct rb_node **p, *rb;
-
-	member = kmalloc(sizeof(*member), GFP_KERNEL);
-	if (!member)
-		return -ENOMEM;
-
-	get_dma_buf(dma_buf);
-	member->dma_buf = dma_buf;
-	member->handle = handle;
-
-	rb = NULL;
-	p = &prime_fpriv->dmabufs.rb_node;
-	while (*p) {
-		struct drm_prime_member *pos;
-
-		rb = *p;
-		pos = rb_entry(rb, struct drm_prime_member, dmabuf_rb);
-		if (dma_buf > pos->dma_buf)
-			p = &rb->rb_right;
-		else
-			p = &rb->rb_left;
-	}
-	rb_link_node(&member->dmabuf_rb, rb, p);
-	rb_insert_color(&member->dmabuf_rb, &prime_fpriv->dmabufs);
-
-	rb = NULL;
-	p = &prime_fpriv->handles.rb_node;
-	while (*p) {
-		struct drm_prime_member *pos;
-
-		rb = *p;
-		pos = rb_entry(rb, struct drm_prime_member, handle_rb);
-		if (handle > pos->handle)
-			p = &rb->rb_right;
-		else
-			p = &rb->rb_left;
-	}
-	rb_link_node(&member->handle_rb, rb, p);
-	rb_insert_color(&member->handle_rb, &prime_fpriv->handles);
-
-	return 0;
-}
-
-static int __prime_lookup_buf_handle(struct drm_prime_file_private *prime_fpriv,
-				       struct dma_buf *dma_buf,
-				       uint32_t *handle)
-{
-	struct rb_node *rb;
-
-	rb = prime_fpriv->dmabufs.rb_node;
-	while (rb) {
-		struct drm_prime_member *member;
-
-		member = rb_entry(rb, struct drm_prime_member, dmabuf_rb);
-		if (member->dma_buf == dma_buf) {
-			*handle = member->handle;
-			return 0;
-		} else if (member->dma_buf < dma_buf) {
-			rb = rb->rb_right;
-		} else {
-			rb = rb->rb_left;
-		}
-	}
-
-	return -ENOENT;
-}
-
 int mtk_drm_sec_hnd_to_gem_hnd(struct drm_device *dev, void *data,
 			       struct drm_file *file_priv)
 {
-	struct drm_mtk_sec_gem_hnd *args = data;
-	struct mtk_drm_gem_obj *mtk_gem_obj = NULL;
-	struct drm_gem_object *obj = NULL;
-	struct dma_buf *dma_buf;
-	int prime_fd;
-	int sec = -1;
-	int ret = -1;
-
-	mtk_gem_obj = kzalloc(sizeof(*mtk_gem_obj), GFP_KERNEL);
-	if (!mtk_gem_obj)
-		return -ENOMEM;
-
-	mtk_gem_obj->sec = true;
-	prime_fd = args->sec_hnd;
-	dma_buf = dma_buf_get(prime_fd);
-	if (IS_ERR(dma_buf)) {
-		kfree(mtk_gem_obj);
-		return PTR_ERR(dma_buf);
-	}
-
-	mutex_lock(&file_priv->prime.lock);
-	ret = __prime_lookup_buf_handle(&file_priv->prime,
-			dma_buf, &args->gem_hnd);
-	if (ret == 0)
-		goto out_put;
-
-	DDPDBG("%s+++\n", __func__);
-	if (disp_mtee_cb.cb != NULL)
-		sec = disp_mtee_cb.cb(DISP_SEC_FD_TO_SEC_HDL, prime_fd, mtk_gem_obj,
-					NULL, NULL, 0, 0, 0, 0, 0);
-
-	drm_gem_private_object_init(dev, &mtk_gem_obj->base, 0);
-	mtk_gem_obj->base.funcs = &mtk_drm_gem_object_funcs;
-
-	obj = &mtk_gem_obj->base;
-	if (obj->dma_buf) {
-		WARN_ON(obj->dma_buf != dma_buf);
-	} else {
-		obj->dma_buf = dma_buf;
-		get_dma_buf(dma_buf);
-	}
-
-	ret =  drm_gem_handle_create(file_priv, &mtk_gem_obj->base, &args->gem_hnd);
-	drm_gem_object_put(obj);
-	if (ret)
-		goto out_put;
-
-	ret = __prime_add_buf_handle(&file_priv->prime,
-			dma_buf, args->gem_hnd);
-	if (ret)
-		goto fail;
-	mutex_unlock(&file_priv->prime.lock);
-	dma_buf_put(dma_buf);
-
-	return 0;
-
-fail:
-	/* hmm, if driver attached, we are relying on the free-object path
-	 * to detach.. which seems ok..
-	 */
-	drm_gem_handle_delete(file_priv, args->gem_hnd);
-	dma_buf_put(dma_buf);
-	kfree(mtk_gem_obj);
-	return ret;
-
-out_put:
-	mutex_unlock(&file_priv->prime.lock);
-	dma_buf_put(dma_buf);
-	kfree(mtk_gem_obj);
-	return ret;
+	return -EOPNOTSUPP;
 }
 

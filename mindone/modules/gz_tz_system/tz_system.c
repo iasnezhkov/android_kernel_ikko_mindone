@@ -227,6 +227,7 @@ int32_t _setSessionHandle(struct tipc_k_handle h)
 	if (i == KREE_SESSION_HANDLE_MAX_SIZE) {
 		KREE_ERR(" %s: can not get empty slot for session!\n",
 			 __func__);
+		mutex_unlock(&fd_mutex);
 		return -1;
 	}
 	_kree_session_handle_pool[_kree_session_handle_idx].dn = h.dn;

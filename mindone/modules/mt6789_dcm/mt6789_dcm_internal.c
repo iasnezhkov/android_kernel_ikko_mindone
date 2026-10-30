@@ -74,6 +74,22 @@ int dcm_infra_preset(int on)
 	return 0;
 }
 
+static int dcm_infra_is_on(void)
+{
+	int ret = 1;
+
+	ret &= dcm_infracfg_ao_aximem_bus_dcm_is_on();
+	ret &= dcm_infracfg_ao_infra_bus_dcm_is_on();
+	ret &= dcm_infracfg_ao_infra_conn_bus_dcm_is_on();
+	ret &= dcm_infracfg_ao_infra_rx_p2p_dcm_is_on();
+	ret &= dcm_infracfg_ao_peri_bus_dcm_is_on();
+	ret &= dcm_infracfg_ao_peri_module_dcm_is_on();
+	ret &= dcm_infra_ao_bcrm_infra_bus_dcm_is_on();
+	ret &= dcm_infra_ao_bcrm_peri_bus_dcm_is_on();
+
+	return ret;
+}
+
 int dcm_infra(int on)
 {
 	dcm_infracfg_ao_aximem_bus_dcm(on);
@@ -152,6 +168,23 @@ int dcm_armcore(int on)
 {
 
 	return 0;
+}
+
+static int dcm_mcusys_is_on(void)
+{
+	int ret = 1;
+
+	ret &= dcm_mp_cpusys_top_adb_dcm_is_on();
+	ret &= dcm_mp_cpusys_top_apb_dcm_is_on();
+	ret &= dcm_mp_cpusys_top_core_stall_dcm_is_on();
+	ret &= dcm_mp_cpusys_top_cpubiu_dcm_is_on();
+	ret &= dcm_mp_cpusys_top_fcm_stall_dcm_is_on();
+	ret &= dcm_mp_cpusys_top_last_cor_idle_dcm_is_on();
+	ret &= dcm_mp_cpusys_top_misc_dcm_is_on();
+	ret &= dcm_mp_cpusys_top_mp0_qdcm_is_on();
+	ret &= dcm_cpccfg_reg_emi_wfifo_is_on();
+
+	return ret;
 }
 
 int dcm_mcusys(int on)
@@ -254,6 +287,9 @@ int dcm_mcsi(int on)
 
 void dcm_dump_regs(void)
 {
+	dcm_pr_info("MCUSYS_DCM hardware is_on:%d\n", dcm_mcusys_is_on());
+	dcm_pr_info("INFRA_DCM hardware is_on:%d\n", dcm_infra_is_on());
+
 	dcm_pr_info("\n******** dcm dump register *********\n");
 
 	REG_DUMP(MCUSYS_PAR_WRAP_STALL_DCM_CONF);

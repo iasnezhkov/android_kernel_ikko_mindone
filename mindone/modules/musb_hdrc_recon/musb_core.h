@@ -482,6 +482,9 @@ struct musb {
 	u16 fifo_addr;
 	struct workqueue_struct *st_wq;
 	struct power_supply *usb_psy;
+	struct delayed_work vbus_draw_work;
+	unsigned int vbus_draw;
+	bool vbus_draw_ready;
 	struct notifier_block psy_nb;
 
 #if IS_ENABLED(CONFIG_USB_ROLE_SWITCH)

@@ -113,6 +113,7 @@ static u64 mt_usb_dmamask = DMA_BIT_MASK(36);
 static u64 mt_usb_dmamask = DMA_BIT_MASK(32);
 #endif
 
+DEFINE_SPINLOCK(usb_power_lock);
 DEFINE_SPINLOCK(usb_io_lock);
 EXPORT_SYMBOL(usb_io_lock);
 
@@ -3811,6 +3812,7 @@ static int virt_enable = 0, virt_disable;
 static void mt_usb_enable(struct musb *musb)
 {
 	unsigned long flags;
+	unsigned long usb_power_flags;
 	int ret;
 
 	virt_enable++;
@@ -3838,8 +3840,10 @@ static void mt_usb_enable(struct musb *musb)
 	}
 
 	/* update musb->power & mtk_usb_power in the same time */
+	spin_lock_irqsave(&usb_power_lock, usb_power_flags);
 	musb->power = true;
 	mtk_usb_power = true;
+	spin_unlock_irqrestore(&usb_power_lock, usb_power_flags);
 	real_enable++;
 	if (in_interrupt()) {
 		DBG(0, "in interrupt !!!!!!!!!!!!!!!\n");
@@ -3854,6 +3858,8 @@ static void mt_usb_enable(struct musb *musb)
 
 static void mt_usb_disable(struct musb *musb)
 {
+	unsigned long flags;
+
 	virt_disable++;
 
 	DBG(0, "begin, <%d,%d>,<%d,%d,%d,%d>\n",
@@ -3863,6 +3869,7 @@ static void mt_usb_disable(struct musb *musb)
 	if (musb->power == false)
 		return;
 
+	spin_lock_irqsave(&usb_power_lock, flags);
 	usb_enable_clock(false);
 	/* clock will unprepare when leave here */
 
@@ -3874,6 +3881,7 @@ static void mt_usb_disable(struct musb *musb)
 	/* update musb->power & mtk_usb_power in the same time */
 	musb->power = 0;
 	mtk_usb_power = false;
+	spin_unlock_irqrestore(&usb_power_lock, flags);
 }
 
 /* ================================ */

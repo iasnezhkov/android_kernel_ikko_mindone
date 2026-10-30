@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0 OR BSD-3-Clause
 /******************************************************************************
  *
  * This file is provided under a dual license.  When you use or
@@ -66,24 +67,30 @@ static uint8_t *apucDebugP2pDevState[P2P_DEV_STATE_NUM] = {
 /*lint -restore */
 #endif /* DBG */
 
-uint8_t p2pDevFsmInit(IN struct ADAPTER *prAdapter)
+int p2pDevFsmInit(IN struct ADAPTER *prAdapter)
 {
-	struct P2P_DEV_FSM_INFO *prP2pDevFsmInfo =
-		(struct P2P_DEV_FSM_INFO *) NULL;
-	struct P2P_CHNL_REQ_INFO *prP2pChnlReqInfo =
-		(struct P2P_CHNL_REQ_INFO *) NULL;
-	struct P2P_MGMT_TX_REQ_INFO *prP2pMgmtTxReqInfo =
-		(struct P2P_MGMT_TX_REQ_INFO *) NULL;
-	struct BSS_INFO *prP2pBssInfo = (struct BSS_INFO *) NULL;
+	struct P2P_DEV_FSM_INFO *prP2pDevFsmInfo;
+	struct P2P_CHNL_REQ_INFO *prP2pChnlReqInfo;
+	struct P2P_MGMT_TX_REQ_INFO *prP2pMgmtTxReqInfo;
+	struct BSS_INFO *prP2pBssInfo;
 
+	if (!prAdapter || prAdapter->ucP2PDevBssIdx != prAdapter->ucHwBssIdNum ||
+	    prAdapter->ucP2PDevBssIdx >= ARRAY_SIZE(prAdapter->aprBssInfo))
+		return -EINVAL;
+	prP2pDevFsmInfo = prAdapter->rWifiVar.prP2pDevFsmInfo;
+	prP2pBssInfo = prAdapter->aprBssInfo[prAdapter->ucP2PDevBssIdx];
+	if (!prP2pDevFsmInfo || !prP2pBssInfo)
+		return -EINVAL;
+	if (prP2pDevFsmInfo->fgIsInitialized)
+		return prP2pDevFsmInfo->ucBssIndex == prAdapter->ucP2PDevBssIdx &&
+			prP2pBssInfo->fgIsInUse &&
+			prP2pBssInfo->eNetworkType == NETWORK_TYPE_P2P ?
+			prP2pDevFsmInfo->ucBssIndex : -EINVAL;
+	if (prP2pBssInfo->fgIsInUse)
+		return -EBUSY;
 	do {
-		ASSERT_BREAK(prAdapter != NULL);
-
-		prP2pDevFsmInfo = prAdapter->rWifiVar.prP2pDevFsmInfo;
-
-		ASSERT_BREAK(prP2pDevFsmInfo != NULL);
-
 		kalMemZero(prP2pDevFsmInfo, sizeof(struct P2P_DEV_FSM_INFO));
+		prP2pDevFsmInfo->ucBssIndex = 0xff;
 
 		prP2pDevFsmInfo->eCurrentState = P2P_DEV_STATE_IDLE;
 
@@ -94,6 +101,11 @@ uint8_t p2pDevFsmInit(IN struct ADAPTER *prAdapter)
 
 		prP2pBssInfo =
 			cnmGetBssInfoAndInit(prAdapter, NETWORK_TYPE_P2P, TRUE);
+		if (!prP2pBssInfo) {
+			cnmTimerStopTimer(prAdapter,
+				&prP2pDevFsmInfo->rP2pFsmTimeoutTimer);
+			return -ENOSPC;
+		}
 
 		if (prP2pBssInfo != NULL) {
 			COPY_MAC_ADDR(prP2pBssInfo->aucOwnMacAddr,
@@ -147,7 +159,7 @@ uint8_t p2pDevFsmInit(IN struct ADAPTER *prAdapter)
 			    [prP2pBssInfo->ucNonHTBasicPhyType]
 				.u2SupportedRateSet;
 
-			prP2pBssInfo->u4PrivateData = 0;/* TH3 Huang */
+			prP2pBssInfo->u4PrivateData = 0;
 
 			rateGetDataRatesFromRateSet(
 				prP2pBssInfo->u2OperationalRateSet,
@@ -165,101 +177,42 @@ uint8_t p2pDevFsmInit(IN struct ADAPTER *prAdapter)
 			prP2pDevFsmInfo,
 			P2P_DEV_STATE_IDLE);
 	} while (FALSE);
+	prP2pDevFsmInfo->fgIsInitialized = TRUE;
+	return prP2pDevFsmInfo->ucBssIndex;
+}
 
-	if (prP2pBssInfo)
-		return prP2pBssInfo->ucBssIndex;
-	else
-		return prAdapter->ucP2PDevBssIdx + 1;
+void p2pDevFsmAbortInit(struct ADAPTER *prAdapter)
+{
+	struct P2P_DEV_FSM_INFO *prDev;
+	struct BSS_INFO *prBss;
 
-#if 0
-	do {
-		ASSERT_BREAK(prAdapter != NULL);
+	if (!prAdapter || prAdapter->fgIsP2PRegistered)
+		return;
+	prDev = prAdapter->rWifiVar.prP2pDevFsmInfo;
+	if (!prDev || !prDev->fgIsInitialized)
+		return;
+	if (prDev->ucBssIndex != prAdapter->ucP2PDevBssIdx ||
+	    prDev->ucBssIndex >= ARRAY_SIZE(prAdapter->aprBssInfo))
+		return;
+	prBss = prAdapter->aprBssInfo[prDev->ucBssIndex];
+	if (!prBss || !prBss->fgIsInUse || prBss->eNetworkType != NETWORK_TYPE_P2P)
+		return;
+	cnmTimerStopTimer(prAdapter, &prDev->rP2pFsmTimeoutTimer);
+	cnmFreeBssInfo(prAdapter, prBss);
+	prDev->fgIsInitialized = FALSE;
+	prDev->ucBssIndex = 0xff;
+}
 
-		prP2pFsmInfo = prAdapter->rWifiVar.prP2pFsmInfo;
-		prP2pBssInfo =
-		&(prAdapter->rWifiVar.arBssInfo[NETWORK_TYPE_P2P_INDEX]);
-
-		ASSERT_BREAK(prP2pFsmInfo != NULL);
-
-		LINK_INITIALIZE(&(prP2pFsmInfo->rMsgEventQueue));
-
-		prP2pFsmInfo->eCurrentState =
-			prP2pFsmInfo->ePreviousState = P2P_STATE_IDLE;
-
-		prP2pFsmInfo->prTargetBss = NULL;
-
-		cnmTimerInitTimer(prAdapter,
-			&(prP2pFsmInfo->rP2pFsmTimeoutTimer),
-			(PFN_MGMT_TIMEOUT_FUNC) p2pFsmRunEventFsmTimeout,
-			(unsigned long) prP2pFsmInfo);
-
-		/* 4 <2> Initiate BSS_INFO_T - common part */
-		BSS_INFO_INIT(prAdapter, NETWORK_TYPE_P2P_INDEX);
-
-		/* 4 <2.1> Initiate BSS_INFO_T - Setup HW ID */
-		prP2pBssInfo->ucConfigAdHocAPMode = AP_MODE_11G_P2P;
-		prP2pBssInfo->ucHwDefaultFixedRateCode = RATE_OFDM_6M;
-
-		prP2pBssInfo->ucNonHTBasicPhyType = (uint8_t)
-		    rNonHTApModeAttributes[prP2pBssInfo->ucConfigAdHocAPMode]
-			.ePhyTypeIndex;
-
-		prP2pBssInfo->u2BSSBasicRateSet =
-		    rNonHTApModeAttributes[prP2pBssInfo->ucConfigAdHocAPMode]
-			.u2BSSBasicRateSet;
-
-		prP2pBssInfo->u2OperationalRateSet =
-		    rNonHTPhyAttributes[prP2pBssInfo->ucNonHTBasicPhyType]
-			.u2SupportedRateSet;
-
-		rateGetDataRatesFromRateSet(prP2pBssInfo->u2OperationalRateSet,
-			prP2pBssInfo->u2BSSBasicRateSet,
-			prP2pBssInfo->aucAllSupportedRates,
-			&prP2pBssInfo->ucAllSupportedRatesLen);
-
-		prP2pBssInfo->prBeacon = cnmMgtPktAlloc(prAdapter,
-			OFFSET_OF(struct WLAN_BEACON_FRAME, aucInfoElem[0]) +
-			MAX_IE_LENGTH);
-
-		if (prP2pBssInfo->prBeacon) {
-			prP2pBssInfo->prBeacon->eSrc = TX_PACKET_MGMT;
-			/* NULL STA_REC */
-			prP2pBssInfo->prBeacon->ucStaRecIndex = 0xFF;
-			prP2pBssInfo->prBeacon->ucNetworkType =
-				NETWORK_TYPE_P2P_INDEX;
-		} else {
-			/* Out of memory. */
-			ASSERT(FALSE);
-		}
-
-		prP2pBssInfo->eCurrentOPMode = OP_MODE_NUM;
-
-		prP2pBssInfo->rPmProfSetupInfo.ucBmpDeliveryAC = PM_UAPSD_ALL;
-		prP2pBssInfo->rPmProfSetupInfo.ucBmpTriggerAC = PM_UAPSD_ALL;
-		prP2pBssInfo->rPmProfSetupInfo.ucUapsdSp = WMM_MAX_SP_LENGTH_2;
-		prP2pBssInfo->ucPrimaryChannel = P2P_DEFAULT_LISTEN_CHANNEL;
-		prP2pBssInfo->eBand = BAND_2G4;
-		prP2pBssInfo->eBssSCO = CHNL_EXT_SCN;
-
-		if (IS_FEATURE_ENABLED(prAdapter->rWifiVar.ucQoS))
-			prP2pBssInfo->fgIsQBSS = TRUE;
-		else
-			prP2pBssInfo->fgIsQBSS = FALSE;
-
-		SET_NET_PWR_STATE_IDLE(prAdapter, NETWORK_TYPE_P2P_INDEX);
-
-		p2pFsmStateTransition(prAdapter, prP2pFsmInfo, P2P_STATE_IDLE);
-	} while (FALSE);
-
-	return;
-#endif
-}				/* p2pDevFsmInit */
 
 void p2pDevFsmUninit(IN struct ADAPTER *prAdapter)
 {
 	struct P2P_DEV_FSM_INFO *prP2pDevFsmInfo =
 		(struct P2P_DEV_FSM_INFO *) NULL;
 	struct BSS_INFO *prP2pBssInfo = (struct BSS_INFO *) NULL;
+
+	if (!prAdapter || !prAdapter->rWifiVar.prP2pDevFsmInfo ||
+	    !prAdapter->rWifiVar.prP2pDevFsmInfo->fgIsInitialized)
+		return;
 
 	do {
 		ASSERT_BREAK(prAdapter != NULL);
@@ -268,8 +221,14 @@ void p2pDevFsmUninit(IN struct ADAPTER *prAdapter)
 
 		ASSERT_BREAK(prP2pDevFsmInfo != NULL);
 
+		if (prP2pDevFsmInfo->ucBssIndex != prAdapter->ucP2PDevBssIdx ||
+		    prP2pDevFsmInfo->ucBssIndex >= ARRAY_SIZE(prAdapter->aprBssInfo))
+			return;
 		prP2pBssInfo =
 			prAdapter->aprBssInfo[prP2pDevFsmInfo->ucBssIndex];
+		if (!prP2pBssInfo || !prP2pBssInfo->fgIsInUse ||
+		    prP2pBssInfo->eNetworkType != NETWORK_TYPE_P2P)
+			return;
 
 		cnmTimerStopTimer(prAdapter,
 			&(prP2pDevFsmInfo->rP2pFsmTimeoutTimer));
@@ -279,7 +238,6 @@ void p2pDevFsmUninit(IN struct ADAPTER *prAdapter)
 
 		p2pFunClearAllTxReq(prAdapter, &(prP2pDevFsmInfo->rMgmtTxInfo));
 
-		/* Abort device FSM */
 		p2pDevFsmStateTransition(prAdapter,
 			prP2pDevFsmInfo,
 			P2P_DEV_STATE_IDLE);
@@ -287,79 +245,27 @@ void p2pDevFsmUninit(IN struct ADAPTER *prAdapter)
 
 		SET_NET_PWR_STATE_IDLE(prAdapter, prP2pBssInfo->ucBssIndex);
 
-		/* Clear CmdQue */
 		kalClearMgmtFramesByBssIdx(prAdapter->prGlueInfo,
 			prP2pBssInfo->ucBssIndex);
 		kalClearSecurityFramesByBssIdx(prAdapter->prGlueInfo,
 			prP2pBssInfo->ucBssIndex);
-		/* Clear PendingCmdQue */
+
 		wlanReleasePendingCMDbyBssIdx(prAdapter,
 			prP2pBssInfo->ucBssIndex);
-		/* Clear PendingTxMsdu */
+
 		nicFreePendingTxMsduInfo(prAdapter,
 			prP2pBssInfo->ucBssIndex, MSDU_REMOVE_BY_BSS_INDEX);
 
-		/* Deactivate BSS. */
 		UNSET_NET_ACTIVE(prAdapter, prP2pBssInfo->ucBssIndex);
 
 		nicDeactivateNetwork(prAdapter, prP2pBssInfo->ucBssIndex);
 
 		cnmFreeBssInfo(prAdapter, prP2pBssInfo);
+		prP2pDevFsmInfo->fgIsInitialized = FALSE;
+		prP2pDevFsmInfo->ucBssIndex = 0xff;
 	} while (FALSE);
+}
 
-#if 0
-	struct P2P_FSM_INFO *prP2pFsmInfo = (struct P2P_FSM_INFO *) NULL;
-	struct BSS_INFO *prP2pBssInfo = (struct BSS_INFO *) NULL;
-
-	do {
-		ASSERT_BREAK(prAdapter != NULL);
-
-		DEBUGFUNC("p2pFsmUninit()");
-		DBGLOG(P2P, INFO, "->p2pFsmUninit()\n");
-
-		prP2pFsmInfo = prAdapter->rWifiVar.prP2pFsmInfo;
-		prP2pBssInfo =
-		&(prAdapter->rWifiVar.arBssInfo[NETWORK_TYPE_P2P_INDEX]);
-
-		p2pFuncSwitchOPMode(prAdapter, prP2pBssInfo,
-			OP_MODE_P2P_DEVICE, TRUE);
-
-		p2pFsmRunEventAbort(prAdapter, prP2pFsmInfo);
-
-		p2pStateAbort_IDLE(prAdapter, prP2pFsmInfo, P2P_STATE_NUM);
-
-		UNSET_NET_ACTIVE(prAdapter, NETWORK_TYPE_P2P_INDEX);
-
-		wlanAcquirePowerControl(prAdapter);
-
-		/* Release all pending CMD queue. */
-		DBGLOG(P2P, TRACE,
-		       "p2pFsmUninit: wlanProcessCommandQueue, num of element:%d\n",
-		       prAdapter->prGlueInfo->rCmdQueue.u4NumElem);
-		wlanProcessCommandQueue(prAdapter,
-			&prAdapter->prGlueInfo->rCmdQueue);
-
-		wlanReleasePowerControl(prAdapter);
-
-		/* Release pending mgmt frame,
-		 * mgmt frame may be pending by CMD without resource.
-		 */
-		kalClearMgmtFramesByBssIdx(prAdapter->prGlueInfo,
-			NETWORK_TYPE_P2P_INDEX);
-
-		/* Clear PendingCmdQue */
-		wlanReleasePendingCMDbyBssIdx(prAdapter,
-			NETWORK_TYPE_P2P_INDEX);
-
-		if (prP2pBssInfo->prBeacon) {
-			cnmMgtPktFree(prAdapter, prP2pBssInfo->prBeacon);
-			prP2pBssInfo->prBeacon = NULL;
-		}
-	} while (FALSE);
-
-	return;
-#endif
-}				/* p2pDevFsmUninit */
 
 void
 p2pDevFsmStateTransition(IN struct ADAPTER *prAdapter,

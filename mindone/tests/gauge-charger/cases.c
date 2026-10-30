@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-2.0
+// SPDX-FileCopyrightText: 2026 The LineageOS Project
 static int reply(struct mtk_battery *gm, int command)
 {
 	struct response response;

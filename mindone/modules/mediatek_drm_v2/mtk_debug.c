@@ -37,6 +37,7 @@
 #include <drivers/gpu/drm/mediatek/mediatek_v2/mtk_drm_gem.h>
 #include <drivers/gpu/drm/mediatek/mediatek_v2/mtk_drm_fb.h>
 #include <drivers/gpu/drm/mediatek/mediatek_v2/mtk_disp_aal.h>
+#include <drivers/gpu/drm/mediatek/mediatek_v2/mtk_disp_ccorr.h>
 #include "mtk_disp_c3d.h"
 #include "mtk_disp_tdshp.h"
 #include <drivers/gpu/drm/mediatek/mediatek_v2/mtk_dp_debug.h>
@@ -710,7 +711,7 @@ EXPORT_SYMBOL(display_exit_tui);
 
 static int debug_get_info(unsigned char *stringbuf, int buf_len)
 {
-	int n = 0;
+	int i, n = 0;
 	struct mtk_drm_private *private;
 
 	if (IS_ERR_OR_NULL(drm_dev)) {
@@ -725,6 +726,9 @@ static int debug_get_info(unsigned char *stringbuf, int buf_len)
 	}
 
 	private = drm_dev->dev_private;
+	for (i = DDP_COMPONENT_CCORR0; i <= DDP_COMPONENT_CCORR3; i++)
+		n += mtk_ccorr_get_debug_info(private->ddp_comp[i],
+			stringbuf + n, buf_len - n);
 #ifdef IF_ZERO
 	DISPFUNC();
 
@@ -2219,15 +2223,19 @@ static void mtk_get_panels_info(void)
 	}
 
 	panel_ctx->connector_obj_id = vmalloc(sizeof(unsigned int) * panel_ctx->connector_cnt);
-	panel_ctx->panel_name = vmalloc(sizeof(char *) * panel_ctx->connector_cnt);
-	if (!panel_ctx->connector_obj_id || !panel_ctx->panel_name) {
+	panel_ctx->panel_name = vzalloc(sizeof(char *) * panel_ctx->connector_cnt);
+	panel_ctx->possible_crtc = vzalloc(sizeof(unsigned int *) * panel_ctx->connector_cnt);
+	panel_ctx->dsi_mode = vzalloc(sizeof(unsigned int) * panel_ctx->connector_cnt);
+	if (!panel_ctx->connector_obj_id || !panel_ctx->panel_name ||
+	    !panel_ctx->possible_crtc || !panel_ctx->dsi_mode) {
 		DDPPR_ERR("%s ojb_id or panel_name alloc fail\n", __func__);
 		goto out1;
 	}
 
 	for (i = 0 ; i < panel_ctx->connector_cnt ; ++i) {
-		panel_ctx->panel_name[i] = vmalloc(sizeof(char) * 64);
-		if (!panel_ctx->panel_name[i]) {
+		panel_ctx->panel_name[i] = vzalloc(GET_PANELS_STR_LEN);
+		panel_ctx->possible_crtc[i] = vzalloc(sizeof(unsigned int) * MAX_CRTC_CNT);
+		if (!panel_ctx->panel_name[i] || !panel_ctx->possible_crtc[i]) {
 			DDPPR_ERR("%s alloc panel_name fail\n", __func__);
 			goto out0;
 		}
@@ -2236,16 +2244,20 @@ static void mtk_get_panels_info(void)
 	mtk_ddp_comp_io_cmd(output_comp, NULL, GET_ALL_CONNECTOR_PANEL_NAME, panel_ctx);
 
 	for (i = 0 ; i < panel_ctx->connector_cnt ; ++i)
-		DDPMSG("%s get connector_id %d, panel_name %s, panel_id %u\n", __func__,
+		DDPMSG("%s get connector_id %d, panel_name %s, possible_crtc %x, dsi_mode %u\n", __func__,
 				panel_ctx->connector_obj_id[i], panel_ctx->panel_name[i],
-				panel_ctx->panel_id[i]);
+				panel_ctx->possible_crtc[i][0], panel_ctx->dsi_mode[i]);
 
 out0:
-	for (i = 0 ; i < panel_ctx->connector_cnt ; ++i)
+	for (i = 0 ; i < panel_ctx->connector_cnt ; ++i) {
 		vfree(panel_ctx->panel_name[i]);
+		vfree(panel_ctx->possible_crtc[i]);
+	}
 out1:
 	vfree(panel_ctx->panel_name);
 	vfree(panel_ctx->connector_obj_id);
+	vfree(panel_ctx->possible_crtc);
+	vfree(panel_ctx->dsi_mode);
 out2:
 	vfree(panel_ctx);
 }
@@ -4152,6 +4164,34 @@ void disp_dbg_deinit(void)
 	}
 #endif
 	mtk_dp_debugfs_deinit();
+}
+
+int mtk_disp_ioctl_debug_log_switch(struct drm_device *dev, void *data,
+				    struct drm_file *file_priv)
+{
+	if (!data)
+		return -EINVAL;
+
+	switch (*(unsigned int *)data) {
+	case MTK_DRM_MOBILE_LOG:
+		WRITE_ONCE(g_mobile_log, true);
+		break;
+	case MTK_DRM_DETAIL_LOG:
+		WRITE_ONCE(g_detail_log, true);
+		break;
+	case MTK_DRM_FENCE_LOG:
+		WRITE_ONCE(g_fence_log, true);
+		break;
+	case MTK_DRM_IRQ_LOG:
+		WRITE_ONCE(g_irq_log, true);
+		break;
+	default:
+		DDPPR_ERR("%s invalid log operation %u\n", __func__,
+			  *(unsigned int *)data);
+		return -EINVAL;
+	}
+
+	return 0;
 }
 
 void get_disp_dbg_buffer(unsigned long *addr, unsigned long *size,

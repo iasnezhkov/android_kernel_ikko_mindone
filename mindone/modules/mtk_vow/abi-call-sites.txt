@@ -1,0 +1,114 @@
+Stock vendor_a.img /lib64/hw/sound_trigger.primary.default.so
+SHA256 2d5c443161f353349b4ed413a9923e84f5714cdb381cf6ab709f1b73f958744c
+
+
+/tmp/mindone-stock-soundtrigger.so:	file format elf64-littleaarch64
+
+Disassembly of section .text:
+
+0000000000009e2c <_Z33sound_trigger_close_for_streamingi>:
+    9ef4: b94002b4     	ldr	w20, [x21]
+    9ef8: 528ac0a1     	mov	w1, #0x5605             // =22021
+    9efc: 72a80081     	movk	w1, #0x4004, lsl #16
+    9f00: 2a1403e2     	mov	w2, w20
+    9f04: 940012ef     	bl	0xeac0 <ioctl@plt>
+
+
+/tmp/mindone-stock-soundtrigger.so:	file format elf64-littleaarch64
+
+Disassembly of section .text:
+
+0000000000009e2c <_Z33sound_trigger_close_for_streamingi>:
+    a260: 528ac061     	mov	w1, #0x5603             // =22019
+    a264: 72a80081     	movk	w1, #0x4004, lsl #16
+    a268: 528000c2     	mov	w2, #0x6                // =6
+    a26c: 94001215     	bl	0xeac0 <ioctl@plt>
+
+
+/tmp/mindone-stock-soundtrigger.so:	file format elf64-littleaarch64
+
+Disassembly of section .text:
+
+0000000000009e2c <_Z33sound_trigger_close_for_streamingi>:
+    aa94: 340002b9     	cbz	w25, 0xaae8 <_Z33sound_trigger_close_for_streamingi+0xcbc>
+    aa98: b9400340     	ldr	w0, [x26]
+    aa9c: 7100041f     	cmp	w0, #0x1
+    aaa0: 5400024b     	b.lt	0xaae8 <_Z33sound_trigger_close_for_streamingi+0xcbc>
+    aaa4: 6f00e400     	movi	v0.2d, #0000000000000000
+    aaa8: ad3e83a0     	stp	q0, q0, [x29, #-0x30]
+    aaac: 3c9c03a0     	stur	q0, [x29, #-0x40]
+    aab0: b980a2e8     	ldrsw	x8, [x23, #0xa0]
+    aab4: a93effa8     	stp	x8, xzr, [x29, #-0x18]
+    aab8: b980a6e8     	ldrsw	x8, [x23, #0xa4]
+    aabc: f81c83a8     	stur	x8, [x29, #-0x38]
+    aac0: b98002e8     	ldrsw	x8, [x23]
+    aac4: f94017e9     	ldr	x9, [sp, #0x28]
+    aac8: 8b180129     	add	x9, x9, x24
+    aacc: a93d67a9     	stp	x9, x25, [x29, #-0x30]
+    aad0: f81c03a8     	stur	x8, [x29, #-0x40]
+    aad4: d10103a2     	sub	x2, x29, #0x40
+    aad8: 528ac081     	mov	w1, #0x5604             // =22020
+    aadc: 72a80081     	movk	w1, #0x4004, lsl #16
+    aae0: 94000ff8     	bl	0xeac0 <ioctl@plt>
+
+
+/tmp/mindone-stock-soundtrigger.so:	file format elf64-littleaarch64
+
+Disassembly of section .text:
+
+0000000000009e2c <_Z33sound_trigger_close_for_streamingi>:
+    cfc4: a9017fff     	stp	xzr, xzr, [sp, #0x10]
+    cfc8: f90013ff     	str	xzr, [sp, #0x20]
+    cfcc: b9800269     	ldrsw	x9, [x19]
+    cfd0: f9401668     	ldr	x8, [x19, #0x28]
+    cfd4: b9401908     	ldr	w8, [x8, #0x18]
+    cfd8: a900a3e9     	stp	x9, x8, [sp, #0x8]
+    cfdc: 36000214     	tbz	w20, #0x0, 0xd01c <_Z33sound_trigger_close_for_streamingi+0x31f0>
+    cfe0: f9404a60     	ldr	x0, [x19, #0x90]
+    cfe4: b50000a0     	cbnz	x0, 0xcff8 <_Z33sound_trigger_close_for_streamingi+0x31cc>
+    cfe8: 52802000     	mov	w0, #0x100              // =256
+    cfec: 940006c1     	bl	0xeaf0 <malloc@plt>
+    cff0: f9004a60     	str	x0, [x19, #0x90]
+    cff4: b40009a0     	cbz	x0, 0xd128 <_Z33sound_trigger_close_for_streamingi+0x32fc>
+    cff8: 91026268     	add	x8, x19, #0x98
+    cffc: a901a3e0     	stp	x0, x8, [sp, #0x18]
+    d000: 910023e2     	add	x2, sp, #0x8
+    d004: 2a1503e0     	mov	w0, w21
+    d008: 528ac1e1     	mov	w1, #0x560f             // =22031
+    d00c: 72a80081     	movk	w1, #0x4004, lsl #16
+    d010: 940006ac     	bl	0xeac0 <ioctl@plt>
+    d014: 2a0003f5     	mov	w21, w0
+    d018: 1400000f     	b	0xd054 <_Z33sound_trigger_close_for_streamingi+0x3228>
+    d01c: 528ac1e8     	mov	w8, #0x560f             // =22031
+    d020: 72a80088     	movk	w8, #0x4004, lsl #16
+    d024: 11000501     	add	w1, w8, #0x1
+    d028: a901ffff     	stp	xzr, xzr, [sp, #0x18]
+    d02c: 910023e2     	add	x2, sp, #0x8
+    d030: 2a1503e0     	mov	w0, w21
+    d034: 940006a3     	bl	0xeac0 <ioctl@plt>
+
+
+/tmp/mindone-stock-soundtrigger.so:	file format elf64-littleaarch64
+
+Disassembly of section .text:
+
+0000000000009e2c <_Z33sound_trigger_close_for_streamingi>:
+    d434: 528ac181     	mov	w1, #0x560c             // =22028
+    d438: 72a80081     	movk	w1, #0x4004, lsl #16
+    d43c: 2a1f03e2     	mov	w2, wzr
+    d440: 940005a0     	bl	0xeac0 <ioctl@plt>
+
+
+/tmp/mindone-stock-soundtrigger.so:	file format elf64-littleaarch64
+
+Disassembly of section .text:
+
+0000000000009e2c <_Z33sound_trigger_close_for_streamingi>:
+    a3dc: 52906909     	mov	w9, #0x8348             // =33608
+    a3e0: 72a3e0c9     	movk	w9, #0x1f06, lsl #16
+    a3e4: b9400100     	ldr	w0, [x8]
+    a3e8: b90007e9     	str	w9, [sp, #0x4]
+    a3ec: 910013e2     	add	x2, sp, #0x4
+    a3f0: 528ac241     	mov	w1, #0x5612             // =22034
+    a3f4: 72a80081     	movk	w1, #0x4004, lsl #16
+    a3f8: 940011b2     	bl	0xeac0 <ioctl@plt>

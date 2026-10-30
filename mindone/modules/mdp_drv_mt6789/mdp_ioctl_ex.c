@@ -242,7 +242,7 @@ static s32 mdp_process_read_request(struct mdp_read_readback *req_user)
 static void mdp_ion_free_dma_buf(struct dma_buf *buf,
 	struct dma_buf_attachment *attach, struct sg_table *sgt)
 {
-	dma_buf_unmap_attachment(attach, sgt, DMA_BIDIRECTIONAL);
+	dma_buf_unmap_attachment_unlocked(attach, sgt, DMA_BIDIRECTIONAL);
 	dma_buf_detach(buf, attach);
 	dma_buf_put(buf);
 }
@@ -447,7 +447,7 @@ static unsigned long translate_fd(struct op_meta *meta,
 				return 0;
 			}
 
-			sgt = dma_buf_map_attachment(attach, DMA_BIDIRECTIONAL);
+			sgt = dma_buf_map_attachment_unlocked(attach, DMA_BIDIRECTIONAL);
 			if (IS_ERR(sgt)) {
 				CMDQ_ERR("%s ion buf map fail %ld\n", __func__, PTR_ERR(sgt));
 				dma_buf_detach(buf, attach);
@@ -499,7 +499,7 @@ static unsigned long translate_fd(struct op_meta *meta,
 		return 0;
 	}
 
-	sgt = dma_buf_map_attachment(attach, DMA_BIDIRECTIONAL);
+	sgt = dma_buf_map_attachment_unlocked(attach, DMA_BIDIRECTIONAL);
 	if (IS_ERR(sgt)) {
 		CMDQ_ERR("%s ion buf map fail %ld\n", __func__, PTR_ERR(sgt));
 		dma_buf_detach(buf, attach);

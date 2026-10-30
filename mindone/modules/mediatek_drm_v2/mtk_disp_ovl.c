@@ -6,15 +6,6 @@
 #include <linux/clk.h>
 #include <drivers/misc/mediatek/smi/mtk-smi-dbg.h>
 
-#include <linux/moduleparam.h>
-unsigned long mindone_olc_calls;
-module_param(mindone_olc_calls, ulong, 0444);
-MODULE_PARM_DESC(mindone_olc_calls, "entries into mtk_ovl_layer_config");
-unsigned long mindone_olc_off;
-module_param(mindone_olc_off, ulong, 0444);
-MODULE_PARM_DESC(mindone_olc_off, "of those, that ended in mtk_ovl_layer_off");
-
-#include "mindone_log.h"
 #include <linux/component.h>
 #include <linux/of_device.h>
 #include <linux/of_irq.h>
@@ -754,8 +745,6 @@ next:
 #endif
 }
 
-extern int mindone_vb_watch;
-
 static irqreturn_t mtk_disp_ovl_irq_handler(int irq, void *dev_id)
 {
 	struct mtk_disp_ovl *priv = dev_id;
@@ -773,20 +762,12 @@ static irqreturn_t mtk_disp_ovl_irq_handler(int irq, void *dev_id)
 	if (IS_ERR_OR_NULL(ovl))
 		return IRQ_NONE;
 
-	if (mindone_vb_watch)
-		MINDONE_PR("MINDONE-VB: ovl-irq enter\n");
 	if (mtk_drm_top_clk_isr_get("ovl_irq") == false) {
-		if (mindone_vb_watch)
-			MINDONE_PR("MINDONE-VB: ovl-irq clk-gate-fail\n");
 		DDPIRQ("%s, top clk off\n", __func__);
 		return IRQ_NONE;
 	}
 
-	if (mindone_vb_watch)
-		MINDONE_PR("MINDONE-VB: ovl-irq pre-readl\n");
 	val = readl(ovl->regs + DISP_REG_OVL_INTSTA);
-	if (mindone_vb_watch)
-		MINDONE_PR("MINDONE-VB: ovl-irq post-readl val=0x%x\n", val);
 	if (!val) {
 		ret = IRQ_NONE;
 		goto out;
@@ -857,8 +838,6 @@ static irqreturn_t mtk_disp_ovl_irq_handler(int irq, void *dev_id)
 	ret = IRQ_HANDLED;
 
 out:
-	if (mindone_vb_watch)
-		MINDONE_PR("MINDONE-VB: ovl-irq exit ret=%d\n", ret);
 	mtk_drm_top_clk_isr_put("ovl_irq");
 
 	return ret;
@@ -1879,18 +1858,12 @@ static void mtk_ovl_layer_config(struct mtk_ddp_comp *comp, unsigned int idx,
 	} else
 		lye_idx = idx;
 
-	mindone_olc_calls++;
-	if ((mindone_olc_calls & 0x3f) == 1)
-		pr_debug("MINDONE-OLC: calls=%lu off=%lu fmt=0x%08x enable=%d idx=%u\n",
-			  mindone_olc_calls, mindone_olc_off, fmt, pending->enable, idx);
-
 	if (fmt == DRM_FORMAT_RGB332) {
 		pending->enable = false;
 		DDPINFO("%s: DRM_FORMAT_RGB332 not support, so skip it\n", __func__);
 	}
 
 	if (!pending->enable) {
-		mindone_olc_off++;
 		mtk_ovl_layer_off(comp, lye_idx, ext_lye_idx, handle);
 	}
 
@@ -3343,24 +3316,14 @@ static dma_addr_t read_ext_layer_hdr_addr(struct mtk_ddp_comp *comp, int id)
 	return layer_addr;
 }
 
-static int mindone_skip_ovl_layer_readback;
-module_param(mindone_skip_ovl_layer_readback, int, 0444);
-
 static int mtk_ovl_replace_bootup_mva(struct mtk_ddp_comp *comp,
 				      struct cmdq_pkt *handle, void *params,
 				      struct mtk_ddp_fb_info *fb_info)
 {
 	unsigned int src_on;
-
-	MINDONE_PR("MINDONE-DISP: pre-bootup-mva-read comp=%px\n", comp);
-	if (mindone_skip_ovl_layer_readback) {
-		src_on = 0;
-		MINDONE_PR("MINDONE-DISP: bootup-mva-read SKIPPED (skip=1)\n");
-	} else {
-		src_on = readl(comp->regs + DISP_REG_OVL_SRC_CON);
-	}
-	MINDONE_PR("MINDONE-DISP: post-bootup-mva-read src_on=0x%x\n", src_on);
 	dma_addr_t layer_addr, layer_mva;
+
+	src_on = readl(comp->regs + DISP_REG_OVL_SRC_CON);
 
 	if (src_on & 0x1) {
 		layer_addr = read_phy_layer_addr(comp, 0);

@@ -1354,8 +1354,8 @@ static irqreturn_t mtk_iommu_isr(int irq, void *dev_id)
 		}
 		fault_larb = data->plat_data->larbid_remap[fault_larb][sub_comm];
 
-		if (report_iommu_fault(&dom->domain, data->dev, fault_iova,
-					write ? IOMMU_FAULT_WRITE : IOMMU_FAULT_READ)) {
+		if (!dom || report_iommu_fault(&dom->domain, data->dev, fault_iova,
+					       write ? IOMMU_FAULT_WRITE : IOMMU_FAULT_READ)) {
 			dev_err_ratelimited(
 				dev,
 				"fault type=0x%x iova=0x%llx pa=0x%llx larb=%d port=%d layer=%d %s\n",
@@ -1557,7 +1557,7 @@ static int mtk_iommu_domain_finalise(struct mtk_iommu_domain *dom,
 	dom->iop = alloc_io_pgtable_ops(ARM_V7S, &dom->cfg, data);
 	if (!dom->iop) {
 		dev_err(data->dev, "Failed to alloc io pgtable\n");
-		return -EINVAL;
+		return -ENOMEM;
 	}
 
 	/* Update our support page sizes bitmap */
@@ -1643,10 +1643,9 @@ static int mtk_iommu_attach_device(struct iommu_domain *domain,
 	mutex_lock(&init_mutexs[tab_id]);
 
 	if (!dom->data) {
-		if (mtk_iommu_domain_finalise(dom, data, domid)) {
-			ret = -ENODEV;
+		ret = mtk_iommu_domain_finalise(dom, data, domid);
+		if (ret)
 			goto out_unlock;
-		}
 		dom->data = data;
 		dom->tab_id = MTK_M4U_TO_TAB(fwspec->ids[0]);
 		pr_info("%s, set mtk_iommu_domain, data:(%d,%d), tab_id:%d\n",
@@ -1775,7 +1774,8 @@ static void mtk_iommu_flush_iotlb_all(struct iommu_domain *domain)
 {
 	struct mtk_iommu_domain *dom = to_mtk_domain(domain);
 
-	mtk_iommu_tlb_flush_all(dom->data);
+	if (dom->data)
+		mtk_iommu_tlb_flush_all(dom->data);
 }
 
 static void mtk_iommu_iotlb_sync(struct iommu_domain *domain,
@@ -1875,6 +1875,8 @@ static struct iommu_device *mtk_iommu_probe_device(struct device *dev)
 		return ERR_PTR(-ENODEV); /* Not a iommu client device */
 
 	data = dev_iommu_priv_get(dev);
+	if (!data)
+		return ERR_PTR(-ENODEV);
 
 	return &data->iommu;
 }
@@ -1903,6 +1905,8 @@ static struct iommu_group *mtk_iommu_device_group(struct device *dev)
 	}
 
 	hw_list = c_data->hw_list;
+	if (!hw_list)
+		return ERR_PTR(-ENODEV);
 	data = mtk_iommu_get_first_data(hw_list);
 	if (!data)
 		return ERR_PTR(-ENODEV);
@@ -2788,6 +2792,7 @@ out:
 
 		component_match_add_release(dev, &match, release_of,
 					    compare_of, larbnode);
+		platform_device_put(plarbdev);
 	}
 
 	/* Get smi-common dev from the last larb. */
@@ -2832,6 +2837,8 @@ repeat:
 	}
 	plarbdev = of_find_device_by_node(smicomm_node);
 	of_node_put(smicomm_node);
+	if (!plarbdev)
+		return -EPROBE_DEFER;
 	data->smicomm_dev = &plarbdev->dev;
 	pr_info("%s, smi_common:%s, iommu_dev:%s\n", __func__,
 		dev_name(&plarbdev->dev), dev_name(dev));
@@ -2842,6 +2849,7 @@ skip_smi:
 	if (data->smicomm_dev) {
 		link = device_link_add(data->smicomm_dev, dev,
 				DL_FLAG_STATELESS | DL_FLAG_PM_RUNTIME);
+		put_device(data->smicomm_dev);
 		if (!link) {
 			dev_err(dev, "Unable to link %s.\n",
 				dev_name(data->smicomm_dev));
@@ -3072,6 +3080,19 @@ static int mtk_iommu_hw_resume(struct device *dev)
 		mtk_iommu_mau_reg_restore(data);
 #endif
 
+	writel_relaxed(F_INVLD_EN1 | F_INVLD_EN0, base + data->plat_data->inv_sel_reg);
+	writel_relaxed(F_ALL_INVLD, base + REG_MMU_INVALIDATE);
+	wmb();
+	if (MTK_IOMMU_HAS_FLAG(data->plat_data, TLB_SYNC_EN) &&
+	    (readl_relaxed(base + REG_MMU_CTRL_REG) & F_MMU_SYNC_INVLDT_EN)) {
+		u32 done;
+
+		if (readl_poll_timeout_atomic(base + REG_MMU_CPE_DONE, done, done != 0, 10, 1000))
+			pr_warn("%s: TLB flush after resume timed out, (%d, %d)\n", __func__,
+				data->plat_data->iommu_type, data->plat_data->iommu_id);
+		writel_relaxed(0, base + REG_MMU_CPE_DONE);
+	}
+
 	if (data->plat_data->iommu_type != APU_IOMMU)
 		mtk_iommu_power_put(data);
 
@@ -3088,6 +3109,8 @@ static int __maybe_unused mtk_iommu_runtime_suspend(struct device *dev)
 {
 	struct mtk_iommu_data *data = dev_get_drvdata(dev);
 
+	if (!data)
+		return 0;
 	if (!MTK_IOMMU_HAS_FLAG(data->plat_data, HAS_EMI_PM))
 		return mtk_iommu_hw_suspend(dev);
 
@@ -3098,6 +3121,8 @@ static int __maybe_unused mtk_iommu_runtime_resume(struct device *dev)
 {
 	struct mtk_iommu_data *data = dev_get_drvdata(dev);
 
+	if (!data)
+		return 0;
 	if (!MTK_IOMMU_HAS_FLAG(data->plat_data, HAS_EMI_PM))
 		return mtk_iommu_hw_resume(dev);
 
@@ -3108,6 +3133,8 @@ static int __maybe_unused mtk_iommu_suspend(struct device *dev)
 {
 	struct mtk_iommu_data *data = dev_get_drvdata(dev);
 
+	if (!data)
+		return 0;
 	if (MTK_IOMMU_HAS_FLAG(data->plat_data, HAS_EMI_PM))
 		return mtk_iommu_hw_suspend(dev);
 
@@ -3124,6 +3151,8 @@ static int __maybe_unused mtk_iommu_resume(struct device *dev)
 {
 	struct mtk_iommu_data *data = dev_get_drvdata(dev);
 
+	if (!data)
+		return 0;
 	if (MTK_IOMMU_HAS_FLAG(data->plat_data, HAS_EMI_PM))
 		return mtk_iommu_hw_resume(dev);
 

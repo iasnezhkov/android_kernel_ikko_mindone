@@ -25,6 +25,17 @@
 #define DB_OPT_FTRACE   (0)	/* Dummy macro define to avoid build error */
 #endif
 
+static void mdee_dump_dbg_regions(int md_id, struct ccci_smem_region *mdccci_dbg,
+	struct ccci_smem_region *mdss_dbg)
+{
+	if (mdccci_dbg)
+		ccci_util_mem_dump(md_id, CCCI_DUMP_MEM_DUMP,
+			mdccci_dbg->base_ap_view_vir, mdccci_dbg->size);
+	if (mdss_dbg)
+		ccci_util_mem_dump(md_id, CCCI_DUMP_MEM_DUMP,
+			mdss_dbg->base_ap_view_vir, mdss_dbg->size);
+}
+
 static void ccci_aed_v5(struct ccci_fsm_ee *mdee, unsigned int dump_flag,
 	char *aed_str, int db_opt)
 {
@@ -74,7 +85,7 @@ static void ccci_aed_v5(struct ccci_fsm_ee *mdee, unsigned int dump_flag,
 	memset(mdee->ex_start_time, 0x0, sizeof(mdee->ex_start_time));
 	/* MD ID must sync with aee_dump_ccci_debug_info() */
  err_exit1:
-	if (dump_flag & CCCI_AED_DUMP_CCIF_REG) {
+	if ((dump_flag & CCCI_AED_DUMP_CCIF_REG) && mdss_dbg) {
 		ex_log_addr = mdss_dbg->base_ap_view_vir;
 		ex_log_len = mdss_dbg->size;
 		ccci_md_dump_info(mdee->md_id,
@@ -82,7 +93,7 @@ static void ccci_aed_v5(struct ccci_fsm_ee *mdee, unsigned int dump_flag,
 			mdss_dbg->base_ap_view_vir + CCCI_EE_OFFSET_CCIF_SRAM,
 			CCCI_EE_SIZE_CCIF_SRAM);
 	}
-	if (dump_flag & CCCI_AED_DUMP_EX_MEM) {
+	if ((dump_flag & CCCI_AED_DUMP_EX_MEM) && mdss_dbg) {
 		ex_log_addr = mdss_dbg->base_ap_view_vir;
 		ex_log_len = mdss_dbg->size;
 		if (md && md->hw_info && md->hw_info->md_l2sram_base) {
@@ -346,10 +357,7 @@ static void mdee_info_dump_v5(struct ccci_fsm_ee *mdee)
 		dump_flag = CCCI_AED_DUMP_EX_PKT;
 	} else if (md_dbg_dump_flag & (1 << MD_DBG_DUMP_SMEM)) {
 		dump_flag = CCCI_AED_DUMP_EX_MEM;
-		ccci_util_mem_dump(md_id, CCCI_DUMP_MEM_DUMP,
-			mdccci_dbg->base_ap_view_vir, mdccci_dbg->size);
-		ccci_util_mem_dump(md_id, CCCI_DUMP_MEM_DUMP,
-			mdss_dbg->base_ap_view_vir, mdss_dbg->size);
+		mdee_dump_dbg_regions(md_id, mdccci_dbg, mdss_dbg);
 		if (md && md->hw_info && md->hw_info->md_l2sram_base) {
 			md_cd_lock_modem_clock_src(1);
 
@@ -415,7 +423,8 @@ static struct ex_overview_t *md_ee_get_buf_ptr(struct ccci_fsm_ee *mdee,
 			"parsing data from: GPD %p, %p\n",
 			tar_ptr, dumper->ex_pl_info);
 	} else {
-		tar_ptr = (struct ex_overview_t *)mdss_dbg->base_ap_view_vir;
+		if (mdss_dbg != NULL)
+			tar_ptr = (struct ex_overview_t *)mdss_dbg->base_ap_view_vir;
 		*buf_type = MD_EE_DATA_IN_SMEM;
 	}
 	return tar_ptr;
@@ -682,6 +691,10 @@ static void mdee_info_prepare_v5(struct ccci_fsm_ee *mdee)
 		return;
 	/* mem of parsing */
 	ex_overview = md_ee_get_buf_ptr(mdee, &debug_info->par_data_source);
+	if (ex_overview == NULL) {
+		CCCI_ERROR_LOG(md_id, FSM, "%s: no exception overview buffer\n", __func__);
+		return;
+	}
 	/* version: 0xABxxyyyy:
 	 * xx rule version for AP parsing,
 	 * yyyy for md parsing
@@ -837,12 +850,7 @@ static void mdee_dumper_v5_dump_ee_info(struct ccci_fsm_ee *mdee,
 			/* Handshake 2 fail */
 			CCCI_MEM_LOG_TAG(md_id, FSM, "Dump MD EX log\n");
 			if (md_dbg_dump_flag & (1U << MD_DBG_DUMP_SMEM)) {
-				ccci_util_mem_dump(md_id, CCCI_DUMP_MEM_DUMP,
-					mdccci_dbg->base_ap_view_vir,
-						mdccci_dbg->size);
-				ccci_util_mem_dump(md_id, CCCI_DUMP_MEM_DUMP,
-					mdss_dbg->base_ap_view_vir,
-						mdss_dbg->size);
+				mdee_dump_dbg_regions(md_id, mdccci_dbg, mdss_dbg);
 				if (md && md->hw_info && md->hw_info->md_l2sram_base) {
 					md_cd_lock_modem_clock_src(1);
 
@@ -861,10 +869,7 @@ static void mdee_dumper_v5_dump_ee_info(struct ccci_fsm_ee *mdee,
 	} else if (level == MDEE_DUMP_LEVEL_STAGE1) {
 		CCCI_MEM_LOG_TAG(md_id, FSM, "Dump MD EX log\n");
 		if (md_dbg_dump_flag & (1 << MD_DBG_DUMP_SMEM)) {
-			ccci_util_mem_dump(md_id, CCCI_DUMP_MEM_DUMP,
-				mdccci_dbg->base_ap_view_vir, mdccci_dbg->size);
-			ccci_util_mem_dump(md_id, CCCI_DUMP_MEM_DUMP,
-				mdss_dbg->base_ap_view_vir, mdss_dbg->size);
+			mdee_dump_dbg_regions(md_id, mdccci_dbg, mdss_dbg);
 			if (md && md->hw_info && md->hw_info->md_l2sram_base) {
 				md_cd_lock_modem_clock_src(1);
 

@@ -7,7 +7,7 @@
 #include <linux/slab.h>
 #include <linux/cpumask.h>
 #include <linux/percpu.h>
-#include <sched/sched.h>
+#include <../kernel/sched/sched.h>
 #include "cpufreq.h"
 #include "sugov_types.h"
 #include "mtk_unified_power.h"
@@ -291,6 +291,15 @@ void mtk_arch_set_freq_scale(void *data, const struct cpumask *cpus,
 
 unsigned int util_scale = 1280;
 unsigned int sysctl_sched_capacity_margin_dvfs = 20;
+
+unsigned long mtk_apply_dvfs_margin(unsigned long util)
+{
+	if (unlikely(!initialized))
+		return util;
+
+	return (util * READ_ONCE(util_scale)) >> SCHED_CAPACITY_SHIFT;
+}
+
 /*
  * set sched capacity margin for DVFS, Default = 20
  */
@@ -365,7 +374,8 @@ void mtk_map_util_freq(void *data, unsigned long util, unsigned long freq,
 		return;
 
 	temp_util = util;
-	util = (util * util_scale) >> SCHED_CAPACITY_SHIFT;
+	if (!data)
+		util = mtk_apply_dvfs_margin(util);
 
 	for (i = 0; i < pd_count; i++) {
 		info = &pd_capacity_tbl[i];

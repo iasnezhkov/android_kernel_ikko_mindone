@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: GPL-2.0 OR BSD-3-Clause */
 /******************************************************************************
  *
  * This file is provided under a dual license.  When you use or
@@ -160,6 +161,7 @@ struct P2P_OFF_CHNL_TX_REQ_INFO {
 };
 
 struct P2P_DEV_FSM_INFO {
+	u_int8_t fgIsInitialized;
 	uint8_t ucBssIndex;
 	/* State related. */
 	enum ENUM_P2P_DEV_STATE eCurrentState;
@@ -210,7 +212,9 @@ struct MSG_P2P_ACS_REQUEST {
 
 /*========================= Initial ============================*/
 
-uint8_t p2pDevFsmInit(IN struct ADAPTER *prAdapter);
+int p2pDevFsmInit(IN struct ADAPTER *prAdapter);
+
+void p2pDevFsmAbortInit(struct ADAPTER *prAdapter);
 
 void p2pDevFsmUninit(IN struct ADAPTER *prAdapter);
 

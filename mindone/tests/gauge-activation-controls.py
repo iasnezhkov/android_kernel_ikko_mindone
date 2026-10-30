@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: GPL-2.0
+# SPDX-FileCopyrightText: 2026 The LineageOS Project
 import argparse
 from pathlib import Path
 import re
@@ -21,8 +23,8 @@ MUTATIONS = (
      "if (!gm->algo.active)", "if (true)", "gauge-activation-audit.py", ()),
     ("publish-mode-before-preparation", "mtk_battery.c", "battery_enable_kernel_algo",
      "ret = battery_kernel_setup_ready(gm);", "smp_store_release(&gm->algo.active, true);\n\t\tret = battery_kernel_setup_ready(gm);", "gauge-activation-audit.py", ()),
-    ("reject-positive-iio-success", "mtk_battery_algo.c", "battery_algo_init",
-     "ret = gauge_get_property(GAUGE_PROP_PTIM_RESIST, &rac);\n\tif (ret < 0)", "ret = gauge_get_property(GAUGE_PROP_PTIM_RESIST, &rac);\n\tif (ret != 0)", "gauge-activation-audit.py", ()),
+    ("reject-positive-iio-success", "mtk_battery_algo.c", "fgr_read_vboot_sample",
+     "ret = gauge_get_property(GAUGE_PROP_PTIM_RESIST, &next.rac);\n\tif (ret < 0 && ret != -ENODATA)", "ret = gauge_get_property(GAUGE_PROP_PTIM_RESIST, &next.rac);\n\tif (ret != 0 && ret != -ENODATA)", "gauge-activation-audit.py", ()),
     ("ignore-native-con0-read-error", "mt6358-gauge.c", "fgauge_get_info",
      "if (ret)", "if (ret && false)", "gauge-init-io-check.py", ()),
     ("hide-native-rtc-read-error", "mt6358-gauge.c", "read_rtc_spare_fg_value",
@@ -44,7 +46,7 @@ def main():
     args = parser.parse_args()
     relative = Path("mindone/modules/mt6358_battery")
     filenames = ("mtk_battery.c", "mtk_battery_algo.c", "mtk_battery_daemon.c",
-                 "mt6358-gauge.c", "mtk_battery_coulomb_service.c")
+                 "mt6358-gauge.c", "mtk_battery_coulomb_service.c", "mtk_gauge.h")
     sources = {name: (args.kernel_tree / relative / name).read_text() for name in filenames}
     tests = Path(__file__).resolve().parent
     for name, filename, target, before, after, runner, extra in MUTATIONS:

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0 OR BSD-3-Clause
 /*******************************************************************************
  *
  * This file is provided under a dual license.  When you use or
@@ -833,8 +834,12 @@ int mtk_cfg80211_scan(struct wiphy *wiphy,
 	struct ADAPTER *prAdapter = NULL;
 #endif
 	uint8_t ucBssIndex = 0, aucBCMacAddr[] = BC_MAC_ADDR;
+	int ssid_status;
 	GLUE_SPIN_LOCK_DECLARATION();
 
+	ssid_status = kalScanRequestSsidStatus(request);
+	if (ssid_status)
+		return ssid_status;
 	if (kalIsResetting())
 		return -EBUSY;
 
@@ -922,13 +927,12 @@ int mtk_cfg80211_scan(struct wiphy *wiphy,
 		prScanRequest->u4SsidNum = 0;
 		prScanRequest->ucScanType = SCAN_TYPE_PASSIVE_SCAN;
 	} else if ((request->ssids) && (request->n_ssids > 0)
-		   && (request->n_ssids <= (SCN_SSID_MAX_NUM + 1))) {
+		   && (request->n_ssids <= SCN_SSID_MAX_NUM)) {
 		num_ssid = (uint32_t)request->n_ssids;
 		old_num_ssid = (uint32_t)request->n_ssids;
 		u4ValidIdx = 0;
 		for (i = 0; i < request->n_ssids; i++) {
-			if ((request->ssids[i].ssid[0] == 0)
-			    || (request->ssids[i].ssid_len == 0)) {
+			if (request->ssids[i].ssid_len == 0) {
 				/* remove if this is a wildcard scan */
 				num_ssid--;
 				wildcard_flag |= (1 << i);
@@ -3560,11 +3564,10 @@ int mtk_cfg80211_sched_scan_start(IN struct wiphy *wiphy,
 	/* passed in the probe_reqs in active scans */
 	if (request->ssids) {
 		for (i = 0; i < request->n_ssids; i++) {
-			DBGLOG(SCN, TRACE, "ssids : (%d)[%s]\n",
-			       i, request->ssids[i].ssid);
+			DBGLOG(SCN, TRACE, "ssid(%u) len=%u\n",
+			       i, request->ssids[i].ssid_len);
 			/* driver ignored the null ssid */
-			if (request->ssids[i].ssid_len == 0
-			    || request->ssids[i].ssid[0] == 0)
+			if (request->ssids[i].ssid_len == 0)
 				DBGLOG(SCN, TRACE, "ignore null ssid(%d)\n", i);
 			else {
 				struct PARAM_SSID *prSsid;
@@ -3584,11 +3587,10 @@ int mtk_cfg80211_sched_scan_start(IN struct wiphy *wiphy,
 	num = 0;
 	if (request->match_sets) {
 		for (i = 0; i < request->n_match_sets; i++) {
-			DBGLOG(SCN, TRACE, "match : (%d)[%s]\n", i,
-			       request->match_sets[i].ssid.ssid);
+			DBGLOG(SCN, TRACE, "match(%u) len=%u\n", i,
+			       request->match_sets[i].ssid.ssid_len);
 			/* driver ignored the null ssid */
-			if (request->match_sets[i].ssid.ssid_len == 0
-			    || request->match_sets[i].ssid.ssid[0] == 0)
+			if (request->match_sets[i].ssid.ssid_len == 0)
 				DBGLOG(SCN, TRACE, "ignore null ssid(%d)\n", i);
 			else {
 				struct PARAM_SSID *prSsid =
@@ -3598,7 +3600,7 @@ int mtk_cfg80211_sched_scan_start(IN struct wiphy *wiphy,
 					  prSsid->u4SsidLen,
 					  request->match_sets[i].ssid.ssid,
 					  request->match_sets[i].ssid.ssid_len);
-				prSchedScanRequest->ai4RssiThold[i] =
+				prSchedScanRequest->ai4RssiThold[num] =
 					request->match_sets[i].rssi_thold;
 				num++;
 			}
@@ -3618,6 +3620,9 @@ int mtk_cfg80211_sched_scan_start(IN struct wiphy *wiphy,
 			kalMemAlloc(request->ie_len, VIR_MEM_TYPE);
 		if (prSchedScanRequest->pucIE == NULL) {
 			DBGLOG(SCN, ERROR, "pucIE kalMemAlloc fail\n");
+			kalMemFree(prSchedScanRequest, VIR_MEM_TYPE,
+				sizeof(struct PARAM_SCHED_SCAN_REQUEST));
+			return -ENOMEM;
 		} else {
 			kalMemZero(prSchedScanRequest->pucIE, request->ie_len);
 			kalMemCopy(prSchedScanRequest->pucIE,
@@ -5720,6 +5725,7 @@ int mtk_init_sta_role(struct ADAPTER *prAdapter,
 {
 	struct GLUE_INFO *prGlueInfo;
 	uint8_t ucBssIndex = 0;
+	struct BSS_INFO *prAisBssInfo;
 
 	if ((prAdapter == NULL) || (ndev == NULL))
 		return -1;
@@ -5735,6 +5741,11 @@ int mtk_init_sta_role(struct ADAPTER *prAdapter,
 
 	/* init AIS FSM */
 	aisFsmInit(prAdapter, ucBssIndex);
+	prAisBssInfo = aisGetAisBssInfo(prAdapter, ucBssIndex);
+	if (!prAisBssInfo)
+		return -ENOMEM;
+	if (prAisBssInfo->eNetworkType != NETWORK_TYPE_AIS)
+		return -EIO;
 
 #if CFG_SUPPORT_ROAMING
 	/* Roaming Module - intiailization */
@@ -5842,10 +5853,16 @@ int mtk_init_ap_role(struct GLUE_INFO *prGlueInfo,
 		     struct net_device *ndev)
 {
 	uint8_t u4Idx = 0;
-	struct ADAPTER *prAdapter = prGlueInfo->prAdapter;
+	struct ADAPTER *prAdapter;
+	int ret;
 
 	GLUE_SPIN_LOCK_DECLARATION();
 
+	if (!prGlueInfo || !prGlueInfo->prAdapter || !ndev || !ndev->ieee80211_ptr)
+		return -EINVAL;
+	prAdapter = prGlueInfo->prAdapter;
+	if (!p2pNetIsRegistered(prGlueInfo))
+		return -EBUSY;
 	for (u4Idx = 0; u4Idx < KAL_P2P_NUM; u4Idx++) {
 		if (gprP2pRoleWdev[u4Idx] == NULL)
 			break;
@@ -5861,26 +5878,18 @@ int mtk_init_ap_role(struct GLUE_INFO *prGlueInfo,
 		(prAdapter->rP2PNetRegState != ENUM_NET_REG_STATE_REGISTERED)) {
 		DBGLOG(INIT, ERROR,
 		       "The wlan0 can't set to AP without p2p0\n");
-		/* System will crash, if p2p0 isn't existing. */
+
 		GLUE_RELEASE_SPIN_LOCK(prGlueInfo, SPIN_LOCK_NET_DEV);
 		return -EFAULT;
 	}
 	GLUE_RELEASE_SPIN_LOCK(prGlueInfo, SPIN_LOCK_NET_DEV);
 
-	/* reference from the glRegisterP2P() */
-	gprP2pRoleWdev[u4Idx] = ndev->ieee80211_ptr;
-	if (glSetupP2P(prGlueInfo, gprP2pRoleWdev[u4Idx], ndev,
-		       u4Idx, TRUE)) {
-		DBGLOG(INIT, ERROR, "glSetupP2P failed\n");
-		gprP2pRoleWdev[u4Idx] = NULL;
-		return -EFAULT;
-	}
+	ret = glSetupP2P(prGlueInfo, ndev->ieee80211_ptr, ndev, u4Idx, TRUE);
+	if (ret)
+		return ret;
 
-	prGlueInfo->prAdapter->prP2pInfo->u4DeviceNum++;
-
-	/* reference from p2pNetRegister() */
-	/* The ndev doesn't need register_netdev, only reassign the gPrP2pDev.*/
 	GLUE_ACQUIRE_SPIN_LOCK(prGlueInfo, SPIN_LOCK_NET_DEV);
+	gprP2pRoleWdev[u4Idx] = ndev->ieee80211_ptr;
 	gPrP2pDev[u4Idx] = ndev;
 	GLUE_RELEASE_SPIN_LOCK(prGlueInfo, SPIN_LOCK_NET_DEV);
 
@@ -5954,6 +5963,8 @@ int mtk_uninit_ap_role(struct GLUE_INFO *prGlueInfo,
 		DBGLOG(INIT, WARN, "prGlueInfo is NULL\n");
 		return -EINVAL;
 	}
+	if (!p2pNetIsRegistered(prGlueInfo))
+		return -EBUSY;
 	if (mtk_Netdev_To_RoleIdx(prGlueInfo, ndev, &u4Idx) != 0) {
 		DBGLOG(INIT, WARN,
 		       "can't find the matched dev to uninit AP\n");
@@ -6081,6 +6092,7 @@ int mtk_cfg_change_iface(struct wiphy *wiphy,
 	struct NETDEV_PRIVATE_GLUE_INFO *prNetdevPriv = NULL;
 	struct P2P_INFO *prP2pInfo = NULL;
 	u32 *flags = NULL;
+	int result, finish;
 
 	GLUE_SPIN_LOCK_DECLARATION();
 
@@ -6112,12 +6124,16 @@ int mtk_cfg_change_iface(struct wiphy *wiphy,
 
 	DBGLOG(P2P, INFO, "ndev=%p, new type=%d\n", ndev, type);
 
-	prAdapter = prGlueInfo->prAdapter;
 
 	if (ndev->ieee80211_ptr->iftype == type) {
 		DBGLOG(REQ, INFO, "ndev type is not changed (%d)\n", type);
 		return 0;
 	}
+
+	result = kalFwkBlacklistRoleBegin(prGlueInfo);
+	if (result)
+		return result;
+	prAdapter = prGlueInfo->prAdapter;
 
 	netif_carrier_off(ndev);
 	/* stop ap will stop all queue, and kalIndicateStatusAndComplete only do
@@ -6148,13 +6164,15 @@ int mtk_cfg_change_iface(struct wiphy *wiphy,
 
 		if (prP2pInfo == NULL) {
 			DBGLOG(INIT, ERROR, "prP2pInfo is NULL\n");
-			return -EFAULT;
+			result = -EFAULT;
+			goto done;
 		}
 
 		if (prP2pInfo->u4DeviceNum >= KAL_P2P_NUM) {
 			DBGLOG(INIT, ERROR, "resource invalid, u4DeviceNum=%d\n"
 			       , prP2pInfo->u4DeviceNum);
-			return -EFAULT;
+			result = -EFAULT;
+			goto done;
 		}
 
 #ifdef CFG_SUPPORT_SNIFFER_RADIOTAP
@@ -6162,22 +6180,29 @@ int mtk_cfg_change_iface(struct wiphy *wiphy,
 			mtk_uninit_monitor_role(wiphy, ndev);
 		else
 #endif /* CFG_SUPPORT_SNIFFER_RADIOTAP */
-		if (ndev->ieee80211_ptr->iftype == NL80211_IFTYPE_STATION)
-			mtk_uninit_sta_role(prAdapter, ndev);
+		if (ndev->ieee80211_ptr->iftype == NL80211_IFTYPE_STATION) {
+			result = mtk_uninit_sta_role(prAdapter, ndev);
+			if (result)
+				goto done;
+		}
 
 		if (mtk_init_ap_role(prGlueInfo, ndev) != 0) {
 			DBGLOG(INIT, ERROR, "mtk_init_ap_role FAILED\n");
 
 			/* Only AP/P2P resource has the failure case.	*/
 			/* So, just re-init AIS.			*/
-			mtk_init_sta_role(prAdapter, ndev);
-			return -EFAULT;
+			result = mtk_init_sta_role(prAdapter, ndev);
+			if (!result)
+				result = -EFAULT;
+			goto done;
 		}
 #ifdef CFG_SUPPORT_SNIFFER_RADIOTAP
 	} else if (type == NL80211_IFTYPE_MONITOR) {
-		if (ndev->ieee80211_ptr->iftype == NL80211_IFTYPE_STATION)
-			mtk_uninit_sta_role(prAdapter, ndev);
-		else if (ndev->ieee80211_ptr->iftype == NL80211_IFTYPE_AP)
+		if (ndev->ieee80211_ptr->iftype == NL80211_IFTYPE_STATION) {
+			result = mtk_uninit_sta_role(prAdapter, ndev);
+			if (result)
+				goto done;
+		} else if (ndev->ieee80211_ptr->iftype == NL80211_IFTYPE_AP)
 			mtk_uninit_ap_role(prGlueInfo, ndev);
 
 		mtk_init_monitor_role(wiphy, ndev);
@@ -6188,7 +6213,8 @@ int mtk_cfg_change_iface(struct wiphy *wiphy,
 			if (mtk_uninit_ap_role(prGlueInfo, ndev) != 0) {
 				DBGLOG(INIT, ERROR,
 					"mtk_uninit_ap_role FAILED\n");
-				return -EFAULT;
+				result = -EFAULT;
+				goto done;
 			}
 		}
 #ifdef CFG_SUPPORT_SNIFFER_RADIOTAP
@@ -6198,17 +6224,21 @@ int mtk_cfg_change_iface(struct wiphy *wiphy,
 
 #endif /* CFG_SUPPORT_SNIFFER_RADIOTAP */
 
-		mtk_init_sta_role(prAdapter, ndev);
+		result = mtk_init_sta_role(prAdapter, ndev);
+		if (result)
+			goto done;
 
 		/* continue the mtk_cfg80211_change_iface() process */
-		mtk_cfg80211_change_iface(wiphy, ndev, type, flags, params);
+		result = mtk_cfg80211_change_iface(wiphy, ndev, type, flags, params);
 	}
 
 	DBGLOG(INIT, INFO, "[after][type:iftype]:[%d:%d]\n",
 		ndev->type,
 		ndev->ieee80211_ptr->iftype);
 
-	return 0;
+done:
+	finish = kalFwkBlacklistRoleEnd(prGlueInfo);
+	return result ? result : finish;
 }
 
 int mtk_cfg_add_key(struct wiphy *wiphy,

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0 OR BSD-3-Clause
 /*******************************************************************************
  *
  * This file is provided under a dual license.  When you use or
@@ -678,19 +679,20 @@ int mtk_cfg80211_vendor_config_roaming(struct wiphy *wiphy,
 {
 	struct GLUE_INFO *prGlueInfo = NULL;
 	struct nlattr *attrlist;
-	struct AIS_BLACKLIST_ITEM *prBlackList;
-	struct BSS_DESC *prBssDesc = NULL;
-	uint32_t len_shift = 0;
-	uint32_t numOfList[2] = { 0 };
-	uint8_t *aucBSSID = NULL;
-	int i;
+	uint32_t u4BlacklistCount = 0;
+	uint32_t u4BssidCount = 0;
+	uint8_t aucBssid[MAX_FW_ROAMING_BLACKLIST_SIZE][MAC_ADDR_LEN];
+	u_int8_t fgCountSeen = FALSE;
+	int remaining;
+	int ret;
+	bool enabled = false;
 
 	DBGLOG(REQ, INFO,
 	       "Receives roaming blacklist & whitelist with data_len=%d\n",
 	       data_len);
 	ASSERT(wiphy);
 	ASSERT(wdev);
-	if ((data == NULL) || (data_len == 0))
+	if (data == NULL || data_len <= 0)
 		return -EINVAL;
 
 	WIPHY_PRIV(wiphy, prGlueInfo);
@@ -702,69 +704,45 @@ int mtk_cfg80211_vendor_config_roaming(struct wiphy *wiphy,
 		return -EFAULT;
 	}
 
-	if (prGlueInfo->u4FWRoamingEnable == 0) {
+	ret = kalFwkBlacklistGetEnabled(prGlueInfo, &enabled);
+	if (ret)
+		return ret;
+	if (!enabled) {
 		DBGLOG(REQ, INFO,
 		       "FWRoaming is disabled (FWRoamingEnable=%d)\n",
 		       prGlueInfo->u4FWRoamingEnable);
 		return WLAN_STATUS_SUCCESS;
 	}
 
-	attrlist = (struct nlattr *)((uint8_t *) data);
-
-	/* get the number of blacklist and copy those mac addresses from HAL */
-	if (attrlist->nla_type ==
-	    WIFI_ATTRIBUTE_ROAMING_BLACKLIST_NUM) {
-		numOfList[0] = nla_get_u32(attrlist);
-		len_shift += NLA_ALIGN(attrlist->nla_len);
-	}
-	DBGLOG(REQ, INFO, "Get the number of blacklist=%d\n",
-	       numOfList[0]);
-
-	if (numOfList[0] > MAX_FW_ROAMING_BLACKLIST_SIZE)
+	if (nla_validate(data, data_len, WIFI_ATTRIBUTE_MAX,
+			 nla_parse_wifi_attribute, NULL) < 0)
 		return -EINVAL;
 
-	/*Refresh all the FWKBlacklist */
-	aisRefreshFWKBlacklist(prGlueInfo->prAdapter);
-
-	/* Start to receive blacklist mac addresses and set to FWK blacklist */
-	attrlist = (struct nlattr *)((uint8_t *) data + len_shift);
-	for (i = 0; i < numOfList[0]; i++) {
-		if (attrlist->nla_type ==
-		    WIFI_ATTRIBUTE_ROAMING_BLACKLIST_BSSID) {
-			aucBSSID = nla_data(attrlist);
-			prBssDesc =
-				scanSearchBssDescByBssid(prGlueInfo->prAdapter,
-							aucBSSID);
-			len_shift += NLA_ALIGN(attrlist->nla_len);
-			attrlist =
-				(struct nlattr *)((uint8_t *) data + len_shift);
-
-			if (prBssDesc == NULL) {
-				DBGLOG(REQ, ERROR, "No found blacklist BSS="
-					MACSTR "\n",
-					MAC2STR(aucBSSID));
-				continue;
-			}
-
-			prBlackList = aisAddBlacklist(prGlueInfo->prAdapter,
-						      prBssDesc);
-
-			if (prBlackList) {
-				prBlackList->fgIsInFWKBlacklist = TRUE;
-				DBGLOG(REQ, INFO,
-					"Gets roaming blacklist SSID=%s addr="
-					MACSTR "\n",
-					HIDE(prBssDesc->aucSSID),
-					MAC2STR(prBssDesc->aucBSSID));
-			} else {
-				DBGLOG(REQ, ERROR,
-					"prBlackList is NULL, return -EINVAL!");
+	nla_for_each_attr(attrlist, (struct nlattr *)data, data_len, remaining) {
+		switch (nla_type(attrlist)) {
+		case WIFI_ATTRIBUTE_ROAMING_BLACKLIST_NUM:
+			if (fgCountSeen)
 				return -EINVAL;
-			}
+			fgCountSeen = TRUE;
+			u4BlacklistCount = nla_get_u32(attrlist);
+			if (u4BlacklistCount > MAX_FW_ROAMING_BLACKLIST_SIZE)
+				return -EINVAL;
+			break;
+		case WIFI_ATTRIBUTE_ROAMING_BLACKLIST_BSSID:
+			if (nla_len(attrlist) != MAC_ADDR_LEN ||
+			    u4BssidCount >= MAX_FW_ROAMING_BLACKLIST_SIZE)
+				return -EINVAL;
+			COPY_MAC_ADDR(aucBssid[u4BssidCount], nla_data(attrlist));
+			u4BssidCount++;
+			break;
+		default:
+			break;
 		}
 	}
+	if (remaining > 0 || !fgCountSeen || u4BssidCount != u4BlacklistCount)
+		return -EINVAL;
 
-	return WLAN_STATUS_SUCCESS;
+	return kalFwkBlacklistSubmit(prGlueInfo, u4BssidCount, aucBssid);
 }
 
 /*----------------------------------------------------------------------------*/
@@ -1731,73 +1709,53 @@ int mtk_cfg80211_vendor_packet_keep_alive_start(
 	const void *data, int data_len)
 {
 	uint32_t rStatus = WLAN_STATUS_SUCCESS;
-	unsigned short u2IpPktLen = 0;
+	uint16_t u2IpPktLen;
 	uint32_t u4BufLen = 0;
 	struct GLUE_INFO *prGlueInfo = NULL;
 
 	int32_t i4Status = -EINVAL;
 	struct PARAM_PACKET_KEEPALIVE_T *prPkt = NULL;
 	struct nlattr *attr[MKEEP_ALIVE_ATTRIBUTE_MAX];
-	uint32_t i = 0;
 
 	ASSERT(wiphy);
 	ASSERT(wdev);
-	if ((data == NULL) || !data_len)
+	if (data == NULL || data_len <= 0)
 		goto nla_put_failure;
 
 	DBGLOG(REQ, TRACE, "vendor command: data_len=%d\r\n",
 	       data_len);
-	prPkt = (struct PARAM_PACKET_KEEPALIVE_T *)
-		kalMemAlloc(sizeof(struct PARAM_PACKET_KEEPALIVE_T),
-			    VIR_MEM_TYPE);
-	if (!prPkt) {
-		DBGLOG(REQ, ERROR,
-		       "Can not alloc memory for struct PARAM_PACKET_KEEPALIVE_T\n");
-		return -ENOMEM;
-	}
-	kalMemZero(prPkt, sizeof(struct PARAM_PACKET_KEEPALIVE_T));
-	kalMemZero(attr, sizeof(struct nlattr *) * (MKEEP_ALIVE_ATTRIBUTE_MAX));
-
-	prPkt->enable = TRUE; /*start packet keep alive*/
-	if (NLA_PARSE_NESTED(attr,
-			     MKEEP_ALIVE_ATTRIBUTE_PERIOD_MSEC,
-			     (struct nlattr *)(data - NLA_HDRLEN),
-			     nla_parse_offloading_policy) < 0) {
-		DBGLOG(REQ, ERROR, "%s nla_parse_nested failed\n",
-		       __func__);
+	if (NLA_PARSE(attr, MKEEP_ALIVE_ATTRIBUTE_PERIOD_MSEC,
+		      data, data_len, nla_parse_offloading_policy) < 0)
 		goto nla_put_failure;
-	}
+	if (!attr[MKEEP_ALIVE_ATTRIBUTE_ID] ||
+	    !attr[MKEEP_ALIVE_ATTRIBUTE_IP_PKT_LEN] ||
+	    !attr[MKEEP_ALIVE_ATTRIBUTE_IP_PKT] ||
+	    !attr[MKEEP_ALIVE_ATTRIBUTE_SRC_MAC_ADDR] ||
+	    !attr[MKEEP_ALIVE_ATTRIBUTE_DST_MAC_ADDR] ||
+	    !attr[MKEEP_ALIVE_ATTRIBUTE_PERIOD_MSEC])
+		goto nla_put_failure;
 
-	for (i = MKEEP_ALIVE_ATTRIBUTE_ID;
-	     i <= MKEEP_ALIVE_ATTRIBUTE_PERIOD_MSEC; i++) {
-		if (attr[i]) {
-			switch (i) {
-			case MKEEP_ALIVE_ATTRIBUTE_ID:
-				prPkt->index = nla_get_u8(attr[i]);
-				break;
-			case MKEEP_ALIVE_ATTRIBUTE_IP_PKT_LEN:
-				prPkt->u2IpPktLen = nla_get_u16(attr[i]);
-				break;
-			case MKEEP_ALIVE_ATTRIBUTE_IP_PKT:
-				u2IpPktLen = prPkt->u2IpPktLen <= 256
-					? prPkt->u2IpPktLen : 256;
-				kalMemCopy(prPkt->pIpPkt, nla_data(attr[i]),
-					u2IpPktLen);
-				break;
-			case MKEEP_ALIVE_ATTRIBUTE_SRC_MAC_ADDR:
-				kalMemCopy(prPkt->ucSrcMacAddr,
-				   nla_data(attr[i]), sizeof(uint8_t) * 6);
-				break;
-			case MKEEP_ALIVE_ATTRIBUTE_DST_MAC_ADDR:
-				kalMemCopy(prPkt->ucDstMacAddr,
-				   nla_data(attr[i]), sizeof(uint8_t) * 6);
-				break;
-			case MKEEP_ALIVE_ATTRIBUTE_PERIOD_MSEC:
-				prPkt->u4PeriodMsec = nla_get_u32(attr[i]);
-				break;
-			}
-		}
-	}
+	u2IpPktLen = nla_get_u16(attr[MKEEP_ALIVE_ATTRIBUTE_IP_PKT_LEN]);
+	if (!u2IpPktLen || u2IpPktLen > sizeof(prPkt->pIpPkt) ||
+	    nla_len(attr[MKEEP_ALIVE_ATTRIBUTE_IP_PKT]) != u2IpPktLen ||
+	    nla_len(attr[MKEEP_ALIVE_ATTRIBUTE_SRC_MAC_ADDR]) != MAC_ADDR_LEN ||
+	    nla_len(attr[MKEEP_ALIVE_ATTRIBUTE_DST_MAC_ADDR]) != MAC_ADDR_LEN)
+		goto nla_put_failure;
+
+	prPkt = kalMemAlloc(sizeof(*prPkt), VIR_MEM_TYPE);
+	if (!prPkt)
+		return -ENOMEM;
+	kalMemZero(prPkt, sizeof(*prPkt));
+	prPkt->enable = TRUE;
+	prPkt->index = nla_get_u8(attr[MKEEP_ALIVE_ATTRIBUTE_ID]);
+	prPkt->u2IpPktLen = u2IpPktLen;
+	kalMemCopy(prPkt->pIpPkt,
+		   nla_data(attr[MKEEP_ALIVE_ATTRIBUTE_IP_PKT]), u2IpPktLen);
+	kalMemCopy(prPkt->ucSrcMacAddr,
+		   nla_data(attr[MKEEP_ALIVE_ATTRIBUTE_SRC_MAC_ADDR]), MAC_ADDR_LEN);
+	kalMemCopy(prPkt->ucDstMacAddr,
+		   nla_data(attr[MKEEP_ALIVE_ATTRIBUTE_DST_MAC_ADDR]), MAC_ADDR_LEN);
+	prPkt->u4PeriodMsec = nla_get_u32(attr[MKEEP_ALIVE_ATTRIBUTE_PERIOD_MSEC]);
 
 	DBGLOG(REQ, INFO,
 	       "enable=%d, index=%d, u2IpPktLen=%d u4PeriodMsec=%d\n",
@@ -1829,7 +1787,8 @@ int mtk_cfg80211_vendor_packet_keep_alive_start(
 
 	if (prGlueInfo->u4ReadyFlag == 0) {
 		DBGLOG(REQ, WARN, "driver is not ready\n");
-		return -EFAULT;
+		i4Status = -EFAULT;
+		goto nla_put_failure;
 	}
 
 	rStatus = kalIoctl(prGlueInfo,
@@ -1857,29 +1816,26 @@ int mtk_cfg80211_vendor_packet_keep_alive_stop(
 
 	int32_t i4Status = -EINVAL;
 	struct PARAM_PACKET_KEEPALIVE_T *prPkt = NULL;
-	struct nlattr *attr;
+	struct nlattr *attr[MKEEP_ALIVE_ATTRIBUTE_MAX];
 
 	ASSERT(wiphy);
 	ASSERT(wdev);
-	if ((data == NULL) || !data_len)
+	if (data == NULL || data_len <= 0)
 		goto nla_put_failure;
 
 	DBGLOG(REQ, TRACE, "vendor command: data_len=%d\r\n",
 	       data_len);
-	prPkt = (struct PARAM_PACKET_KEEPALIVE_T *)
-		kalMemAlloc(sizeof(struct PARAM_PACKET_KEEPALIVE_T),
-			    VIR_MEM_TYPE);
-	if (!prPkt) {
-		DBGLOG(REQ, ERROR,
-		       "Can not alloc memory for PARAM_PACKET_KEEPALIVE_T\n");
-		return -ENOMEM;
-	}
-	kalMemZero(prPkt, sizeof(struct PARAM_PACKET_KEEPALIVE_T));
+	if (NLA_PARSE(attr, MKEEP_ALIVE_ATTRIBUTE_PERIOD_MSEC,
+		      data, data_len, nla_parse_offloading_policy) < 0 ||
+	    !attr[MKEEP_ALIVE_ATTRIBUTE_ID])
+		goto nla_put_failure;
 
-	prPkt->enable = FALSE;  /*stop packet keep alive*/
-	attr = (struct nlattr *)data;
-	if (attr->nla_type == MKEEP_ALIVE_ATTRIBUTE_ID)
-		prPkt->index = nla_get_u8(attr);
+	prPkt = kalMemAlloc(sizeof(*prPkt), VIR_MEM_TYPE);
+	if (!prPkt)
+		return -ENOMEM;
+	kalMemZero(prPkt, sizeof(*prPkt));
+	prPkt->enable = FALSE;
+	prPkt->index = nla_get_u8(attr[MKEEP_ALIVE_ATTRIBUTE_ID]);
 
 	DBGLOG(REQ, INFO, "enable=%d, index=%d\r\n",
 	       prPkt->enable, prPkt->index);
@@ -1889,7 +1845,8 @@ int mtk_cfg80211_vendor_packet_keep_alive_stop(
 
 	if (prGlueInfo->u4ReadyFlag == 0) {
 		DBGLOG(REQ, WARN, "driver is not ready\n");
-		return -EFAULT;
+		i4Status = -EFAULT;
+		goto nla_put_failure;
 	}
 
 	rStatus = kalIoctl(prGlueInfo,

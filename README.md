@@ -1,274 +1,173 @@
+<!-- SPDX-License-Identifier: GPL-2.0 -->
+<!-- SPDX-FileCopyrightText: 2026 The LineageOS Project -->
 <div align="center">
 
 # Linux 6.12 · iKKO MindOne
 
-### An unofficial forward-port to 6.12, done by hand — an independent research project
+### An unofficial forward-port — an independent research project
 
-[![Kernel](https://img.shields.io/badge/Linux-6.12.92-A42E2B?style=flat-square&logo=linux&logoColor=white)](#-build)
-[![ACK](https://img.shields.io/badge/base-android16--6.12--2026--09-3DDC84?style=flat-square&logo=android&logoColor=white)](https://source.android.com/docs/core/architecture/kernel/android-common)
-[![SoC](https://img.shields.io/badge/Helio%20G99-MT6789%20%2F%20MT8781-0071C5?style=flat-square)](#-hardware)
-[![Modules](https://img.shields.io/badge/modules-296-success?style=flat-square)](docs/MODULES.md)
-[![License](https://img.shields.io/badge/license-GPL--2.0-blue?style=flat-square)](COPYING)
-
-**arm64 · 4 KiB pages · `6.12.92-android16-6-<stamp>-4k`**
+**Google android16-6.12 r10 GKI core · arm64 · 4 KiB pages · Helio G99 (MT6789 / MT8781)**
 
 </div>
 
 ---
 
-> ### ⚠️ Experimental, research project, still moving
-> An independent, unofficial bring-up — not a vendor release, and built with no vendor support,
-> assistance, or collaboration of any kind. It runs as a daily driver, but things change
-> between commits, some hardware is unfinished, and nothing here is certified by anyone.
-> Read [Status](#-status) before depending on it.
+> An independent, unofficial device-support source release.
 
 ## 🎯 What this tree is for
 
-The device shipped with a vendor kernel that stopped at Linux 5.10 (the `android12-5.10` line, on Android 15).
-This tree carries it forward to a current, actively developed kernel line.
+The device shipped with Linux 5.10. This repository ports its device support to
+Google's **`android16-6.12-2026-09_r10` GKI prebuilt**, CI **16736897**.
+The shipped core is Google's binary. Device code is supplied as loadable vendor
+modules and device DTB/DTBO outputs, not additions to the GKI core.
 
-The kernel binary is **Google's**. This repository is the device half: the tree that describes the
-hardware, the configuration fragment that turns on what this board needs, and the 296 drivers it
-loads on top of a Generic Kernel Image.
-
+```text
+core             @gki_prebuilts//kernel_aarch64
+base             android16-6.12-2026-09_r10, CI 16736897
+mixed build      device DTB/DTBO and in-tree platform modules
+Kleaf DDK        out-of-tree device drivers
+external imports Google's gki/aarch64/symbols/* lists
 ```
-kernel           //common:kernel_aarch64 — Google's GKI, unmodified gki_defconfig
-this repository  device tree + mindone.fragment + 278 out-of-tree drivers + 18 in-tree platform drivers
-contract         gki/aarch64/symbols/mindone — the symbols those drivers need from GKI
-module_layout    0xf6779cbd
-```
 
-> **Status.** The Kleaf GKI mixed build below is what runs on the device today, not merely the
-> direction: `kernel_aarch64` builds from an unmodified `gki_defconfig` + Google's own fragment,
-> untouched by this tree, and the MediaTek platform drivers are either `module_outs` of a
-> separate `mindone` kernel_build on top of it or `ddk_module` targets in `mindone/modules/` —
-> never inside `kernel_aarch64` itself. Measured on the device (28.09): `module_layout
-> 0xf6779cbd`, 296 modules loaded, and the running `vmlinux` has no KMI difference from Google's
-> own ABI file for this base (0 of 776 documented imports missing). The standalone `make` path
-> this document used to describe no longer builds a module set that matches the device — what
-> that means for local iteration is in **[docs/BUILD.md](docs/BUILD.md)**.
-
-No confidential vendor material went into this, and there was no vendor support or
-collaboration of any kind. The base is Google's Android Common Kernel. The device tree was
-**reconstructed by hand from the stock DTB** extracted off a retail unit — a compiled binary, not
-source, decoded and rebuilt from scratch as `.dts`/`.dtsi`. The out-of-tree drivers started from
-**MediaTek's own published open-source kernel sources** for this SoC family — the GPL sources
-MediaTek is required to release for its chips, not anything confidential or device-specific — then
-were fixed and adapted board by board; **"What is actually ours"** below says how much of that had
-to change.
+The companion ROM targets **LineageOS 23.2 / Android 16**, **FCM 202504** and a
+**64-bit-only** product. Its Android HAL interfaces are AIDL; some frontends still
+use proprietary legacy backends and vendor-specific HIDL interfaces.
 
 ## 📦 What is in here
 
-| | |
+| Part | Source or contract |
 |---|---|
-| **Kernel** | Google ACK `android16-6.12-2026-09` (`6.12.92`), consumed as `//common:kernel_aarch64` — this repository builds only the drivers on top of it |
-| **Device tree** | `mindone.dts` + 18 `mt6789-*.dtsi`, rebuilt from the stock DTB, **zero `dtc` warnings** |
-| **Config** | `mindone/mindone.fragment` on top of `gki_defconfig`, checked on every build by Kleaf's `check_defconfig`. `arch/arm64/configs/mindone_defconfig` remains for the legacy kernel-only `make` path, which no longer has a matching module build |
-| **Drivers** | `mindone/modules/` — 278 `ddk_module` targets, 3 257 C sources and headers |
-| **KMI** | `gki/aarch64/symbols/mindone` — what those drivers need from the kernel, in the format Google's own tooling writes |
-| **Load order** | `mindone/vendor_boot.modules.load` + `mindone/vendor_dlkm.modules.load` — the real 296, in the order the device loads them |
+| Core selection | `@gki_prebuilts//kernel_aarch64`; exact prebuilt images, DDK headers and module metadata must stay together |
+| Device tree | `mindone/dts/`, reconstructed and adapted for this board |
+| Configuration | `mindone/mindone.fragment` over `gki_defconfig` |
+| Device modules | `mindone/modules/BUILD.bazel` DDK targets and the platform module outputs in `mindone/BUILD.bazel` |
+| Normal boot lists | `mindone/vendor_boot.modules.load` (26) and `mindone/vendor_dlkm.modules.load` (236); combined `mindone/modules/modules.load` (262) |
+| Recovery list | `mindone/vendor_boot.modules.load.recovery` (131), selected by `modules_recovery_list` |
+| KMI contract | Google's symbol lists; no private allowlist for additional core imports |
 
-🚫 No blobs, no firmware, no bootloader, no prebuilt binaries — **verified by file content, not
-by extension.** Proprietary userspace is extracted by each user from their own device.
+Counts exclude empty and comment lines. The lists describe requested loading.
+The companion ROM also stages selected Google GKI modules in `system_dlkm`, including USB-network and
+PPP modules. Keep that archive paired with the core and vendor set.
+
+Proprietary userspace, firmware and prebuilt release artifacts must be obtained
+separately. They are not supplied as device-support source in this repository.
 
 ## 🚀 Build
 
-Android 16 dropped non-Bzlmod kernel builds, so **Kleaf**, the Bazel build Google ships with the
-ACK, is the supported entry point. The workspace is the ACK repo manifest with `kernel/common`
-replaced by this repository:
+Use an Android Common Kernel workspace for `common-android16-6.12`, with this
+repository at `common`, checked out on **`android16-6.12`**. Configure the workspace's
+Kleaf prebuilt extension for **CI 16736897**, including its filegroup declaration,
+DDK header archive, `vmlinux.symvers`, images and GKI module archives.
+The manifest and extension configuration are in [docs/BUILD.md](docs/BUILD.md).
+
+From the workspace root:
 
 ```sh
-tools/bazel build //common/mindone:mindone_modules_install
+tools/bazel build //common/mindone:mindone //common/mindone:mindone_modules_install
+tools/bazel build //common/mindone:mindone_images //common/mindone:mindone_dtbo
 ```
 
-A plain `make` build of the kernel image alone still works, without a full Kleaf workspace — see
-**[docs/BUILD.md](docs/BUILD.md)** for what it is still useful for and, more importantly, what it
-no longer builds:
+`mindone` produces device DTB/DTBO and declared platform modules over the prebuilt
+base; `mindone_modules_install` stages device/base modules; `mindone_images` stages
+ramdisk and vendor-DLKM outputs using the load lists. `mindone_dtbo` packages the
+overlay. These targets do not rebuild the shipped GKI core. The retired standalone
+`build.sh` / `mindone_defconfig` route is not the supported device build path.
 
-```sh
-TOOLCHAIN=/opt/toolchains/llvm-19.1.4-aarch64 ./build.sh ../k612-out
-```
+Before ROM integration, gate the **complete compiled set** against the exact build
+metadata: vermagic, `module_layout`, imported symbol CRCs, providers, duplicate
+built-in drivers and Google's permitted external imports. See [docs/BUILD.md](docs/BUILD.md).
 
-> 🔴 **The clang version matters.** clang decides symbol CRCs and `module_layout`. Build the
-> kernel with one major version and the modules with another, and every module refuses to load
-> without saying why — which is one reason the Kleaf path above, where both come from the same
-> build, is the one that ships.
+### Install and restore
 
-> 🔴 **Memory.** Generating BTF (`pahole`) peaks near **14.4 GiB**. Under that ceiling the build
-> dies with a bare `Killed` and `FAILED: load BTF from vmlinux: Invalid argument`, naming nothing.
-> In a container or VM, check the limit that applies to the build, not the machine's total.
+Integrate the exact prebuilt `Image.gz`, matching GKI modules, vendor modules,
+DTB/DTBO and load metadata into the companion device tree, then build and sign
+its LineageOS package. Follow that repository's `docs/FLASHING.md` for signing,
+Virtual A/B installation and restoration.
 
-Modules, ABI checking, and the path to a flashable image → **[docs/BUILD.md](docs/BUILD.md)**.
+Deliver the paired `boot`, `vendor_boot`, `vendor_dlkm`, `system_dlkm` and DTBO
+with donor userspace inside a full signed ROM. Preserve the measured target TEE contents and partition size; the two
+slots' TEE sizes differ. The former partial-update recipe does not cover this set.
+
+Keep a tested signed known-good package and stock partition-table/firmware backup.
+Before snapshot merge, a failed candidate may fall back to the retained successful
+slot. After merge, install the known-good package again; selecting the former slot
+is not a restore. Direct Linux-host fastboot recovery requires a complete matched
+image set and current partition geometry. Never overwrite mounted `super`.
 
 ## 🔧 What is actually ours
 
-MediaTek keeps almost everything outside the kernel proper, and no device-specific material was
-available to start from. So most of this repository is work, not configuration.
+The device tree and board integration are maintained here. MediaTek driver sources
+have been adapted to ACK 6.12 and the GKI module contract. The reconstructed USB
+controller support and board-specific UFS behavior are part of that work.
 
-<table>
-<tr><td width="30%"><b>most</b><br><sub>of 278 driver directories</sub></td>
-<td>carry local fixes: vendor code that was wrong for this board, targeted another SoC revision,
-or did not compile against a modern kernel. What changed and why is in the commit history for
-each driver.</td></tr>
-<tr><td><b>2 modules</b><br><sub>written from scratch</sub></td>
-<td>for problems no vendor code solved — see the table below.</td></tr>
-<tr><td><b>1 driver</b><br><sub>reconstructed</sub></td>
-<td><code>musb_hdrc_recon</code>, a rebuilt MediaTek musb (built today as the `musb_hdrc` target).</td></tr>
-</table>
+Recent source work includes:
 
-<details open>
-<summary><b>The two written from scratch</b></summary>
+- Graphics: Mali r54p1, display idle handling and the donor composer contract: hardware
+  vsync, idle kicks, atomic properties, MDP-only capabilities and mode/debug ioctls.
+  CCORR composes calibration and Night Light and rejects unsupported matrix domains.
+- Media: VCU v2 integration, decoder negotiation before VSI initialization and the
+  encoder layout for the Lenovo ARM64 userspace peer. The MT6789 decoder advertises
+  read-only HEVC Main/Main10 and VP9 Profile 0 menus; VP9 Profile 2 is not advertised.
+- Connectivity: gen4m firmware pairing and APF support, framework-owned suspend policy,
+  suspended IPv6 address refresh and corrected IPv4 address/mask pairs; MDDP
+  connection-mode support and USB/Type-C teardown and transition handling.
+- Board support: cache-parity reporting, voice-wakeup modules and AW862xx nominal
+  resonance configuration. The stock GPIO flashlight is selected again; no LM3643
+  answered on i2c-6. LM3643 remains non-shipping, and GPIO157 belongs to fingerprint reset.
+- Camera autofocus: `mainaf` retains the DW9800W backend and sets its 7-bit I2C
+  address to `0x0c` before the first transfer; a register-address write expects one
+  byte. The unused `subaf`, `sub2af`, `main2af` and `main3af` wrappers are no longer
+  selected or loaded; their DDK definitions remain buildable.
+- Power and safety: panel, charger and UFS controllers use C and standard kernel APIs;
+  DT zones and Mali devfreq replace the private thermal adapter. Charger USB-current
+  policy, a read-only current-command node and driver hardening remain. The status-carrying
+  PTIM sample command validates its request and replies to the requesting netlink
+  socket, allowing the companion shadow gauge alongside GM30 without registering
+  as the stock daemon. Stock commands retain their registered-daemon PID check.
 
-| | |
-|---|---|
-| `mindone_thermal` | thermal zones the stock tables never described |
-| `mindone_ufs_screen` | storage behaviour specific to this board |
-
-</details>
-
-**🔌 The USB one is worth calling out.** `musb_hdrc_recon` fixes a defect that made the device
-unable to sleep *at all*: on cable unplug the gadget teardown runs before the disconnect work, so
-the driver's own release path was unreachable and the "USB suspend lock" stayed held forever.
-
-**⬆️ Upstream work pulled back.** UFS MediaTek clock-scaling and Vcore binding from **v6.17** are
-merged into this 6.12 tree. A systematic diff of the MediaTek clock drivers against **v6.18** was
-done and closed with **no delta needed** — a negative result worth stating, because it means the
-clock layer here is already current.
+These source changes require matching userspace.
 
 ## 🖥 Hardware
 
-| ✅ Works | |
-|---|---|
-| **Boot** | ~21 s to `boot_completed` |
-| **Audio** | speaker, headset, Bluetooth, microphone; outgoing cellular-call microphone and earpiece/speaker switching verified with the matching userspace audio HAL |
-| **Cellular** | calls, SMS, mobile data |
-| **Wireless** | Wi-Fi, Bluetooth, NFC |
-| **Camera** | both logical cameras of the flip module; the main IMX766 sensor's full 4096×3072 mode, brought up faster through burst I2C writes and chunked EEPROM calibration reads |
-| **Video** | hardware decode and encode through the stateful V4L2 driver (`mtk_vcodec`), behind an open Codec2 HAL |
-| **Graphics** | MDP |
-| **Security** | fingerprint |
-| **System** | USB (adb/MTP), charging, suspend/resume, 96 Hz display |
-| **Thermal** | a kernel-owned skin-temperature zone at 46 °C, bound to CPU/GPU cooling in `mindone_thermal` |
+Earlier project documentation records boot, cellular service, Wi-Fi, Bluetooth, NFC,
+audio, camera, hardware video, fingerprint, USB, charging, suspend/resume and the
+96 Hz display with previous combined builds.
 
-| 🚧 Unfinished | |
-|---|---|
-| **RPMB** | hardware-backed key storage fails its MAC check; storage falls back safely, boot unaffected |
-| **60 Hz panel mode** | exists on a branch, held back: the panel reports no physical size, so the second mode reaches apps at dpi 0 |
-| **High-speed capture** | 120 fps not reached |
-| **HDR** | not implemented |
-| **vSIM** | parked deliberately, not attempted |
-
-**🔁 Reproducible.** Two builds from the same tree and toolchain now produce a **byte-identical
-`Image`**. `build.sh` pins the build user, host and `SOURCE_DATE_EPOCH`; before that the account
-name and the build moment were compiled in, and two builds differed by ~0.7 %. Verified on one
-machine into one output path — a different absolute build path is not separately tested.
+The panel driver reports its physical size (67.06 x 77.00 mm) and offers a
+VFP-only 60 Hz mode beside the 96 Hz default.
 
 ### Wi-Fi firmware pairing
 
-IPv6-only address-buffer allocation and the firmware address-list encoding for IPv6 neighbor
-solicitation offload are fixed. RXFILTER now supports independent IPv4/IPv6 multicast policy
-while suspended, with capability probing and nonce-checked firmware readback. The accepted
-C37 driver/firmware pair passed multicast allow/block/restore and unicast controls on hardware;
-awake traffic retains the original policy. This is functional acceptance, not a measured
-battery-life improvement. APF remains disabled because the original firmware does not support
-its command interface.
-
-RXFILTER requires the matching `WIFI_RAM_CODE_soc2_2_1d_1.bin`, SHA-256
+The RXFILTER implementation requires the reviewed
+`WIFI_RAM_CODE_soc2_2_1d_1.bin`, SHA-256
 `bfb11a2b31fdd22aadb603b186e9ae0ebc98a476a7f7adf0f4a572d520abbfec`.
-The [companion device repository](../../../android_device_ikko_mindone/blob/lineage-23.2/docs/BLOBS.md)
-contains the firmware source tooling, release receipt and extraction checks. Firmware binaries
-are not distributed here; use your own extracted firmware and follow that repository's build
-instructions. An unsupported firmware query returns an error instead of reporting an applied
-RXFILTER policy. A successful ioctl alone does not establish wakeup or energy savings.
+Use the companion device repository's `docs/BLOBS.md` for extraction, firmware source
+tooling and receipt checks. An arbitrary same-named firmware file is insufficient.
 
-## 📊 Status
-
-This is the kernel the device runs every day under LineageOS 23.2 (Android 16) — not a tree that
-merely compiles. But it is an independent bring-up by one person: expect rough edges, treat
-anything unusual as probably known, and keep a way to restore the stock firmware.
-
-The battery driver still uses the userspace fuel gauge by default. The opt-in kernel algorithm
-has only a bounded powered handover/recovery check; complete discharge tracking, learned-state
-persistence and physical usable capacity have not been validated. Charger and GPU error-path
-fixtures do not establish hardware fault recovery or battery-life improvements.
-
-Current focus is testing and optimisation rather than new features. Kernel **6.18** and
-**Android 17** are where this goes next; both have been looked at, neither is committed to.
-
-### What has and has not been tested
-
-| | |
-|---|---|
-| **Daily use** | Yes — this is the author's phone, running this kernel every day |
-| **VTS / CTS** | **No.** Neither has been run. No compatibility evidence exists, and none is claimed |
-| **Any certification** | None, by anyone |
-| **Reproducible builds** | Byte-identical `Image` on one machine into one output path. A different absolute build path is untested |
-| **Module ABI** | Checked numerically on every build (`module_layout`, per-symbol CRC) — see [docs/BUILD.md](docs/BUILD.md) |
+The prior documentation records multicast allow/block/restore and unicast controls
+on hardware for the reviewed pairing. APF v4 with a 2048-byte program limit is enabled
+in source.
 
 ## 📚 Documentation
 
-| | |
-|---|---|
-| **[docs/BUILD.md](docs/BUILD.md)** | Clean clone → kernel → modules → verified set |
-| **[docs/MODULES.md](docs/MODULES.md)** | The driver trees: provenance, load order, gates |
-| **[docs/HARDWARE.md](docs/HARDWARE.md)** | The device, and the behaviours that are invisible until they bite |
-| **[docs/PORTING.md](docs/PORTING.md)** | Reusing this on another MT6789/MT8781 board |
+- [Build and module-set verification](docs/BUILD.md)
+- [Driver provenance and load order](docs/MODULES.md)
+- [Hardware details](docs/HARDWARE.md)
+- [Porting to another board](docs/PORTING.md)
 
 ## 🕰 Where this came from
 
-A forward-port. The device shipped on `android12-5.10`; the work went **5.10 → 6.1 → 6.12**, and
-each step had to boot before the next could start.
-
-This repository carries two branches. **`android16-6.12`** is the one to build against --
-that is where the drivers, the device tree, and all ongoing work live. **`android14-6.1`** is
-the earlier step: the first forward-port of this device off its original vendor kernel, where
-the device tree and most of the driver work were first proven on real hardware. It is kept as
-history, unmaintained -- see its own README for what that means. The drivers are not duplicated
-there: `mindone/modules/` lives only on `android16-6.12`. The current module build and
-acceptance target 6.12; the archived 6.1 branch is not a validated target for this module set.
+The forward-port progressed from **5.10 → 6.1 → 6.12**. Use `android16-6.12` for
+current device support. The earlier `android14-6.1` branch is historical.
 
 ## 🔎 Useful beyond this phone
 
-Most of the work is SoC-level, not board-level, so it transfers to any **MT6789 / MT8781
-(Helio G99)** bring-up on a modern kernel:
-
-- **6.12 on a platform that shipped with 5.10** — the full path (`android12-5.10` →
-  `android14-6.1` → `android16-6.12-2026-09`), including the API drift that actually hurts:
-  scheduler, cpufreq and devfreq changes the MediaTek performance and DVFS helpers depend on.
-- **278 out-of-tree MediaTek modules** (275 loaded at boot, plus 17 more MediaTek platform
-  drivers Kleaf compiles in-tree and 4 stock GKI modules — 296 in total) building against a
-  current ACK — display, camera, audio DSP, Wi-Fi/BT, sensors, thermal, charging, UFS, USB, the
-  CCCI modem interface, co-processors (`sspm_v3`, `mcupm`, `vcp`, `adsp`), memory and bus
-  protection, and the GPU stack.
-- **A device tree reconstructed from a stock DTB** to zero `dtc` warnings — 18 `mt6789-*.dtsi`
-  covering clocks, pinctrl, regulators, display, camera, audio, thermal, reserved memory.
-- **SCMI/SSPM on MediaTek**: upstream `arm_scmi` needs `arm,scmi-shmem` on the shared-memory
-  nodes, which stock trees do not carry; the vendor `tinysys` protocol (id `0x80`) needs a
-  `vendor_id` on kernels ≥ 6.9.
-- **A reconstructed `musb` gadget/host driver**, including the unplug path that otherwise holds a
-  wakeup source and stops the device suspending entirely.
-
-<details>
-<summary><sub>Search terms</sub></summary>
-<sub>
-
-MT6789, MT8781, MT8781V-CA, Helio G99, MediaTek, mtk, android16-6.12, Android Common Kernel, ACK,
-LineageOS 23, Android 16, out-of-tree kernel modules, vendor modules, GKI, `mtk-cmdq`,
-`wlan_drv_gen4m`, `eccci`, `ccci_mdinit`, `hf_manager`, `soc_temp_lvts`, `ufs-mediatek`, `sspm`,
-`mcupm`, `tinysys`, `device_apc_mt6789`, `imgsensor`, `mt6366`, `snd_soc_mt6789_afe`, `musb_hdrc`,
-gen4m, MOLY modem firmware, `md1img`.
-
-</sub>
-</details>
+The MT6789/MT8781 driver adaptations, modular platform support, reconstructed USB
+controller integration, SCMI/SSPM setup and Kleaf DDK layout may help related boards.
+DTB/DTBO, panel, calibration, firmware and donor compatibility remain board-specific.
 
 ---
 
-<div align="center">
-<sub>
-
-**GPL-2.0**, as upstream Linux — see [COPYING](COPYING) and [LICENSES/](LICENSES).
-The reconstructed device tree and everything in `mindone/modules/` are under the same terms.
-Files carrying an upstream MediaTek dual GPL-2.0/BSD header keep it unchanged.
-
-</sub>
-</div>
+See `COPYING`, `LICENSES/` and individual file headers.
+Retain upstream MediaTek notices and applicable dual-license terms when redistributing
+modified sources; this README does not replace file-specific licenses.

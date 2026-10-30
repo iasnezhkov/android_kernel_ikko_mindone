@@ -1028,9 +1028,10 @@ static void core_taskdone_kt_work(struct kthread_work *work)
 	/* before clean up, signal buffer fence */
 	if (task->fence) {
 		dma_fence_signal(task->fence);
-		dma_fence_put(task->fence);
 		mml_mmp(fence_sig, MMPROFILE_FLAG_PULSE, task->job.jobid,
 			mmp_data2_fence(task->fence->context, task->fence->seqno));
+		dma_fence_put(task->fence);
+		task->fence = NULL;
 	}
 
 	queue_work(task->config->wq_done, &task->wq_work_done);

@@ -93,6 +93,7 @@
 #include <linux/delay.h>
 #include <linux/gpio/consumer.h>
 #include <linux/module.h>
+#include <linux/mutex.h>
 #include <linux/of_graph.h>
 #include <linux/of_platform.h>
 #include <linux/platform_device.h>
@@ -104,6 +105,7 @@
 #include <drm/drm_panel.h>
 
 #include <video/mipi_display.h>
+#include "adapter.h"
 
 #define CONFIG_MTK_PANEL_EXT
 #if defined(CONFIG_MTK_PANEL_EXT)
@@ -129,18 +131,169 @@ struct lcm {
 	bool enabled;
 
 	int error;
+	struct mutex operation_lock;
 };
-
-#define lcm_dcs_write_seq_static(ctx, seq...)                          \
-	({                                                              \
-		static const u8 d[] = { seq };                          \
-		lcm_dcs_write(ctx, d, ARRAY_SIZE(d));                    \
-	})
 
 static inline struct lcm *panel_to_lcm(struct drm_panel *panel)
 {
 	return container_of(panel, struct lcm, panel);
 }
+
+static DEFINE_MUTEX(mindone_panel_cmdq_mutex);
+
+void mindone_panel_operation_lock(void *context)
+{
+	struct lcm *ctx = context;
+
+	mutex_lock(&ctx->operation_lock);
+}
+
+void mindone_panel_operation_unlock(void *context)
+{
+	struct lcm *ctx = context;
+
+	mutex_unlock(&ctx->operation_lock);
+}
+
+void mindone_panel_command_lock(void)
+{
+	mutex_lock(&mindone_panel_cmdq_mutex);
+}
+
+void mindone_panel_command_unlock(void)
+{
+	mutex_unlock(&mindone_panel_cmdq_mutex);
+}
+
+
+int mindone_panel_state(void *context, u32 field)
+{
+	struct lcm *ctx = context;
+
+	switch (field) {
+	case 0: return READ_ONCE(ctx->prepared);
+	case 1: return READ_ONCE(ctx->enabled);
+	case 2: return READ_ONCE(ctx->error);
+	default: return -EINVAL;
+	}
+}
+
+void mindone_panel_set_state(void *context, u32 field, int value)
+{
+	struct lcm *ctx = context;
+
+	switch (field) {
+	case 0: WRITE_ONCE(ctx->prepared, value != 0); break;
+	case 1: WRITE_ONCE(ctx->enabled, value != 0); break;
+	case 2: WRITE_ONCE(ctx->error, value); break;
+	default: break;
+	}
+}
+
+static struct gpio_desc *mindone_panel_gpio_descriptor(struct lcm *ctx, u32 pin)
+{
+	switch (pin) {
+	case 0: return ctx->reset_gpio;
+	case 1: return ctx->avdd_en_gpio;
+	case 2: return ctx->disp_pwm_gpio;
+	default: return NULL;
+	}
+}
+
+void mindone_panel_gpio(void *context, u32 pin, int value)
+{
+	gpiod_set_value(mindone_panel_gpio_descriptor(context, pin), value);
+}
+
+u8 mindone_panel_has_gpio(void *context, u32 pin)
+{
+	return mindone_panel_gpio_descriptor(context, pin) != NULL;
+}
+
+void mindone_panel_sleep(void *context, u32 milliseconds)
+{
+	msleep(milliseconds);
+}
+
+long mindone_panel_write(void *context, u8 generic, const u8 *data, size_t length)
+{
+	struct lcm *ctx = context;
+	struct mipi_dsi_device *dsi = to_mipi_dsi_device(ctx->dev);
+	ssize_t ret;
+
+	ret = generic ? mipi_dsi_generic_write(dsi, data, length) :
+		mipi_dsi_dcs_write_buffer(dsi, data, length);
+	if (ret < 0)
+		dev_err(ctx->dev, "error %zd writing seq: %ph\n", ret, data);
+	return ret;
+}
+
+u8 mindone_panel_level(void)
+{
+	return READ_ONCE(bl_tb0[1]);
+}
+
+int mindone_panel_backlight(void *context, u8 enabled)
+{
+	struct lcm *ctx = context;
+
+	if (!ctx->backlight)
+		return 0;
+	ctx->backlight->props.power = enabled ? FB_BLANK_UNBLANK : FB_BLANK_POWERDOWN;
+	return backlight_update_status(ctx->backlight);
+}
+
+void mindone_panel_touch_reset(void *context)
+{
+	struct lcm *ctx = context;
+
+#if defined(CONFIG_MTK_PANEL_EXT)
+	mtk_panel_tch_rst(&ctx->panel);
+#endif
+}
+
+void mindone_panel_log_pm_state(void *context, u8 prepared, u8 enabled)
+{
+	struct lcm *ctx = context;
+
+	dev_err(ctx->dev,
+		"MINDONE-PANEL-PM: prepared=%d enabled=%d observed at suspend entry\n",
+		prepared, enabled);
+}
+
+void mindone_panel_log_cleanup(void *context, int error)
+{
+	struct lcm *ctx = context;
+
+	dev_err(ctx->dev,
+		"MINDONE-PANEL-UNPREPARE: DSI error %d after rail-off cleanup\n", error);
+}
+
+struct mindone_panel_cmdq {
+	void *dsi;
+	dcs_write_gce callback;
+	void *handle;
+};
+
+void mindone_panel_cmdq_set_level(u8 level)
+{
+	WRITE_ONCE(bl_tb0[1], level);
+}
+
+u8 mindone_panel_cmdq_available(void *context)
+{
+	struct mindone_panel_cmdq *command = context;
+
+	return command->callback != NULL;
+}
+
+void mindone_panel_cmdq_emit(void *context)
+{
+	struct mindone_panel_cmdq *command = context;
+
+	command->callback(command->dsi, command->handle, bl_tb0, ARRAY_SIZE(bl_tb0));
+}
+
 
 /* Recovered from lcm_dcs_write() disassembly: every call site does
  * `cmp w8, #0xAF; b.hi generic_write; else dcs_write_buffer`, i.e. DCS
@@ -149,25 +302,7 @@ static inline struct lcm *panel_to_lcm(struct drm_panel *panel)
  * generic MIPI packet (mipi_dsi_generic_write). This matches the same
  * idiom used verbatim in the mediatek_v2 reference panel drivers.
  */
-static void lcm_dcs_write(struct lcm *ctx, const void *data, size_t len)
-{
-	struct mipi_dsi_device *dsi = to_mipi_dsi_device(ctx->dev);
-	const u8 *addr = data;
-	ssize_t ret;
 
-	if (ctx->error < 0)
-		return;
-
-	if (*addr < 0xB0)
-		ret = mipi_dsi_dcs_write_buffer(dsi, data, len);
-	else
-		ret = mipi_dsi_generic_write(dsi, data, len);
-
-	if (ret < 0) {
-		dev_err(ctx->dev, "error %zd writing seq: %ph\n", ret, data);
-		ctx->error = ret;
-	}
-}
 
 /*
  * Full bring-up sequence for ch13721c (JD9365D), extracted byte-exact from
@@ -178,48 +313,11 @@ static void lcm_dcs_write(struct lcm *ctx, const void *data, size_t len)
  * because gamma/voltage trim lives in this panel's OTP and doesn't need
  * runtime programming.
  */
-static void lcm_panel_init(struct lcm *ctx)
-{
-	gpiod_set_value(ctx->reset_gpio, 1);
-	msleep(20);
-	gpiod_set_value(ctx->reset_gpio, 0);
-	msleep(20);
-	gpiod_set_value(ctx->reset_gpio, 1);
-	msleep(20);
 
-	gpiod_set_value(ctx->avdd_en_gpio, 1);
-	msleep(10);
-	gpiod_set_value(ctx->disp_pwm_gpio, 1);
-
-	lcm_dcs_write_seq_static(ctx, 0xF0, 0x51); /* CMD2 unlock */
-	lcm_dcs_write_seq_static(ctx, 0xC0, 0x2D); /* vendor reg */
-	lcm_dcs_write_seq_static(ctx, 0xC1, 0x18); /* vendor reg */
-	lcm_dcs_write_seq_static(ctx, 0x35, 0x00); /* MIPI_DCS_SET_TEAR_ON, mode 0 */
-
-	/* Default/initial backlight level (bl_tb0[1] holds the level byte). */
-	lcm_dcs_write(ctx, bl_tb0, ARRAY_SIZE(bl_tb0));
-
-	lcm_dcs_write_seq_static(ctx, 0x11, 0x00); /* MIPI_DCS_EXIT_SLEEP_MODE */
-	msleep(120);
-	lcm_dcs_write_seq_static(ctx, 0x29, 0x00); /* MIPI_DCS_SET_DISPLAY_ON */
-	msleep(50);
-}
 
 static int lcm_disable(struct drm_panel *panel)
 {
-	struct lcm *ctx = panel_to_lcm(panel);
-
-	if (!ctx->enabled)
-		return 0;
-
-	if (ctx->backlight) {
-		ctx->backlight->props.power = FB_BLANK_POWERDOWN;
-		backlight_update_status(ctx->backlight);
-	}
-
-	ctx->enabled = false;
-
-	return 0;
+	return mindone_panel_call(panel_to_lcm(panel), PANEL_OP_DISABLE, 0);
 }
 
 /*
@@ -229,66 +327,17 @@ static int lcm_disable(struct drm_panel *panel)
  */
 static int lcm_unprepare(struct drm_panel *panel)
 {
-	struct lcm *ctx = panel_to_lcm(panel);
-
-	if (!ctx->prepared)
-		return 0;
-
-	lcm_dcs_write_seq_static(ctx, 0x28); /* MIPI_DCS_SET_DISPLAY_OFF */
-	msleep(20);
-	lcm_dcs_write_seq_static(ctx, 0x10); /* MIPI_DCS_ENTER_SLEEP_MODE */
-	msleep(120);
-	lcm_dcs_write_seq_static(ctx, 0x4F, 0x01); /* vendor: deep standby / bias off */
-
-	if (ctx->disp_pwm_gpio)
-		gpiod_set_value(ctx->disp_pwm_gpio, 0);
-	if (ctx->avdd_en_gpio)
-		gpiod_set_value(ctx->avdd_en_gpio, 0);
-
-	ctx->error = 0;
-	ctx->prepared = false;
-
-	return 0;
+	return mindone_panel_call(panel_to_lcm(panel), PANEL_OP_UNPREPARE, 0);
 }
 
 static int lcm_prepare(struct drm_panel *panel)
 {
-	struct lcm *ctx = panel_to_lcm(panel);
-	int ret;
-
-	if (ctx->prepared)
-		return 0;
-
-	lcm_panel_init(ctx);
-
-	ret = ctx->error;
-	if (ret < 0)
-		lcm_unprepare(panel);
-
-	ctx->prepared = true;
-
-#if defined(CONFIG_MTK_PANEL_EXT)
-	mtk_panel_tch_rst(panel);
-#endif
-
-	return ret;
+	return mindone_panel_call(panel_to_lcm(panel), PANEL_OP_PREPARE, 0);
 }
 
 static int lcm_enable(struct drm_panel *panel)
 {
-	struct lcm *ctx = panel_to_lcm(panel);
-
-	if (ctx->enabled)
-		return 0;
-
-	if (ctx->backlight) {
-		ctx->backlight->props.power = FB_BLANK_UNBLANK;
-		backlight_update_status(ctx->backlight);
-	}
-
-	ctx->enabled = true;
-
-	return 0;
+	return mindone_panel_call(panel_to_lcm(panel), PANEL_OP_ENABLE, 0);
 }
 
 /*
@@ -385,11 +434,7 @@ static struct mtk_panel_params ext_params = {
 
 static int panel_ext_reset(struct drm_panel *panel, int on)
 {
-	struct lcm *ctx = panel_to_lcm(panel);
-
-	gpiod_set_value(ctx->reset_gpio, on);
-
-	return 0;
+	return mindone_panel_call(panel_to_lcm(panel), PANEL_OP_RESET, on);
 }
 
 /* Reads DCS reg 0x53, always returns 1 in the stock binary (no real
@@ -397,23 +442,15 @@ static int panel_ext_reset(struct drm_panel *panel, int on)
  * where ata_check is a stub). */
 static int panel_ata_check(struct drm_panel *panel)
 {
-	return 1;
+	return mindone_panel_call(panel_to_lcm(panel), PANEL_OP_ATA_CHECK, 0);
 }
 
 static int lcm_setbacklight_cmdq(void *dsi, dcs_write_gce cb, void *handle,
 				  unsigned int level)
 {
-	if (level > 255)
-		level = 255;
+	struct mindone_panel_cmdq command = { dsi, cb, handle };
 
-	bl_tb0[1] = (u8)level;
-
-	if (!cb)
-		return -1;
-
-	cb(dsi, handle, bl_tb0, ARRAY_SIZE(bl_tb0));
-
-	return 0;
+	return mindone_panel_brightness(&command, level);
 }
 
 static struct mtk_panel_funcs ext_funcs = {
@@ -458,6 +495,7 @@ static int lcm_probe(struct mipi_dsi_device *dsi)
 	if (!ctx)
 		return -ENOMEM;
 
+	mutex_init(&ctx->operation_lock);
 	mipi_dsi_set_drvdata(dsi, ctx);
 	ctx->dev = dev;
 
@@ -509,8 +547,7 @@ static int lcm_probe(struct mipi_dsi_device *dsi)
 		return ret;
 	}
 
-	ctx->prepared = true;
-	ctx->enabled = true;
+	mindone_panel_call(ctx, PANEL_OP_BOOT_STATE, 0);
 
 	drm_panel_init(&ctx->panel, dev, &lcm_drm_funcs, DRM_MODE_CONNECTOR_DSI);
 
@@ -525,8 +562,11 @@ static int lcm_probe(struct mipi_dsi_device *dsi)
 #if defined(CONFIG_MTK_PANEL_EXT)
 	mtk_panel_tch_handle_reg(&ctx->panel);
 	ret = mtk_panel_ext_create(dev, &ext_params, &ext_funcs, &ctx->panel);
-	if (ret < 0)
+	if (ret < 0) {
+		mipi_dsi_detach(dsi);
+		drm_panel_remove(&ctx->panel);
 		return ret;
+	}
 #endif
 
 	return ret;
@@ -542,12 +582,14 @@ static void lcm_remove(struct mipi_dsi_device *dsi)
 	struct mtk_panel_ctx *ext_ctx = find_panel_ctx(&ctx->panel);
 #endif
 
+	mutex_lock(&ctx->operation_lock);
 	mipi_dsi_detach(dsi);
 	drm_panel_remove(&ctx->panel);
 #if defined(CONFIG_MTK_PANEL_EXT)
 	mtk_panel_detach(ext_ctx);
 	mtk_panel_remove(ext_ctx);
 #endif
+	mutex_unlock(&ctx->operation_lock);
 }
 
 static const struct of_device_id lcm_of_match[] = {
@@ -566,7 +608,15 @@ static struct mipi_dsi_driver lcm_driver = {
 	},
 };
 
-module_mipi_dsi_driver(lcm_driver);
+int mindone_panel_driver_register(void)
+{
+	return mipi_dsi_driver_register(&lcm_driver);
+}
+
+void mindone_panel_driver_unregister(void)
+{
+	mipi_dsi_driver_unregister(&lcm_driver);
+}
 
 MODULE_AUTHOR("maliejun@agenewtech.com");
 MODULE_DESCRIPTION("hongzan jd9365d VDO LCD Panel Driver");

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0
 /*
  * Copyright (C) 2016 MediaTek Inc.
  *
@@ -371,9 +372,11 @@ INT32 osal_thread_create(P_OSAL_THREAD pThread)
 	if (!pThread)
 		return -1;
 
-	pThread->pThread = kthread_create(pThread->pThreadFunc, pThread->pThreadData, pThread->threadName);
-	if (pThread->pThread == NULL)
+	pThread->pThread = kthread_create(pThread->pThreadFunc, pThread->pThreadData, "%s", pThread->threadName);
+	if (IS_ERR(pThread->pThread)) {
+		pThread->pThread = NULL;
 		return -1;
+	}
 
 	return 0;
 }

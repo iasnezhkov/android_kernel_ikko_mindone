@@ -276,6 +276,9 @@ int mtk_leds_brightness_set(char *name, int level)
 	struct mt_led_data *led_dat;
 	int index;
 
+	if (level < 0)
+		return -EINVAL;
+
 	index = get_desp_index(name);
 	if (index < 0) {
 		pr_notice("can not find leds by led_desp %s", name);
@@ -373,6 +376,9 @@ int setMaxBrightness(char *name, int percent, bool enable)
 {
 	struct mt_led_data *led_dat;
 	int max_l = 0, index = -1, limit_l = 0, cur_l = 0;
+
+	if (percent < 0)
+		return -EINVAL;
 
 	index = get_desp_index(name);
 	if (index < 0) {
@@ -545,7 +551,7 @@ int mt_leds_classdev_register(struct device *parent,
 
 	led_dat->last_brightness = led_dat->conf.cdev.brightness;
 
-	if (led_dat->mtk_conn_id_get(led_dat, 1) >= 0)
+	if (led_dat->mtk_conn_id_get(led_dat, 1) < 0)
 		pr_notice("get connector id failed!");
 
 	mtk_set_hw_brightness(led_dat,
