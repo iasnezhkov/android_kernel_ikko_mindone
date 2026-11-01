@@ -2827,9 +2827,13 @@ static int
 
 #if IS_ENABLED(CONFIG_MTK_MUSB_QMU_SUPPORT)
 	if (mtk_host_qmu_concurrent && qh && qh->is_use_qmu && (ret == 0)) {
-		mtk_kick_CmdQ(musb,
+		ret = mtk_kick_CmdQ(musb,
 			(epd->bEndpointAddress & USB_ENDPOINT_DIR_MASK)
 			? 1:0, qh, urb);
+		if (ret) {
+			usb_hcd_unlink_urb_from_ep(hcd, urb);
+			urb->hcpriv = NULL;
+		}
 		spin_unlock_irqrestore(&musb->lock, flags);
 		return ret;
 	}

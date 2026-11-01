@@ -118,6 +118,10 @@ Recent source work includes:
   address to `0x0c` before the first transfer; a register-address write expects one
   byte. The unused `subaf`, `sub2af`, `main2af` and `main3af` wrappers are no longer
   selected or loaded; their DDK definitions remain buildable.
+- Storage and USB host: while the UFS clock is scaled up to 192 MHz a helper bound to the
+  UFS host holds a 650 mV Vcore floor through the DVFSRC regulator. MUSB QMU host transfers
+  flush the TX FIFO correctly, mark every ISO frame on errors, program the high-bandwidth
+  multiplier on TX and return a full GPD ring to usbcore instead of stranding the URB.
 - Power and safety: panel, charger and UFS controllers use C and standard kernel APIs;
   DT zones and Mali devfreq replace the private thermal adapter. Charger USB-current
   policy, a read-only current-command node and driver hardening remain. The status-carrying

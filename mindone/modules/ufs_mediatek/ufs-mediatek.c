@@ -2338,9 +2338,127 @@ static struct platform_driver ufs_mtk_pltform = {
 	},
 };
 
+struct ufs_mtk_vcore_binding {
+	struct ufs_hba *hba;
+	struct device *ufs_dev;
+};
+
+static int ufs_mtk_vcore_probe(struct platform_device *pdev)
+{
+	struct device *dev = &pdev->dev;
+	struct ufs_mtk_vcore_binding *binding;
+	struct platform_device *ufs_pdev;
+	struct device_node *ufs_np;
+	struct ufs_mtk_host *host;
+	struct regulator *reg;
+	struct ufs_hba *hba;
+	u32 volt;
+	int ret = 0;
+
+	if (of_property_read_u32(dev->of_node, "mindone,floor-microvolt", &volt) || !volt)
+		return dev_err_probe(dev, -EINVAL, "mindone,floor-microvolt missing\n");
+	reg = devm_regulator_get(dev, "dvfsrc-vcore");
+	if (IS_ERR(reg))
+		return dev_err_probe(dev, PTR_ERR(reg), "dvfsrc-vcore\n");
+	binding = devm_kzalloc(dev, sizeof(*binding), GFP_KERNEL);
+	if (!binding)
+		return -ENOMEM;
+
+	ufs_np = of_parse_phandle(dev->of_node, "mindone,ufs", 0);
+	if (!ufs_np)
+		return dev_err_probe(dev, -EINVAL, "mindone,ufs missing\n");
+	ufs_pdev = of_find_device_by_node(ufs_np);
+	of_node_put(ufs_np);
+	if (!ufs_pdev)
+		return -EPROBE_DEFER;
+	if (!device_is_bound(&ufs_pdev->dev)) {
+		put_device(&ufs_pdev->dev);
+		return -EPROBE_DEFER;
+	}
+	hba = platform_get_drvdata(ufs_pdev);
+	if (!hba || !hba->priv) {
+		put_device(&ufs_pdev->dev);
+		return -EPROBE_DEFER;
+	}
+	host = ufshcd_get_variant(hba);
+	if (!device_link_add(dev, &ufs_pdev->dev, DL_FLAG_AUTOREMOVE_CONSUMER)) {
+		put_device(&ufs_pdev->dev);
+		return dev_err_probe(dev, -EINVAL, "device link to UFS\n");
+	}
+
+	ret = regulator_set_voltage(reg, volt, INT_MAX);
+	if (ret) {
+		put_device(&ufs_pdev->dev);
+		return dev_err_probe(dev, ret, "initial vcore floor\n");
+	}
+	down_write(&hba->clk_scaling_lock);
+	if (host->mclk.reg_vcore) {
+		ret = -EBUSY;
+	} else {
+		host->mclk.reg_vcore = reg;
+		host->mclk.vcore_volt = volt;
+	}
+	up_write(&hba->clk_scaling_lock);
+	if (ret) {
+		regulator_set_voltage(reg, 0, INT_MAX);
+		put_device(&ufs_pdev->dev);
+		return dev_err_probe(dev, ret, "bind vcore to UFS clock scaling\n");
+	}
+
+	binding->hba = hba;
+	binding->ufs_dev = &ufs_pdev->dev;
+	platform_set_drvdata(pdev, binding);
+	dev_info(dev, "UFS clock scale-up holds vcore >= %u uV, held until the next scale-down (now %s)\n",
+		 volt, host->clk_scale_up ? "up" : "down");
+	return 0;
+}
+
+static void ufs_mtk_vcore_remove(struct platform_device *pdev)
+{
+	struct ufs_mtk_vcore_binding *binding = platform_get_drvdata(pdev);
+	struct ufs_hba *hba = binding->hba;
+	struct ufs_mtk_host *host = ufshcd_get_variant(hba);
+
+	down_write(&hba->clk_scaling_lock);
+	host->mclk.reg_vcore = NULL;
+	host->mclk.vcore_volt = 0;
+	up_write(&hba->clk_scaling_lock);
+	put_device(binding->ufs_dev);
+}
+
+static const struct of_device_id ufs_mtk_vcore_of_match[] = {
+	{ .compatible = "mindone,ufs-vcore" },
+	{ }
+};
+MODULE_DEVICE_TABLE(of, ufs_mtk_vcore_of_match);
+
+static struct platform_driver ufs_mtk_vcore_driver = {
+	.probe = ufs_mtk_vcore_probe,
+	.remove_new = ufs_mtk_vcore_remove,
+	.driver = {
+		.name = "ufs-mtk-vcore",
+		.of_match_table = ufs_mtk_vcore_of_match,
+	},
+};
+
+static struct platform_driver * const ufs_mtk_drivers[] = {
+	&ufs_mtk_pltform,
+	&ufs_mtk_vcore_driver,
+};
+
+static int __init ufs_mtk_module_init(void)
+{
+	return platform_register_drivers(ufs_mtk_drivers, ARRAY_SIZE(ufs_mtk_drivers));
+}
+module_init(ufs_mtk_module_init);
+
+static void __exit ufs_mtk_module_exit(void)
+{
+	platform_unregister_drivers(ufs_mtk_drivers, ARRAY_SIZE(ufs_mtk_drivers));
+}
+module_exit(ufs_mtk_module_exit);
+
 MODULE_AUTHOR("Stanley Chu <stanley.chu@mediatek.com>");
 MODULE_AUTHOR("Peter Wang <peter.wang@mediatek.com>");
 MODULE_DESCRIPTION("MediaTek UFS Host Driver");
 MODULE_LICENSE("GPL v2");
-
-module_platform_driver(ufs_mtk_pltform);

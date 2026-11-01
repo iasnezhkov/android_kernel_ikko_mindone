@@ -1248,7 +1248,7 @@ void flush_ep_csr(struct musb *musb, u8 ep_num, u8 isRx)
 		wCsr = csr | MUSB_TXCSR_FLUSHFIFO | MUSB_TXCSR_TXPKTRDY;
 		musb_writew(epio, MUSB_TXCSR, wCsr);
 
-		csr |= MUSB_TXCSR_FLUSHFIFO & ~MUSB_TXCSR_TXPKTRDY;
+		csr = (csr | MUSB_TXCSR_FLUSHFIFO) & ~MUSB_TXCSR_TXPKTRDY;
 		musb_writew(epio, MUSB_TXCSR, csr);
 		musb_writew(epio, MUSB_TXCSR, csr | MUSB_TXCSR_CLRDATATOG);
 		/* CC: why is this special? */
@@ -1812,7 +1812,7 @@ static void flush_urb_status(struct musb_qh *qh, struct urb *urb)
 		int index;
 
 		for (index = 0; index < urb->number_of_packets; index++) {
-			d = urb->iso_frame_desc + qh->iso_idx;
+			d = urb->iso_frame_desc + index;
 			d->actual_length = 0;
 			d->status = -EXDEV;
 		}

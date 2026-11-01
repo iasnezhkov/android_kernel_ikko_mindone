@@ -83,4 +83,11 @@
 		req-vcore = <0x9eb10>;
 	};
 
+	ufs_vcore: mindone-ufs-vcore {
+		compatible = "mindone,ufs-vcore";
+		dvfsrc-vcore-supply = <&dvfsrc_vcore>;
+		mindone,ufs = <&ufshci>;
+		mindone,floor-microvolt = <650000>;
+	};
+
 };

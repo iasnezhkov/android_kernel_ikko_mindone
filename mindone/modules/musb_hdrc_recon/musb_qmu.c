@@ -563,7 +563,8 @@ int mtk_kick_CmdQ(struct musb *musb,
 			intr_e = intr_e & (~(1<<(hw_ep->epnum)));
 			musb_writew(musb->mregs, MUSB_INTRRXE, intr_e);
 		} else {
-			musb_writew(epio, MUSB_TXMAXP, qh->maxpacket);
+			musb_writew(epio, MUSB_TXMAXP, qh->maxpacket |
+				((qh->hb_mult ? qh->hb_mult - 1 : 0) << 11));
 			musb_writew(epio, MUSB_TXCSR, MUSB_TXCSR_DMAENAB);
 			/*CC: speed?*/
 			musb_writeb(epio, MUSB_TXTYPE,
