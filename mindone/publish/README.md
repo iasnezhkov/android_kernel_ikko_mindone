@@ -29,7 +29,8 @@ Kleaf DDK        out-of-tree device drivers
 external imports Google's gki/aarch64/symbols/* lists
 ```
 
-The companion ROM targets **LineageOS 23.2 / Android 16**, **FCM 202504** and a
+The companion ROM targets **LineageOS 24.0 / Android 17** on its default `lineage-24.0`
+branch and LineageOS 23.2 / Android 16 on `lineage-23.2`, with **FCM 202504** and a
 **64-bit-only** product. Its Android HAL interfaces are AIDL; some frontends still
 use proprietary legacy backends and vendor-specific HIDL interfaces.
 
@@ -85,8 +86,9 @@ its LineageOS package. Follow that repository's flashing guide for signing,
 Virtual A/B installation and restoration.
 
 Deliver the paired `boot`, `vendor_boot`, `vendor_dlkm`, `system_dlkm` and DTBO
-with donor userspace inside a full signed ROM. Preserve the measured target TEE contents and partition size; the two
-slots' TEE sizes differ. The former partial-update recipe does not cover this set.
+with donor userspace inside a full signed ROM. The package also carries the stock firmware
+images the device repository extracts; the two TEE partitions differ in size, so a TEE
+image must fit the smaller one. A kernel-only partial update cannot carry this set.
 
 Keep a tested signed known-good package and stock partition-table/firmware backup.
 Before snapshot merge, a failed candidate may fall back to the retained successful
@@ -133,9 +135,8 @@ These source changes require matching userspace.
 
 ## 🖥 Hardware
 
-Earlier project documentation records boot, cellular service, Wi-Fi, Bluetooth, NFC,
-audio, camera, hardware video, fingerprint, USB, charging, suspend/resume and the
-96 Hz display with previous combined builds.
+The set drives the cellular modem, Wi-Fi, Bluetooth, NFC, audio, the cameras, hardware
+video, fingerprint, USB host and gadget, charging, suspend/resume and the 96 Hz display.
 
 The panel driver reports its physical size (67.06 x 77.00 mm) and offers a
 VFP-only 60 Hz mode beside the 96 Hz default.
@@ -148,9 +149,8 @@ The RXFILTER implementation requires the reviewed
 Use the companion device repository's proprietary-file guide for extraction, firmware source
 tooling and receipt checks. An arbitrary same-named firmware file is insufficient.
 
-The prior documentation records multicast allow/block/restore and unicast controls
-on hardware for the reviewed pairing. APF v4 with a 2048-byte program limit is enabled
-in source.
+With that firmware, suspend-time multicast filtering supports allow, block and restore
+policies alongside unicast controls. APF v4 is enabled with a 2048-byte program limit.
 
 ## 📚 Documentation
 

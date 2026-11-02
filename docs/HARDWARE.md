@@ -10,8 +10,8 @@ Linux 5.10 (the `android12-5.10` line, on Android 15); this tree is 6.12.
 
 ## What works
 
-Earlier builds booted to `boot_completed` in ~21 s and demonstrated audio, calls, data,
-Wi-Fi, Bluetooth, NFC, camera, fingerprint, USB, charging and suspend/resume.
+With the companion ROM: audio, calls, mobile data, Wi-Fi, Bluetooth, NFC, camera,
+fingerprint, USB, charging and suspend/resume.
 
 **Camera.** Both logical cameras of the flip module; the main IMX766 sensor's full 4096×3072
 mode, brought up faster through burst I2C writes and chunked EEPROM calibration reads.
@@ -19,8 +19,8 @@ mode, brought up faster through burst I2C writes and chunked EEPROM calibration 
 **Wi-Fi.** The IPv6-only allocation bug is fixed; address/mask pairs use the correct IPv4
 stride, and IPv6 changes while suspended schedule offload refresh. The framework alone
 owns firmware suspend policy; no per-cycle PM notifier rewrites it. Independent IPv4/IPv6 multicast RXFILTER policy
-is supported during suspend with the matching reviewed firmware; the accepted pair passed
-allow/block/restore and unicast controls. APF v4 is enabled with a 2048-byte program limit. See the
+is supported during suspend with the matching reviewed firmware, with allow/block/restore
+and unicast controls. APF v4 is enabled with a 2048-byte program limit. See the
 [firmware pairing requirements](../README.md#wi-fi-firmware-pairing) and the
 companion device repository's proprietary-file guide.
 

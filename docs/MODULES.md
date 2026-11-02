@@ -11,8 +11,7 @@ The normal boot load lists contain 262 modules:
 `mindone/BUILD.bazel`; three are not in those lists. The base is Google's
 `android16-6.12-2026-09_r10` prebuilt, CI 16736897.
 
-Mali kbase is **r54p1** in the M28 and later sets; earlier sets used r32p1.
-The `mali_kbase_mt6789` target now builds `mali_kbase_r54/`.
+Mali kbase is **r54p1**: the `mali_kbase_mt6789` target builds `mali_kbase_r54/`.
 CPU capacity information comes from `mtk_cpu_capacity`; `sugov_ext` is removed.
 Pair this set with a ROM that selects the standard `schedutil` governor.
 
