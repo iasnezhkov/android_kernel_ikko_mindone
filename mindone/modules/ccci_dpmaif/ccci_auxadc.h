@@ -1,0 +1,1 @@
+../ccci_ccif/ccci_auxadc.h

@@ -1,0 +1,1 @@
+../board_temp/soc_temp.h

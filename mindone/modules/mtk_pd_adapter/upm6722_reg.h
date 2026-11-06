@@ -1,0 +1,1 @@
+../mtk_charger_algorithm_class/upm6722_reg.h

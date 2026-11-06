@@ -1,0 +1,1 @@
+../mtk_charger_algorithm_class/mtk_battery_table.h

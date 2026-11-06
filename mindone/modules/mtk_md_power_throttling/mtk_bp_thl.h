@@ -1,0 +1,1 @@
+../mtk_battery_oc_throttling/mtk_bp_thl.h

@@ -1,0 +1,1 @@
+../include/drivers/misc/mediatek/scp/include/scp_rv.h

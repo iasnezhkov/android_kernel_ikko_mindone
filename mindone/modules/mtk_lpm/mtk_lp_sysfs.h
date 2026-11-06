@@ -1,0 +1,1 @@
+../include/drivers/misc/mediatek/lpm/mtk_lpm_fs/mtk_lp_sysfs.h

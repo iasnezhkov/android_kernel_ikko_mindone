@@ -1,0 +1,1 @@
+../cmdq_platform_mt6789/cmdq_sec_mtee.h

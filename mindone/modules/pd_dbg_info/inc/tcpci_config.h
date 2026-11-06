@@ -1,0 +1,1 @@
+../../include/drivers/misc/mediatek/typec/tcpc/inc/tcpci_config.h

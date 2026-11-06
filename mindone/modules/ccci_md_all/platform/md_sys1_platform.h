@@ -1,0 +1,1 @@
+../../include/drivers/misc/mediatek/eccci/platform/md_sys1_platform.h

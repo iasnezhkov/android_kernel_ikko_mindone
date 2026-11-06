@@ -1,0 +1,1 @@
+../mtk_vcodec_common_v2/venc_vcu_if.h

@@ -1,0 +1,1 @@
+../mtk_charger_algorithm_class/bq25980_charger.h

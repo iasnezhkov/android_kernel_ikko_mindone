@@ -1,0 +1,1 @@
+../mtk_charger_algorithm_class/sc89601a_reg.h

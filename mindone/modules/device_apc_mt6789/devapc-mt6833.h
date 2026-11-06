@@ -1,0 +1,1 @@
+../device_apc_common/devapc-mt6833.h

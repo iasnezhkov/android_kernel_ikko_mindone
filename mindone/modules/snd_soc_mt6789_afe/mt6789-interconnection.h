@@ -1,0 +1,1 @@
+../mt6789_mt6366/mt6789-interconnection.h

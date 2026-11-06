@@ -1,0 +1,1 @@
+../include/drivers/misc/mediatek/mtk-interconnect/mtk-interconnect-provider.h

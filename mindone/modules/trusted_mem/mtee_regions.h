@@ -1,0 +1,1 @@
+../include/drivers/misc/mediatek/trusted_mem/public/mtee_regions.h

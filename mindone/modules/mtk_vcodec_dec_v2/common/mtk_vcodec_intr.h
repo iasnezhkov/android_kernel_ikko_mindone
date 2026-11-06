@@ -1,0 +1,1 @@
+../mtk_vcodec_intr.h

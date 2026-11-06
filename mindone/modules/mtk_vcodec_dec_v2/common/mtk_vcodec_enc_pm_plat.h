@@ -1,0 +1,1 @@
+../mtk_vcodec_enc_pm_plat.h

@@ -1,0 +1,1 @@
+../../include/include/linux/soc/mediatek/devapc_public.h

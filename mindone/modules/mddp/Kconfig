@@ -1,0 +1,7 @@
+# SPDX-License-Identifier: GPL-2.0
+# SPDX-FileCopyrightText: 2026 The LineageOS Project
+config MTK_MDDP_SUPPORT
+	tristate "MediaTek modem direct path"
+	depends on NET && INET && IPV6 && NETFILTER
+	help
+	  Provides the MediaTek modem direct path control device.

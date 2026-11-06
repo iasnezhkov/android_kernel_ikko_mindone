@@ -1,0 +1,10 @@
+/* SPDX-License-Identifier: GPL-2.0 */
+#ifndef _MTK_DDK_DEFINE_H_
+#define _MTK_DDK_DEFINE_H_
+
+#if IS_ENABLED(CONFIG_MTK_GPU_COMMON_DVFS_SUPPORT)
+#define CONFIG_MALI_MTK_DVFS_POLICY 1
+#define CONFIG_MALI_MTK_DVFS_LOADING_MODE 1
+#endif
+
+#endif

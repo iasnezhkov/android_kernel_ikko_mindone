@@ -1,0 +1,1 @@
+../include/sound/soc/mediatek/ultrasound/ultra_common/mtk-scp-ultra.h

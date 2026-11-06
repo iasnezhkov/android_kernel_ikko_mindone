@@ -1,0 +1,1 @@
+../include/drivers/misc/mediatek/trusted_mem/public/trusted_mem_api.h

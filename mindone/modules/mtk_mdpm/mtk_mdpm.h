@@ -1,0 +1,1 @@
+../include/drivers/misc/mediatek/mdpm/mtk_mdpm.h

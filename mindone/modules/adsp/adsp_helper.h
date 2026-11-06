@@ -1,0 +1,1 @@
+../include/drivers/misc/mediatek/adsp/include/adsp_helper.h

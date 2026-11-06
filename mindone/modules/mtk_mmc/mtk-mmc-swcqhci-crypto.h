@@ -1,0 +1,1 @@
+../cqhci/mtk-mmc-swcqhci-crypto.h

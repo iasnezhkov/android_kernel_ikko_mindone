@@ -1,0 +1,1 @@
+../../../../include/drivers/misc/mediatek/connectivity/common/common_main/platform/include/mtk_wcn_consys_hw.h

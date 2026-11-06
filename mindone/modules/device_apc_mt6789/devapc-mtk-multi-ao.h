@@ -1,0 +1,1 @@
+../device_apc_common/devapc-mtk-multi-ao.h

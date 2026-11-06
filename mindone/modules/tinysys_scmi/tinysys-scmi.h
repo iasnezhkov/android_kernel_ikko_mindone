@@ -1,0 +1,1 @@
+../include/drivers/misc/mediatek/tinysys_scmi/tinysys-scmi.h

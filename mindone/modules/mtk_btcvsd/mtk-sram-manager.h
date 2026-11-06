@@ -1,0 +1,1 @@
+../include/sound/soc/mediatek/common/mtk-sram-manager.h

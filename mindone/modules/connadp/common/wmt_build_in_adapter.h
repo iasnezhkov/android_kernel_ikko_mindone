@@ -1,0 +1,1 @@
+../../include/drivers/misc/mediatek/connectivity/common/wmt_build_in_adapter.h

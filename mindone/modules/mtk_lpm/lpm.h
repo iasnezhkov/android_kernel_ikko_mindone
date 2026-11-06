@@ -1,0 +1,1 @@
+../include/drivers/misc/mediatek/lpm/inc/lpm.h

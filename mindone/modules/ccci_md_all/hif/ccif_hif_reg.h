@@ -1,0 +1,1 @@
+../../include/drivers/misc/mediatek/eccci/hif/ccif_hif_reg.h

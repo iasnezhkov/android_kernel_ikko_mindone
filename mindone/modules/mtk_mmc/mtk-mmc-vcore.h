@@ -1,0 +1,1 @@
+../cqhci/mtk-mmc-vcore.h

@@ -1,0 +1,1 @@
+../include/drivers/misc/mediatek/audio_ipi/include/audio_speech_msg_id.h

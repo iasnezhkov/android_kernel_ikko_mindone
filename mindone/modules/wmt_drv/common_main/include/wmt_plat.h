@@ -1,0 +1,1 @@
+../../../include/drivers/misc/mediatek/connectivity/common/common_main/include/wmt_plat.h

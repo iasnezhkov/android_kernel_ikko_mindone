@@ -1,0 +1,111 @@
+// SPDX-License-Identifier: (GPL-2.0 OR MIT)
+/* MT6789 infra blocks - split out of the soc node by tools/scripts/dts-socsplit.py */
+
+&soc {
+	bus_parity {
+		compatible = "mediatek,bus-parity";
+		reg = <0x00 0xc538800 0x00 0x20 0x00 0xc538820 0x00 0x20 0x00 0xc538840 0x00 0x20 0x00 0xc538860 0x00 0x40 0x00 0xc5388a0 0x00 0x30 0x00 0xc5388d0 0x00 0x30 0x00 0x10270600 0x00 0x14 0x00 0x10270620 0x00 0x14 0x00 0x1030e600 0x00 0x14 0x00 0x1030e620 0x00 0x14 0x00 0x100017a8 0x00 0x14 0x00 0x100017bc 0x00 0x08 0x00 0xc53a39c 0x00 0x04>;
+		interrupts = <GIC_SPI 31 IRQ_TYPE_LEVEL_HIGH 0 GIC_SPI 209 IRQ_TYPE_LEVEL_HIGH 0>;
+		interrupt-names = "mcu-bus-parity", "infra-bus-parity";
+		mcu-names = "MST_CCI_M0", "MST_CCI_M1", "MST_INTAXI_", "SLV_1TO2", "SLV_L3C", "SLV_GIC";
+		infra-names = "MCU2EMI_M0", "MCU2EMI_M1", "MCU2SUBEMI_M0", "MCU2SUBEMI_M1", "MCU2IFR", "IFR_L3C2MCU";
+		mcu-types = <0x00 0x00 0x00 0x01 0x01 0x01>;
+		infra-types = <0x02 0x02 0x02 0x02 0x01 0x00>;
+		mcu-data-len = <0x04 0x04 0x02 0x04 0x02 0x02>;
+	};
+
+	topckgen@10000000 {
+		compatible = "mediatek,topckgen";
+		reg = <0x00 0x10000000 0x00 0x1000>;
+	};
+
+	infracfg_ao: infracfg_ao@10001000 {
+		compatible = "mediatek,infracfg_ao", "syscon";
+		reg = <0x00 0x10001000 0x00 0x1000>;
+	};
+
+	infracfg_ao_mem@10002000 {
+		compatible = "mediatek,infracfg_ao_mem";
+		reg = <0x00 0x10002000 0x00 0x1000>;
+	};
+
+	pericfg: pericfg@10003000 {
+		compatible = "mediatek,pericfg", "syscon";
+		reg = <0x00 0x10003000 0x00 0x1000>;
+	};
+
+	apmixed@1000c000 {
+		compatible = "mediatek,apmixed";
+		reg = <0x00 0x1000c000 0x00 0xe00>;
+	};
+
+	clock_buffer_ctrl: clock_buffer_ctrl {
+		compatible = "mediatek,clock_buffer_ctrl";
+		mediatek,xo-buf-hwbblpm-mask = <0x01 0x00 0x00 0x00 0x00 0x00 0x00>;
+		mediatek,xo-buf-hwbblpm-bypass = <0x00 0x00 0x00 0x00 0x00 0x00 0x00>;
+		pmif = <0x55 0x00>;
+		mediatek,enable;
+	};
+
+	topmisc@10011000 {
+		compatible = "mediatek,topmisc";
+		reg = <0x00 0x10011000 0x00 0x1000>;
+	};
+
+	ap_ccif0@10209000 {
+		compatible = "mediatek,ap_ccif0";
+		reg = <0x00 0x10209000 0x00 0x1000>;
+	};
+
+	ap_ccif1@1020b000 {
+		compatible = "mediatek,ap_ccif1";
+		reg = <0x00 0x1020b000 0x00 0x1000>;
+	};
+
+	ap_ccif2@1023c000 {
+		compatible = "mediatek,ap_ccif2";
+		reg = <0x00 0x1023c000 0x00 0x1000>;
+	};
+
+	topckgen_ao@1001b000 {
+		compatible = "mediatek,topckgen_ao";
+		reg = <0x00 0x1001b000 0x00 0x1000>;
+	};
+
+	bus_dbg@10208000 {
+		compatible = "mediatek,bus_dbg";
+		reg = <0x00 0x10208000 0x00 0x1000>;
+	};
+
+	infracfg@1020e000 {
+		compatible = "mediatek,infracfg";
+		reg = <0x00 0x1020e000 0x00 0x1000>;
+	};
+
+	infra_bcrm@10215000 {
+		compatible = "mediatek,infra_bcrm";
+		reg = <0x00 0x10215000 0x00 0x1000>;
+	};
+
+	infracfg_mem@1021c000 {
+		compatible = "mediatek,infracfg_mem";
+		reg = <0x00 0x1021c000 0x00 0x1000>;
+	};
+
+	ap_ccif3@1023e000 {
+		compatible = "mediatek,ap_ccif3";
+		reg = <0x00 0x1023e000 0x00 0x1000>;
+		interrupts = <GIC_SPI 231 IRQ_TYPE_LEVEL_HIGH 0>;
+	};
+
+	ap_ccif4@1024c000 {
+		compatible = "mediatek,ap_ccif4";
+		reg = <0x00 0x1024c000 0x00 0x1000>;
+	};
+
+	ap_ccif5@1025c000 {
+		compatible = "mediatek,ap_ccif5";
+		reg = <0x00 0x1025c000 0x00 0x1000>;
+	};
+
+};

@@ -1,0 +1,1 @@
+../../include/drivers/tee/tkcore/include/linux/tee_clkmgr.h

@@ -1,0 +1,1 @@
+../include/drivers/misc/mediatek/swpm/inc/swpm_module_ext.h

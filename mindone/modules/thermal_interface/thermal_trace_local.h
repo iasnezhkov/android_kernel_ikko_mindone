@@ -1,0 +1,1 @@
+../board_temp/thermal_trace_local.h

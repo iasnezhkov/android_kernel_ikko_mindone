@@ -1,0 +1,1 @@
+../include/drivers/misc/mediatek/scp/rv/scp_ipi_pin.h

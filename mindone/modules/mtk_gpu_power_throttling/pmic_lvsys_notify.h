@@ -1,0 +1,1 @@
+../mtk_battery_oc_throttling/pmic_lvsys_notify.h

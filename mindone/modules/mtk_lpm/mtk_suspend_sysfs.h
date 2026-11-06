@@ -1,0 +1,1 @@
+../include/drivers/misc/mediatek/lpm/mtk_lpm_fs/mtk_suspend_sysfs.h

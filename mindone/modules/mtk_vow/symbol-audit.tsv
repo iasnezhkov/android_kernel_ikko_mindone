@@ -1,0 +1,86 @@
+source token / reference	provider target / classification	resolved external symbol	evidence (kernel repository relative)
+is_scp_ready	:scp	is_scp_ready	mindone/modules/scp/scp_helper.c:774
+mtk_ipi_send	:mtk_tinysys_ipi	mtk_ipi_send	mindone/modules/mtk_tinysys_ipi/mtk_tinysys_ipi.c:407
+register_afe_allocate_mem_notifier	:mtk_afe_external	register_afe_allocate_mem_notifier	mindone/modules/mtk_afe_external/mtk_afe_external.c:21
+register_vow_ipi_send_notifier	:mtk_afe_external	register_vow_ipi_send_notifier	mindone/modules/mtk_afe_external/mtk_afe_external.c:65
+scp_A_register_notify	:scp	scp_A_register_notify	mindone/modules/scp/scp_helper.c:492
+scp_deregister_feature	:scp	scp_deregister_feature	mindone/modules/scp/scp_helper.c:1645
+scp_get_reserve_mem_phys	:scp	scp_get_reserve_mem_phys	mindone/modules/scp/scp_helper.c:1364
+scp_get_reserve_mem_size	:scp	scp_get_reserve_mem_size	mindone/modules/scp/scp_helper.c:1384
+scp_get_reserve_mem_virt	:scp	scp_get_reserve_mem_virt	mindone/modules/scp/scp_helper.c:1374
+scp_ipidev	:scp	scp_ipidev	mindone/modules/scp/scp_ipi_table.h:87
+scp_register_feature	:scp	scp_register_feature	mindone/modules/scp/scp_helper.c:1639
+ARRAY_SIZE	macro/inline	-	constant, type, declaration or inline instruction; no direct external call
+BIT	macro/inline	-	constant, type, declaration or inline instruction; no direct external call
+DECLARE_WAIT_QUEUE_HEAD	macro/inline	-	constant, type, declaration or inline instruction; no direct external call
+DECLARE_WORK	macro/inline	-	constant, type, declaration or inline instruction; no direct external call
+DEFINE_MUTEX	macro/inline	-	constant, type, declaration or inline instruction; no direct external call
+DEFINE_SPINLOCK	macro/inline	-	constant, type, declaration or inline instruction; no direct external call
+EXPORT_SYMBOL_GPL	macro/inline	-	constant, type, declaration or inline instruction; no direct external call
+MODULE_AUTHOR	macro/inline	-	constant, type, declaration or inline instruction; no direct external call
+MODULE_DESCRIPTION	macro/inline	-	constant, type, declaration or inline instruction; no direct external call
+MODULE_LICENSE	macro/inline	-	constant, type, declaration or inline instruction; no direct external call
+READ_ONCE	macro/inline	-	constant, type, declaration or inline instruction; no direct external call
+WRITE_ONCE	macro/inline	-	constant, type, declaration or inline instruction; no direct external call
+__pm_relax	Google KMI	__pm_relax	gki/aarch64/symbols/amlogic:1913
+__pm_stay_awake	Google KMI	__pm_stay_awake	gki/aarch64/symbols/amlogic:1930
+__pm_wakeup_event	Google KMI	pm_wakeup_ws_event	include/linux/pm_wakeup.h:206; gki/aarch64/symbols/amlogic:1935
+cancel_work_sync	Google KMI	cancel_work_sync	gki/aarch64/symbols/amlogic:112
+copy_from_user	Google KMI	__arch_copy_from_user	include/linux/uaccess.h:205; arch/arm64/include/asm/uaccess.h:394,462; include/linux/thread_info.h:208,228; gki/aarch64/symbols/amlogic:26
+copy_from_user	Google KMI	__check_object_size	include/linux/uaccess.h:205; arch/arm64/include/asm/uaccess.h:394,462; include/linux/thread_info.h:208,228; gki/aarch64/symbols/amlogic:122
+copy_from_user	Google KMI	__copy_overflow	include/linux/uaccess.h:205; arch/arm64/include/asm/uaccess.h:394,462; include/linux/thread_info.h:208,228; gki/aarch64/symbols/amlogic:216
+copy_to_user	Google KMI	__arch_copy_to_user	include/linux/uaccess.h:217; arch/arm64/include/asm/uaccess.h:405,461; include/linux/thread_info.h:208,228; gki/aarch64/symbols/amlogic:27
+copy_to_user	Google KMI	__check_object_size	include/linux/uaccess.h:217; arch/arm64/include/asm/uaccess.h:405,461; include/linux/thread_info.h:208,228; gki/aarch64/symbols/amlogic:122
+copy_to_user	Google KMI	__copy_overflow	include/linux/uaccess.h:217; arch/arm64/include/asm/uaccess.h:405,461; include/linux/thread_info.h:208,228; gki/aarch64/symbols/amlogic:216
+dev_err	Google KMI	_dev_err	include/linux/dev_printk.h:153; gki/aarch64/symbols/amlogic:337
+devm_kzalloc	Google KMI	devm_kmalloc	include/linux/device/devres.h:50; gki/aarch64/symbols/amlogic:427
+disable_irq	Google KMI	disable_irq	gki/aarch64/symbols/amlogic:517
+enable_irq	Google KMI	enable_irq	gki/aarch64/symbols/amlogic:872
+kfree	Google KMI	kfree	gki/aarch64/symbols/amlogic:1348
+kmalloc	Google KMI	__kmalloc_noprof	include/linux/slab.h:873; include/linux/alloc_tag.h:116,238; gki/aarch64/symbols/amlogic:1362
+kmalloc	Google KMI	__kmalloc_large_noprof	include/linux/slab.h:873; include/linux/alloc_tag.h:116,238; gki/aarch64/symbols/amlogic:1360
+kmalloc	Google KMI	__kmalloc_cache_noprof	include/linux/slab.h:873; include/linux/alloc_tag.h:116,238; gki/aarch64/symbols/amlogic:1358
+kmalloc	Google KMI	kmalloc_caches	include/linux/slab.h:873; include/linux/alloc_tag.h:116,238; gki/aarch64/symbols/amlogic:1359
+kmalloc	Google KMI	mem_alloc_profiling_key	include/linux/slab.h:873; include/linux/alloc_tag.h:116,238; gki/aarch64/symbols/amlogic:1494
+memcpy	Google KMI	memcpy	gki/aarch64/symbols/amlogic:1497
+memset	Google KMI	memset	gki/aarch64/symbols/amlogic:1508
+min_t	macro/inline	-	constant, type, declaration or inline instruction; no direct external call
+misc_deregister	Google KMI	misc_deregister	gki/aarch64/symbols/amlogic:1514
+misc_register	Google KMI	misc_register	gki/aarch64/symbols/amlogic:1515
+module_init	macro/inline	-	constant, type, declaration or inline instruction; no direct external call
+msecs_to_jiffies	Google KMI	__msecs_to_jiffies	include/linux/jiffies.h:518 (constant arguments fold inline); gki/aarch64/symbols/amlogic:1554
+msleep	Google KMI	msleep	gki/aarch64/symbols/amlogic:1555
+msleep_interruptible	Google KMI	msleep_interruptible	gki/aarch64/symbols/amlogic:1556
+mutex_lock	Google KMI	mutex_lock	gki/aarch64/symbols/amlogic:1560
+mutex_unlock	Google KMI	mutex_unlock	gki/aarch64/symbols/amlogic:1563
+of_find_compatible_node	Google KMI	of_find_compatible_node	gki/aarch64/symbols/amlogic:1658
+of_find_device_by_node	Google KMI	of_find_device_by_node	gki/aarch64/symbols/amlogic:1659
+of_node_put	macro/inline	-	include/linux/of.h:124-136: inline no-op with CONFIG_OF_DYNAMIC=n; neither configured nor selected by current gki_defconfig/mindone.fragment; recheck exact build config
+offsetof	macro/inline	-	constant, type, declaration or inline instruction; no direct external call
+put_device	Google KMI	put_device	gki/aarch64/symbols/amlogic:1972
+schedule_work	Google KMI	queue_work_on	include/linux/workqueue.h:667,729; gki/aarch64/symbols/amlogic:1984
+schedule_work	Google KMI	system_wq	include/linux/workqueue.h:667,729; gki/aarch64/symbols/amlogic:2497
+spin_lock_irqsave	Google KMI	_raw_spin_lock_irqsave	include/linux/spinlock.h:241,379; gki/aarch64/symbols/amlogic:2002
+spin_unlock_irqrestore	Google KMI	_raw_spin_unlock_irqrestore	include/linux/spinlock.h:279,404; gki/aarch64/symbols/amlogic:2007
+static_assert	macro/inline	-	constant, type, declaration or inline instruction; no direct external call
+upper_32_bits	macro/inline	-	constant, type, declaration or inline instruction; no direct external call
+wait_event_interruptible	Google KMI	init_wait_entry	include/linux/wait.h:301,496; gki/aarch64/symbols/amlogic:1228
+wait_event_interruptible	Google KMI	prepare_to_wait_event	include/linux/wait.h:301,496; gki/aarch64/symbols/amlogic:1946
+wait_event_interruptible	Google KMI	finish_wait	include/linux/wait.h:301,496; gki/aarch64/symbols/amlogic:920
+wait_event_interruptible	Google KMI	schedule	include/linux/wait.h:301,496; gki/aarch64/symbols/amlogic:2145
+wait_event_interruptible_timeout	Google KMI	init_wait_entry	include/linux/wait.h:301,530; gki/aarch64/symbols/amlogic:1228
+wait_event_interruptible_timeout	Google KMI	prepare_to_wait_event	include/linux/wait.h:301,530; gki/aarch64/symbols/amlogic:1946
+wait_event_interruptible_timeout	Google KMI	finish_wait	include/linux/wait.h:301,530; gki/aarch64/symbols/amlogic:920
+wait_event_interruptible_timeout	Google KMI	schedule_timeout	include/linux/wait.h:301,530; gki/aarch64/symbols/amlogic:2146
+wait_event_timeout	Google KMI	init_wait_entry	include/linux/wait.h:301,412; gki/aarch64/symbols/amlogic:1228
+wait_event_timeout	Google KMI	prepare_to_wait_event	include/linux/wait.h:301,412; gki/aarch64/symbols/amlogic:1946
+wait_event_timeout	Google KMI	finish_wait	include/linux/wait.h:301,412; gki/aarch64/symbols/amlogic:920
+wait_event_timeout	Google KMI	schedule_timeout	include/linux/wait.h:301,412; gki/aarch64/symbols/amlogic:2146
+wake_up	Google KMI	__wake_up	include/linux/wait.h:219; gki/aarch64/symbols/amlogic:2995
+wake_up_interruptible	Google KMI	__wake_up	include/linux/wait.h:226; gki/aarch64/symbols/amlogic:2995
+wakeup_source_register	Google KMI	wakeup_source_register	gki/aarch64/symbols/amlogic:3002
+wakeup_source_unregister	Google KMI	wakeup_source_unregister	gki/aarch64/symbols/amlogic:3004
+header/compiler helper (possible)	Google KMI	__fortify_panic	gki/aarch64/symbols/amlogic:936
+header/compiler helper (possible)	Google KMI	__stack_chk_fail	gki/aarch64/symbols/amlogic:2416
+header/compiler helper (possible)	Google KMI	__mutex_init	gki/aarch64/symbols/amlogic:1558
+header/compiler helper (possible)	Google KMI	__init_waitqueue_head	gki/aarch64/symbols/amlogic:1229

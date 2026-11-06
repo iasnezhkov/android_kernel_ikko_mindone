@@ -1,0 +1,1 @@
+../include/drivers/misc/mediatek/trusted_mem/ssmr/memory_ssmr.h

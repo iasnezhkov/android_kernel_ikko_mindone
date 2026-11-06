@@ -1,0 +1,1 @@
+../../cam_qos/inc/camera_isp.h

@@ -1,0 +1,1 @@
+../../../mtk_rpmsg_mbox/linux/rpmsg/mtk_rpmsg.h

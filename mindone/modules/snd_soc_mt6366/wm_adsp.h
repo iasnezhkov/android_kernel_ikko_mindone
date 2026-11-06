@@ -1,0 +1,1 @@
+../mt6358_accdet/wm_adsp.h

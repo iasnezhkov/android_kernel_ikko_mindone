@@ -1,0 +1,1 @@
+../../include/drivers/misc/mediatek/eccci/hif/dpmaif_arch_v3.h

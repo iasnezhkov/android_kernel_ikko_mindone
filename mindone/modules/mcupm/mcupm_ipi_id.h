@@ -1,0 +1,1 @@
+../include/drivers/misc/mediatek/mcupm/include/mcupm_ipi_id.h

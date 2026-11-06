@@ -1,0 +1,1 @@
+../mt6358_battery/mtk_battery_daemon.h

@@ -1,0 +1,1 @@
+../include/drivers/misc/mediatek/sspm/v3/sspm_reservedmem_define.h

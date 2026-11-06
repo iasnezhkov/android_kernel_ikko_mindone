@@ -1,0 +1,1 @@
+../include/drivers/misc/mediatek/lpm/inc/lpm_trace_event/lpm_trace_def.h

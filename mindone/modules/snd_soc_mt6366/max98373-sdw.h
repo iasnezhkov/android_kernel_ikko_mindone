@@ -1,0 +1,1 @@
+../mt6358_accdet/max98373-sdw.h

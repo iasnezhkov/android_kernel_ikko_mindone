@@ -1,0 +1,1 @@
+../include/drivers/misc/mediatek/ssc/inc/ssc_module.h

@@ -1,0 +1,1 @@
+../include/drivers/misc/mediatek/ccmni/ccmni.h

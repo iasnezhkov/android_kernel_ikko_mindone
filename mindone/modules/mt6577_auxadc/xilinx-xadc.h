@@ -1,0 +1,1 @@
+../mt635x_auxadc/xilinx-xadc.h

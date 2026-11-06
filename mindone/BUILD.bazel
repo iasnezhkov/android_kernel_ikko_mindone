@@ -1,0 +1,103 @@
+# SPDX-License-Identifier: GPL-2.0
+# SPDX-FileCopyrightText: 2026 The LineageOS Project
+load(
+    "//build/kernel/kleaf:kernel.bzl",
+    "ddk_headers",
+    "dtbo_image",
+    "kernel_build",
+    "kernel_compile_commands",
+    "kernel_dtstree",
+    "kernel_images",
+    "kernel_modules_install",
+)
+
+package(default_visibility = ["//visibility:public"])
+
+_MINDONE_IN_TREE_MODULES = [
+    "8250_mtk.ko",
+    "cfg80211.ko",
+    "drm_display_helper.ko",
+    "drm_dma_helper.ko",
+    "industrialio-triggered-buffer.ko",
+    "kfifo_buf.ko",
+    "mac80211.ko",
+    "reset-ti-syscon.ko",
+]
+
+ddk_headers(
+    name = "mindone_dt_bindings_common",
+    hdrs = glob(["dts/include/dt-bindings/**/*.h"]),
+    includes = ["dts/include"],
+)
+
+kernel_dtstree(
+    name = "mindone_dts",
+    srcs = glob([
+        "dts/Makefile",
+        "dts/*.dts",
+        "dts/*.dtsi",
+        "dts/*.dtso",
+        "dts/include/**/*.h",
+    ]),
+    makefile = "dts/Makefile",
+)
+
+kernel_build(
+    name = "mindone",
+    srcs = ["//common:kernel_aarch64_sources"],
+    outs = [
+        "mindone.dtb",
+        "mindone-overlay.dtbo",
+    ],
+    arch = "arm64",
+    base_kernel = "@gki_prebuilts//kernel_aarch64",
+    ddk_module_headers = ["//common:all_headers_aarch64"],
+    defconfig = "//common:arch/arm64/configs/gki_defconfig",
+    dtstree = ":mindone_dts",
+    kconfig_ext = "Kconfig.ext",
+    kcflags = [
+        "-Wno-error=missing-prototypes",
+        "-Wno-error=missing-declarations",
+    ],
+    trim_nonlisted_kmi = False,
+    pre_defconfig_fragments = ["mindone.fragment"],
+    make_goals = [
+        "modules",
+        "mindone.dtb",
+        "mindone-overlay.dtbo",
+    ],
+    makefile = "//common:Makefile",
+    module_outs = _MINDONE_IN_TREE_MODULES,
+    collect_unstripped_modules = True,
+    strip_modules = True,
+)
+
+kernel_modules_install(
+    name = "mindone_modules_install",
+    kernel_build = ":mindone",
+    kernel_modules = ["//common/mindone/modules:mindone_modules"],
+)
+
+kernel_images(
+    name = "mindone_images",
+    build_initramfs = True,
+    build_vendor_dlkm = True,
+    kernel_build = ":mindone",
+    kernel_modules_install = ":mindone_modules_install",
+    modules_list = "vendor_boot.modules.load",
+    modules_recovery_list = "vendor_boot.modules.load.recovery",
+    vendor_dlkm_modules_list = "vendor_dlkm.modules.load",
+)
+
+dtbo_image(
+    name = "mindone_dtbo",
+    srcs = [":mindone/mindone-overlay.dtbo"],
+)
+
+kernel_compile_commands(
+    name = "mindone_compile_commands",
+    deps = [
+        ":mindone",
+        "//common/mindone/modules:mindone_modules",
+    ],
+)

@@ -1,0 +1,1 @@
+../include/sound/soc/mediatek/audio_scp/scp_audio_ipi.h

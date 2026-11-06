@@ -1,0 +1,1 @@
+../../include/drivers/misc/mediatek/eccci/platform/ccci_config.h

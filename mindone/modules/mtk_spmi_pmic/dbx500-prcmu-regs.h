@@ -1,0 +1,1 @@
+../mt63xx_debug/dbx500-prcmu-regs.h

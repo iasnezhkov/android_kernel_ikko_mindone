@@ -1,0 +1,1 @@
+../mt63xx_debug/arizona.h

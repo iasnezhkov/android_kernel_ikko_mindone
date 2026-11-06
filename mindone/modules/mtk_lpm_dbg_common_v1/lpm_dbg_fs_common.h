@@ -1,0 +1,1 @@
+../include/drivers/misc/mediatek/lpm/modules/debug/v1/lpm_dbg_fs_common.h

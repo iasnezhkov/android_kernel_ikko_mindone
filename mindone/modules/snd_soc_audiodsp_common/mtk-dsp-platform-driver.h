@@ -1,0 +1,1 @@
+../include/sound/soc/mediatek/audio_dsp/mtk-dsp-platform-driver.h

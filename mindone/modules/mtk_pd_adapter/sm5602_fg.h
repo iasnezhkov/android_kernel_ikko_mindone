@@ -1,0 +1,1 @@
+../extcon_mtk_usb/vendor-headers/drivers/power/supply/sm5602_fg.h

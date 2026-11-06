@@ -1,0 +1,1 @@
+../../tkcore/arm_common/teesmc.h

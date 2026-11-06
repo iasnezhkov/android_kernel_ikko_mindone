@@ -1,0 +1,1 @@
+../mtk_cm_ipi/mtk_cm_mgr_common.h

@@ -1,0 +1,1 @@
+../../include/drivers/misc/mediatek/include/mt-plat/aee.h

@@ -1,0 +1,1 @@
+../../../mdp_drv_mt6789/dt-bindings/memory/mtk-memory-port.h

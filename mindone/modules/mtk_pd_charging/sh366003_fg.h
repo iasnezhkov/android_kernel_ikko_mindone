@@ -1,0 +1,1 @@
+../mtk_charger_algorithm_class/sh366003_fg.h

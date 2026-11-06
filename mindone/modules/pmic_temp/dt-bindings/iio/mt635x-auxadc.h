@@ -1,0 +1,1 @@
+../../../mt635x_auxadc/dt-bindings/iio/mt635x-auxadc.h

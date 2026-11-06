@@ -1,0 +1,1 @@
+../mtk_scp_audio/mtk-scp-audio-pcm.h

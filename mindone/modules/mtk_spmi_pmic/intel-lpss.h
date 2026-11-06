@@ -1,0 +1,1 @@
+../mt63xx_debug/intel-lpss.h

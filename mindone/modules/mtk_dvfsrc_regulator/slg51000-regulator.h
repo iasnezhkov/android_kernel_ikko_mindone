@@ -1,0 +1,1 @@
+../mt6358_regulator/slg51000-regulator.h

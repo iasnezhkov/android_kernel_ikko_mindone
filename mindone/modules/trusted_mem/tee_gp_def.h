@@ -1,0 +1,1 @@
+../include/drivers/misc/mediatek/trusted_mem/tee_impl/tee_gp_def.h

@@ -1,0 +1,1 @@
+../mt635x_auxadc/ad7091r-base.h

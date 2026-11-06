@@ -1,0 +1,1 @@
+../mtk_charger_algorithm_class/power_supply.h

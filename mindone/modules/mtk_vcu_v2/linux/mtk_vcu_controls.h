@@ -1,0 +1,1 @@
+../../mtk_vcodec_common_v2/linux/mtk_vcu_controls.h

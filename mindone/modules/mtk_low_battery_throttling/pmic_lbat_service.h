@@ -1,0 +1,1 @@
+../include/drivers/misc/mediatek/power_throttling/pmic_lbat_service.h

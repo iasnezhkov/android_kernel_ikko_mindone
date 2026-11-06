@@ -1,0 +1,1 @@
+../../include/drivers/misc/mediatek/eccci/platform/modem_secure_base.h

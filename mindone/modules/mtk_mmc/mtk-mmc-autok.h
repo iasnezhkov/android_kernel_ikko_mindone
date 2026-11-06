@@ -1,0 +1,1 @@
+../include/drivers/mmc/host/mtk-mmc-autok.h

@@ -1,0 +1,1 @@
+../mtk_swpm/swpm_perf_arm_pmu.h

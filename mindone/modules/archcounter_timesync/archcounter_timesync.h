@@ -1,0 +1,1 @@
+../include/drivers/misc/mediatek/cam_timesync/archcounter_timesync.h

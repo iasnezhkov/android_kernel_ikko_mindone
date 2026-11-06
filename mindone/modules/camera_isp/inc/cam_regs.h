@@ -1,0 +1,1 @@
+../../cam_qos/inc/cam_regs.h
