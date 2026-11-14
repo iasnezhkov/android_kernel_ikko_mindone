@@ -57,7 +57,6 @@ CHECKS = {
     'md-mutt': ('md-mutt-check.py', [TREE]),
     'modules-tsv': ('modules-tsv-check.py', [TREE]),
     'mtk-jpeg': ('mtk-jpeg-check.py', [TREE]),
-    'ois-aw86006': ('ois-aw86006-check.py', [TREE]),
     'panel-control': ('panel-control-check.py', ['--tree', TREE]),
     'pd-adapter-tcpm': ('pd-adapter-tcpm-check.py', [TREE]),
     'pinctrl-mt6789': ('pinctrl-mt6789-check.py', [TREE]),

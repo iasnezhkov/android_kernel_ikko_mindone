@@ -71,6 +71,10 @@ EXPECTED_ACK_CALLBACKS = {'bias_set_combo': 'mtk_pinconf_bias_set_combo', 'bias_
                           'adv_drive_get': 'mtk_pinconf_adv_drive_get_raw'}
 FORK_FLAGS = 0x3
 GPIO_LABEL = 'pinctrl_paris'
+DT_CHANGES = {
+    'ts_scl_suspend': 'touch sleep keeps SCL0 in I2C mode (ts_scl_active): output-low drove the pull-up of the powered touch IC',
+    'ts_sda_suspend': 'touch sleep keeps SDA0 in I2C mode (ts_sda_active): output-low drove the pull-up of the powered touch IC',
+}
 SD_PINS = 'not in gpio_init_default; the live DIR 0 under the MSDC1 function (SD card)'
 MMC0_PINS = 'mmc0 is disabled, its states are never applied; the live DIR is 0'
 AUDIO_PINS = 'gpio_init_default sets DIR 0 and no state or GPIO user sets DIR 1'
@@ -477,6 +481,20 @@ def state_actions(dt, params, ids):
                 pin, func = value >> 8, value & 0xf
                 actions.setdefault(pin, {}).setdefault(state['name'], []).append((func, configs))
     return actions
+
+
+def reference_actions(old, new):
+    def pins(actions, name):
+        return {p: s[name] for p, s in actions.items() if name in s}
+    names = {name for states in (*old.values(), *new.values()) for name in states}
+    changed = {name for name in names if set(pins(old, name)) != set(pins(new, name))}
+    reference = {}
+    for actions, keep in ((old, lambda name: name not in DT_CHANGES), (new, lambda name: name in DT_CHANGES)):
+        for pin, states in actions.items():
+            for name, steps in states.items():
+                if keep(name):
+                    reference.setdefault(pin, {})[name] = steps
+    return reference, changed
 
 
 def param_ids(header):
@@ -892,8 +910,17 @@ def verify(sources, work, args):
         return errors, notes + ['tables not compared']
     ack, ack_tables = ack_bundle
     ids = param_ids(sources.ack('include/linux/pinctrl/pinconf-generic.h'))
-    fork_actions = state_actions(fork_dt, dt_params(sources, sources.fork('pinctrl-paris.c')), ids)
+    fork_params = dt_params(sources, sources.fork('pinctrl-paris.c'))
+    fork_actions, changed = reference_actions(state_actions(fork_dt, fork_params, ids),
+                                              state_actions(new_dt, fork_params, ids))
     ack_actions = state_actions(new_dt, dt_params(sources, sources.ack('drivers/pinctrl/mediatek/pinctrl-paris.c')), ids)
+    unlisted, stale = sorted(changed - set(DT_CHANGES)), sorted(set(DT_CHANGES) - changed)
+    if unlisted:
+        errors.append('the new DT adds or drops pin states not listed in DT_CHANGES: ' + ', '.join(unlisted))
+    if stale:
+        errors.append('DT_CHANGES lists states the new DT neither adds nor drops: ' + ', '.join(stale))
+    for name in sorted(changed & set(DT_CHANGES)):
+        notes.append(f'state {name} is added or dropped on purpose: {DT_CHANGES[name]}')
     if set(fork_actions) != set(ack_actions) or any(set(fork_actions[p]) != set(ack_actions[p]) for p in fork_actions):
         errors.append('the new DT does not keep the pin states of the fork DT')
     live = parse_live_pins((args.live / 'pins.txt').read_text())
@@ -1079,7 +1106,7 @@ DT_MUTATIONS = (
     ('dt-no-eint-reg-name', 'mindone/dts/mt6789-pinctrl.dtsi', r', "eint"', ''),
     ('dt-no-pio-interrupt', 'mindone/dts/mt6789-pinctrl.dtsi', r'\n\t\tinterrupts = <GIC_SPI 244 IRQ_TYPE_LEVEL_HIGH 0>;', ''),
     ('dt-ts-int-direction', 'mindone/dts/mindone-overlay.dtso', r'(ts_int_active[^}]*?)\t\t\tinput-schmitt-enable;\n', r'\1'),
-    ('dt-ts-scl-eh', 'mindone/dts/mindone-overlay.dtso', r'(ts_scl_suspend[^}]*?mediatek,drive-strength-adv = <0x0)6', r'\g<1>7'),
+    ('dt-ts-scl-eh', 'mindone/dts/mindone-overlay.dtso', r'(ts_scl_active[^}]*?mediatek,drive-strength-adv = <0x0)7', r'\g<1>6'),
 )
 COPY_MUTATIONS = (
     ('copy-member', 'drivers/pinctrl/mediatek/pinctrl-mtk-common-v2.h', r'\tbool\t\t\t\ties_present;', '\tbool\t\t\t\ties_present2;'),

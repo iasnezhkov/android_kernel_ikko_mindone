@@ -2898,8 +2898,8 @@ skip_smi:
 			}
 		}
 
-		r = dev_pm_genpd_add_notifier(dev, &mtk_pd_notifiers[iommu_id]);
 		tlb_locks[iommu_id] = &data->tlb_lock;
+		r = dev_pm_genpd_add_notifier(dev, &mtk_pd_notifiers[iommu_id]);
 		pr_info("%s add_notifier dev:%s, disp_power_on:%d, iommu:%d\n",
 			__func__, dev_name(dev), disp_power_on, iommu_id);
 		if (r)
@@ -2966,12 +2966,14 @@ static int mtk_iommu_hw_suspend(struct device *dev)
 	}
 
 	spin_lock_irqsave(&data->tlb_lock, flags);
-	if (data->plat_data->iommu_type != APU_IOMMU) {
+	if (data->plat_data->iommu_type != APU_IOMMU &&
+	    data->plat_data->iommu_type != MM_IOMMU) {
 		if (!mtk_iommu_power_get(data)) {
 			pr_notice("%s, iommu:(%d,%d) power off dev:%s\n",
 				  __func__, data->plat_data->iommu_type,
 				  data->plat_data->iommu_id, dev_name(data->dev));
 			spin_unlock_irqrestore(&data->tlb_lock, flags);
+			clk_disable_unprepare(data->bclk);
 			return 0;
 		}
 	}
@@ -3037,7 +3039,8 @@ static int mtk_iommu_hw_resume(struct device *dev)
 		return 0;
 
 	spin_lock_irqsave(&data->tlb_lock, flags);
-	if (data->plat_data->iommu_type != APU_IOMMU) {
+	if (data->plat_data->iommu_type != APU_IOMMU &&
+	    data->plat_data->iommu_type != MM_IOMMU) {
 		if (!mtk_iommu_power_get(data)) {
 			pr_notice("%s, iommu:(%d,%d) power off dev:%s\n",
 				  __func__, data->plat_data->iommu_type, data->plat_data->iommu_id,

@@ -889,12 +889,6 @@
 		reg = <0x18>;
 		status = "okay";
 	};
-
-	camera_main_ois@69 {
-		compatible = "mindone,aw86006-ois";
-		reg = <0x69>;
-		status = "okay";
-	};
 };
 
 &i2c0 {
@@ -908,7 +902,7 @@
 		vdd-gpio = <&pio>, <0x99 0x00>;
 		pinctrl-names = "ts_active", "ts_suspend";
 		pinctrl-0 = <&ts_int_active>, <&ts_reset_active>, <&ts_scl_active>, <&ts_sda_active>;
-		pinctrl-1 = <&ts_int_suspend>, <&ts_reset_suspend>, <&ts_scl_suspend>, <&ts_sda_suspend>;
+		pinctrl-1 = <&ts_int_suspend>, <&ts_reset_suspend>, <&ts_scl_active>, <&ts_sda_active>;
 		max-touch-number = <0x05>;
 		display-coords = <0x00 0x00 0x438 0x4d8>;
 		pos-swap = <0x00>;
@@ -962,22 +956,6 @@
 		pins_cmd_dat {
 			pinmux = <0x9800>;
 			output-low;
-		};
-	};
-
-	ts_scl_suspend: ts_scl_suspend {
-		pins_cmd_dat {
-			pinmux = <0x8200>;
-			output-low;
-			mediatek,drive-strength-adv = <0x06>;
-		};
-	};
-
-	ts_sda_suspend: ts_sda_suspend {
-		pins_cmd_dat {
-			pinmux = <0x8300>;
-			output-low;
-			mediatek,drive-strength-adv = <0x06>;
 		};
 	};
 };

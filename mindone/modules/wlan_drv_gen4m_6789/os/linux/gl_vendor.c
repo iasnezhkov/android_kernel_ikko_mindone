@@ -2856,7 +2856,8 @@ int mtk_cfg80211_vendor_read_packet_filter(struct wiphy *wiphy,
 				(ucFragNum == 0 &&
 					u4ProgLen > PKT_OFLD_BUF_SIZE)) {
 				DBGLOG(REQ, ERROR,
-					"Failed to query APF from firmware.\n");
+					"Failed to query APF from firmware: total %u frag %u len %u\n",
+					u4ProgLen, ucFragNum, rInfo.u4BufLen);
 				 goto query_apf_failure;
 			}
 		}

@@ -4626,29 +4626,6 @@ ddk_module(
 )
 
 ddk_module(
-    name = "ois_aw86006",
-    srcs = [
-        "ois_aw86006/aw86006_rom.c",
-        "ois_aw86006/ois_aw86006.c",
-    ],
-    out = "ois_aw86006.ko",
-    hdrs = glob([
-        "ois_aw86006/**/*.h",
-        "ois_aw86006/**/.gitkeep",
-    ], allow_empty = True),
-    kernel_build = "//common/mindone:mindone",
-    includes = [
-        "ois_aw86006",
-    ],
-    copts = _MINDONE_COPTS,
-    deps = [
-        ":mindone_headers",
-        ":i2c_mt65xx",
-        ":imgsensor_isp6s",
-    ],
-)
-
-ddk_module(
     name = "panel-sd5302h-fhd1240-dsi-vdo-amoled-ocp2133",
     srcs = [
         "panel_sd5302h_fhd1240_dsi_vdo_amoled_ocp2133_61/panel-sd5302h-fhd1240-dsi-vdo-amoled-ocp2133.c",
@@ -6144,7 +6121,6 @@ kernel_module_group(
         ":musb_main",
         ":nvmem_mt635x_efuse",
         ":nvmem_mtk_devinfo",
-        ":ois_aw86006",
         ":dmabuf_page_pool",
         ":panel-sd5302h-fhd1240-dsi-vdo-amoled-ocp2133",
         ":panel_ch13721c_fhd_dsi_vdo_amoled_ocp2133",

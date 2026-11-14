@@ -17,9 +17,7 @@ positions. Both IDs use the same sensor power sequence, calibration EEPROM and D
 actuator, and only one may hold the sensor at a time; a power-on of one ID waits up to
 500 ms for the other to release the shared supplies. The full 4096×3072 mode is brought
 up through burst I2C writes and chunked EEPROM calibration reads, and the `imx766_4cell`
-parameter selects whether the camera HAL sees Bayer or quad-Bayer output. The module's
-AW86006 OIS controller has its own driver, `ois_aw86006`, with every function off by
-default.
+parameter selects whether the camera HAL sees Bayer or quad-Bayer output.
 
 **USB-C.** The RT1715 port controller at `0x4e` on i2c-6 signals on EINT13, level low.
 It is a TCPM `usb-c-connector` that sinks 5 V by default, and the charger's OTG boost

@@ -21,6 +21,13 @@ CASES = ('exhaustive', 'injected', 'quiet')
 CALL = '\treturn rt1711h_alert(chip);\n'
 ACK_CALL = '\treturn tcpci_irq(chip->tcpci);\n'
 SHUTDOWN_LINE = '\t.shutdown = rt1711h_shutdown,\n'
+SECOND_SOURCE = (
+    ('#define RT1711H_VID\t\t0x29CF\n#define RT1715_ALT_VID\t\t0x6DCF\n', '#define RT1711H_VID\t\t0x29CF\n'),
+    ('\tu16 did;\n\tu16 alt_vid;\n', '\tu16 did;\n'),
+    ('\tif (ret != RT1711H_VID && (!chip->info->alt_vid || ret != chip->info->alt_vid)) {\n',
+     '\tif (ret != RT1711H_VID) {\n'),
+    ('\t.did = RT1715_DID,\n\t.alt_vid = RT1715_ALT_VID,\n', '\t.did = RT1715_DID,\n'),
+)
 MUTANTS = (
     ('mask-without-power-status', ' | \\\n\t TCPC_ALERT_POWER_STATUS)', ')'),
     ('no-reloop', '\tif (status & mask)\n\t\tgoto process_status;\n', ''),
@@ -136,7 +143,7 @@ def reverted(source):
         if source.count(part) != 1:
             fail('an added part is not unique in ' + SOURCE)
         source = source.replace(part + '\n', '', 1) if (part + '\n') in source else source.replace(part, '', 1)
-    for before, after in ((CALL, ACK_CALL), (SHUTDOWN_LINE, '')):
+    for before, after in ((CALL, ACK_CALL), (SHUTDOWN_LINE, ''), *SECOND_SOURCE):
         if source.count(before) != 1:
             fail(f'expected one {before.strip()!r} in {SOURCE}')
         source = source.replace(before, after, 1)
@@ -149,9 +156,9 @@ def copy_check(source, ack_driver):
         left, right = mine.split('\n'), theirs.split('\n')
         for index, (a, b) in enumerate(zip(left, right)):
             if a != b:
-                fail(f'{SOURCE} differs from ACK {ACK_DRIVER} outside the alert dispatch and shutdown at line '
+                fail(f'{SOURCE} differs from ACK {ACK_DRIVER} outside the alert dispatch, shutdown and second-source ID at line '
                      f'{index + 1}: {a!r} != {b!r}')
-        fail(f'{SOURCE} differs from ACK {ACK_DRIVER} in length outside the alert dispatch and shutdown')
+        fail(f'{SOURCE} differs from ACK {ACK_DRIVER} in length outside the alert dispatch, shutdown and second-source ID')
     irq = function(source, 'rt1711h_irq', SOURCE)
     if not irq.endswith(CALL + '}\n'):
         fail('rt1711h_irq does not end in rt1711h_alert(chip)')

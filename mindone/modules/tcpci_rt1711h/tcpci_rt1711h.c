@@ -17,6 +17,7 @@
 #include <linux/regulator/consumer.h>
 
 #define RT1711H_VID		0x29CF
+#define RT1715_ALT_VID		0x6DCF
 #define RT1711H_PID		0x1711
 #define RT1711H_DID		0x2171
 #define RT1715_DID		0x2173
@@ -53,6 +54,7 @@
 struct rt1711h_chip_info {
 	u32 rxdz_sel;
 	u16 did;
+	u16 alt_vid;
 	bool enable_pd30_extended_message;
 };
 
@@ -377,7 +379,7 @@ static int rt1711h_check_revision(struct i2c_client *i2c, struct rt1711h_chip *c
 	ret = i2c_smbus_read_word_data(i2c, TCPC_VENDOR_ID);
 	if (ret < 0)
 		return ret;
-	if (ret != RT1711H_VID) {
+	if (ret != RT1711H_VID && (!chip->info->alt_vid || ret != chip->info->alt_vid)) {
 		dev_err(&i2c->dev, "vid is not correct, 0x%04x\n", ret);
 		return -ENODEV;
 	}
@@ -492,6 +494,7 @@ static const struct rt1711h_chip_info rt1711h = {
 static const struct rt1711h_chip_info rt1715 = {
 	.rxdz_sel = RT1711H_BMCIO_RXDZSEL,
 	.did = RT1715_DID,
+	.alt_vid = RT1715_ALT_VID,
 	.enable_pd30_extended_message = true,
 };
 

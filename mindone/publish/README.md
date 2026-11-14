@@ -153,10 +153,6 @@ Board-specific corrections:
   the sensor format the camera HAL sees (Bayer by default, or quad Bayer for software or
   on-sensor remosaic); phase-detection pixels go out on data type 0x31, matching the
   virtual-channel description, and the 4:3 modes report the 27.8 fps they run at.
-- **OIS.** `ois_aw86006` drives the AW86006 OIS controller of the camera module. Every
-  function is off by default and no load list names the module; its parameters read the
-  program header, calibration record, boot-loader identity or the whole 64 KiB flash, and
-  arm one program update.
 - **I2C.** `i2c_mt65xx` can run the transfers to up to three 7-bit targets at their own
   rate, from 10 kHz to 1 MHz (Fm+), slower or faster than the DT bus speed, set by a
   client driver or the `slow_target` parameter. No target is set by default.

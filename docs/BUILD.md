@@ -13,7 +13,7 @@ using `@gki_prebuilts//kernel_aarch64` as the base. It does not rebuild the ship
 `vmlinux` or `Image`.
 
 `mindone/BUILD.bazel` defines 23 in-tree `module_outs`; 20 are in the normal boot
-load lists. `mindone/modules/BUILD.bazel` defines 195 `ddk_module` targets, of which
+load lists. `mindone/modules/BUILD.bazel` defines 194 `ddk_module` targets, of which
 190 are in those lists. Four further modules come from GKI: **214 listed modules**.
 
 External imports must resolve through Google's `abi_symbollist` of the release.
@@ -112,7 +112,7 @@ first-stage set that goes in the ramdisk) and
 using the requested lists; order is not cosmetic; several modules hold devices that others
 depend on, and getting it wrong usually looks like some unrelated device never probing.
 
-Of the 214 listed modules, 190 come from the 195 DDK targets. Twenty are in-tree
+Of the 214 listed modules, 190 come from the 194 DDK targets. Twenty are in-tree
 `mindone` outputs: `8250_mtk`, `arm_dsu_pmu`, `cfg80211`, `cqhci`, `drm_display_helper`,
 `drm_dma_helper`, `i2c-dev`, `mediatek-cpufreq-hw`, `mmc_hsq`, `mtk-eint`, `mtk-sd`,
 `mtk-uart-apdma`, `mtk_wdt`, `phy-generic`, `pinctrl-mtk-common-v2`, `pinctrl-paris`,
@@ -122,9 +122,8 @@ other three declared in-tree outputs — `mac80211`, `industrialio-triggered-buf
 The last four listed modules — `libarc4`, `rfkill`, `zram`, `zsmalloc` — come from GKI.
 The clocks (the r13 clk-mtk core as `clk-mtk-ack` and the MT6789 clock data drivers),
 the power domains, the PMIC wrapper, the `pinctrl-mt6789` data driver, Type-C
-(`tcpci_rt1711h`), UFS and the dma-buf helpers are DDK targets. Of the five DDK targets
-outside the lists, `ois_aw86006` is selected but named in no load list, and the four
-unused AF wrappers are not selected.
+(`tcpci_rt1711h`), UFS and the dma-buf helpers are DDK targets. The four DDK targets
+outside the lists are the unused AF wrappers, which are not selected.
 
 The build selects recovery through `modules_recovery_list` in `mindone/BUILD.bazel`:
 there is a third, shorter list:

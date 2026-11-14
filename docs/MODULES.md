@@ -2,8 +2,8 @@
 <!-- SPDX-FileCopyrightText: 2026 The LineageOS Project -->
 # Drivers
 
-`mindone/modules/` declares 195 `ddk_module` targets in
-`mindone/modules/BUILD.bazel`; the `mindone_modules` group selects 191.
+`mindone/modules/` declares 194 `ddk_module` targets in
+`mindone/modules/BUILD.bazel`; the `mindone_modules` group selects 190.
 The normal boot load lists contain 214 modules: 190 of those DDK outputs,
 20 device in-tree outputs and four GKI modules (`libarc4`, `rfkill`, `zram`,
 `zsmalloc`). 23 in-tree outputs are declared in `mindone/BUILD.bazel`; three
@@ -33,8 +33,7 @@ load lists; without `--write` the check fails when the table is stale.
 
 The four unused AF wrappers `subaf`, `sub2af`, `main2af` and `main3af` retain
 DDK definitions but are removed from `mindone_modules` and the combined and vendor-DLKM load lists.
-`mainaf` remains selected for the main camera actuator. `ois_aw86006`, the driver of the
-camera module's OIS controller, is selected but named in no load list. In the companion ROM,
+`mainaf` remains selected for the main camera actuator. In the companion ROM,
 `libarc4` moves from `vendor_dlkm` to `system_dlkm`; its vendor list consequently
 contains 192 entries, while this kernel's vendor request list contains 193.
 
