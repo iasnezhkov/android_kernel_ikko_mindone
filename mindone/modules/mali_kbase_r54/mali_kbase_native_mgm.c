@@ -6,8 +6,6 @@
 #include <mali_kbase.h>
 #include <mali_kbase_native_mgm.h>
 
-#include <thirdparty/mm.h>
-
 static struct page *kbase_native_mgm_alloc(struct memory_group_manager_device *mgm_dev,
 					   unsigned int group_id, gfp_t gfp_mask,
 					   unsigned int order)

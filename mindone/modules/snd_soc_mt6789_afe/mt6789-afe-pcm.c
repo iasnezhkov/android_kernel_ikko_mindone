@@ -7,7 +7,7 @@
  */
 
 #include <linux/delay.h>
-#include <linux/mindone_sysfs_compat.h>
+#include <mindone/compat-sysfs.h>
 #include <linux/dma-mapping.h>
 #include <linux/mm.h>
 #include <linux/module.h>
@@ -5781,7 +5781,9 @@ static int mt6789_afe_pcm_dev_probe(struct platform_device *pdev)
 #if IS_ENABLED(CONFIG_MTK_SCP_AUDIO)
 	scp_set_audio_afe(afe);
 #endif
+#if IS_ENABLED(CONFIG_SND_SOC_MTK_AUDIO_DSP)
 	audio_set_dsp_afe(afe);
+#endif
 	return 0;
 
 err_pm_disable:

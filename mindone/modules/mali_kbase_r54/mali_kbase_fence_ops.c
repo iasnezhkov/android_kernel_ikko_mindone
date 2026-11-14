@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: GPL-2.0
 #include <linux/atomic.h>
-#include <linux/version.h>
 #include <linux/list.h>
 #include <mali_kbase_fence.h>
 #include <mali_kbase.h>
+#include <mindone/compat-dma-fence.h>
 
 static const char *kbase_fence_get_driver_name(struct dma_fence *fence)
 {
@@ -35,20 +35,12 @@ static bool kbase_fence_enable_signaling(struct dma_fence *fence)
 	return true;
 }
 
-#if LINUX_VERSION_CODE < KERNEL_VERSION(6, 18, 0)
-static void kbase_fence_fence_value_str(struct dma_fence *fence, char *str, int size)
+static void __maybe_unused kbase_fence_fence_value_str(struct dma_fence *fence, char *str,
+						       int size)
 {
-	char *format;
-
-	if (KERNEL_VERSION(5, 1, 0) > LINUX_VERSION_CODE)
-		format = "%u";
-	else
-		format = "%llu";
-
-	if (unlikely(!scnprintf(str, (size_t)size, format, fence->seqno)))
+	if (unlikely(!scnprintf(str, (size_t)size, "%llu", fence->seqno)))
 		pr_err("Fail to encode fence seqno to string");
 }
-#endif
 
 #if MALI_USE_CSF
 static void kbase_fence_release(struct dma_fence *fence)
@@ -64,9 +56,7 @@ const struct dma_fence_ops kbase_fence_ops = { .wait = dma_fence_default_wait,
 					       .get_driver_name = kbase_fence_get_driver_name,
 					       .get_timeline_name = kbase_fence_get_timeline_name,
 					       .enable_signaling = kbase_fence_enable_signaling,
-#if LINUX_VERSION_CODE < KERNEL_VERSION(6, 18, 0)
-					       .fence_value_str = kbase_fence_fence_value_str,
-#endif
+					       MINDONE_DMA_FENCE_VALUE_STR(kbase_fence_fence_value_str)
 					       .release = kbase_fence_release };
 #else
 extern const struct dma_fence_ops kbase_fence_ops;
@@ -74,9 +64,7 @@ const struct dma_fence_ops kbase_fence_ops = { .wait = dma_fence_default_wait,
 					       .get_driver_name = kbase_fence_get_driver_name,
 					       .get_timeline_name = kbase_fence_get_timeline_name,
 					       .enable_signaling = kbase_fence_enable_signaling,
-#if LINUX_VERSION_CODE < KERNEL_VERSION(6, 18, 0)
-					       .fence_value_str = kbase_fence_fence_value_str,
-#endif
+					       MINDONE_DMA_FENCE_VALUE_STR(kbase_fence_fence_value_str)
 };
 #endif
 

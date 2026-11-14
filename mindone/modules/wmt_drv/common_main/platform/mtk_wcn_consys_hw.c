@@ -598,7 +598,8 @@ static void plat_resume_handler(struct work_struct *work)
 static int mtk_wmt_resume(void)
 {
 	WMT_PLAT_PR_DBG(" mtk_wmt_resume !!");
-	schedule_work(&plt_resume_worker);
+	if (gWmtDbgLvl >= WMT_LOG_DBG)
+		schedule_work(&plt_resume_worker);
 	connsys_dedicated_log_set_ap_state(1);
 
 	return 0;

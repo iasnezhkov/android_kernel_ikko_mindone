@@ -113,7 +113,7 @@ def main():
                 if result.returncode:
                     raise RuntimeError(name+':\n'+result.stdout+result.stderr)
                 print(name+'\n'+result.stdout, end='')
-            elif result.returncode == 0 or not re.search(r'Assertion failed:|runtime error:|ERROR: AddressSanitizer', result.stderr):
+            elif result.returncode == 0 or not re.search(r'Assertion failed:|Assertion `[^\n]*\x27 failed|runtime error:|ERROR: AddressSanitizer', result.stderr):
                 raise RuntimeError('Mutation did not fail at runtime: '+name+'\n'+result.stdout+result.stderr)
             else:
                 print('PASS rejected '+name)

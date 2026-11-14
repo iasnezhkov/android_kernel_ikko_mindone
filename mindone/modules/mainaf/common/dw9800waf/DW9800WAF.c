@@ -89,7 +89,8 @@ static int s4AF_WriteReg(u16 a_u2Data)
 	i4RetValue = i2c_master_send(g_pstAF_I2Cclient, puSendCmd, 3);
 
 	if (i4RetValue < 0) {
-		LOG_INF("I2C send failed!!\n");
+		pr_warn_ratelimited(AF_DRVNAME " move to %u failed (%d)\n",
+				    a_u2Data, i4RetValue);
 		return -1;
 	}
 
@@ -154,14 +155,16 @@ static inline int moveAF(unsigned long a_u4Position)
 	int ret = 0;
 
 	if ((a_u4Position > g_u4AF_MACRO) || (a_u4Position < g_u4AF_INF)) {
-		LOG_INF("out of range\n");
+		pr_warn_ratelimited(AF_DRVNAME " move to %lu outside [%lu, %lu]\n",
+				    a_u4Position, g_u4AF_INF, g_u4AF_MACRO);
 		return -EINVAL;
 	}
 
 	if (*g_pAF_Opened == 1) {
 		unsigned short InitPos;
 
-		initdrv();
+		if (initdrv() < 0)
+			pr_warn_ratelimited(AF_DRVNAME " init failed\n");
 		ret = s4DW9800WAF_ReadReg(&InitPos);
 
 		if (ret == 0) {
@@ -207,6 +210,7 @@ static inline int setAFInf(unsigned long a_u4Position)
 	spin_lock(g_pAF_SpinLock);
 	g_u4AF_INF = a_u4Position;
 	spin_unlock(g_pAF_SpinLock);
+	pr_info(AF_DRVNAME " infinity position %lu\n", a_u4Position);
 	return 0;
 }
 
@@ -215,6 +219,7 @@ static inline int setAFMacro(unsigned long a_u4Position)
 	spin_lock(g_pAF_SpinLock);
 	g_u4AF_MACRO = a_u4Position;
 	spin_unlock(g_pAF_SpinLock);
+	pr_info(AF_DRVNAME " macro position %lu\n", a_u4Position);
 	return 0;
 }
 

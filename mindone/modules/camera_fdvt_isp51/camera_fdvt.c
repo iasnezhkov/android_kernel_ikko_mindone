@@ -94,28 +94,6 @@
 //static atomic_t m4u_gz_init = ATOMIC_INIT(0);
 
 
-#if CHECK_SERVICE_IF_0
-/* Another Performance Measure Usage */
-#include <linux/kallsyms.h>
-#include <linux/ftrace_event.h>
-static unsigned long __read_mostly tracing_mark_write_addr;
-
-#define _kernel_trace_begin(name) {\
-	tracing_mark_write_addr = kallsyms_lookup_name("tracing_mark_write");\
-	event_trace_printk(tracing_mark_write_addr,\
-	"B|%d|%s\n", current->tgid, name);\
-}
-
-#define _kernel_trace_end() {\
-	event_trace_printk(tracing_mark_write_addr, "E\n");\
-}
-
-/* How to Use */
-/* char strName[128]; */
-/* sprintf(strName, "TAG_K_WAKEUP (%d)",sof_count[_PASS1]); */
-/* _kernel_trace_begin(strName); */
-/* _kernel_trace_end(); */
-#endif /* 0 */
 
 #include <linux/module.h>
 #include <mindone/compat-module.h>

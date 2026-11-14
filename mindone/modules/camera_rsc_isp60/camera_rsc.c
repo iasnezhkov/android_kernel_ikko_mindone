@@ -88,28 +88,6 @@
 #include <linux/met_drv.h>
 #include <linux/mtk_ftrace.h>
 #endif
-#if CHECK_SERVICE_IF_0
-/* Another Performance Measure Usage */
-#include <linux/ftrace_event.h>
-#include <linux/kallsyms.h>
-static unsigned long __read_mostly tracing_mark_write_addr;
-#define _kernel_trace_begin(name)                                              \
-	{                                                                      \
-		tracing_mark_write_addr =                                      \
-			kallsyms_lookup_name("tracing_mark_write");            \
-		event_trace_printk(tracing_mark_write_addr, "B|%d|%s\n",       \
-				   current->tgid, name);                       \
-	}
-#define _kernel_trace_end()                                                    \
-	{                                                                      \
-		event_trace_printk(tracing_mark_write_addr, "E\n");            \
-	}
-/* How to Use */
-/* char strName[128]; */
-/* sprintf(strName, "TAG_K_WAKEUP (%d)",sof_count[_PASS1]); */
-/* _kernel_trace_begin(strName); */
-/* _kernel_trace_end(); */
-#endif
 
 #include <linux/init.h>
 #include <linux/kernel.h>
@@ -1504,7 +1482,9 @@ static signed int RSC_DumpReg(void)
 	LOG_INF("[0x%08X %08X]\n", (unsigned int)(RSC_DCM_STAUS_HW),
 		(unsigned int)RSC_RD32(RSC_DCM_STAUS_REG));
 
+#if IS_ENABLED(CONFIG_MTK_IRQ_DBG)
 	mt_irq_dump_status(RSCInfo.IrqNum);
+#endif
 
 	LOG_INF("- X.");
 	return Ret;

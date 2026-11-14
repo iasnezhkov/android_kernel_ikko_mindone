@@ -1,1 +1,0 @@
-../include/drivers/misc/mediatek/swpm/mtk_swpm_fs/mtk_swpm_common_sysfs.h

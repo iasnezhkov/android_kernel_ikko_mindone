@@ -258,7 +258,7 @@ int lpm_suspend_s2idle_prompt(int cpu,
 	cpumask_set_cpu(cpu, &s2idle_cpumask);
 	if (cpumask_weight(&s2idle_cpumask) == num_online_cpus()) {
 
-		pr_info("[name:spm&][%s:%d] - suspend enter\n",
+		pr_debug("[name:spm&][%s:%d] - suspend enter\n",
 			__func__, __LINE__);
 
 #if IS_ENABLED(CONFIG_MTK_ECCCI_DRIVER)
@@ -278,7 +278,7 @@ void lpm_suspend_s2idle_reflect(int cpu,
 
 		__lpm_suspend_reflect(LPM_SUSPEND_S2IDLE,
 					 cpu, issuer);
-	pr_info("[name:spm&][%s:%d] - resume\n",
+	pr_debug("[name:spm&][%s:%d] - resume\n",
 			__func__, __LINE__);
 
 #if IS_ENABLED(CONFIG_MTK_ECCCI_DRIVER)
@@ -419,7 +419,7 @@ static int lpm_spm_suspend_pm_event(struct notifier_block *notifier,
 		mtk_lpm_in_suspend = 0;
 		spin_lock(&lpm_abort_locker);
 		if (!cpumask_empty(&abort_cpumask)) {
-			pr_info("[name:spm&][SPM] check cpumask %*pb\n",
+			pr_debug("[name:spm&][SPM] check cpumask %*pb\n",
 					cpumask_pr_args(&abort_cpumask));
 			for_each_cpu(cpu, &abort_cpumask)
 				send_sig(SIGKILL, mtk_lpm_ac[cpu].ts, 0);

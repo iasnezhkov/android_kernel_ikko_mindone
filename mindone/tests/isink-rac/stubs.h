@@ -175,6 +175,8 @@ static int mt635x_bat_temp_cali(struct mt635x_auxadc_device *a, int x, int y)
 }
 static void *get_mtk_gauge_psy(void) { return gauge_enabled ? &adc : NULL; }
 static int auxadc_get_uisoc(void) { return ui_soc; }
+static bool battery_only;
+static bool auxadc_battery_supplies_system(void) { CHECK(adc.lock.held); return battery_only; }
 
 @FUNCTIONS@
 
@@ -201,6 +203,7 @@ static void reset(void)
     cleanup_logs = calibration_logs = last_primary = last_cleanup = 0;
     imp_cleanup_calls = imp_cleanup_error = 0;
     gauge_enabled = true;
+    battery_only = true;
     ui_soc = next_soc++;
     cases++;
 }

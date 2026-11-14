@@ -19,6 +19,7 @@
 #include <linux/kernel.h>
 #include <linux/mm.h>
 #include <linux/module.h>
+#include <linux/moduleparam.h>
 #include <linux/of_address.h>
 #include <linux/of_device.h>
 #include <linux/of_irq.h>
@@ -26,6 +27,9 @@
 #include <linux/scatterlist.h>
 #include <linux/sched.h>
 #include <linux/slab.h>
+#include <linux/spinlock.h>
+#include <linux/string.h>
+#include <mindone/i2c-mt65xx.h>
 
 #define I2C_RS_TRANSFER			(1 << 4)
 #define I2C_ARB_LOST			(1 << 3)
@@ -82,6 +86,9 @@
 #define I2C_FAST_MODE_BUFFER		(300 / 2)
 #define I2C_FAST_MODE_PLUS_BUFFER	(20 / 2)
 #define I2C_HS_MODE_BUFFER		(10 / 2)
+#define MTK_I2C_SLOW_MIN_HZ		10000
+#define MTK_I2C_TARGETS			3
+#define MTK_I2C_TARGET_LEN		32
 
 #define I2C_CONTROL_RS                  (0x1 << 1)
 #define I2C_CONTROL_DMA_EN              (0x1 << 2)
@@ -273,6 +280,20 @@ struct mtk_i2c_ac_timing {
 	u16 sda_timing;
 };
 
+struct mtk_i2c_speed {
+	unsigned int speed_hz;
+	u16 timing_reg;
+	u16 high_speed_reg;
+	u16 ltiming_reg;
+	struct mtk_i2c_ac_timing ac_timing;
+};
+
+struct mtk_i2c_target {
+	int nr;
+	u16 addr;
+	unsigned int hz;
+};
+
 struct mtk_i2c {
 	struct i2c_adapter adap;	/* i2c host adapter */
 	struct device *dev;
@@ -306,6 +327,12 @@ struct mtk_i2c {
 	bool ctrl_data_hold;
 	struct mtk_i2c_ac_timing ac_timing;
 	const struct mtk_i2c_compatible *dev_comp;
+	unsigned int parent_clk;
+	unsigned int slow_hz;
+	struct mtk_i2c_speed dt_speed;
+	struct mtk_i2c_speed slow_speed;
+	struct mtk_i2c_speed slow_sets[MTK_I2C_TARGETS];
+	unsigned int slow_next;
 };
 
 /**
@@ -591,6 +618,129 @@ static const struct of_device_id mtk_i2c_of_match[] = {
 	{}
 };
 MODULE_DEVICE_TABLE(of, mtk_i2c_of_match);
+
+static DEFINE_SPINLOCK(mtk_i2c_slow_lock);
+static struct mtk_i2c_target mtk_i2c_slow[MTK_I2C_TARGETS];
+
+static int mtk_i2c_slow_parse(char *cur, struct mtk_i2c_target *slow)
+{
+	char *nr, *addr;
+	unsigned int n, a, hz;
+
+	if (strlen(cur) >= MTK_I2C_TARGET_LEN)
+		return -EINVAL;
+	nr = strsep(&cur, ":");
+	addr = strsep(&cur, ":");
+	if (!cur || strchr(cur, ':'))
+		return -EINVAL;
+	if (kstrtouint(nr, 10, &n) || kstrtouint(addr, 0, &a) ||
+	    kstrtouint(cur, 10, &hz))
+		return -EINVAL;
+	if (n > INT_MAX || a < 0x08 || a > 0x77 ||
+	    hz < MTK_I2C_SLOW_MIN_HZ || hz > I2C_MAX_FAST_MODE_PLUS_FREQ)
+		return -EINVAL;
+	slow->nr = n;
+	slow->addr = a;
+	slow->hz = hz;
+
+	return 0;
+}
+
+static int mtk_i2c_slow_set(const char *val, const struct kernel_param *kp)
+{
+	struct mtk_i2c_target slow[MTK_I2C_TARGETS] = {};
+	char buf[MTK_I2C_TARGETS * MTK_I2C_TARGET_LEN];
+	char *cur = buf;
+	size_t len = strlen(val);
+	int count = 0, i;
+
+	if (len && val[len - 1] == '\n')
+		len--;
+	if (len >= sizeof(buf))
+		return -EINVAL;
+	memcpy(buf, val, len);
+	buf[len] = '\0';
+	if (len && strcmp(buf, "off")) {
+		if (strspn(buf, "0123456789abcdefABCDEFxX:,") != len)
+			return -EINVAL;
+		while (cur) {
+			if (count == MTK_I2C_TARGETS ||
+			    mtk_i2c_slow_parse(strsep(&cur, ","), &slow[count]))
+				return -EINVAL;
+			for (i = 0; i < count; i++)
+				if (slow[i].nr == slow[count].nr &&
+				    slow[i].addr == slow[count].addr)
+					return -EINVAL;
+			count++;
+		}
+	}
+
+	spin_lock(&mtk_i2c_slow_lock);
+	memcpy(mtk_i2c_slow, slow, sizeof(slow));
+	spin_unlock(&mtk_i2c_slow_lock);
+
+	return 0;
+}
+
+static int mtk_i2c_slow_get(char *buffer, const struct kernel_param *kp)
+{
+	struct mtk_i2c_target slow[MTK_I2C_TARGETS];
+	int len = 0, i;
+
+	spin_lock(&mtk_i2c_slow_lock);
+	memcpy(slow, mtk_i2c_slow, sizeof(slow));
+	spin_unlock(&mtk_i2c_slow_lock);
+
+	for (i = 0; i < MTK_I2C_TARGETS; i++)
+		if (slow[i].hz)
+			len += scnprintf(buffer + len, PAGE_SIZE - len,
+					 "%s%d:0x%02x:%u", len ? "," : "",
+					 slow[i].nr, slow[i].addr, slow[i].hz);
+	if (!len)
+		return scnprintf(buffer, PAGE_SIZE, "off\n");
+	return len + scnprintf(buffer + len, PAGE_SIZE - len, "\n");
+}
+
+static const struct kernel_param_ops mtk_i2c_slow_ops = {
+	.set = mtk_i2c_slow_set,
+	.get = mtk_i2c_slow_get,
+};
+
+module_param_cb(slow_target, &mtk_i2c_slow_ops, NULL, 0644);
+MODULE_PARM_DESC(slow_target,
+		 "<adapter>:<7-bit address>:<Hz>[,...] up to 3 targets: a transfer runs at the lowest rate its messages allow, the target's Hz (10000..1000000) or the DT speed; off clears");
+
+int mtk_i2c_set_slow_target(int nr, u16 addr, unsigned int hz)
+{
+	struct mtk_i2c_target *slot = NULL;
+	int ret = 0, i;
+
+	if (nr < 0 || addr < 0x08 || addr > 0x77 ||
+	    (hz && (hz < MTK_I2C_SLOW_MIN_HZ || hz > I2C_MAX_FAST_MODE_PLUS_FREQ)))
+		return -EINVAL;
+
+	spin_lock(&mtk_i2c_slow_lock);
+	for (i = 0; i < MTK_I2C_TARGETS; i++)
+		if (mtk_i2c_slow[i].hz && mtk_i2c_slow[i].nr == nr &&
+		    mtk_i2c_slow[i].addr == addr)
+			slot = &mtk_i2c_slow[i];
+	for (i = 0; hz && !slot && i < MTK_I2C_TARGETS; i++)
+		if (!mtk_i2c_slow[i].hz)
+			slot = &mtk_i2c_slow[i];
+	if (slot && hz) {
+		slot->nr = nr;
+		slot->addr = addr;
+		slot->hz = hz;
+	} else if (slot) {
+		*slot = (struct mtk_i2c_target){};
+	} else if (hz) {
+		ret = -EBUSY;
+	}
+	spin_unlock(&mtk_i2c_slow_lock);
+
+	return ret;
+}
+EXPORT_SYMBOL_GPL(mtk_i2c_set_slow_target);
 
 static u8 mtk_i2c_readb(struct mtk_i2c *i2c, enum I2C_REGS_OFFSET reg)
 {
@@ -984,7 +1134,7 @@ static int mtk_i2c_calculate_speed(struct mtk_i2c *i2c, unsigned int clk_src,
 	return 0;
 }
 
-static int mtk_i2c_set_speed(struct mtk_i2c *i2c, unsigned int parent_clk)
+static int mtk_i2c_calc_timing(struct mtk_i2c *i2c, unsigned int parent_clk)
 {
 	unsigned int clk_src;
 	unsigned int step_cnt;
@@ -1054,7 +1204,111 @@ static int mtk_i2c_set_speed(struct mtk_i2c *i2c, unsigned int parent_clk)
 
 	i2c->ac_timing.inter_clk_div = ((clk_div - 1) << 8) | (clk_div - 1);
 
+	return clk_div > max_clk_div ? -EINVAL : 0;
+}
+
+static void mtk_i2c_save_speed(struct mtk_i2c *i2c, struct mtk_i2c_speed *speed)
+{
+	speed->speed_hz = i2c->speed_hz;
+	speed->timing_reg = i2c->timing_reg;
+	speed->high_speed_reg = i2c->high_speed_reg;
+	speed->ltiming_reg = i2c->ltiming_reg;
+	speed->ac_timing = i2c->ac_timing;
+}
+
+static void mtk_i2c_load_speed(struct mtk_i2c *i2c,
+			       const struct mtk_i2c_speed *speed)
+{
+	i2c->speed_hz = speed->speed_hz;
+	i2c->timing_reg = speed->timing_reg;
+	i2c->high_speed_reg = speed->high_speed_reg;
+	i2c->ltiming_reg = speed->ltiming_reg;
+	i2c->ac_timing = speed->ac_timing;
+}
+
+static int mtk_i2c_set_speed(struct mtk_i2c *i2c, unsigned int parent_clk)
+{
+	i2c->parent_clk = parent_clk;
+	mtk_i2c_calc_timing(i2c, parent_clk);
+	mtk_i2c_save_speed(i2c, &i2c->dt_speed);
+
 	return 0;
+}
+
+static void mtk_i2c_use_speed(struct mtk_i2c *i2c,
+			      const struct mtk_i2c_speed *speed)
+{
+	mtk_i2c_load_speed(i2c, speed);
+	mtk_i2c_init_hw(i2c);
+}
+
+static int mtk_i2c_prepare_slow(struct mtk_i2c *i2c, unsigned int hz)
+{
+	struct mtk_i2c_speed fresh = { .speed_hz = hz };
+	int ret, i;
+
+	if (i2c->ch_offset_i2c)
+		return -EOPNOTSUPP;
+	if (i2c->slow_hz == hz)
+		return 0;
+	for (i = 0; i < MTK_I2C_TARGETS; i++) {
+		if (i2c->slow_sets[i].speed_hz == hz) {
+			i2c->slow_speed = i2c->slow_sets[i];
+			i2c->slow_hz = hz;
+			return 0;
+		}
+	}
+
+	i2c->slow_hz = 0;
+	mtk_i2c_load_speed(i2c, &fresh);
+	ret = mtk_i2c_calc_timing(i2c, i2c->parent_clk);
+	if (!ret) {
+		mtk_i2c_save_speed(i2c, &i2c->slow_speed);
+		i2c->slow_sets[i2c->slow_next] = i2c->slow_speed;
+		i2c->slow_next = (i2c->slow_next + 1) % MTK_I2C_TARGETS;
+		i2c->slow_hz = hz;
+	}
+	mtk_i2c_load_speed(i2c, &i2c->dt_speed);
+
+	if (ret) {
+		dev_warn(i2c->dev, "slow_target: no timing for %u Hz\n", hz);
+		return ret;
+	}
+	dev_info(i2c->dev,
+		 "slow_target: %u Hz: htiming 0x%04x ltiming 0x%04x hs 0x%04x ext 0x%04x sda 0x%04x clock_div 0x%04x\n",
+		 hz, i2c->slow_speed.ac_timing.htiming,
+		 i2c->slow_speed.ac_timing.ltiming,
+		 i2c->slow_speed.ac_timing.hs, i2c->slow_speed.ac_timing.ext,
+		 i2c->slow_speed.ac_timing.sda_timing,
+		 i2c->slow_speed.ac_timing.inter_clk_div);
+
+	return 0;
+}
+
+static unsigned int mtk_i2c_slow_hz(struct mtk_i2c *i2c, struct i2c_msg *msgs,
+				    int num)
+{
+	struct mtk_i2c_target slow[MTK_I2C_TARGETS];
+	unsigned int dt_hz = i2c->dt_speed.speed_hz;
+	unsigned int hz = dt_hz, msg_hz;
+	int i, j;
+
+	spin_lock(&mtk_i2c_slow_lock);
+	memcpy(slow, mtk_i2c_slow, sizeof(slow));
+	spin_unlock(&mtk_i2c_slow_lock);
+
+	for (i = 0; i < num; i++) {
+		msg_hz = dt_hz;
+		for (j = 0; j < MTK_I2C_TARGETS; j++)
+			if (slow[j].hz && slow[j].nr == i2c->adap.nr &&
+			    !(msgs[i].flags & I2C_M_TEN) &&
+			    msgs[i].addr == slow[j].addr)
+				msg_hz = slow[j].hz;
+		if (!i || msg_hz < hz)
+			hz = msg_hz;
+	}
+
+	return hz == dt_hz ? 0 : hz;
 }
 
 static void mtk_i2c_dump_reg(struct mtk_i2c *i2c)
@@ -1493,10 +1747,21 @@ static int mtk_i2c_transfer(struct i2c_adapter *adap,
 	u8 *dma_multi_wr_buf;
 	struct i2c_msg multi_msg[1];
 	struct mtk_i2c *i2c = i2c_get_adapdata(adap);
+	unsigned int slow_hz;
+
+	slow_hz = mtk_i2c_slow_hz(i2c, msgs, num);
+	if (slow_hz) {
+		ret = mtk_i2c_prepare_slow(i2c, slow_hz);
+		if (ret)
+			return ret;
+	}
 
 	ret = mtk_i2c_clock_enable(i2c);
 	if (ret)
 		return ret;
+
+	if (slow_hz)
+		mtk_i2c_use_speed(i2c, &i2c->slow_speed);
 
 	i2c->auto_restart = i2c->dev_comp->auto_restart;
 
@@ -1586,6 +1851,8 @@ static int mtk_i2c_transfer(struct i2c_adapter *adap,
 	ret = num;
 
 err_exit:
+	if (slow_hz)
+		mtk_i2c_use_speed(i2c, &i2c->dt_speed);
 	mtk_i2c_clock_disable(i2c);
 	return ret;
 }

@@ -400,8 +400,11 @@ void wait_tx_done(u8 epnum, unsigned int timeout_ns)
 		DBG(0, "ERROR !!!, packet still in FIFO, CSR %04x\n", txcsr);
 
 	int_tx = musb_readw(mbase, MUSB_INTRTX);
-	while (!(int_tx & 1<<epnum) && (diff_ns < timeout_ns))
+	while (!(int_tx & 1<<epnum) && (diff_ns < timeout_ns)) {
 		int_tx = musb_readw(mbase, MUSB_INTRTX);
+		ktime_get_ts64(&tv_after);
+		diff_ns = GET_TIME_DIFF_NS(tv_after, tv_before);
+	}
 
 	if (diff_ns >= timeout_ns)
 		DBG(0, "ERROR !!!, not TX INTR <%x>\n", int_tx);

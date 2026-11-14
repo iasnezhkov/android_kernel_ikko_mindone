@@ -203,6 +203,16 @@ void gpufreq_dump_infra_status_logbuffer(char *log_buf, int *log_len, int log_si
 }
 EXPORT_SYMBOL(gpufreq_dump_infra_status_logbuffer);
 
+void gpufreq_dump_infra_status_try(void)
+{
+	bool locked = mutex_trylock(&gpufreq_power_lock);
+
+	gpufreq_dump_infra_status_no_lock(NULL, NULL, 0);
+	if (locked)
+		mutex_unlock(&gpufreq_power_lock);
+}
+EXPORT_SYMBOL(gpufreq_dump_infra_status_try);
+
 unsigned int gpufreq_get_cur_freq(enum gpufreq_target target)
 {
 	unsigned int freq = 0;

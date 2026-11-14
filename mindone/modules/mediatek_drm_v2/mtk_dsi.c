@@ -46,7 +46,7 @@
 #include "mtk_drm_ddp_comp.h"
 #include "mtk_drm_crtc.h"
 #include "mtk_drm_drv.h"
-#include "mtk_drm_compat.h"
+#include <mindone/compat-drm-helper.h>
 #include "mtk_disp_recovery.h"
 #include "mtk_drm_helper.h"
 #include <drivers/gpu/drm/mediatek/mediatek_v2/mtk_mipi_tx.h>
@@ -3827,7 +3827,7 @@ static void mtk_output_dsi_enable(struct mtk_dsi *dsi,
 	if (dsi->panel) {
 		DDP_PROFILE("[PROFILE] %s panel init start\n", __func__);
 		if (((!dsi->doze_enabled && !dsi->pending_switch) || force_lcm_update)
-			&& mtk_drm_panel_prepare(dsi->panel)) {
+			&& mindone_drm_panel_prepare(dsi->panel)) {
 			DDPPR_ERR("failed to prepare the panel\n");
 			return;
 		}
@@ -3921,7 +3921,7 @@ static void mtk_output_dsi_enable(struct mtk_dsi *dsi,
 		mtk_dsi_start(dsi);
 
 	if (dsi->panel) {
-		if (!dsi->pending_switch && mtk_drm_panel_enable(dsi->panel)) {
+		if (!dsi->pending_switch && mindone_drm_panel_enable(dsi->panel)) {
 			DDPPR_ERR("failed to enable the panel\n");
 			goto err_dsi_power_off;
 		}
@@ -4025,7 +4025,7 @@ static void mtk_output_dsi_disable(struct mtk_dsi *dsi, struct cmdq_pkt *cmdq_ha
 
 	/* 1. If not doze mode, turn off backlight */
 	if (dsi->panel && ((!new_doze_state && !skip_panel_switch) || force_lcm_update)) {
-		if (mtk_drm_panel_disable(dsi->panel)) {
+		if (mindone_drm_panel_disable(dsi->panel)) {
 			DRM_ERROR("failed to disable the panel\n");
 			return;
 		}
@@ -4057,7 +4057,7 @@ static void mtk_output_dsi_disable(struct mtk_dsi *dsi, struct cmdq_pkt *cmdq_ha
 	/* 3. turn off panel or set to doze mode */
 	if (dsi->panel) {
 		if ((!new_doze_state && !skip_panel_switch) || force_lcm_update) {
-			if (mtk_drm_panel_unprepare(dsi->panel))
+			if (mindone_drm_panel_unprepare(dsi->panel))
 				DRM_ERROR("failed to unprepare the panel\n");
 		} else if (new_doze_state && !dsi->doze_enabled) {
 			mtk_output_en_doze_switch(dsi);
@@ -10875,7 +10875,7 @@ int Panel_Master_dsi_config_entry(struct drm_crtc *crtc,
 			name, config_value);
 	} else if (!strcmp(name, "PM_DRIVER_IC_RESET") && (!config_value)) {
 		if (dsi->panel) {
-			if (mtk_drm_panel_prepare(dsi->panel))
+			if (mindone_drm_panel_prepare(dsi->panel))
 				DDPPR_ERR("failed to enable the panel\n");
 		}
 	}

@@ -4,7 +4,11 @@
  */
 
 #include <linux/delay.h>
+#include <linux/jiffies.h>
+#include <linux/notifier.h>
 #include <linux/string.h>
+#include <linux/wait.h>
+#include <mindone/imgsensor-power.h>
 
 #include "kd_camera_typedef.h"
 #include "kd_camera_feature.h"
@@ -40,6 +44,36 @@ char * const imgsensor_hw_id_names[] = {
 char * const imgsensor_prj_names[] = {
 	"tb8781p2_64"
 };
+
+#define IMGSENSOR_HW_POWER_WAIT_MS 500
+
+static BLOCKING_NOTIFIER_HEAD(imgsensor_power_chain);
+
+int imgsensor_power_register_notifier(struct notifier_block *nb)
+{
+	return blocking_notifier_chain_register(&imgsensor_power_chain, nb);
+}
+EXPORT_SYMBOL_GPL(imgsensor_power_register_notifier);
+
+int imgsensor_power_unregister_notifier(struct notifier_block *nb)
+{
+	return blocking_notifier_chain_unregister(&imgsensor_power_chain, nb);
+}
+EXPORT_SYMBOL_GPL(imgsensor_power_unregister_notifier);
+
+static void imgsensor_power_notify(unsigned long action,
+				   enum IMGSENSOR_SENSOR_IDX sensor_idx,
+				   enum IMGSENSOR_HW_PIN pin)
+{
+	struct imgsensor_power_event event = {
+		.sensor_idx = sensor_idx,
+		.pin = pin > IMGSENSOR_HW_PIN_NONE && pin < IMGSENSOR_HW_PIN_MAX_NUM ?
+			imgsensor_hw_pin_names[pin] : NULL,
+	};
+
+	blocking_notifier_call_chain(&imgsensor_power_chain, action, &event);
+}
+
 enum IMGSENSOR_RETURN imgsensor_hw_init(struct IMGSENSOR_HW *phw)
 {
 	struct IMGSENSOR_HW_SENSOR_POWER      *psensor_pwr;
@@ -55,6 +89,9 @@ enum IMGSENSOR_RETURN imgsensor_hw_init(struct IMGSENSOR_HW *phw)
 	int ret_snprintf = 0;
 
 	mutex_init(&phw->common.pinctrl_mutex);
+	mutex_init(&phw->power_mutex);
+	init_waitqueue_head(&phw->power_wait);
+	phw->power_owner = IMGSENSOR_SENSOR_IDX_NONE;
 
 	memset(str_prop_name, 0, sizeof(str_prop_name));
 	snprintf(str_prop_name, sizeof(str_prop_name),
@@ -159,6 +196,8 @@ enum IMGSENSOR_RETURN imgsensor_hw_init(struct IMGSENSOR_HW *phw)
 
 	for (i = 0; i < IMGSENSOR_SENSOR_IDX_MAX_NUM; i++) {
 		psensor_pwr = &phw->sensor_pwr[i];
+		for (j = 0; j < IMGSENSOR_HW_PIN_MAX_NUM; j++)
+			psensor_pwr->id[j] = IMGSENSOR_HW_ID_MAX_NUM;
 
 		if (custlen != 0 && strncmp(prj_name, imgsensor_prj_names[0], custlen)
 			== 0) {
@@ -243,6 +282,9 @@ static enum IMGSENSOR_RETURN imgsensor_hw_power_step(
 				info->pin_state_on : info->pin_state_off);
 		}
 	}
+	if (ret == IMGSENSOR_RETURN_SUCCESS && device &&
+	    status == IMGSENSOR_HW_POWER_STATUS_ON)
+		imgsensor_power_notify(IMGSENSOR_POWER_PIN_ON, sensor_idx, info->pin);
 	mdelay(info->pin_on_delay);
 	if (ret != IMGSENSOR_RETURN_SUCCESS &&
 	    status == IMGSENSOR_HW_POWER_STATUS_ON && device &&
@@ -313,6 +355,14 @@ static enum IMGSENSOR_RETURN imgsensor_hw_power_sequence(
 	return ret;
 }
 
+static bool imgsensor_hw_power_held(struct IMGSENSOR_HW *phw,
+				    enum IMGSENSOR_SENSOR_IDX sensor_idx)
+{
+	enum IMGSENSOR_SENSOR_IDX owner = READ_ONCE(phw->power_owner);
+
+	return owner != IMGSENSOR_SENSOR_IDX_NONE && owner != sensor_idx;
+}
+
 enum IMGSENSOR_RETURN imgsensor_hw_power(
 		struct IMGSENSOR_HW *phw,
 		struct IMGSENSOR_SENSOR *psensor,
@@ -320,8 +370,11 @@ enum IMGSENSOR_RETURN imgsensor_hw_power(
 {
 	struct IMGSENSOR_HW_POWER_SEQ *platform_sequence;
 	enum IMGSENSOR_SENSOR_IDX sensor_idx;
+	enum IMGSENSOR_SENSOR_IDX owner;
 	enum IMGSENSOR_RETURN platform_ret;
 	enum IMGSENSOR_RETURN sensor_ret;
+	enum IMGSENSOR_RETURN ret;
+	unsigned long start;
 	char *name;
 	char str_index[LENGTH_FOR_SNPRINTF];
 
@@ -346,11 +399,43 @@ enum IMGSENSOR_RETURN imgsensor_hw_power(
 	else
 		platform_sequence = platform_power_sequence;
 
+	mutex_lock(&phw->power_mutex);
+	if (pwr_status == IMGSENSOR_HW_POWER_STATUS_ON &&
+	    imgsensor_hw_power_held(phw, sensor_idx)) {
+		owner = phw->power_owner;
+		start = jiffies;
+		mutex_unlock(&phw->power_mutex);
+		wait_event_timeout(phw->power_wait,
+				   !imgsensor_hw_power_held(phw, sensor_idx),
+				   msecs_to_jiffies(IMGSENSOR_HW_POWER_WAIT_MS));
+		mutex_lock(&phw->power_mutex);
+		if (!imgsensor_hw_power_held(phw, sensor_idx))
+			pr_info("%s: sensor %d waited %u ms for sensor %d to release the shared supplies\n",
+				__func__, sensor_idx, jiffies_to_msecs(jiffies - start), owner);
+	}
+	if (pwr_status == IMGSENSOR_HW_POWER_STATUS_ON &&
+	    imgsensor_hw_power_held(phw, sensor_idx)) {
+		pr_info("%s: sensor %d refused, sensor %d holds the shared supplies\n",
+			__func__, sensor_idx, phw->power_owner);
+		ret = IMGSENSOR_RETURN_BUSY;
+		goto unlock;
+	}
+	if (pwr_status == IMGSENSOR_HW_POWER_STATUS_OFF &&
+	    phw->power_owner != sensor_idx) {
+		ret = IMGSENSOR_RETURN_SUCCESS;
+		goto unlock;
+	}
+	if (pwr_status == IMGSENSOR_HW_POWER_STATUS_OFF)
+		imgsensor_power_notify(IMGSENSOR_POWER_OFF, sensor_idx,
+				       IMGSENSOR_HW_PIN_NONE);
+
 	platform_ret = imgsensor_hw_power_sequence(phw, sensor_idx, pwr_status,
 		platform_sequence, str_index, true);
 	if (pwr_status == IMGSENSOR_HW_POWER_STATUS_ON &&
-	    platform_ret != IMGSENSOR_RETURN_SUCCESS)
-		return platform_ret;
+	    platform_ret != IMGSENSOR_RETURN_SUCCESS) {
+		ret = platform_ret;
+		goto notify;
+	}
 
 	sensor_ret = imgsensor_hw_power_sequence(phw, sensor_idx, pwr_status,
 		sensor_power_sequence, name, false);
@@ -359,7 +444,21 @@ enum IMGSENSOR_RETURN imgsensor_hw_power(
 		imgsensor_hw_power_sequence(phw, sensor_idx,
 			IMGSENSOR_HW_POWER_STATUS_OFF, platform_sequence, str_index, true);
 
-	return platform_ret != IMGSENSOR_RETURN_SUCCESS ? platform_ret : sensor_ret;
+	ret = platform_ret != IMGSENSOR_RETURN_SUCCESS ? platform_ret : sensor_ret;
+	if (pwr_status == IMGSENSOR_HW_POWER_STATUS_OFF) {
+		WRITE_ONCE(phw->power_owner, IMGSENSOR_SENSOR_IDX_NONE);
+		wake_up_all(&phw->power_wait);
+	} else if (ret == IMGSENSOR_RETURN_SUCCESS) {
+		WRITE_ONCE(phw->power_owner, sensor_idx);
+	}
+notify:
+	if (pwr_status == IMGSENSOR_HW_POWER_STATUS_ON)
+		imgsensor_power_notify(ret == IMGSENSOR_RETURN_SUCCESS ?
+				       IMGSENSOR_POWER_ON : IMGSENSOR_POWER_OFF,
+				       sensor_idx, IMGSENSOR_HW_PIN_NONE);
+unlock:
+	mutex_unlock(&phw->power_mutex);
+	return ret;
 }
 
 enum IMGSENSOR_RETURN imgsensor_hw_dump(struct IMGSENSOR_HW *phw)

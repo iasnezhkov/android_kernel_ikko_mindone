@@ -22,7 +22,7 @@ MODULE_DEVICE_TABLE(of, disable_unused_id_table);
 
 static int disable_unused_probe(struct platform_device *pdev)
 {
-	struct clk *clk;
+	struct clk *clk, *parent;
 	int clk_con, i = 0;
 	int pp1, en1, pp2, en2;
 	int retval = 0;
@@ -36,7 +36,12 @@ static int disable_unused_probe(struct platform_device *pdev)
 	pr_notice("disable_unused dev: %s ongo\n",
 					pdev->name);
 	pm_runtime_enable(&pdev->dev);
-	pm_runtime_get_sync(&pdev->dev);
+	retval = pm_runtime_resume_and_get(&pdev->dev);
+	if (retval) {
+		pr_notice("disable_unused dev: %s resume failed, ret=%d\n",
+				pdev->name, retval);
+		return 0;
+	}
 	for (i = 0; i < clk_con; i++) {
 		clk = of_clk_get(pdev->dev.of_node, i);
 		if (IS_ERR_OR_NULL(clk)) {
@@ -52,11 +57,13 @@ static int disable_unused_probe(struct platform_device *pdev)
 					i, __clk_get_name(clk));
 #if DUMP_UNUSED_CLKS
 			/* enable parent clk first because of clk dependency */
-			retval = clk_prepare_enable(clk_get_parent(clk));
+			parent = clk_get_parent(clk);
+			retval = clk_prepare_enable(parent);
 			if (retval) {
 				pr_info("parent clk of clk %d clk_prepare_enable failed\n", i);
 				pr_info("return err code=%d\n", retval);
-				return 0;
+				clk_put(clk);
+				break;
 			}
 			/* record clk initial on/off state */
 			en1 = __clk_is_enabled(clk);
@@ -68,7 +75,11 @@ static int disable_unused_probe(struct platform_device *pdev)
 			if (retval) {
 				pr_info("clk %d clk_prepare_enable failed\n", i);
 				pr_info("return err code=%d\n", retval);
-				return 0;
+#if DUMP_UNUSED_CLKS
+				clk_disable_unprepare(parent);
+#endif
+				clk_put(clk);
+				break;
 			}
 
 			clk_disable_unprepare(clk);
@@ -79,13 +90,14 @@ static int disable_unused_probe(struct platform_device *pdev)
 			pp2 = clk_hw_is_prepared(__clk_get_hw(clk));
 
 			/* disable parent clk to resume clk parent previous state */
-			clk_disable_unprepare(clk_get_parent(clk));
+			clk_disable_unprepare(parent);
 
 			/* if clk before/after state is different, then it's been disabled */
 			if (pp1 != pp2 || en1 != en2)
 				pr_notice("disable_unused clk [%d]: %s done\n",
 					i, __clk_get_name(clk));
 #endif
+			clk_put(clk);
 		}
 	}
 

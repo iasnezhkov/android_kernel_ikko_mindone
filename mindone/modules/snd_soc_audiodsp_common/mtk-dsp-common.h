@@ -1,1 +1,0 @@
-../include/sound/soc/mediatek/audio_dsp/mtk-dsp-common.h

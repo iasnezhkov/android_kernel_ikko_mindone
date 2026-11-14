@@ -7,14 +7,14 @@ used in an ACK workspace; replace the clone URL and prebuilt artifact path below
 
 ## Where this is, and how it got here
 
-The kernel binary comes from Google's **`android17-6.18-2026-09_r12` prebuilt,
-CI 16754118** (`6.18.32-android17-5`). This tree builds the device DTB/DTBO and modules through Kleaf DDK,
+The kernel binary comes from Google's **`android17-6.18-2026-09_r13` prebuilt,
+CI 16831611** (`6.18.32-android17-5`). This tree builds the device DTB/DTBO and modules through Kleaf DDK,
 using `@gki_prebuilts//kernel_aarch64` as the base. It does not rebuild the shipped
 `vmlinux` or `Image`.
 
-`mindone/BUILD.bazel` defines eight in-tree `module_outs`; five are in the normal boot
-load lists. `mindone/modules/BUILD.bazel` defines 281 `ddk_module` targets, of which
-249 are in those lists. Four further modules come from GKI: **258 listed modules**.
+`mindone/BUILD.bazel` defines 23 in-tree `module_outs`; 20 are in the normal boot
+load lists. `mindone/modules/BUILD.bazel` defines 195 `ddk_module` targets, of which
+190 are in those lists. Four further modules come from GKI: **214 listed modules**.
 
 External imports must resolve through Google's `abi_symbollist` of the release.
 There is no private mindone symbol list or `mindone_abi` target. The candidate gate
@@ -31,7 +31,7 @@ PMIC and waits on `-EPROBE_DEFER`, which needs `pinctrl-mt6789.ko` early in
 ## Building it with Kleaf
 
 Android 16 dropped non-Bzlmod kernel builds, so Bazel is the only entry point Google supports. The
-workspace is the `manifest.xml` published with CI 16754118, with `kernel/common` replaced by this
+workspace is the `manifest.xml` published with CI 16831611, with `kernel/common` replaced by this
 repository; pinning it keeps the build tools and toolchain at the revisions Google built the core with:
 
 ```sh
@@ -50,7 +50,7 @@ X
 repo sync -c -j8 --no-tags
 ```
 
-Download the `kernel_aarch64` artifacts for CI **16754118**, including
+Download the `kernel_aarch64` artifacts for CI **16831611**, including
 `kernel_aarch64_filegroup_decl.tar.gz`, `kernel_aarch64_ddk_headers_archive.tar.gz`,
 `vmlinux.symvers`, the kernel images and the GKI module archives. In
 `build/kernel/kleaf/bzlmod/bazel.MODULE.bazel`, declare the local artifact directory
@@ -75,7 +75,7 @@ tools/bazel build //common/mindone:mindone //common/mindone:mindone_modules_inst
 
 | target | what it is |
 |---|---|
-| `//common/mindone:mindone` | mixed build on `@gki_prebuilts//kernel_aarch64`: `gki_defconfig` plus `mindone/mindone.fragment`, eight in-tree module outputs and the device DTB/DTBO |
+| `//common/mindone:mindone` | mixed build on `@gki_prebuilts//kernel_aarch64`: `gki_defconfig` plus `mindone/mindone.fragment`, 23 in-tree module outputs and the device DTB/DTBO |
 | `//common/mindone/modules:mindone_modules` | the out-of-tree drivers, one `ddk_module` each |
 | `//common/mindone:mindone_modules_install` | device and base modules staged together |
 
@@ -102,31 +102,41 @@ tools/bazel build //common/mindone/modules:hf_manager
 ```
 
 Count non-empty, non-comment lines to measure the requested module lists.
-`mindone/modules/modules.load` contains 262 entries; its set equals the disjoint union
+`mindone/modules/modules.load` contains 214 entries; its set equals the disjoint union
 of the two normal boot lists wired into `mindone/BUILD.bazel`:
-`mindone/vendor_boot.modules.load` (26 modules, the
+`mindone/vendor_boot.modules.load` (21 modules, the
 first-stage set that goes in the ramdisk) and
-`mindone/vendor_dlkm.modules.load` (236, the rest) —
-262 modules with no overlap between the two files. Both are wired directly into the
+`mindone/vendor_dlkm.modules.load` (193, the rest) —
+214 modules with no overlap between the two files. Both are wired directly into the
 `mindone_images` `kernel_images` target in `mindone/BUILD.bazel`, so a Kleaf build stages them
 using the requested lists; order is not cosmetic; several modules hold devices that others
 depend on, and getting it wrong usually looks like some unrelated device never probing.
 
-Of the 262 listed modules, 253 come from the 280 DDK targets. Five are in-tree
-`mindone` outputs: `8250_mtk`, `cfg80211`, `drm_display_helper`, `drm_dma_helper`,
-and `reset-ti-syscon`. The other three declared in-tree outputs — `mac80211`,
-`industrialio-triggered-buffer` and `kfifo_buf` — are not in the normal load lists.
+Of the 214 listed modules, 190 come from the 195 DDK targets. Twenty are in-tree
+`mindone` outputs: `8250_mtk`, `arm_dsu_pmu`, `cfg80211`, `cqhci`, `drm_display_helper`,
+`drm_dma_helper`, `i2c-dev`, `mediatek-cpufreq-hw`, `mmc_hsq`, `mtk-eint`, `mtk-sd`,
+`mtk-uart-apdma`, `mtk_wdt`, `phy-generic`, `pinctrl-mtk-common-v2`, `pinctrl-paris`,
+`reboot-mode`, `reset-ti-syscon`, `syscon-reboot-mode` and `thermal-generic-adc`. The
+other three declared in-tree outputs — `mac80211`, `industrialio-triggered-buffer` and
+`kfifo_buf` — are not in the normal load lists.
 The last four listed modules — `libarc4`, `rfkill`, `zram`, `zsmalloc` — come from GKI.
-Clocks, pinctrl, UFS and the dma-buf helpers are now DDK targets.
+The clocks (the r13 clk-mtk core as `clk-mtk-ack` and the MT6789 clock data drivers),
+the power domains, the PMIC wrapper, the `pinctrl-mt6789` data driver, Type-C
+(`tcpci_rt1711h`), UFS and the dma-buf helpers are DDK targets. Of the five DDK targets
+outside the lists, `ois_aw86006` is selected but named in no load list, and the four
+unused AF wrappers are not selected.
 
 The build selects recovery through `modules_recovery_list` in `mindone/BUILD.bazel`:
 there is a third, shorter list:
 `mindone/vendor_boot.modules.load.recovery`
-(131 modules, counted by the same non-empty, non-comment rule).
+(109 modules, counted by the same non-empty, non-comment rule).
 These counts describe requested staging entries.
 
-`mindone/modules/MODULES.tsv` is a human-readable inventory (module name, `.ko` name, boot
-stage, source directory), regenerated from a build pass.
+`mindone/modules/MODULES.tsv` is the module inventory: module name, `.ko` file, source
+(`ddk`, `in-tree` or `gki`), whether `mindone_modules` selects it, the load lists that name it
+(`vendor_boot`, `vendor_dlkm`, `recovery`) and its source directories under `mindone/modules/`.
+`python3 mindone/tests/modules-tsv-check.py --write` regenerates it from `BUILD.bazel` and the
+load lists; without `--write` the check fails when the table is stale.
 
 ## 2. Check before you flash
 

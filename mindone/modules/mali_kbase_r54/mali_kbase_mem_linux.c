@@ -5,7 +5,6 @@
 #include <linux/mm.h>
 #include <linux/mman.h>
 #include <linux/fs.h>
-#include <linux/version.h>
 #include <linux/dma-mapping.h>
 #include <linux/dma-buf.h>
 #include <linux/shrinker.h>
@@ -13,7 +12,6 @@
 #include <linux/memory_group_manager.h>
 #include <linux/math64.h>
 #include <linux/migrate.h>
-#include <linux/version.h>
 #include <mali_kbase.h>
 #include <mali_kbase_mem_linux.h>
 #include <tl/mali_kbase_tracepoints.h>
@@ -36,11 +34,7 @@
 #include <platform/mtk_platform_common/mtk_platform_logbuffer.h>
 #endif
 
-#if ((KERNEL_VERSION(5, 3, 0) <= LINUX_VERSION_CODE) || \
-     (KERNEL_VERSION(5, 0, 0) > LINUX_VERSION_CODE))
-
 #define KBASE_MEM_ION_SYNC_WORKAROUND
-#endif
 
 static bool fully_backed_gpf_memory;
 module_param(fully_backed_gpf_memory, bool, 0444);
@@ -629,10 +623,8 @@ static unsigned long kbase_mem_evictable_reclaim_count_objects(struct shrinker *
 	trace_mali_mem_evictable_count(kctx, nr_freeable_items);
 #endif
 
-#if KERNEL_VERSION(4, 19, 0) <= LINUX_VERSION_CODE
 	if (nr_freeable_items == 0)
 		nr_freeable_items = SHRINK_EMPTY;
-#endif
 
 	return nr_freeable_items;
 }
@@ -1053,13 +1045,8 @@ static void kbase_mem_umm_unmap_attachment(struct kbase_context *kctx,
 {
 	struct tagged_addr *pa = alloc->pages;
 
-#if (KERNEL_VERSION(6, 1, 55) <= LINUX_VERSION_CODE)
 	dma_buf_unmap_attachment_unlocked(alloc->imported.umm.dma_attachment,
 					  alloc->imported.umm.sgt, DMA_BIDIRECTIONAL);
-#else
-	dma_buf_unmap_attachment(alloc->imported.umm.dma_attachment, alloc->imported.umm.sgt,
-				 DMA_BIDIRECTIONAL);
-#endif
 	alloc->imported.umm.sgt = NULL;
 
 	kbase_remove_dma_buf_usage(kctx, alloc);
@@ -1081,12 +1068,8 @@ static int kbase_mem_umm_map_attachment(struct kbase_context *kctx, struct kbase
 	WARN_ON_ONCE(alloc->type != KBASE_MEM_TYPE_IMPORTED_UMM);
 	WARN_ON_ONCE(alloc->imported.umm.sgt);
 
-#if (KERNEL_VERSION(6, 1, 55) <= LINUX_VERSION_CODE)
 	sgt = dma_buf_map_attachment_unlocked(alloc->imported.umm.dma_attachment,
 					      DMA_BIDIRECTIONAL);
-#else
-	sgt = dma_buf_map_attachment(alloc->imported.umm.dma_attachment, DMA_BIDIRECTIONAL);
-#endif
 	if (IS_ERR_OR_NULL(sgt))
 		return -EINVAL;
 
@@ -2141,14 +2124,9 @@ static struct kbase_aliased *get_aliased_alloc(struct vm_area_struct *vma,
 	return aliased;
 }
 
-#if (KERNEL_VERSION(4, 11, 0) > LINUX_VERSION_CODE)
-static vm_fault_t kbase_cpu_vm_fault(struct vm_area_struct *vma, struct vm_fault *vmf)
-{
-#else
 static vm_fault_t kbase_cpu_vm_fault(struct vm_fault *vmf)
 {
 	struct vm_area_struct *vma = vmf->vma;
-#endif
 	struct kbase_cpu_mapping *map = vma->vm_private_data;
 	pgoff_t map_start_pgoff;
 	pgoff_t fault_pgoff;
@@ -2871,15 +2849,7 @@ KBASE_EXPORT_TEST_API(kbase_vunmap);
 
 static void kbasep_add_mm_counter(struct mm_struct *mm, int member, long value)
 {
-#if (KERNEL_VERSION(6, 2, 0) <= LINUX_VERSION_CODE)
-
 	percpu_counter_add(&mm->rss_stat[member], value);
-#elif (KERNEL_VERSION(5, 5, 0) <= LINUX_VERSION_CODE)
-
-	atomic_long_add(value, &mm->rss_stat.count[member]);
-#else
-	add_mm_counter(mm, member, value);
-#endif
 }
 
 void kbasep_os_process_page_usage_update(struct kbase_context *kctx, int pages)
@@ -2926,15 +2896,8 @@ static unsigned long get_queue_doorbell_pfn(struct kbase_device *kbdev, struct k
 }
 
 static int
-#if (KERNEL_VERSION(5, 13, 0) <= LINUX_VERSION_CODE || \
-     KERNEL_VERSION(5, 11, 0) > LINUX_VERSION_CODE)
 kbase_csf_user_io_pages_vm_mremap(struct vm_area_struct *vma)
 {
-#else
-kbase_csf_user_io_pages_vm_mremap(struct vm_area_struct *vma, unsigned long flags)
-{
-	CSTD_UNUSED(flags);
-#endif
 	CSTD_UNUSED(vma);
 
 	pr_debug("Unexpected call to mremap method for User IO pages mapping vma\n");
@@ -2991,14 +2954,9 @@ static void kbase_csf_user_io_pages_vm_close(struct vm_area_struct *vma)
 	fput(kctx->filp);
 }
 
-#if (KERNEL_VERSION(4, 11, 0) > LINUX_VERSION_CODE)
-static vm_fault_t kbase_csf_user_io_pages_vm_fault(struct vm_area_struct *vma, struct vm_fault *vmf)
-{
-#else
 static vm_fault_t kbase_csf_user_io_pages_vm_fault(struct vm_fault *vmf)
 {
 	struct vm_area_struct *vma = vmf->vma;
-#endif
 	struct kbase_queue *queue = vma->vm_private_data;
 	unsigned long doorbell_cpu_addr, input_cpu_addr, output_cpu_addr;
 	unsigned long doorbell_page_pfn, input_page_pfn, output_page_pfn;
@@ -3037,11 +2995,7 @@ static vm_fault_t kbase_csf_user_io_pages_vm_fault(struct vm_fault *vmf)
 
 	doorbell_cpu_addr = vma->vm_start;
 
-#if KERNEL_VERSION(4, 10, 0) > LINUX_VERSION_CODE
-	if ((unsigned long)vmf->virtual_address == doorbell_cpu_addr) {
-#else
 	if (vmf->address == doorbell_cpu_addr) {
-#endif
 		doorbell_page_pfn = get_queue_doorbell_pfn(kbdev, queue);
 		ret = mgm_dev->ops.mgm_vmf_insert_pfn_prot(mgm_dev, KBASE_MEM_GROUP_CSF_IO, vma,
 							   doorbell_cpu_addr, doorbell_page_pfn,
@@ -3071,11 +3025,7 @@ exit:
 static const struct vm_operations_struct kbase_csf_user_io_pages_vm_ops = {
 	.open = kbase_csf_user_io_pages_vm_open,
 	.close = kbase_csf_user_io_pages_vm_close,
-#if KERNEL_VERSION(5, 11, 0) <= LINUX_VERSION_CODE
 	.may_split = kbase_csf_user_io_pages_vm_split,
-#else
-	.split = kbase_csf_user_io_pages_vm_split,
-#endif
 	.mremap = kbase_csf_user_io_pages_vm_mremap,
 	.fault = kbase_csf_user_io_pages_vm_fault
 };
@@ -3164,29 +3114,17 @@ static void kbase_csf_user_reg_vm_close(struct vm_area_struct *vma)
 }
 
 static int
-#if ((KERNEL_VERSION(5, 13, 0) <= LINUX_VERSION_CODE) || \
-     (KERNEL_VERSION(5, 11, 0) > LINUX_VERSION_CODE))
 kbase_csf_user_reg_vm_mremap(struct vm_area_struct *vma)
 {
-#else
-kbase_csf_user_reg_vm_mremap(struct vm_area_struct *vma, unsigned long flags)
-{
-	CSTD_UNUSED(flags);
-#endif
 	CSTD_UNUSED(vma);
 
 	pr_debug("Unexpected call to mremap method for USER page mapping vma\n");
 	return -EINVAL;
 }
 
-#if (KERNEL_VERSION(4, 11, 0) > LINUX_VERSION_CODE)
-static vm_fault_t kbase_csf_user_reg_vm_fault(struct vm_area_struct *vma, struct vm_fault *vmf)
-{
-#else
 static vm_fault_t kbase_csf_user_reg_vm_fault(struct vm_fault *vmf)
 {
 	struct vm_area_struct *vma = vmf->vma;
-#endif
 	struct kbase_context *kctx = vma->vm_private_data;
 	struct kbase_device *kbdev;
 	struct memory_group_manager_device *mgm_dev;

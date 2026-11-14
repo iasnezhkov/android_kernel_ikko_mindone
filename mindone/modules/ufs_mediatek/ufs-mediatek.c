@@ -19,7 +19,6 @@
 #include <linux/platform_device.h>
 #include <linux/regulator/consumer.h>
 #include <linux/reset.h>
-#include <linux/version.h>
 
 #include <ufs/ufshcd.h>
 #include "host/ufshcd-pltfrm.h"
@@ -1291,17 +1290,14 @@ static int ufs_mtk_negotiate_pwr_mode(struct ufs_hba *hba,
 }
 
 static int ufs_mtk_pre_pwr_change(struct ufs_hba *hba,
-#if LINUX_VERSION_CODE < KERNEL_VERSION(6, 18, 0)
-				struct ufs_pa_layer_attr *dev_max_params,
-#endif
+				MINDONE_UFS_PWR_MAX_PARAM(dev_max_params)
 				struct ufs_pa_layer_attr *dev_req_params)
 {
 	struct ufs_mtk_host *host = ufshcd_get_variant(hba);
 	int ret = 0;
 
-#if LINUX_VERSION_CODE < KERNEL_VERSION(6, 18, 0)
-	ret = ufs_mtk_negotiate_pwr_mode(hba, dev_max_params, dev_req_params);
-#endif
+	ret = MINDONE_UFS_PRE_NEGOTIATE_PWR_MODE(ufs_mtk_negotiate_pwr_mode, hba, dev_max_params,
+						 dev_req_params);
 
 	if (ufs_mtk_pmc_via_fastauto(hba, dev_req_params)) {
 		ufshcd_dme_set(hba, UIC_ARG_MIB(PA_TXTERMINATION), true);
@@ -1412,9 +1408,7 @@ out:
 
 static int ufs_mtk_pwr_change_notify(struct ufs_hba *hba,
 				     enum ufs_notify_change_status stage,
-#if LINUX_VERSION_CODE < KERNEL_VERSION(6, 18, 0)
-				     struct ufs_pa_layer_attr *dev_max_params,
-#endif
+				     MINDONE_UFS_PWR_MAX_PARAM(dev_max_params)
 				     struct ufs_pa_layer_attr *dev_req_params)
 {
 	int ret = 0;
@@ -1427,9 +1421,7 @@ static int ufs_mtk_pwr_change_notify(struct ufs_hba *hba,
 			ufs_mtk_auto_hibern8_disable(hba);
 		}
 		ret = ufs_mtk_pre_pwr_change(hba,
-#if LINUX_VERSION_CODE < KERNEL_VERSION(6, 18, 0)
-					     dev_max_params,
-#endif
+					     MINDONE_UFS_PWR_MAX_ARG(dev_max_params)
 					     dev_req_params);
 		break;
 	case POST_CHANGE:
@@ -2180,9 +2172,7 @@ static const struct ufs_hba_variant_ops ufs_hba_mtk_vops = {
 	.setup_clocks        = ufs_mtk_setup_clocks,
 	.hce_enable_notify   = ufs_mtk_hce_enable_notify,
 	.link_startup_notify = ufs_mtk_link_startup_notify,
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 18, 0)
-	.negotiate_pwr_mode  = ufs_mtk_negotiate_pwr_mode,
-#endif
+	MINDONE_UFS_NEGOTIATE_PWR_MODE_OP(ufs_mtk_negotiate_pwr_mode)
 	.pwr_change_notify   = ufs_mtk_pwr_change_notify,
 	.apply_dev_quirks    = ufs_mtk_apply_dev_quirks,
 	.fixup_dev_quirks    = ufs_mtk_fixup_dev_quirks,

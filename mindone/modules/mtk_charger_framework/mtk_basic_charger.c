@@ -25,7 +25,7 @@
 #include <linux/init.h>		/* For init/exit macros */
 #include <linux/module.h>	/* For MODULE_ marcros  */
 #include <linux/fs.h>
-#include <linux/mindone_power_supply_compat.h>
+#include <mindone/compat-power-supply.h>
 #include <linux/device.h>
 #include <linux/interrupt.h>
 #include <linux/spinlock.h>
@@ -165,19 +165,23 @@ static int usb_sdp_limit(struct mtk_charger *info)
 	if (info->chr_type != POWER_SUPPLY_TYPE_USB ||
 	    info->usb_type != POWER_SUPPLY_USB_TYPE_SDP)
 		return -1;
-	if (info->pd_type != MTK_PD_CONNECT_NONE &&
-	    info->pd_type != MTK_PD_CONNECT_TYPEC_ONLY_SNK)
+	switch (info->pd_type) {
+	case MTK_PD_CONNECT_PE_READY_SNK:
+	case MTK_PD_CONNECT_PE_READY_SNK_PD30:
+	case MTK_PD_CONNECT_PE_READY_SNK_APDO:
 		return -1;
-	if (info->pd_type == MTK_PD_CONNECT_TYPEC_ONLY_SNK) {
-		rp = adapter_dev_get_property(info->pd_adapter, TYPEC_RP_LEVEL);
-		if (rp == 1500 || rp == 3000)
-			return -1;
+	default:
+		break;
 	}
+	rp = adapter_dev_get_property(info->pd_adapter, TYPEC_RP_LEVEL);
+	if (rp == 1500 || rp == 3000)
+		return -1;
 	if (IS_ERR_OR_NULL(info->chg_psy) ||
 	    power_supply_get_property(info->chg_psy,
-			POWER_SUPPLY_PROP_INPUT_CURRENT_LIMIT, &val))
-		return 100000;
-	return clamp(val.intval, 0, 500000);
+			POWER_SUPPLY_PROP_INPUT_CURRENT_LIMIT, &val) ||
+	    val.intval <= 0)
+		return -1;
+	return clamp(val.intval, 100000, 500000);
 }
 
 void mtk_usb_sdp_update(struct mtk_charger *info)
@@ -186,21 +190,14 @@ void mtk_usb_sdp_update(struct mtk_charger *info)
 	int limit = usb_sdp_limit(info);
 	int ret;
 
-	if (limit < 0) {
-		if (!info->usb_input_suspended)
-			return;
-		limit = 100000;
-	} else if (!info->usb_input_suspended && limit >= 100000) {
-		ret = charger_dev_get_input_current(info->chg1_dev, &input);
-		if (!ret && input <= limit)
-			return;
-	}
-	ret = charger_dev_set_input_current(info->chg1_dev, limit);
-	if (ret) {
-		chr_err("%s: input limit failed: %d\n", __func__, ret);
+	if (limit < 0)
 		return;
-	}
-	info->usb_input_suspended = limit < 100000;
+	ret = charger_dev_get_input_current(info->chg1_dev, &input);
+	if (!ret && input && input <= limit)
+		return;
+	ret = charger_dev_set_input_current(info->chg1_dev, limit);
+	if (ret)
+		chr_err("%s: input limit failed: %d\n", __func__, ret);
 }
 
 static bool select_charging_current_limit(struct mtk_charger *info,

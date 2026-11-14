@@ -1,1 +1,0 @@
-../include/drivers/thermal/mediatek/thermal_interface.h

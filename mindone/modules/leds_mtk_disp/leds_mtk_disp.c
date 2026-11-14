@@ -13,7 +13,6 @@
 #include <linux/platform_device.h>
 #include <linux/slab.h>
 #include <leds-mtk.h>
-#include <gate_i2c.h>
 #include "../drivers/gpu/drm/mediatek/mediatek_v2/mtk_panel_ext.h"
 
 #include <linux/of_device.h>
@@ -139,11 +138,10 @@ static int __maybe_unused led_i2c_set(struct mt_led_data *mdev,
 	int version = mtk_drm_get_lcm_version();
 
 	pr_debug("set brightness %d, version:%d", brightness, version);
-	if (version == MTK_COMMON_LCM_DRV) {
+	if (version == MTK_COMMON_LCM_DRV || version == MTK_LEGACY_LCM_DRV) {
 		pr_notice("%s,no gate ic backlight provider in this build\n", __func__);
 		return -ENODEV;
-	} else if (version == MTK_LEGACY_LCM_DRV)
-		return _gate_ic_backlight_set(brightness);
+	}
 
 	pr_notice("%s,gate ic is not ready yet\n", __func__);
 	return 0;

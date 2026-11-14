@@ -4868,11 +4868,6 @@ unsigned long cmdq_get_tracing_mark(void)
 {
 	static unsigned long __read_mostly tracing_mark_write_addr;
 
-	/*if (unlikely(tracing_mark_write_addr == 0))
-	 *	tracing_mark_write_addr =
-	 *		kallsyms_lookup_name("tracing_mark_write");
-	 */
-
 	return tracing_mark_write_addr;
 }
 

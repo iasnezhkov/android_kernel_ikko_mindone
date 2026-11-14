@@ -40,7 +40,7 @@
 		mediatek,srclken_o1 = <0x200000>;
 		reg = <0x00 0xd0cf000 0x00 0x1000>;
 		interrupts = <GIC_SPI 110 IRQ_TYPE_EDGE_RISING 0 GIC_SPI 226 IRQ_TYPE_LEVEL_HIGH 0 GIC_SPI 227 IRQ_TYPE_LEVEL_HIGH 0>;
-		power-domains = <&scpsys MT6789_POWER_DOMAIN_MD>;
+		power-domains = <&spm MT6789_POWER_DOMAIN_MD>;
 		ccci-infracfg = <&infracfg_ao_clk>;
 		ccci-topckgen = <&topckgen_clk>;
 		ccci_spmsleep = <&apccci_mdo1>;
@@ -138,11 +138,6 @@
 	sys_cirq@10314000 {
 		compatible = "mediatek,sys_cirq";
 		reg = <0x00 0x10314000 0x00 0x1000>;
-	};
-
-	mss_b@15812000 {
-		compatible = "mediatek,mss_b";
-		reg = <0x00 0x15812000 0x00 0x1000>;
 	};
 
 };

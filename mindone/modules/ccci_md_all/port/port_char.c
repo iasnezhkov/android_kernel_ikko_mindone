@@ -110,73 +110,6 @@ static int port_char_init(struct port_t *port)
 	return ret;
 }
 
-#if IS_ENABLED(CONFIG_MTK_ECCCI_C2K_USB)
-static usb_upstream_buffer_cb_t usb_upstream_cb;
-void ccci_c2k_set_usb_callback(usb_upstream_buffer_cb_t callback)
-{
-	usb_upstream_cb = callback;
-}
-EXPORT_SYMBOL(ccci_c2k_set_usb_callback);
-
-static int c2k_req_push_to_usb(struct port_t *port, struct sk_buff *skb)
-{
-	int md_id = port->md_id;
-	struct ccci_header *ccci_h = NULL;
-	int read_len, read_count, ret = 0;
-	int c2k_ch_id;
-	int ppp_rx_ch = CCCI_C2K_PPP_RX;
-
-	if (port->rx_ch == ppp_rx_ch)
-		c2k_ch_id = DATA_PPP_CH_C2K-1;
-	else if (port->rx_ch == CCCI_MD_LOG_RX)
-		c2k_ch_id = MDLOG_CH_C2K-2;
-	else {
-		ret = -ENODEV;
-		CCCI_ERROR_LOG(md_id, CHAR,
-			"Err: wrong ch_id(%d) from usb bypass\n", port->rx_ch);
-		return ret;
-	}
-
-	/* calculate available data */
-	ccci_h = (struct ccci_header *)skb->data;
-	read_len = skb->len - sizeof(struct ccci_header);
-	/* remove CCCI header */
-	skb_pull(skb, sizeof(struct ccci_header));
-
-retry_push:
-	/* push to usb: USB_RAWBULK_READY: requires C2K USB driver */
-	if (!usb_upstream_cb) {
-		CCCI_ERROR_LOG(md_id, CHAR,
-				"usb upstream callback is not set\n");
-		return -EINVAL;
-	}
-	read_count = usb_upstream_cb(c2k_ch_id, skb->data, read_len);
-  
-	CCCI_DEBUG_LOG(md_id, CHAR,
-		"data push to usb bypass (ch%d)(%d)\n",
-		port->rx_ch, read_count);
-
-	if (read_count > 0) {
-		skb_pull(skb, read_count);
-		read_len -= read_count;
-		if (read_len > 0)
-			goto retry_push;
-		else if (read_len == 0)
-			ccci_free_skb(skb);
-		else if (read_len < 0)
-			CCCI_ERROR_LOG(md_id, CHAR,
-				"read_len error, check why come here\n");
-	} else {
-		CCCI_NORMAL_LOG(md_id, CHAR, "usb buf full\n");
-		msleep(20);
-		goto retry_push;
-	}
-
-	return read_len;
-
-}
-#endif
-
 static int port_char_recv_skb(struct port_t *port, struct sk_buff *skb)
 {
 	int md_id = port->md_id;
@@ -193,12 +126,6 @@ static int port_char_recv_skb(struct port_t *port, struct sk_buff *skb)
 		AP_IPC_LWAPROXY + CCCI_IPC_MINOR_BASE)))
 		return -CCCI_ERR_DROP_PACKET;
 
-#if IS_ENABLED(CONFIG_MTK_ECCCI_C2K_USB)
-	if (port->interception) {
-		c2k_req_push_to_usb(port, skb);
-		return 0;
-	}
-#endif
 	CCCI_DEBUG_LOG(md_id, CHAR, "recv on %s, len=%d\n",
 		port->name, port->rx_skb_list.qlen);
 	return port_recv_skb(port, skb);

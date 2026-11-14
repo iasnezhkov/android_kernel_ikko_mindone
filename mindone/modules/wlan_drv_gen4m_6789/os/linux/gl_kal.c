@@ -75,7 +75,6 @@
  */
 #include "gl_os.h"
 #include <net/gro.h>
-#include <linux/version.h>
 #include <linux/sched/clock.h>
 #include <net/netdev_rx_queue.h>
 #include <net/rps.h>
@@ -122,6 +121,7 @@
 #include <linux/jiffies.h>
 #include <linux/ratelimit.h>
 #include <linux/rtc.h>
+#include <mindone/compat-gro.h>
 #include <mindone/compat-timer.h>
 
 /*******************************************************************************
@@ -1178,22 +1178,6 @@ uint32_t kal_is_udp_enable_gro(struct ADAPTER *prAdapter, uint8_t ucBssIdx)
 	return 0;
 }
 
-static inline void napi_gro_flush_list(struct napi_struct *napi)
-{
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 18, 0)
-	struct gro_node *gro = &napi->gro;
-#else
-	struct napi_struct *gro = napi;
-#endif
-
-	napi_gro_flush(napi, false);
-	if (gro->rx_count) {
-		netif_receive_skb_list(&gro->rx_list);
-		INIT_LIST_HEAD(&gro->rx_list);
-		gro->rx_count = 0;
-	}
-}
-
 static inline void kal_gro_flush_queue(IN struct GLUE_INFO *prGlueInfo)
 {
 	int32_t i = 0;
@@ -1209,7 +1193,7 @@ static inline void kal_gro_flush_queue(IN struct GLUE_INFO *prGlueInfo)
 			if (prNetDevPrivate->u4PendingFlushNum) {
 				preempt_disable();
 				spin_lock_bh(&prNetDevPrivate->napi_spinlock);
-				napi_gro_flush_list(&prNetDevPrivate->napi);
+				mindone_napi_gro_flush_list(&prNetDevPrivate->napi);
 				GET_CURRENT_SYSTIME(
 					&prNetDevPrivate->tmGROFlushTimeout);
 				prNetDevPrivate->u4PendingFlushNum = 0;
@@ -1241,7 +1225,7 @@ void kal_gro_flush(struct ADAPTER *prAdapter, struct net_device *prDev)
 		prNetDevPrivate->tmGROFlushTimeout,
 		prWifiVar->ucGROFlushTimeout)) {
 		kalGROTimerStop(prAdapter);
-		napi_gro_flush_list(napi);
+		mindone_napi_gro_flush_list(napi);
 		DBGLOG_LIMITED(INIT, TRACE, "napi_gro_flush:%p\n", prDev);
 		prNetDevPrivate->u4PendingFlushNum = 0;
 	} else {

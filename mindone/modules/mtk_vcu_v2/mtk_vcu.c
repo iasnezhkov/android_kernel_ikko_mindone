@@ -3044,7 +3044,7 @@ static int mtk_vcu_suspend_notifier(struct notifier_block *nb,
 {
 	int wait_cnt = 0;
 
-	pr_info("[VCU] %s ok action = %ld\n", __func__, action);
+	pr_debug("[VCU] %s ok action = %ld\n", __func__, action);
 	switch (action) {
 	case PM_SUSPEND_PREPARE:
 		vcu_ptr->is_entering_suspend = 1;

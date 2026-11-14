@@ -3207,7 +3207,7 @@ static int ptim_resist_get(struct mtk_gauge *gauge,
 	if (!IS_ERR(gauge->chan_ptim_r)) {
 		ret = iio_read_channel_processed(
 			gauge->chan_ptim_r, val);
-		if (ret < 0)
+		if (ret < 0 && ret != -ENODATA)
 			bm_err("[%s]read fail,ret=%d\n", __func__, ret);
 	} else {
 		bm_err("[%s]chan error\n", __func__);

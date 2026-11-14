@@ -85,7 +85,7 @@ def main():
                 compile_check(root, actual.replace(before, after, 1), minimum)
                 failures = [run_case(root, values) for values in POSITIVE_CASES + ZERO_CASES]
                 evidence = next((row.stderr for row in failures if row.returncode and
-                                 ("runtime error: division by zero" in row.stderr or "Assertion failed:" in row.stderr)), None)
+                                 ("runtime error: division by zero" in row.stderr or re.search(r"Assertion failed:|Assertion `[^\n]*\x27 failed", row.stderr))), None)
                 if not evidence:
                     raise RuntimeError("Mutation did not fail a runtime control: " + name)
                 print("PASS rejected " + name + ": " + evidence.splitlines()[0])

@@ -1,1 +1,0 @@
-../cqhci/mmc_hsq.h

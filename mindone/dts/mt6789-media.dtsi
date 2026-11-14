@@ -34,7 +34,7 @@
 			wdma1_tile_done = [00 18];
 			gce-gpr = <0x0a>;
 			iommus = <&disp_iommu 0x1008c &disp_iommu 0x1008d>;
-			power-domains = <&scpsys MT6789_POWER_DOMAIN_VDEC>;
+			power-domains = <&spm MT6789_POWER_DOMAIN_VDEC>;
 			mediatek,larbs = <&smi_larb4>;
 			operating-points-v2 = <&opp_table_vdec>;
 			dvfsrc-vcore-supply = <&dvfsrc_vcore>;
@@ -59,7 +59,7 @@
 			interrupts = <GIC_SPI 343 IRQ_TYPE_LEVEL_HIGH 0>;
 			clocks = <&venc_gcon_clk CLK_VEN1_CKE2_JPGENC>;
 			clock-names = "jpgenc";
-			power-domains = <&scpsys MT6789_POWER_DOMAIN_VENC>;
+			power-domains = <&spm MT6789_POWER_DOMAIN_VENC>;
 			mediatek,larb = <&smi_larb7>;
 			iommus = <&disp_iommu 0x100e9 &disp_iommu 0x100ea &disp_iommu 0x100eb &disp_iommu 0x100ec>;
 			interconnects = <&mmqos 0x400e9 &mmqos 0x10000 &mmqos 0x400ea &mmqos 0x10000 &mmqos 0x400eb &mmqos 0x10000 &mmqos 0x400ec &mmqos 0x10000>;

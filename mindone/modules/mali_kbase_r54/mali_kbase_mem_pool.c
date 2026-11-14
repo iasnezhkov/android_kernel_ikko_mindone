@@ -7,12 +7,7 @@
 #include <linux/spinlock.h>
 #include <linux/shrinker.h>
 #include <linux/atomic.h>
-#include <linux/version.h>
-#if KERNEL_VERSION(4, 11, 0) <= LINUX_VERSION_CODE
 #include <linux/sched/signal.h>
-#else
-#include <linux/signal.h>
-#endif
 
 #define pool_dbg(pool, format, ...)                                              \
 	dev_dbg(pool->kbdev->dev, "%s-pool [%zu/%zu]: " format,                  \

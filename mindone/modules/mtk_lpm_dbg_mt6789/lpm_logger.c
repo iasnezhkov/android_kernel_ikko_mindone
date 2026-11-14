@@ -524,7 +524,7 @@ static int lpm_show_message(int type, const char *prefix, void *data)
 
 		log_size += scnprintf(log_buf + log_size,
 				LOG_BUF_OUT_SZ - log_size,
-				" clk_settle = 0x%x, ", wakesrc->clk_settle);
+				" clk_settle = 0x%x", wakesrc->clk_settle);
 
 		if (type == LPM_ISSUER_SUSPEND && lpm_spm_base) {
 			/* calculate 26M off percentage in suspend period */
@@ -535,7 +535,7 @@ static int lpm_show_message(int type, const char *prefix, void *data)
 			}
 			log_size += scnprintf(log_buf + log_size,
 				LOG_BUF_OUT_SZ - log_size,
-				"wlk_cntcv_l = 0x%x, wlk_cntcv_h = 0x%x, 26M_off_pct = %d\n",
+				", wlk_cntcv_l = 0x%x, wlk_cntcv_h = 0x%x, 26M_off_pct = %d",
 				plat_mmio_read(SYS_TIMER_VALUE_L),
 				plat_mmio_read(SYS_TIMER_VALUE_H),
 				spm_26M_off_pct);
@@ -544,14 +544,14 @@ static int lpm_show_message(int type, const char *prefix, void *data)
 	WARN_ON(log_size >= LOG_BUF_OUT_SZ);
 
 	if (type == LPM_ISSUER_SUSPEND) {
-		pr_info("[name:spm&][SPM] %s", log_buf);
-		suspend_show_detailed_wakeup_reason(wakesrc);
-		suspend_spm_rsc_req_check(wakesrc);
-		pr_info("[name:spm&][SPM] Suspended for %d.%03d seconds",
+		pr_info("[name:spm&][SPM] %s, Suspended for %d.%03d seconds\n",
+			log_buf,
 			PCM_TICK_TO_SEC(wakesrc->timer_out),
 			PCM_TICK_TO_SEC((wakesrc->timer_out %
 				PCM_32K_TICKS_PER_SEC)
 			* 1000));
+		suspend_show_detailed_wakeup_reason(wakesrc);
+		suspend_spm_rsc_req_check(wakesrc);
 
 		/* Eable rcu lock checking */
 		//rcu_irq_exit_irqson();

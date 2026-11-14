@@ -331,15 +331,23 @@ def main():
                                      'MediaTek header it replaced, read from --reference, using host Clang')
     parser.add_argument('--reference', default='2a3bafed896c198a8c4adaecb31c9811285f388c',
                         help='Last commit that still has wsys_cmd_handler_fw.h')
+    parser.add_argument('--reference-repo', type=Path,
+                        help='Repository that holds --reference (default: this tree); the MediaTek header is '
+                        'proprietary and stays out of this tree, so a clone without that history needs '
+                        'an android16-6.12 clone here')
     parser.add_argument('--clang', default='clang')
     parser.add_argument('--verbose', action='store_true')
     args = parser.parse_args()
     root = Path(__file__).resolve().parents[2]
     driver = root / 'mindone/modules/wlan_drv_gen4m_6789'
     relative = (driver / 'include' / OLD_NAME).relative_to(root).as_posix()
-    old = subprocess.run(['git', '-C', str(root), 'show', args.reference + ':' + relative],
-                         env={**os.environ, 'GIT_NO_LAZY_FETCH': '1'},
-                         capture_output=True, text=True, check=True, timeout=60).stdout
+    shown = subprocess.run(['git', '-C', str(args.reference_repo or root), 'show', args.reference + ':' + relative],
+                           env={**os.environ, 'GIT_NO_LAZY_FETCH': '1'},
+                           capture_output=True, text=True, timeout=60)
+    if shown.returncode:
+        raise SystemExit('wsys-header-check: ' + args.reference + ':' + relative + ' is not in '
+                         + str(args.reference_repo or root) + '; pass --reference-repo with an android16-6.12 clone')
+    old = shown.stdout
     new = (driver / 'include' / NEW_NAME).read_text()
     old_units, new_units = declarations(old), declarations(new)
     old_names = set().union(*(unit['names'] for unit in old_units))

@@ -1,1 +1,0 @@
-../connadp/vendor-headers/drivers/misc/mediatek/power_throttling/mtk_low_battery_throttling.h

@@ -1,1 +1,0 @@
-../mtk_charger_algorithm_class/mt6360_pmu_chg.h

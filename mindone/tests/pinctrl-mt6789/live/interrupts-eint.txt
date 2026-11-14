@@ -1,0 +1,10 @@
+           CPU0       CPU1       CPU2       CPU3       CPU4       CPU5       CPU6       CPU7
+ 17:        119          0          0          1          0          0          1          0 mtk-eint   0 Edge      silead_fp
+ 18:        864          0          0          0          0          0          0          0 mtk-eint   1 Level     nfc
+ 24:          0          0          0          0          0          0          0          0 mtk-eint   7 Edge      hall-eint
+ 25:          0          0          0          0          0          0          0          0 mtk-eint   8 Edge      aw_haptic
+ 26:       2782          0          0          0          0          0          0          0 mtk-eint   9 Edge      hyn_ts
+ 30:     201919          0          0          0          0          0          0          0 mtk-eint  13 Edge      type_c_port0-IRQ
+ 31:          0          0          0          0          0          0          0          0 mtk-eint  14 Edge      11240000.mmc cd
+100:          0          0          0          0          0          0          0          0 mtk-eint  83 Edge      ESD_TE-eint
+154:        255          0          0          0          0          0          0          0 mtk-eint 137 Level     mt6358-irq

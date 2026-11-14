@@ -20,10 +20,6 @@
 #include <linux/version_compat_defs.h>
 #include <linux/workqueue.h>
 
-#if KERNEL_VERSION(4, 16, 0) > LINUX_VERSION_CODE
-#include <uapi/linux/eventpoll.h>
-#endif
-
 #include <platform/mtk_mfg_counter.h>
 #ifdef CONFIG_MTK_PERF_TRACKER
 #include <perf_tracker.h>

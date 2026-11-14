@@ -7,6 +7,7 @@
 #define __IMGSENSOR_PWR_CTRL_H__
 
 #include <linux/mutex.h>
+#include <linux/wait.h>
 
 #include "imgsensor_sensor.h"
 #include "imgsensor_cfg_table.h"
@@ -75,6 +76,9 @@ struct IMGSENSOR_HW {
 				sensor_pwr[IMGSENSOR_SENSOR_IDX_MAX_NUM];
 	const char *enable_sensor_by_index[IMGSENSOR_SENSOR_IDX_MAX_NUM];
 	unsigned int g_platform_id;
+	struct mutex power_mutex;
+	wait_queue_head_t power_wait;
+	enum IMGSENSOR_SENSOR_IDX power_owner;
 };
 
 enum IMGSENSOR_RETURN imgsensor_hw_init(struct IMGSENSOR_HW *phw);

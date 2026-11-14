@@ -4,18 +4,24 @@
 &soc {
 	extcon_usb: extcon_usb {
 		compatible = "mediatek,extcon-usb";
-		vbus-supply = <&eta6965_otg_vbus>;
-		vbus-voltage;
-		vbus-current;
 		charger = <&eta6965_chg>;
-		tcpc = "type_c_port0";
 		mediatek,bypss-typec-sink = <1>;
 		mediatek,u2;
+		usb-role-switch;
+		mode-switch;
 
 		port {
+			#address-cells = <1>;
+			#size-cells = <0>;
 
 			usb_role: endpoint@0 {
+				reg = <0>;
 				remote-endpoint = <&musb_drd_switch>;
+			};
+
+			usb_typec_glue: endpoint@1 {
+				reg = <1>;
+				remote-endpoint = <&typec_hs>;
 			};
 		};
 	};

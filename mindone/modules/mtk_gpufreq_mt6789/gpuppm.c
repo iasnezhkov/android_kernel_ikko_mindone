@@ -714,7 +714,7 @@ void gpuppm_set_shared_status(struct gpufreq_shared_status *shared_status)
 		if (shared_status)
 			g_shared_status = shared_status;
 		else
-			__gpufreq_abort("null gpufreq shared status: 0x%llx", shared_status);
+			GPUFREQ_LOGE("null gpufreq shared status");
 
 		if (g_shared_status) {
 			g_shared_status->stress_test = g_stress_test;

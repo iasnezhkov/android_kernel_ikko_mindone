@@ -15,13 +15,28 @@ package(default_visibility = ["//visibility:public"])
 
 _MINDONE_IN_TREE_MODULES = [
     "8250_mtk.ko",
+    "arm_dsu_pmu.ko",
     "cfg80211.ko",
+    "cqhci.ko",
     "drm_display_helper.ko",
     "drm_dma_helper.ko",
+    "i2c-dev.ko",
     "industrialio-triggered-buffer.ko",
     "kfifo_buf.ko",
     "mac80211.ko",
+    "mediatek-cpufreq-hw.ko",
+    "mmc_hsq.ko",
+    "mtk-eint.ko",
+    "mtk-sd.ko",
+    "mtk-uart-apdma.ko",
+    "mtk_wdt.ko",
+    "phy-generic.ko",
+    "pinctrl-mtk-common-v2.ko",
+    "pinctrl-paris.ko",
+    "reboot-mode.ko",
     "reset-ti-syscon.ko",
+    "syscon-reboot-mode.ko",
+    "thermal-generic-adc.ko",
 ]
 
 ddk_headers(

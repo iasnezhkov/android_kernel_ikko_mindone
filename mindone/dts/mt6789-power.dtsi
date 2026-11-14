@@ -21,7 +21,7 @@
 		reg = <0x00 0x114400 0x00 0xc00>;
 	};
 
-	cpu_mcucfg: mcusys_ao_cfg@0c530000 {
+	cpu_mcucfg: mcusys_ao_cfg@c520100 {
 		reg = <0x00 0xc520100 0x00 0x10000>;
 	};
 

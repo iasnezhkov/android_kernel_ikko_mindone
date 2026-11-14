@@ -1,11 +1,44 @@
 # SPDX-License-Identifier: GPL-2.0
 # SPDX-FileCopyrightText: 2026 The LineageOS Project
 import argparse
-import os
 from pathlib import Path
 import re
 import subprocess
 import tempfile
+
+from baseline_source import require
+
+FIX = (
+    ('\n\tif (of_property_read_u32(node, "charger_configuration", &val))\n\t\treturn 0;\n\telse\n\t\treturn val;\n}\n',
+     '\n\tof_property_read_u32(node, "charger_configuration", &val);\n\tof_node_put(node);\n\treturn val;\n}\n'),
+    ('\t\tpr_info("Couldn\'t get chg_psy\\n");\n\t\treturn -EINVAL;\n\t}\n',
+     '\t\tpr_info("Couldn\'t get chg_psy\\n");\n\t\treturn charger_cdev->chg_psy ? PTR_ERR(charger_cdev->chg_psy) : -EPROBE_DEFER;\n\t}\n'),
+    ('\t\t\tpr_info("Couldn\'t get s_chg_psy\\n");\n\t\t\treturn -EINVAL;\n\t\t}\n',
+     '\t\t\tpr_info("Couldn\'t get s_chg_psy\\n");\n\t\t\tret = charger_cdev->s_chg_psy ? PTR_ERR(charger_cdev->s_chg_psy) : -EPROBE_DEFER;\n\t\t\tgoto put_master;\n\t\t}\n'),
+    ('\t\tdev_info(&pdev->dev, "failed to create charger cooler sysfs, ret=%d!\\n", ret);\n\t\treturn ret;\n\t}\n',
+     '\t\tdev_info(&pdev->dev, "failed to create charger cooler sysfs, ret=%d!\\n", ret);\n\t\tgoto put_slave;\n\t}\n'),
+    ('\t}\n\tcharger_cl_data.cur_state = 0;\n',
+     '\t}\n\tmutex_lock(&charger_cooler_lock);\n\tcharger_cl_data.cur_state = 0;\n'),
+    ('\tcharger_cl_data.num_state = CHARGER_STATE_NUM;\n\n',
+     '\tcharger_cl_data.num_state = CHARGER_STATE_NUM;\n\tcharger_cl_data.request_dirty = false;\n\tmutex_unlock(&charger_cooler_lock);\n\n'),
+    ('\t\tcharger_cdev, &charger_cooling_ops);\n\tif (IS_ERR(cdev))\n\t\treturn -EINVAL;\n\tcharger_cdev->cdev = cdev;\n',
+     '\t\tcharger_cdev, &charger_cooling_ops);\n\tif (IS_ERR(cdev)) {\n\t\tret = PTR_ERR(cdev);\n\t\tgoto remove_group;\n\t}\n\tcharger_cdev->cdev = cdev;\n'),
+    ('\treturn 0;\n}\n',
+     '\treturn 0;\n\nremove_group:\n\tsysfs_remove_group(kernel_kobj, &charger_cooler_attr_group);\nput_slave:\n\tif (charger_cdev->type == DUAL_CHARGER)\n\t\tpower_supply_put(charger_cdev->s_chg_psy);\nput_master:\n\tpower_supply_put(charger_cdev->chg_psy);\n\treturn ret;\n}\n'),
+    ('\tthermal_cooling_device_unregister(charger_cdev->cdev);\n\tplatform_set_drvdata(pdev, NULL);\n',
+     '\tthermal_cooling_device_unregister(charger_cdev->cdev);\n\tsysfs_remove_group(kernel_kobj, &charger_cooler_attr_group);\n\tif (charger_cdev->type == DUAL_CHARGER)\n\t\tpower_supply_put(charger_cdev->s_chg_psy);\n\tpower_supply_put(charger_cdev->chg_psy);\n\tplatform_set_drvdata(pdev, NULL);\n'),
+)
+BASELINE_PINS = {
+    'get_charger_type': '108fcf0abcfd44c832f2a7bf3abba2f6f29b7f517d5daddc1443b3430c58df3a',
+    'charger_cooling_probe': 'bd1c2afa6503241fb05d2b84624edbb440ec6e4fd5be185526718f7beae9a163',
+    'charger_cooling_remove': 'd70e78b935d1958f76b06015f65088f26945d452d0191ea8a05dc6478a194508',
+}
+
+
+def replace_once(source, before, after):
+    if source.count(before) != 1:
+        raise ValueError('Lifecycle change is not in the source exactly once: ' + before.strip().splitlines()[0])
+    return source.replace(before, after)
 
 
 def block(source, pattern, semicolon=False):
@@ -27,15 +60,15 @@ def main():
     parser.add_argument('kernel_tree', type=Path)
     parser.add_argument('--baseline', action='store_true')
     parser.add_argument('--mutate-remove-order', action='store_true')
-    parser.add_argument('--base', default='d6e46b206103')
     args = parser.parse_args()
     root = args.kernel_tree.resolve()
     relative = 'mindone/modules/charger_cooling/charger_cooling.c'
     source = (root / relative).read_text()
     if args.baseline:
-        source = subprocess.run(['git', '-C', str(root), 'show', args.base + ':' + relative],
-                                capture_output=True, text=True, check=True, timeout=20,
-                                env=dict(os.environ, GIT_NO_LAZY_FETCH='1')).stdout
+        for before, after in reversed(FIX):
+            source = replace_once(source, after, before)
+        for name, pin in BASELINE_PINS.items():
+            require('Function ' + name + ' without the lifecycle change', block(source, r'^static (?:int|void) ' + name + r'\('), pin)
     header = (root / 'mindone/modules/charger_cooling/charger_cooling.h').read_text()
     build = (root / 'mindone/modules/BUILD.bazel').read_text()
     assert re.search(r'name = "charger_cooling",\s*srcs = \[\s*"charger_cooling/charger_cooling.c"', build)

@@ -1,1 +1,0 @@
-../cqhci/s3cmci.h

@@ -124,11 +124,7 @@ void kbase_backend_get_gpu_time_norequest(struct kbase_device *kbdev, u64 *cycle
 	}
 
 	if (ts != NULL)
-#if (KERNEL_VERSION(4, 17, 0) > LINUX_VERSION_CODE)
-		*ts = ktime_to_timespec64(ktime_get_raw());
-#else
 		ktime_get_raw_ts64(ts);
-#endif
 }
 KBASE_EXPORT_TEST_API(kbase_backend_get_gpu_time_norequest);
 

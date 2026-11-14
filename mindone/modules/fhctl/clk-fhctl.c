@@ -16,7 +16,7 @@
 #include <linux/slab.h>
 #include <drivers/clk/mediatek/clk-fhctl.h>
 #include <drivers/clk/mediatek/clk-fhctl-util.h>
-#include "clk-mtk.h"
+#include "clk-pll.h"
 
 static int (*subsys_init[])(struct pll_dts *array) = {
 	&fhctl_ap_init,
@@ -208,7 +208,10 @@ static int fh_plt_drv_probe(struct platform_device *pdev)
 	return 0;
 }
 
-static void fh_plt_drv_remove(struct platform_device *pdev) {return; }
+static void fh_plt_drv_remove(struct platform_device *pdev)
+{
+	mtk_fh_set_rate = NULL;
+}
 
 static void fh_plt_drv_shutdown(struct platform_device *pdev)
 {

@@ -349,186 +349,21 @@ static void usbpd_pm_update_sw_status(struct usbpd_pm *pdpm)
 /***************PD API****************/
 static inline int check_typec_attached_snk(struct tcpc_device *tcpc)
 {
-    if (tcpm_inquire_typec_attach_state(tcpc) != TYPEC_ATTACHED_SNK)
-        return -EINVAL;
-    return 0;
-}
-
-static int usbpd_pps_enable_charging(struct usbpd_pm *pdpm, bool en,
-                u32 mV, u32 mA)
-{
-    int ret, cnt = 0;
-
-    if (check_typec_attached_snk(pdpm->tcpc) < 0)
-        return -EINVAL;
-    pr_err("en = %d, %dmV, %dmA\n", en, mV, mA);
-
-    do {
-        if (en)
-            ret = tcpm_set_apdo_charging_policy(pdpm->tcpc,
-                DPM_CHARGING_POLICY_PPS, mV, mA, NULL);
-        else
-            ret = tcpm_reset_pd_charging_policy(pdpm->tcpc, NULL);
-        cnt++;
-    } while (ret != TCP_DPM_RET_SUCCESS && cnt < 3);
-
-    if (ret != TCP_DPM_RET_SUCCESS)
-        pr_err("fail(%d)\n", ret);
-    return ret > 0 ? -ret : ret;
+	return -EINVAL;
 }
 
 static bool usbpd_get_pps_status(struct usbpd_pm *pdpm)
 {
-    int ret, apdo_idx = -1;
-    struct tcpm_power_cap_val apdo_cap = {0};
-    u8 cap_idx;
-
-    pr_err("++\n");
-    if (check_typec_attached_snk(pdpm->tcpc) < 0)
-        return false;
-
-    if (!pdpm->is_pps_en_unlock) {
-        pr_err("pps en is locked\n");
-        return false;
-    }
-
-    if (!tcpm_inquire_pd_pe_ready(pdpm->tcpc)) {
-        pr_err("PD PE not ready\n");
-        return false;
-    }
-
-    /* select TA boundary */
-    cap_idx = 0;
-    while (1) {
-        ret = tcpm_inquire_pd_source_apdo(pdpm->tcpc,
-                        TCPM_POWER_CAP_APDO_TYPE_PPS,
-                        &cap_idx, &apdo_cap);
-        if (ret != TCP_DPM_RET_SUCCESS) {
-            pr_err("inquire pd apdo fail(%d)\n", ret);
-            break;
-        }
-
-        pr_err("cap_idx[%d], %d mv ~ %d mv, %d ma, pl: %d\n", cap_idx,
-            apdo_cap.min_mv, apdo_cap.max_mv, apdo_cap.ma,
-            apdo_cap.pwr_limit);
-
-        /*
-        * !(apdo_cap.min_mv <= data->vcap_min &&
-        *   apdo_cap.max_mv >= data->vcap_max &&
-        *   apdo_cap.ma >= data->icap_min)
-        */
-        if (apdo_cap.max_mv < pm_config.min_adapter_volt_required ||
-            apdo_cap.ma < pm_config.min_adapter_curr_required)
-            continue;
-        if (apdo_idx == -1) {
-            apdo_idx = cap_idx;
-            pdpm->apdo_max_volt = apdo_cap.max_mv;
-            pdpm->apdo_max_curr = apdo_cap.ma;
-        } else {
-            if (apdo_cap.ma > pdpm->apdo_max_curr) {
-                apdo_idx = cap_idx;
-                pdpm->apdo_max_volt = apdo_cap.max_mv;
-                pdpm->apdo_max_curr = apdo_cap.ma;
-            }
-        }
-    }
-    if (apdo_idx != -1){
-        pr_err("select potential cap_idx[%d]\n", cap_idx);
-        ret = usbpd_pps_enable_charging(pdpm, true, 5000, 3000);
-        if (ret != TCP_DPM_RET_SUCCESS)
-            return false;
-        return true;
-    }
-    return false;
+	return false;
 }
 
 static int usbpd_select_pdo(struct usbpd_pm *pdpm, u32 mV, u32 mA)
 {
-    int ret, cnt = 0;
-
-    if (check_typec_attached_snk(pdpm->tcpc) < 0){
-        return -EINVAL;
-	}
-	
-    pr_err("%dmV, %dmA\n", mV, mA);
-
-    if (!tcpm_inquire_pd_connected(pdpm->tcpc)) {
-        pr_err("pd not connected\n");
-        return -EINVAL;
-    }
-
-    do {
-        ret = tcpm_dpm_pd_request(pdpm->tcpc, mV, mA, NULL);
-        cnt++;
-    } while (ret != TCP_DPM_RET_SUCCESS && cnt < 3);
-
-    if (ret != TCP_DPM_RET_SUCCESS)
-        pr_err("fail(%d)\n", ret);
-    return ret > 0 ? -ret : ret;
+	return -EOPNOTSUPP;
 }
 
-static int pca_pps_tcp_notifier_call(struct notifier_block *nb,
-                    unsigned long event, void *data)
-{
-    struct usbpd_pm *pdpm = container_of(nb, struct usbpd_pm, tcp_nb);
-    struct tcp_notify *noti = data;
-	
-
-    switch (event) {
-    case TCP_NOTIFY_PD_STATE:
-        switch (noti->pd_state.connected) {
-        case PD_CONNECT_NONE:
-            pr_err("detached\n");
-            pdpm->is_pps_en_unlock = false;
-            pdpm->hrst_cnt = 0;
-			pdpm->timer_cnt = 0;
-            break;
-        case PD_CONNECT_HARD_RESET:
-            pdpm->hrst_cnt++;
-			pdpm->hrst_cnt_t++;
-			pdpm->timer_cnt = 0;
-            pr_err("pd hardreset, cnt = %d\n",
-                pdpm->hrst_cnt);
-            pdpm->is_pps_en_unlock = false;
-            break;
-        case PD_CONNECT_PE_READY_SNK_APDO:
-            if (pdpm->hrst_cnt < 10) {
-                pr_err("en unlock\n");
-                pdpm->is_pps_en_unlock = true;
-            }else{
-				pr_debug("pdpm->hrst_cnt = %d\n",pdpm->hrst_cnt);
-			}
-            break;
-        default:
-            break;
-        }
-    	fallthrough;
-    default:
-        break;
-    }
-	  if (pdpm->usb_psy){ 
-			power_supply_changed(pdpm->usb_psy);
-	  }
-	   
-    return NOTIFY_OK;
-}
 static void usbpd_check_tcpc(struct usbpd_pm *pdpm)
 {
-    int ret;
-
-    if (!pdpm->tcpc) {
-        pdpm->tcpc = tcpc_dev_get_by_name("type_c_port0");
-        if (!pdpm->tcpc) {
-            pr_err("get tcpc dev fail\n");
-            return;
-        }
-        pdpm->tcp_nb.notifier_call = pca_pps_tcp_notifier_call;
-        ret = register_tcp_dev_notifier(pdpm->tcpc, &pdpm->tcp_nb,
-                        TCP_NOTIFY_TYPE_USB);
-        if (ret < 0) {
-            pr_err("register tcpc notifier fail\n");
-        }
-    }
 }
 /*******************main charger API********************/
 static void usbpd_check_usb_psy(struct usbpd_pm *pdpm)

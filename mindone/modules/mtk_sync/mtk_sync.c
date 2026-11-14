@@ -4,7 +4,6 @@
  */
 
 #include <linux/debugfs.h>
-#include <linux/version.h>
 #include <linux/export.h>
 #include <linux/seq_file.h>
 #include <linux/file.h>
@@ -205,8 +204,7 @@ static bool mtk_sync_timeline_fence_enable_signaling(struct dma_fence *fence)
 	return true;
 }
 
-#if LINUX_VERSION_CODE < KERNEL_VERSION(6, 18, 0)
-static void mtk_sync_timeline_fence_value_str(
+static void __maybe_unused mtk_sync_timeline_fence_value_str(
 					      struct dma_fence *fence,
 					      char *str,
 					      int size)
@@ -220,14 +218,13 @@ static void mtk_sync_timeline_fence_value_str(
 	}
 }
 
-static void mtk_sync_timeline_fence_timeline_value_str(struct dma_fence *fence,
-						       char *str, int size)
+static void __maybe_unused mtk_sync_timeline_fence_timeline_value_str(struct dma_fence *fence,
+								      char *str, int size)
 {
 	struct sync_timeline *parent = dma_fence_parent(fence);
 
 	snprintf(str, size, "%d", parent->value);
 }
-#endif
 
 static struct dma_fence_ops mtk_sync_timeline_fence_ops = {
 	.get_driver_name = mtk_sync_timeline_fence_get_driver_name,
@@ -235,10 +232,8 @@ static struct dma_fence_ops mtk_sync_timeline_fence_ops = {
 	.enable_signaling = mtk_sync_timeline_fence_enable_signaling,
 	.signaled = mtk_sync_timeline_fence_signaled,
 	.release = mtk_sync_timeline_fence_release,
-#if LINUX_VERSION_CODE < KERNEL_VERSION(6, 18, 0)
-	.fence_value_str = mtk_sync_timeline_fence_value_str,
-	.timeline_value_str = mtk_sync_timeline_fence_timeline_value_str,
-#endif
+	MINDONE_DMA_FENCE_VALUE_STR(mtk_sync_timeline_fence_value_str)
+	MINDONE_DMA_FENCE_TIMELINE_VALUE_STR(mtk_sync_timeline_fence_timeline_value_str)
 };
 
 /* ---------------------------------------------------------------- */

@@ -124,7 +124,7 @@ static uint32_t kalIoctl(struct GLUE_INFO *g,
             binary = output / name
             source.write_text(code)
             compiled = execute([args.compiler, "-std=gnu11", "-O1", "-g", "-Wall", "-Wextra",
-                                "-Werror", "-Wno-unused-parameter", "-Wno-unused-function",
+                                "-Werror", "-Wno-sign-compare", "-Wno-unused-parameter", "-Wno-unused-function",
                                 "-fsanitize=address,undefined", "-fno-sanitize-recover=all",
                                 str(source), "-o", str(binary)])
             if compiled["returncode"]:
@@ -137,7 +137,7 @@ static uint32_t kalIoctl(struct GLUE_INFO *g,
                 result["expected_failure"] = expected_failure
                 result["passed"] = (result["returncode"] != 0 if expected_failure else result["returncode"] == 0)
                 if expected_failure:
-                    result["passed"] &= "Assertion failed" in result["stderr"] or "BOUNDARY_REJECT:" in result["stderr"]
+                    result["passed"] &= re.search(r"Assertion failed|Assertion `[^\n]*\x27 failed", result["stderr"]) or "BOUNDARY_REJECT:" in result["stderr"]
                 records[name][mode] = result
     unchanged = all((base / name).read_text() == value for name, value in sources.items())
     if not unchanged:

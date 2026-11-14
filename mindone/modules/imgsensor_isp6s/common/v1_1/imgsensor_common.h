@@ -6,6 +6,8 @@
 #ifndef __IMGSENSOR_COMMON_H__
 #define __IMGSENSOR_COMMON_H__
 
+#include <linux/errno.h>
+
 #include "kd_camera_feature.h"
 #include "kd_imgsensor_define.h"
 
@@ -40,6 +42,7 @@ enum IMGSENSOR_ARCH {
 enum IMGSENSOR_RETURN {
 	IMGSENSOR_RETURN_SUCCESS = 0,
 	IMGSENSOR_RETURN_ERROR   = -1,
+	IMGSENSOR_RETURN_BUSY    = -EBUSY,
 };
 
 #endif

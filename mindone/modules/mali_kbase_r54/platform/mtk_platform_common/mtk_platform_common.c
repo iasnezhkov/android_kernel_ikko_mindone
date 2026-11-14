@@ -53,10 +53,6 @@
 static struct proc_dir_entry *proc_root;
 #endif
 
-#if IS_ENABLED(CONFIG_MALI_MTK_DEVFREQ_GOVERNOR)
-#include <platform/mtk_platform_common/mtk_platform_devfreq_governor.h>
-#endif
-
 #if IS_ENABLED(CONFIG_MALI_MTK_WHITEBOX_FORCE_HARD_RESET)
 #include <platform/mtk_platform_common/mtk_platform_whitebox_force_hard_reset.h>
 #endif
@@ -748,10 +744,6 @@ int mtk_common_device_init(struct kbase_device *kbdev)
 		return -1;
 	}
 
-#if IS_ENABLED(CONFIG_MALI_MTK_DEVFREQ_GOVERNOR)
-	mtk_devfreq_governor_init(kbdev);
-#endif
-
 #if IS_ENABLED(CONFIG_MALI_MTK_LOG_BUFFER)
 	mtk_logbuffer_init(kbdev);
 #endif
@@ -807,7 +799,7 @@ int mtk_common_device_init(struct kbase_device *kbdev)
 #endif
 
 #if IS_ENABLED(CONFIG_MALI_MTK_TRIGGER_KE)
-	kbdev->exception_mask = (1u << EXCEPTION_RESET_FAILED);
+	kbdev->exception_mask = (1u << EXCEPTION_BIT_STUCK) | (1u << EXCEPTION_RESET_FAILED);
 	if (!of_property_read_u32(kbdev->dev->of_node, "exception-mask", &kbdev->exception_mask))
 		dev_info(kbdev->dev, "@%s: exception_mask=0x%x",
 				__func__, kbdev->exception_mask);
@@ -861,10 +853,6 @@ void mtk_common_device_term(struct kbase_device *kbdev)
 		dev_info(kbdev->dev, "@%s: invalid kbdev", __func__);
 		return;
 	}
-
-#if IS_ENABLED(CONFIG_MALI_MTK_DEVFREQ_GOVERNOR)
-	mtk_devfreq_governor_term(kbdev);
-#endif
 
 #if IS_ENABLED(CONFIG_MALI_MTK_LOG_BUFFER)
 	mtk_logbuffer_term(kbdev);

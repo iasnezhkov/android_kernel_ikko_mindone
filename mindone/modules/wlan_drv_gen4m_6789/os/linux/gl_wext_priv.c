@@ -15893,6 +15893,16 @@ int32_t priv_driver_cmds(IN struct net_device *prNetDev, IN int8_t *pcCommand,
 			i4BytesWritten = priv_driver_set_twtparams(prNetDev,
 				pcCommand, i4TotalLen);
 #endif
+		} else if (strnicmp(pcCommand, CMD_BTCOEXMODE,
+			   strlen(CMD_BTCOEXMODE)) == 0 ||
+			   strnicmp(pcCommand, CMD_BTCOEXSCAN_START,
+			   strlen(CMD_BTCOEXSCAN_START)) == 0 ||
+			   strnicmp(pcCommand, CMD_BTCOEXSCAN_STOP,
+			   strlen(CMD_BTCOEXSCAN_STOP)) == 0) {
+			DBGLOG(REQ, TRACE,
+			       "%s: BT coexistence is arbitrated by firmware\n",
+			       pcCommand);
+			i4BytesWritten = -EOPNOTSUPP;
 		} else
 				i4BytesWritten = priv_cmd_not_support
 				(prNetDev, pcCommand, i4TotalLen);

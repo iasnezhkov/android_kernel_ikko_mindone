@@ -29,6 +29,7 @@
 
 #include <tee_kernel_lowlevel_api.h>
 #include <arm_common/teesmc.h>
+#include "tee_procfs.h"
 
 struct tee_smc_xfer_ctl {
 	/* number of cmds that are not
@@ -155,6 +156,8 @@ static void tee_smc_work(struct tee_smc_xfer_ctl *ctl, struct smc_param *p)
 smc_return:
 
 	atomic_dec(&ctl->nr_unbound_cmds);
+
+	tee_log_notify();
 
 	mutex_unlock(&ctl->xfer_lock);
 

@@ -1,24 +1,18 @@
 // SPDX-License-Identifier: GPL-2.0
 /*
  * Copyright (c) 2022 MediaTek Inc.
- * Author: Owen Chen <owen.chen@mediatek.com>
  */
 
 #include <linux/clk-provider.h>
+#include <linux/mod_devicetable.h>
 #include <linux/module.h>
-#include <linux/of_device.h>
 #include <linux/platform_device.h>
 
-#include "clk-mtk.h"
+#include <dt-bindings/clock/mt6789-clk.h>
+
 #include "clk-gate.h"
-
-#include <include/dt-bindings/clock/mt6789-clk.h>
-
-#define MT_CCF_BRINGUP		1
-
-/* Regular Number Definition */
-#define INV_OFS			-1
-#define INV_BIT			-1
+#include "clk-mtk.h"
+#include "clk-mt6789-pwr.h"
 
 static const struct mtk_gate_regs imgsys1_cg_regs = {
 	.set_ofs = 0x4,
@@ -26,29 +20,23 @@ static const struct mtk_gate_regs imgsys1_cg_regs = {
 	.sta_ofs = 0x0,
 };
 
-#define GATE_IMGSYS1(_id, _name, _parent, _shift) {	\
-		.id = _id,				\
-		.name = _name,				\
-		.parent_name = _parent,			\
-		.regs = &imgsys1_cg_regs,			\
-		.shift = _shift,			\
-		.ops = &mtk_clk_gate_ops_setclr,	\
-	}
+MT6789_PWR_GATE_OPS(imgsys1_setclr_ops, mtk_clk_gate_ops_setclr,
+		    MT6789_PWR_DISP | MT6789_PWR_ISP);
+
+#define GATE_IMGSYS1(_id, _name, _parent, _shift)			\
+	GATE_MTK_FLAGS(_id, _name, _parent, &imgsys1_cg_regs, _shift,	\
+		       &imgsys1_setclr_ops, CLK_OPS_PARENT_ENABLE)
 
 static const struct mtk_gate imgsys1_clks[] = {
-	GATE_IMGSYS1(CLK_IMGSYS1_LARB9, "imgsys1_larb9",
-			"img1_ck"/* parent */, 0),
-	GATE_IMGSYS1(CLK_IMGSYS1_LARB10, "imgsys1_larb10",
-			"img1_ck"/* parent */, 1),
-	GATE_IMGSYS1(CLK_IMGSYS1_DIP, "imgsys1_dip",
-			"img1_ck"/* parent */, 2),
-	GATE_IMGSYS1(CLK_IMGSYS1_GALS, "imgsys1_gals",
-			"img1_ck"/* parent */, 12),
+	GATE_IMGSYS1(CLK_IMGSYS1_LARB9, "imgsys1_larb9", "img1_ck", 0),
+	GATE_IMGSYS1(CLK_IMGSYS1_LARB10, "imgsys1_larb10", "img1_ck", 1),
+	GATE_IMGSYS1(CLK_IMGSYS1_DIP, "imgsys1_dip", "img1_ck", 2),
+	GATE_IMGSYS1(CLK_IMGSYS1_GALS, "imgsys1_gals", "img1_ck", 12),
 };
 
-static const struct mtk_clk_desc imgsys1_mcd = {
+static const struct mtk_clk_desc imgsys1_desc = {
 	.clks = imgsys1_clks,
-	.num_clks = CLK_IMGSYS1_NR_CLK,
+	.num_clks = ARRAY_SIZE(imgsys1_clks),
 };
 
 static const struct mtk_gate_regs ipe_cg_regs = {
@@ -57,80 +45,52 @@ static const struct mtk_gate_regs ipe_cg_regs = {
 	.sta_ofs = 0x0,
 };
 
-#define GATE_IPE(_id, _name, _parent, _shift) {	\
-		.id = _id,				\
-		.name = _name,				\
-		.parent_name = _parent,			\
-		.regs = &ipe_cg_regs,			\
-		.shift = _shift,			\
-		.ops = &mtk_clk_gate_ops_setclr,	\
-	}
+MT6789_PWR_GATE_OPS(ipe_setclr_ops, mtk_clk_gate_ops_setclr,
+		    MT6789_PWR_DISP | MT6789_PWR_IPE);
+
+#define GATE_IPE(_id, _name, _parent, _shift)			\
+	GATE_MTK_FLAGS(_id, _name, _parent, &ipe_cg_regs, _shift,	\
+		       &ipe_setclr_ops, CLK_OPS_PARENT_ENABLE)
 
 static const struct mtk_gate ipe_clks[] = {
-	GATE_IPE(CLK_IPE_LARB19, "ipe_larb19",
-			"ipe_ck"/* parent */, 0),
-	GATE_IPE(CLK_IPE_LARB20, "ipe_larb20",
-			"ipe_ck"/* parent */, 1),
-	GATE_IPE(CLK_IPE_SMI_SUBCOM, "ipe_smi_subcom",
-			"ipe_ck"/* parent */, 2),
-	GATE_IPE(CLK_IPE_FD, "ipe_fd",
-			"ipe_ck"/* parent */, 3),
-	GATE_IPE(CLK_IPE_FE, "ipe_fe",
-			"ipe_ck"/* parent */, 4),
-	GATE_IPE(CLK_IPE_RSC, "ipe_rsc",
-			"ipe_ck"/* parent */, 5),
-	GATE_IPE(CLK_IPE_DPE, "ipe_dpe",
-			"ipe_ck"/* parent */, 6),
-	GATE_IPE(CLK_IPE_GALS, "ipe_gals",
-			"img1_ck"/* parent */, 8),
+	GATE_IPE(CLK_IPE_LARB19, "ipe_larb19", "ipe_ck", 0),
+	GATE_IPE(CLK_IPE_LARB20, "ipe_larb20", "ipe_ck", 1),
+	GATE_IPE(CLK_IPE_SMI_SUBCOM, "ipe_smi_subcom", "ipe_ck", 2),
+	GATE_IPE(CLK_IPE_FD, "ipe_fd", "ipe_ck", 3),
+	GATE_IPE(CLK_IPE_FE, "ipe_fe", "ipe_ck", 4),
+	GATE_IPE(CLK_IPE_RSC, "ipe_rsc", "ipe_ck", 5),
+	GATE_IPE(CLK_IPE_DPE, "ipe_dpe", "ipe_ck", 6),
+	GATE_IPE(CLK_IPE_GALS, "ipe_gals", "img1_ck", 8),
 };
 
-static const struct mtk_clk_desc ipe_mcd = {
+static const struct mtk_clk_desc ipe_desc = {
 	.clks = ipe_clks,
-	.num_clks = CLK_IPE_NR_CLK,
+	.num_clks = ARRAY_SIZE(ipe_clks),
 };
 
 static const struct of_device_id of_match_clk_mt6789_img[] = {
-	{
-		.compatible = "mediatek,mt6789-imgsys1",
-		.data = &imgsys1_mcd,
-	}, {
-		.compatible = "mediatek,mt6789-ipesys",
-		.data = &ipe_mcd,
-	}, {
-		/* sentinel */
-	}
+	{ .compatible = "mediatek,mt6789-imgsys1", .data = &imgsys1_desc },
+	{ .compatible = "mediatek,mt6789-ipesys", .data = &ipe_desc },
+	{ }
 };
+MODULE_DEVICE_TABLE(of, of_match_clk_mt6789_img);
 
-
-static int clk_mt6789_img_grp_probe(struct platform_device *pdev)
+static int clk_mt6789_img_probe(struct platform_device *pdev)
 {
-	int r;
+	mt6789_clk_pwr_init(&pdev->dev);
 
-#if MT_CCF_BRINGUP
-	pr_notice("%s: %s init begin\n", __func__, pdev->name);
-#endif
-
-	r = mtk_clk_simple_probe(pdev);
-	if (r)
-		dev_err(&pdev->dev,
-			"could not register clock provider: %s: %d\n",
-			pdev->name, r);
-
-#if MT_CCF_BRINGUP
-	pr_notice("%s: %s init end\n", __func__, pdev->name);
-#endif
-
-	return r;
+	return mtk_clk_simple_probe(pdev);
 }
 
 static struct platform_driver clk_mt6789_img_drv = {
-	.probe = clk_mt6789_img_grp_probe,
+	.probe = clk_mt6789_img_probe,
+	.remove = mtk_clk_simple_remove,
 	.driver = {
 		.name = "clk-mt6789-img",
 		.of_match_table = of_match_clk_mt6789_img,
 	},
 };
-
 module_platform_driver(clk_mt6789_img_drv);
+
+MODULE_DESCRIPTION("MediaTek MT6789 imgsys1, ipesys clocks");
 MODULE_LICENSE("GPL");

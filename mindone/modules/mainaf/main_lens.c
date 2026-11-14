@@ -36,6 +36,8 @@
 #include "lens_list.h"
 
 #define AF_DRVNAME "MAINAF"
+#define AF_SUB_DRVNAME "SUBAF"
+#define AF_DEV_COUNT 2
 
 #if defined(CONFIG_MTK_LEGACY)
 #define I2C_CONFIG_SETTING 1
@@ -173,6 +175,7 @@ static dev_t g_AF_devno;
 static struct cdev *g_pAF_CharDrv;
 static struct class *actuator_class;
 static struct device *lens_device;
+static struct device *lens_sub_device;
 
 static struct regulator *vcamaf_ldo;
 static struct pinctrl *vcamaf_pio;
@@ -578,68 +581,95 @@ static const struct file_operations g_stAF_fops = {
 
 static inline int Register_AF_CharDrv(void)
 {
+	int ret;
+
 	LOG_INF("Start\n");
 
-	/* Allocate char driver no. */
-	if (alloc_chrdev_region(&g_AF_devno, 0, 1, AF_DRVNAME)) {
-		LOG_INF("Allocate device no failed\n");
-
-		return -EAGAIN;
+	ret = alloc_chrdev_region(&g_AF_devno, 0, AF_DEV_COUNT, AF_DRVNAME);
+	if (ret) {
+		LOG_INF("Allocate device no failed (%d)\n", ret);
+		return ret;
 	}
-	/* Allocate driver */
+
 	g_pAF_CharDrv = cdev_alloc();
-
-	if (g_pAF_CharDrv == NULL) {
-		unregister_chrdev_region(g_AF_devno, 1);
-
+	if (!g_pAF_CharDrv) {
 		LOG_INF("Allocate mem for kobject failed\n");
-
-		return -ENOMEM;
+		ret = -ENOMEM;
+		goto err_region;
 	}
-	/* Attatch file operation. */
-	cdev_init(g_pAF_CharDrv, &g_stAF_fops);
-
+	g_pAF_CharDrv->ops = &g_stAF_fops;
 	g_pAF_CharDrv->owner = THIS_MODULE;
 
-	/* Add to system */
-	if (cdev_add(g_pAF_CharDrv, g_AF_devno, 1)) {
-		LOG_INF("Attatch file operation failed\n");
-
-		unregister_chrdev_region(g_AF_devno, 1);
-
-		return -EAGAIN;
+	ret = cdev_add(g_pAF_CharDrv, g_AF_devno, AF_DEV_COUNT);
+	if (ret) {
+		LOG_INF("Attatch file operation failed (%d)\n", ret);
+		kobject_put(&g_pAF_CharDrv->kobj);
+		g_pAF_CharDrv = NULL;
+		goto err_region;
 	}
 
 	actuator_class = class_create(AF_DRIVER_CLASS_NAME);
 	if (IS_ERR(actuator_class)) {
-		int ret = PTR_ERR(actuator_class);
-
+		ret = PTR_ERR(actuator_class);
+		actuator_class = NULL;
 		LOG_INF("Unable to create class, err = %d\n", ret);
-		return ret;
+		goto err_cdev;
 	}
 
 	lens_device = device_create(actuator_class, NULL, g_AF_devno, NULL,
 				    AF_DRVNAME);
+	if (IS_ERR(lens_device)) {
+		ret = PTR_ERR(lens_device);
+		lens_device = NULL;
+		LOG_INF("%s not created (%d)\n", AF_DRVNAME, ret);
+		goto err_class;
+	}
 
-	if (lens_device == NULL)
-		return -EIO;
+	lens_sub_device = device_create(actuator_class, NULL,
+					MKDEV(MAJOR(g_AF_devno), MINOR(g_AF_devno) + 1),
+					NULL, AF_SUB_DRVNAME);
+	if (IS_ERR(lens_sub_device)) {
+		LOG_INF("%s not created (%ld)\n", AF_SUB_DRVNAME,
+			PTR_ERR(lens_sub_device));
+		lens_sub_device = NULL;
+	}
 
 	LOG_INF("End\n");
 	return 0;
+
+err_class:
+	class_destroy(actuator_class);
+	actuator_class = NULL;
+err_cdev:
+	cdev_del(g_pAF_CharDrv);
+	g_pAF_CharDrv = NULL;
+err_region:
+	unregister_chrdev_region(g_AF_devno, AF_DEV_COUNT);
+	return ret;
 }
 
 static inline void Unregister_AF_CharDrv(void)
 {
 	LOG_INF("Start\n");
 
-	/* Release char driver */
-	cdev_del(g_pAF_CharDrv);
-
-	unregister_chrdev_region(g_AF_devno, 1);
-
-	device_destroy(actuator_class, g_AF_devno);
-
-	class_destroy(actuator_class);
+	if (lens_sub_device) {
+		device_destroy(actuator_class,
+			       MKDEV(MAJOR(g_AF_devno), MINOR(g_AF_devno) + 1));
+		lens_sub_device = NULL;
+	}
+	if (lens_device) {
+		device_destroy(actuator_class, g_AF_devno);
+		lens_device = NULL;
+	}
+	if (actuator_class) {
+		class_destroy(actuator_class);
+		actuator_class = NULL;
+	}
+	if (g_pAF_CharDrv) {
+		cdev_del(g_pAF_CharDrv);
+		g_pAF_CharDrv = NULL;
+	}
+	unregister_chrdev_region(g_AF_devno, AF_DEV_COUNT);
 
 	LOG_INF("End\n");
 }

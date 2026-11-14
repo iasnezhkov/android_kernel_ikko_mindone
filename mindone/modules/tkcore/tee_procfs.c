@@ -37,7 +37,7 @@
 #include "tee_core_priv.h"
 #include <version.h>
 
-#define TEE_LOG_TIMEOUT_MS	(500)
+#define TEE_LOG_TIMEOUT_MS	(60 * MSEC_PER_SEC)
 #define ENABLE_PRINTK_TEE_LOG
 
 struct proc_dir_entry *tee_proc_dir;
@@ -94,6 +94,8 @@ struct klog {
 	 * nsdrv to fetch log
 	 */
 	int notify_irq;
+
+	bool forward;
 };
 
 struct ulog {
@@ -467,6 +469,25 @@ static irqreturn_t tkcore_log_irq_handler(int irq, void *dev_id)
 	return IRQ_HANDLED;
 }
 
+static uint32_t tee_log_notified_seq;
+
+void tee_log_notify(void)
+{
+	struct task_struct *ts = READ_ONCE(klog.ts);
+	uint32_t wseq;
+
+	if (IS_ERR_OR_NULL(ts))
+		return;
+
+	wseq = READ_ONCE(klog.log_ctl->info.tee_write_seq);
+	if (wseq == tee_log_notified_seq)
+		return;
+
+	tee_log_notified_seq = wseq;
+	wake_up_all(&klog.wq);
+}
+EXPORT_SYMBOL(tee_log_notify);
+
 #define LINE_LENGTH	120U
 
 static void kprint_line(const char *logline)
@@ -476,6 +497,24 @@ static void kprint_line(const char *logline)
 #else
 	(void) logline;
 #endif
+}
+
+static bool klog_forward_line(struct klog *klog, const char *line)
+{
+	const char *p;
+
+	if (line[0] == '[') {
+		p = strstr(line, "]: <");
+		if (p != NULL) {
+			p = strchr(p, ')');
+			if (p != NULL)
+				p = strchr(p, ' ');
+			klog->forward = p != NULL &&
+				strncmp(p + 1, "KERN:", 5) == 0;
+		}
+	}
+
+	return klog->forward && line[0] != '\0';
 }
 
 static void log_rb(struct klog *klog)
@@ -529,7 +568,8 @@ static void log_rb(struct klog *klog)
 
 		if (((i == copy_len) && (p - line == LINE_LENGTH))
 				|| (i != copy_len)) {
-			kprint_line(line);
+			if (klog_forward_line(klog, line))
+				kprint_line(line);
 			p = line;
 			log_ctl->info.tee_read_seq = rseq;
 		}
@@ -665,7 +705,7 @@ static int init_klog(struct klog *klog, struct tee *tee)
 
 	klog->ts = kthread_run(logd,
 				(void *) klog, "tee-log");
-	if (klog->ts == NULL) {
+	if (IS_ERR(klog->ts)) {
 		pr_err("tkcoredrv: Failed to create kthread\n");
 		goto err_free_irq;
 	}

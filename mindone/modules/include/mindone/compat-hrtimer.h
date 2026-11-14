@@ -17,4 +17,16 @@ static inline void mindone_hrtimer_setup(struct hrtimer *timer,
 #endif
 }
 
+static inline void mindone_hrtimer_setup_on_stack(struct hrtimer *timer,
+						  enum hrtimer_restart (*function)(struct hrtimer *),
+						  clockid_t clock_id, enum hrtimer_mode mode)
+{
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 13, 0)
+	hrtimer_setup_on_stack(timer, function, clock_id, mode);
+#else
+	hrtimer_init_on_stack(timer, clock_id, mode);
+	timer->function = function;
+#endif
+}
+
 #endif

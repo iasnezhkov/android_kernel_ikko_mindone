@@ -19,21 +19,10 @@
 #include <linux/poll.h>
 #include <linux/slab.h>
 #include <linux/spinlock.h>
-#include <linux/version.h>
 #include <linux/version_compat_defs.h>
 #include <linux/wait.h>
 
-#if KERNEL_VERSION(4, 16, 0) > LINUX_VERSION_CODE
-#include <uapi/linux/eventpoll.h>
-#endif
-
-#if KERNEL_VERSION(5, 1, 0) <= LINUX_VERSION_CODE
 #include <linux/build_bug.h>
-#elif !defined(static_assert)
-
-#define static_assert(e, ...) __static_assert(e, #__VA_ARGS__, #e)
-#define __static_assert(e, msg, ...) _Static_assert(e, msg)
-#endif
 
 #define PR_ "mali_kbase_kinstr_jm: "
 
@@ -312,13 +301,8 @@ static ssize_t reader_read(struct file *const filp, char __user *const buffer,
 	if (buffer_size < sizeof(struct kbase_kinstr_jm_atom_state_change))
 		return -ENOBUFS;
 
-#if KERNEL_VERSION(5, 0, 0) <= LINUX_VERSION_CODE
 	if (!access_ok(buffer, buffer_size))
 		return -EIO;
-#else
-	if (!access_ok(VERIFY_WRITE, buffer, buffer_size))
-		return -EIO;
-#endif
 
 	changes = &reader->changes;
 
@@ -369,9 +353,6 @@ static __poll_t reader_poll(struct file *const file, struct poll_table_struct *c
 }
 
 static const struct file_operations file_operations = { .owner = THIS_MODULE,
-#if (KERNEL_VERSION(6, 12, 0) > LINUX_VERSION_CODE)
-							.llseek = no_llseek,
-#endif
 							.read = reader_read,
 							.poll = reader_poll,
 							.release = reader_release };

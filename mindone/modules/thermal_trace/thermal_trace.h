@@ -1,1 +1,0 @@
-../board_temp/thermal_trace.h

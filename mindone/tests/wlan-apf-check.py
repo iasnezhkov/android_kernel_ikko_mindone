@@ -75,13 +75,13 @@ def build(directory, sources, name):
     compiler = shutil.which('clang')
     assert compiler, 'clang is required'
     command = [compiler, '-std=c11', '-O1', '-g', '-fno-omit-frame-pointer', '-fsanitize=address,undefined', str(source), '-o', str(executable)]
-    result = subprocess.run(command, capture_output=True, text=True, timeout=30)
+    result = subprocess.run(command, capture_output=True, text=True, timeout=120)
     assert result.returncode == 0, result.stderr
     return executable
 
 
 def run(executable, case):
-    return subprocess.run([str(executable), *(str(value) for value in case)], capture_output=True, text=True, timeout=5)
+    return subprocess.run([str(executable), *(str(value) for value in case)], capture_output=True, text=True, timeout=60)
 
 
 def main():

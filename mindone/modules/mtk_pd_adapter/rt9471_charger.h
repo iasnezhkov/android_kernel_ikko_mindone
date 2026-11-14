@@ -1,1 +1,0 @@
-../mtk_charger_algorithm_class/rt9471_charger.h

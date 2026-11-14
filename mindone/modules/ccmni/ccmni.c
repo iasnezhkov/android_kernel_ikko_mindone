@@ -24,7 +24,6 @@
  ****************************************************************************/
 #include <linux/if_arp.h>
 #include <net/gro.h>
-#include <linux/version.h>
 #include <linux/netdevice.h>
 #include <linux/u64_stats_sync.h>
 #include <linux/etherdevice.h>
@@ -43,12 +42,12 @@
 #include <linux/stacktrace.h>
 #include "ccmni.h"
 #include "ccci_debug.h"
-#include "rps_perf.h"
 #if defined(CCMNI_MET_DEBUG)
 #include <mt-plat/met_drv.h>
 #endif
 
 #include <trace/hooks/ipv6.h>
+#include <mindone/compat-gro.h>
 #include <mindone/compat-timer.h>
 
 struct ccmni_ctl_block *ccmni_ctl_blk[MAX_MD_NUM];
@@ -97,21 +96,6 @@ static void unregister_tcp_pacing_sysctl(void)
 {
 	unregister_sysctl_table(sysctl_header);
 }
-
-void set_ccmni_rps(unsigned long value)
-{
-	int i = 0;
-	struct ccmni_ctl_block *ctlb = ccmni_ctl_blk[0];
-
-	if (ctlb == NULL) {
-		pr_info("%s: invalid ctlb\n", __func__);
-		return;
-	}
-
-	for (i = 0; i < ctlb->ccci_ops->ccmni_num; i++)
-		set_rps_map(ctlb->ccmni_inst[i]->dev->_rx, value);
-}
-EXPORT_SYMBOL(set_ccmni_rps);
 
 
 void ccmni_set_cur_speed(u64 cur_dl_speed)
@@ -300,19 +284,7 @@ EXPORT_SYMBOL(ccmni_clr_flush_timer);
 
 static inline void napi_gro_list_flush(struct ccmni_instance *ccmni)
 {
-	struct napi_struct *napi = ccmni->napi;
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 18, 0)
-	struct gro_node *gro = &napi->gro;
-#else
-	struct napi_struct *gro = napi;
-#endif
-
-	napi_gro_flush(napi, false);
-	if (gro->rx_count) {
-		netif_receive_skb_list(&gro->rx_list);
-		INIT_LIST_HEAD(&gro->rx_list);
-		gro->rx_count = 0;
-	}
+	mindone_napi_gro_flush_list(ccmni->napi);
 }
 
 static void ccmni_gro_flush(struct ccmni_instance *ccmni)
@@ -468,8 +440,6 @@ static u16 ccmni_select_queue(struct net_device *dev, struct sk_buff *skb,
 		return CCMNI_TXQ_NORMAL;
 }
 
-static int s_call_times;
-
 static int ccmni_open(struct net_device *dev)
 {
 	struct ccmni_instance *ccmni =
@@ -519,10 +489,6 @@ static int ccmni_open(struct net_device *dev)
 		atomic_read(&ccmni_tmp->usage),
 		ccmni_ctl->ccci_ops->md_ability,
 		dev->features, gro_flush_timer, ccmni->flt_cnt);
-
-	if (s_call_times == 0)
-		set_ccmni_rps(0x70);
-	s_call_times++;
 
 	return 0;
 }

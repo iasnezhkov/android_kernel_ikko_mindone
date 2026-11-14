@@ -1,1 +1,0 @@
-../board_temp/soc_temp_lvts.h

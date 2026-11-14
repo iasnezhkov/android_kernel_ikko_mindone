@@ -220,14 +220,9 @@ static int policy_change_wait_for_L2_off(struct kbase_device *kbdev)
 	long timeout = kbase_csf_timeout_in_jiffies(kbase_get_timeout_ms(kbdev, CSF_PM_TIMEOUT));
 	int err = 0;
 
-#if KERNEL_VERSION(4, 13, 1) <= LINUX_VERSION_CODE
 	remaining = wait_event_killable_timeout(kbdev->pm.backend.gpu_in_desired_state_wait,
 						kbdev->pm.backend.l2_state == KBASE_L2_OFF,
 						timeout);
-#else
-	remaining = wait_event_timeout(kbdev->pm.backend.gpu_in_desired_state_wait,
-				       kbdev->pm.backend.l2_state == KBASE_L2_OFF, timeout);
-#endif
 
 	if (!remaining) {
 		err = -ETIMEDOUT;

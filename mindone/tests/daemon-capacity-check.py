@@ -48,7 +48,10 @@ cases += '\n' + case(daemon, 'FG_DAEMON_CMD_SET_DAEMON_PID')
 report = case(battery, 'POWER_SUPPLY_PROP_CHARGE_FULL')
 wire = function(daemon, 'mtk_battery_netlink_handler')
 wire = wire[:wire.index('\n\tif (fgd_msg->identity')]
-wire += '\n\t(void)uid; (void)pid; (void)seq; (void)size; (void)fgd_ret_msg; (void)fgd_msg;\n\taccepted++;\n}'
+wire += '\n\t(void)uid; (void)pid; (void)seq; (void)size; (void)fgd_ret_msg; (void)fgd_msg;\n'
+if re.search(r'^\tbool ptim;$', wire, re.M):
+    wire += '\t(void)ptim;\n'
+wire += '\taccepted++;\n}'
 source = (fixture / 'cases.c').read_text()
 source = source.replace('@TYPES@', clean(types)).replace('@FUNCTIONS@', clean(functions))
 source = source.replace('@CASES@', clean(cases)).replace('@REPORT@', clean(report)).replace('@WIRE@', clean(wire))

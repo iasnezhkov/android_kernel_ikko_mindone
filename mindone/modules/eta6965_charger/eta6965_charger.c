@@ -643,7 +643,7 @@ static int eta6965_probe(struct i2c_client *client)
 		return -ENOMEM;
 	eta->client = client;
 	eta->dev = &client->dev;
-	eta->usb_input_current_limit = 100000;
+	eta->usb_input_current_limit = 0;
 	mutex_init(&eta->lock);
 	i2c_set_clientdata(client, eta);
 

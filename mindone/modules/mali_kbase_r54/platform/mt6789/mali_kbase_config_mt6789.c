@@ -92,6 +92,8 @@ static inline void gpu_dvfs_status_reset_footprint(void)
 
 static int pm_callback_power_on_nolock(struct kbase_device *kbdev)
 {
+    int ret;
+
 #if defined(CONFIG_MTK_GPUFREQ_V2)
     if (mtk_common_gpufreq_bringup()) {
         mtk_common_pm_mfg_active();
@@ -131,10 +133,9 @@ static int pm_callback_power_on_nolock(struct kbase_device *kbdev)
     }
 
 #if defined(CONFIG_MTK_GPUFREQ_V2)
-    if (gpufreq_power_control(GPU_PWR_ON) < 0) {
-        KBASE_PLATFORM_LOGI("%s, GPU fail to power on", __func__);
-        return 0;
-    }
+    ret = gpufreq_power_control(GPU_PWR_ON);
+    if (ret < 0)
+        panic("mali: GPU power-on failed (%d), kbase cannot run on an unpowered GPU", ret);
 #else
     mt_gpufreq_power_control(GPU_PWR_ON, CG_ON, MTCMOS_ON, BUCK_ON);
 #endif
@@ -440,7 +441,7 @@ static void pm_callback_runtime_off(struct kbase_device *kbdev)
 
 static void pm_callback_resume(struct kbase_device *kbdev)
 {
-    KBASE_PLATFORM_LOGI("%s", __func__);
+    dev_dbg(kbdev->dev, "%s\n", __func__);
     mutex_lock(&g_mfg_lock);
     gpu_dvfs_status_footprint(GPU_DVFS_STATUS_STEP_F);
     mutex_unlock(&g_mfg_lock);
@@ -448,7 +449,7 @@ static void pm_callback_resume(struct kbase_device *kbdev)
 
 static void pm_callback_suspend(struct kbase_device *kbdev)
 {
-    KBASE_PLATFORM_LOGI("%s", __func__);
+    dev_dbg(kbdev->dev, "%s\n", __func__);
     mutex_lock(&g_mfg_lock);
     gpu_dvfs_status_footprint(GPU_DVFS_STATUS_STEP_E);
     mutex_unlock(&g_mfg_lock);

@@ -6,7 +6,7 @@
 // Author: KaiChieh Chuang <kaichieh.chuang@mediatek.com>
 
 #include <linux/platform_device.h>
-#include <linux/mindone_sysfs_compat.h>
+#include <mindone/compat-sysfs.h>
 #include <linux/module.h>
 #include <linux/of_device.h>
 #include <linux/delay.h>
@@ -568,14 +568,13 @@ static int mt6358_put_volsw(struct snd_kcontrol *kcontrol,
 			(reg >> RG_AUDHSGAIN_SFT) & RG_AUDHSGAIN_MASK;
 		break;
 	case MT6358_AUDENC_ANA_CON0:
-		regmap_read(priv->regmap, MT6358_AUDENC_ANA_CON0, &reg);
-		priv->ana_gain[AUDIO_ANALOG_VOLUME_MICAMP1] =
-			(reg >> RG_AUDPREAMPLGAIN_SFT) & RG_AUDPREAMPLGAIN_MASK;
-		break; /* D-3 (AUDIO-HANG, section E): used to crash in CON1 */
 	case MT6358_AUDENC_ANA_CON1:
 		regmap_read(priv->regmap, MT6358_AUDENC_ANA_CON1, &reg);
 		priv->ana_gain[AUDIO_ANALOG_VOLUME_MICAMP2] =
 			(reg >> RG_AUDPREAMPRGAIN_SFT) & RG_AUDPREAMPRGAIN_MASK;
+		regmap_read(priv->regmap, MT6358_AUDENC_ANA_CON0, &reg);
+		priv->ana_gain[AUDIO_ANALOG_VOLUME_MICAMP1] =
+			(reg >> RG_AUDPREAMPLGAIN_SFT) & RG_AUDPREAMPLGAIN_MASK;
 		break;
 	}
 
@@ -727,26 +726,20 @@ static const DECLARE_TLV_DB_SCALE(capture_tlv, 0, 600, 0);
 
 static const struct snd_kcontrol_new mt6358_snd_controls[] = {
 	/* dl pga gain */
-	SOC_DOUBLE_EXT_TLV("Headset Volume",
-			   MT6358_ZCD_CON2, 0, 7, 0x12, 0,
+	SOC_DOUBLE_EXT_TLV("Headphone Volume",
+			   MT6358_ZCD_CON2, 0, 7, 0x12, 1,
 			   snd_soc_get_volsw, mt6358_put_volsw, playback_tlv),
 	SOC_DOUBLE_EXT_TLV("Lineout Volume",
-			   MT6358_ZCD_CON1, 0, 7, 0x12, 0,
+			   MT6358_ZCD_CON1, 0, 7, 0x12, 1,
 			   snd_soc_get_volsw, mt6358_put_volsw, playback_tlv),
 	SOC_SINGLE_EXT_TLV("Handset Volume",
-			   MT6358_ZCD_CON3, 0, 0x12, 0,
+			   MT6358_ZCD_CON3, 0, 0x12, 1,
 			   snd_soc_get_volsw, mt6358_put_volsw, playback_tlv),
-
-	/* ul pga gain */
-	SOC_SINGLE_EXT_TLV("PGA1 Volume",
-			   MT6358_AUDENC_ANA_CON0, RG_AUDPREAMPLGAIN_SFT, 4, 0,
-			   snd_soc_get_volsw, mt6358_put_volsw, capture_tlv),
-	SOC_SINGLE_EXT_TLV("PGA2 Volume",
-			   MT6358_AUDENC_ANA_CON1, RG_AUDPREAMPRGAIN_SFT, 4, 0,
-			   snd_soc_get_volsw, mt6358_put_volsw, capture_tlv),
-
-	/* VOW force phase2 for debug */
-	SOC_SINGLE_BOOL_EXT("VOW Phase2 Switch", 0,
+	SOC_DOUBLE_R_EXT_TLV("PGA Volume",
+			     MT6358_AUDENC_ANA_CON0, MT6358_AUDENC_ANA_CON1,
+			     RG_AUDPREAMPLGAIN_SFT, 4, 0,
+			     snd_soc_get_volsw, mt6358_put_volsw, capture_tlv),
+	SOC_SINGLE_BOOL_EXT("Wake-on-Voice Phase2 Switch", 0,
 			    mt6358_get_vow, mt6358_put_vow),
 };
 

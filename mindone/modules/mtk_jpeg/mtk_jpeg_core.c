@@ -1145,8 +1145,7 @@ static void mtk_jpeg_enc_device_run(void *priv)
 	src_buf = v4l2_m2m_next_src_buf(ctx->fh.m2m_ctx);
 	dst_buf = v4l2_m2m_next_dst_buf(ctx->fh.m2m_ctx);
 
-	ret = pm_runtime_get_sync(jpeg->dev);
-	v4l2_info(&jpeg->v4l2_dev, "jpeg_enc_device_run ret: %d", ret);
+	ret = pm_runtime_resume_and_get(jpeg->dev);
 	if (ret < 0)
 		goto enc_end;
 
@@ -1331,6 +1330,7 @@ static irqreturn_t mtk_jpeg_enc_done(struct mtk_jpeg_dev *jpeg)
 	v4l2_m2m_buf_done(src_buf, buf_state);
 	v4l2_m2m_buf_done(dst_buf, buf_state);
 	v4l2_m2m_job_finish(jpeg->m2m_dev, ctx->fh.m2m_ctx);
+	pm_runtime_put(jpeg->dev);
 	return IRQ_HANDLED;
 }
 
@@ -1489,14 +1489,12 @@ static int mtk_jpeg_release(struct file *file)
 	struct mtk_jpeg_dev *jpeg = video_drvdata(file);
 	struct mtk_jpeg_ctx *ctx = mtk_jpeg_fh_to_ctx(file->private_data);
 
+	mutex_lock(&jpeg->lock);
+	v4l2_m2m_ctx_release(ctx->fh.m2m_ctx);
 	if (ctx->state == MTK_JPEG_RUNNING) {
 		mtk_jpeg_dvfs_end(ctx);
 		mtk_jpeg_end_bw_request(ctx);
-		v4l2_info(&jpeg->v4l2_dev, "jpeg_release call to pm_runtime_put");
-		pm_runtime_put(ctx->jpeg->dev);
 	}
-	mutex_lock(&jpeg->lock);
-	v4l2_m2m_ctx_release(ctx->fh.m2m_ctx);
 	v4l2_ctrl_handler_free(&ctx->ctrl_hdl);
 	mindone_v4l2_fh_del(&ctx->fh, file);
 	v4l2_fh_exit(&ctx->fh);
@@ -1747,7 +1745,29 @@ static __maybe_unused int mtk_jpeg_pm_resume(struct device *dev)
 	return 0;
 }
 
+static __maybe_unused int mtk_jpeg_suspend(struct device *dev)
+{
+	struct mtk_jpeg_dev *jpeg = dev_get_drvdata(dev);
+
+	v4l2_m2m_suspend(jpeg->m2m_dev);
+	return pm_runtime_force_suspend(dev);
+}
+
+static __maybe_unused int mtk_jpeg_resume(struct device *dev)
+{
+	struct mtk_jpeg_dev *jpeg = dev_get_drvdata(dev);
+	int ret;
+
+	ret = pm_runtime_force_resume(dev);
+	if (ret < 0)
+		return ret;
+
+	v4l2_m2m_resume(jpeg->m2m_dev);
+	return ret;
+}
+
 static const struct dev_pm_ops mtk_jpeg_pm_ops = {
+	SET_SYSTEM_SLEEP_PM_OPS(mtk_jpeg_suspend, mtk_jpeg_resume)
 	SET_RUNTIME_PM_OPS(mtk_jpeg_pm_suspend, mtk_jpeg_pm_resume, NULL)
 };
 

@@ -1,1 +1,0 @@
-../cqhci/mmci.h

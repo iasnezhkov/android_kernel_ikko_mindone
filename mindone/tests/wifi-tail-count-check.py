@@ -3,10 +3,16 @@
 import argparse
 import hashlib
 import json
-import os
 from pathlib import Path
 import subprocess
 import tempfile
+
+from baseline_source import require
+
+
+BASELINE_SHA256 = '3bfb5cab4196477234545482dd722a0afcbec66dec9ddf069528229ce8eed5e9'
+FIX = ("if ((*pcContCur) == '[')\n\t\t\tucSettingCount++;\n",
+       'if ((*pcContCur) == \'[\') {\n\t\t\tif (ucSettingCount == 0xff) {\n\t\t\t\tDBGLOG(RLM, ERROR,\n\t\t\t\t       "power ctrl channel setting count exceeds 255\\n");\n\t\t\t\treturn NULL;\n\t\t\t}\n\t\t\tucSettingCount++;\n\t\t}\n')
 
 
 def block(source, start):
@@ -63,17 +69,17 @@ def run(source, compiler):
 def main():
     parser = argparse.ArgumentParser(description='Check the exact WLAN power-setting counter and pre-allocation rejection with host stubs')
     parser.add_argument('--compiler', default='cc')
-    parser.add_argument('--baseline', default='67bc07d4f3aa')
     parser.add_argument('--output', type=Path)
     args = parser.parse_args()
     root = Path(__file__).resolve().parents[2]
     relative = 'mindone/modules/wlan_drv_gen4m_6789/mgmt/rlm_domain.c'
     source = (root / relative).read_text()
     current = fragment(source)
-    baseline = subprocess.run(['git', '-C', str(root), 'show', args.baseline + ':' + relative],
-                              capture_output=True, text=True, check=True, timeout=20,
-                              env={**os.environ, 'GIT_NO_LAZY_FETCH': '1'}).stdout
-    variants = {'candidate': current, 'baseline': fragment(baseline),
+    if current.count(FIX[1]) != 1:
+        raise ValueError('Counter guard is not in the source exactly once')
+    baseline = current.replace(FIX[1], FIX[0])
+    require('Counter fragment without the 255 guard', baseline, BASELINE_SHA256)
+    variants = {'candidate': current, 'baseline': baseline,
                 'missing_overflow_guard': current.replace('if (ucSettingCount == 0xff)', 'if (0)'),
                 'reject_valid_255': current.replace('if (ucSettingCount == 0xff)', 'if (ucSettingCount == 0xfe)'),
                 'accept_empty': current.replace('if (ucSettingCount == 0)', 'if (0)')}

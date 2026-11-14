@@ -3,6 +3,7 @@
 import argparse
 import hashlib
 import json
+import os
 from pathlib import Path
 import re
 import subprocess
@@ -39,6 +40,9 @@ def main():
     parser.add_argument("--evidence", type=Path)
     parser.add_argument("--baseline", action="store_true")
     parser.add_argument("--base", default="e6fa454ff9035dffb3420846714377feddc97047")
+    parser.add_argument("--reference-repo", type=Path,
+                        help="repository that holds --base (default: the kernel tree); an android17-6.18 clone "
+                             "needs an android16-6.12 clone here")
     args = parser.parse_args()
     root = args.kernel_tree.resolve()
     paths = (
@@ -58,8 +62,12 @@ def main():
         raise ValueError("Compiled cooler header target changed")
     if args.baseline:
         for path in paths[:3]:
-            sources[path] = subprocess.run(["git", "show", args.base + ":" + path], cwd=root,
-                                           capture_output=True, text=True, check=True, timeout=10).stdout
+            shown = subprocess.run(["git", "show", args.base + ":" + path], cwd=args.reference_repo or root,
+                                   capture_output=True, text=True, timeout=10, env=dict(os.environ, GIT_NO_LAZY_FETCH="1"))
+            if shown.returncode:
+                raise SystemExit("charger-acceptance-check: " + args.base + ":" + path + " is not in "
+                                 + str(args.reference_repo or root) + "; pass --reference-repo with an android16-6.12 clone")
+            sources[path] = shown.stdout
     originals = dict(sources)
     fixture = Path(__file__).with_name("charger-acceptance")
     cooler, header, framework, interface, provider_header, algo_header, supply_header, core, build, class_header, class_source = (sources[p] for p in paths)
@@ -109,7 +117,7 @@ def main():
     for name in ("psy_charger_property_is_writeable", "psy_charger_set_property", "psy_charger_get_property"):
         bodies += function(framework, name)
     bodies += block(framework, r"^static enum power_supply_property charger_psy_properties\[\] =")
-    bodies += function(core, "power_supply_set_property")
+    bodies += function(core, "__power_supply_set_property") + function(core, "power_supply_set_property")
     bodies += block(cooler, r"^struct charger_cooler_info \{")
     bodies += "static struct charger_cooler_info charger_cl_data;\n"
     if not args.baseline:
@@ -129,7 +137,7 @@ def main():
         ("drop-worker-wake", "\t_wake_up_charger(info);", "\tif (false) _wake_up_charger(info);"),
         ("unregister-cc-property", "\tPOWER_SUPPLY_PROP_" + cc_predecessor + ",\n\tPOWER_SUPPLY_PROP_CONSTANT_CHARGE_CURRENT_MAX,", "\tPOWER_SUPPLY_PROP_" + cc_predecessor + ",\n\tPOWER_SUPPLY_PROP_CAPACITY,"),
         ("hide-callback-first-error", 'pr_notice("set bat curr fail\\n");\n\t\treturn ret;', 'pr_notice("set bat curr fail\\n");\n\t\treturn 0;'),
-        ("ignore-dead-provider", "atomic_read(&psy->use_cnt) <= 0 || !psy->desc->set_property", "(atomic_read(&psy->use_cnt) <= 0 && false) || !psy->desc->set_property"),
+        ("ignore-dead-provider", "if (atomic_read(&psy->use_cnt) <= 0)\n\t\treturn -ENODEV;", "if (atomic_read(&psy->use_cnt) <= 0 && false)\n\t\treturn -ENODEV;"),
         ("drop-secondary-request", "prop_s_bat_chr.intval = slave_charger_state_to_current_limit[chg->target_state];", "prop_s_bat_chr.intval = -1;"),
         ("fake-current-readback", ("ret = " if not args.baseline else "val->intval = ") + "get_charger_charging_current(info, chg);", ("ret = " if not args.baseline else "val->intval = ") + "info->chg_data[0].thermal_charging_current_limit;"),
         ("missing-ops-guard", "if (ops && ops->get_charging_current)", "if (ops->get_charging_current)"),
@@ -165,7 +173,7 @@ def main():
                 if result.returncode:
                     raise RuntimeError(result.stdout + result.stderr)
                 print(result.stdout, end="")
-            elif not result.returncode or not re.search(r"Assertion failed:|runtime error:|ERROR: AddressSanitizer", result.stderr):
+            elif not result.returncode or not re.search(r"Assertion failed:|Assertion `[^\n]*\x27 failed|runtime error:|ERROR: AddressSanitizer", result.stderr):
                 raise RuntimeError("Mutation not rejected at runtime: " + name + "\n" + result.stdout + result.stderr)
             else:
                 print("PASS rejected " + name)

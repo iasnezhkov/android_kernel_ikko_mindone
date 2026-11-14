@@ -8,31 +8,43 @@ MediaTek Helio G99, `MT6789` / `MT8781V-CA`. arm64, 4 KiB pages, kernel release
 `6.18.32-android17-5-<stamp>-4k`. The device shipped with a vendor kernel that stopped at
 Linux 5.10 (the `android12-5.10` line, on Android 15); this tree is 6.18.
 
-## What works
+## Subsystems
 
-Earlier 6.12 builds booted to `boot_completed` in ~21 s and demonstrated audio, calls, data,
-Wi-Fi, Bluetooth, NFC, camera, fingerprint, USB, charging and suspend/resume. On 6.18 the
-first LineageOS 24 builds reach the home screen in ~35 s.
+The 6.18 line pairs with the LineageOS 24 device tree.
 
-**Camera.** Both logical cameras of the flip module; the main IMX766 sensor's full 4096×3072
-mode, brought up faster through burst I2C writes and chunked EEPROM calibration reads.
+**Camera.** One IMX766 in a flip module, exposed as camera IDs 0 and 1 for its two
+positions. Both IDs use the same sensor power sequence, calibration EEPROM and DW9800W
+actuator, and only one may hold the sensor at a time; a power-on of one ID waits up to
+500 ms for the other to release the shared supplies. The full 4096×3072 mode is brought
+up through burst I2C writes and chunked EEPROM calibration reads, and the `imx766_4cell`
+parameter selects whether the camera HAL sees Bayer or quad-Bayer output. The module's
+AW86006 OIS controller has its own driver, `ois_aw86006`, with every function off by
+default.
+
+**USB-C.** The RT1715 port controller at `0x4e` on i2c-6 signals on EINT13, level low.
+It is a TCPM `usb-c-connector` that sinks 5 V by default, and the charger's OTG boost
+supplies VBUS when the port is a source.
+
+**Audio codec.** The MT6366 codec uses the control names of upstream `mt6358.c`, and a
+larger playback volume value is a louder gain.
 
 **Wi-Fi.** The IPv6-only allocation bug is fixed; address/mask pairs use the correct IPv4
 stride, and IPv6 changes while suspended schedule offload refresh. The framework alone
 owns firmware suspend policy; no per-cycle PM notifier rewrites it. Independent IPv4/IPv6 multicast RXFILTER policy
-is supported during suspend with the matching reviewed firmware; the accepted pair passed
-allow/block/restore and unicast controls. APF v4 is enabled with a 2048-byte program limit. See the
+is supported during suspend with the matching reviewed firmware. APF v4 is enabled with a 2048-byte program limit. See the
 [firmware pairing requirements](../README.md#wi-fi-firmware-pairing) and the
 companion device repository's proprietary-file guide.
 
 **Video.** Hardware decode and encode through the stateful V4L2 driver (`mtk_vcodec`), behind an
 open Codec2 HAL. The MT6789 driver advertises HEVC Main/Main10 and VP9 Profile 0
-through read-only profile controls.
+through read-only profile controls. The JPEG encoder powers its engine per encode job
+through runtime PM.
 
-**Flash and autofocus.** The stock GPIO flashlight is selected; LM3643 did not answer
-on i2c-6 and remains non-shipping. GPIO157 stays with fingerprint reset. `mainaf`
-sets the DW9800W actuator address to `0x0c` before initialization and checks one-byte
-register-address writes correctly.
+**Flash and autofocus.** The stock GPIO flashlight is selected; LM3643 does not answer
+on i2c-6 and is not built. GPIO157 stays with fingerprint reset. `mainaf` sets the
+DW9800W actuator address to `0x0c` before initialization, checks one-byte
+register-address writes and serves both `/dev/MAINAF` and `/dev/SUBAF`, so both camera
+IDs drive the one actuator.
 
 **Battery sampling.** The PTIM v1 command returns a coherent sample with acquisition
 status to the requesting socket without taking over the stock GM30 daemon registration.
@@ -43,7 +55,8 @@ idle kicks, seven atomic properties and MDP-only capability reporting; unsupport
 MML functions and colour matrices are refused.
 
 **Thermal.** Device-tree zones: CPU and GPU passive trips and a 46 °C skin trip on the board
-NTC, cooling through cpufreq and Mali devfreq.
+NTC, cooling through cpufreq and the `gpufreq` cooling device of the GPU frequency
+driver; the skin zone limits the GPU as well.
 
 **Display.** The panel driver reports its physical size (67.06 x 77.00 mm) and
 offers a VFP-only 60 Hz mode beside the 96 Hz default.

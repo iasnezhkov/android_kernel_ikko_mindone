@@ -1,1 +1,0 @@
-../include/drivers/misc/mediatek/performance/perf_ioctl/perf_ioctl.h

@@ -143,34 +143,34 @@ extern void slbc_update_mic_num(unsigned int num);
 extern void slbc_update_inner(unsigned int inner);
 extern void slbc_update_outer(unsigned int outer);
 #else
-__attribute__ ((weak)) int slbc_request(struct slbc_data *d)
+static inline int slbc_request(struct slbc_data *d)
 {
 	return -EDISABLED;
 };
-__attribute__ ((weak)) int slbc_release(struct slbc_data *d)
+static inline int slbc_release(struct slbc_data *d)
 {
 	return -EDISABLED;
 };
-__attribute__ ((weak)) int slbc_power_on(struct slbc_data *d)
+static inline int slbc_power_on(struct slbc_data *d)
 {
 	return -EDISABLED;
 };
-__attribute__ ((weak)) int slbc_power_off(struct slbc_data *d)
+static inline int slbc_power_off(struct slbc_data *d)
 {
 	return -EDISABLED;
 };
-__attribute__ ((weak)) int slbc_secure_on(struct slbc_data *d)
+static inline int slbc_secure_on(struct slbc_data *d)
 {
 	return -EDISABLED;
 };
-__attribute__ ((weak)) int slbc_secure_off(struct slbc_data *d)
+static inline int slbc_secure_off(struct slbc_data *d)
 {
 	return -EDISABLED;
 };
-__attribute__ ((weak)) void slbc_update_mm_bw(unsigned int bw) {}
-__attribute__ ((weak)) void slbc_update_mic_num(unsigned int num) {}
-__attribute__ ((weak)) void slbc_update_inner(unsigned int inner) {}
-__attribute__ ((weak)) void slbc_update_outer(unsigned int outer) {}
+static inline void slbc_update_mm_bw(unsigned int bw) {}
+static inline void slbc_update_mic_num(unsigned int num) {}
+static inline void slbc_update_inner(unsigned int inner) {}
+static inline void slbc_update_outer(unsigned int outer) {}
 #endif /* CONFIG_MTK_SLBC */
 
 #endif /* _SLBC_OPS_H_ */

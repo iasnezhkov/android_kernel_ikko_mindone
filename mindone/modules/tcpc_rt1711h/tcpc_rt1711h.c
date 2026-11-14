@@ -1477,16 +1477,6 @@ static void check_printk_performance(void)
 	u64 t1, t2;
 	u32 nsrem;
 
-#if IS_ENABLED(CONFIG_PD_DBG_INFO)
-	for (i = 0; i < 10; i++) {
-		t1 = local_clock();
-		pd_dbg_info("%d\n", i);
-		t2 = local_clock();
-		t2 -= t1;
-		nsrem = do_div(t2, 1000000000);
-		pd_dbg_info("pd_dbg_info : t2-t1 = %lu\n",
-				(unsigned long)nsrem / 1000);
-	}
 	for (i = 0; i < 10; i++) {
 		t1 = local_clock();
 		pr_info("%d\n", i);
@@ -1496,18 +1486,6 @@ static void check_printk_performance(void)
 		pr_info("pr_info : t2-t1 = %lu\n",
 				(unsigned long)nsrem / 1000);
 	}
-#else
-	for (i = 0; i < 10; i++) {
-		t1 = local_clock();
-		pr_info("%d\n", i);
-		t2 = local_clock();
-		t2 -= t1;
-		nsrem = do_div(t2, 1000000000);
-		pr_info("t2-t1 = %lu\n",
-				(unsigned long)nsrem /  1000);
-		PD_BUG_ON(nsrem > 100*1000);
-	}
-#endif /* CONFIG_PD_DBG_INFO */
 }
 #endif /* TCPC_ENABLE_ANYMSG */
 

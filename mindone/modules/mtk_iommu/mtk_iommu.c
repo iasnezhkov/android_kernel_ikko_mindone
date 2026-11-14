@@ -2847,16 +2847,11 @@ skip_smi:
 
 	platform_set_drvdata(pdev, data);
 
-	ret = iommu_device_sysfs_add(&data->iommu, dev, NULL,
-				     "mtk-iommu.%pa", &ioaddr);
-	if (ret)
-		goto out_link_remove;
-
-	ret = iommu_device_register(&data->iommu, &mtk_iommu_ops, dev);
-	if (ret)
-		goto out_sysfs_remove;
-
 	spin_lock_init(&data->tlb_lock);
+	mtk_iommu_isr_pause_timer_init(data);
+#if IS_ENABLED(CONFIG_MTK_IOMMU_MISC_SECURE)
+	mtk_iommu_update_region(data);
+#endif
 
 	if (MTK_IOMMU_HAS_FLAG(data->plat_data, SHARE_PGTABLE)) {
 		list_add_tail(&data->list, &m4ulist);
@@ -2867,12 +2862,21 @@ skip_smi:
 		data->hw_list = data->plat_data->hw_list;
 	}
 
+	ret = iommu_device_sysfs_add(&data->iommu, dev, NULL,
+				     "mtk-iommu.%pa", &ioaddr);
+	if (ret)
+		goto out_list_del;
+
+	ret = iommu_device_register(&data->iommu, &mtk_iommu_ops, dev);
+	if (ret)
+		goto out_sysfs_remove;
+
 	if (data->plat_data->iommu_type == MM_IOMMU &&
 	    !MTK_IOMMU_HAS_FLAG(data->plat_data, IOMMU_EN_PRE)) {
 		ret = component_master_add_with_match(dev, &mtk_iommu_com_ops,
 						      match);
 		if (ret)
-			goto out_list_del;
+			goto out_unregister;
 	}
 
 	/* register the notifier for power domain just for mm_iommu */
@@ -2911,20 +2915,16 @@ skip_smi:
 	}
 #endif
 
-	mtk_iommu_isr_pause_timer_init(data);
-#if IS_ENABLED(CONFIG_MTK_IOMMU_MISC_SECURE)
-	mtk_iommu_update_region(data);
-#endif
 	pr_info("%s done dev:%s, head:%lx\n", __func__, dev_name(dev),
 		(unsigned long)data->hw_list);
 	return ret;
 
-out_list_del:
-	list_del(&data->list);
+out_unregister:
 	iommu_device_unregister(&data->iommu);
 out_sysfs_remove:
 	iommu_device_sysfs_remove(&data->iommu);
-out_link_remove:
+out_list_del:
+	list_del(&data->list);
 	device_link_remove(data->smicomm_dev, dev);
 out_runtime_disable:
 	pm_runtime_disable(dev);

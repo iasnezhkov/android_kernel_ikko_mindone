@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0
 // SPDX-FileCopyrightText: 2026 The LineageOS Project
 #include <linux/delay.h>
-#include <linux/mindone_power_supply_compat.h>
+#include <mindone/compat-power-supply.h>
 #include <linux/device.h>
 #include <linux/err.h>
 #include <linux/iio/consumer.h>

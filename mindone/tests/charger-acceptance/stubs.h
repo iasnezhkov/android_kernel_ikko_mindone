@@ -10,7 +10,24 @@ struct power_supply {
     const struct power_supply_desc *desc;
     void *private;
     int changed;
+    int extensions_sem;
 };
+struct power_supply_ext {
+    int (*set_property)(struct power_supply *, const struct power_supply_ext *, void *,
+                        enum power_supply_property, const union power_supply_propval *);
+};
+struct power_supply_ext_registration {
+    const struct power_supply_ext *ext;
+    void *data;
+};
+#define scoped_guard(_type, _lock) for (int _guard = ((void)(_lock), 1); _guard; _guard = 0)
+#define power_supply_for_each_extension(_pos, _psy) for ((_pos) = NULL, (void)(_psy); (_pos); (_pos) = NULL)
+static bool power_supply_ext_has_property(const struct power_supply_ext *ext, enum power_supply_property psp)
+{
+    (void)ext;
+    (void)psp;
+    return false;
+}
 struct mtk_charger {
     struct power_supply *psy1, *psy2, *psy_dvchg1, *psy_dvchg2, *chg_psy;
     struct charger_device *chg1_dev, *chg2_dev, *dvchg1_dev, *dvchg2_dev;

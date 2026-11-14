@@ -1,1 +1,0 @@
-../mtk_charger_algorithm_class/bq2589x_reg.h

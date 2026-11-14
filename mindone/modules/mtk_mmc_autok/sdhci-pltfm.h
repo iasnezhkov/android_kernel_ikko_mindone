@@ -1,1 +1,0 @@
-../cqhci/sdhci-pltfm.h

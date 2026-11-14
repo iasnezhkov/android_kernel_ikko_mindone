@@ -1,1 +1,0 @@
-../include/drivers/misc/mediatek/vcp/include/vcp.h

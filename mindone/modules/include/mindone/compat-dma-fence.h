@@ -14,4 +14,12 @@ static inline bool mindone_dma_fence_is_later(struct dma_fence *fence, u64 f1, u
 #endif
 }
 
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 18, 0)
+#define MINDONE_DMA_FENCE_VALUE_STR(fn)
+#define MINDONE_DMA_FENCE_TIMELINE_VALUE_STR(fn)
+#else
+#define MINDONE_DMA_FENCE_VALUE_STR(fn) .fence_value_str = fn,
+#define MINDONE_DMA_FENCE_TIMELINE_VALUE_STR(fn) .timeline_value_str = fn,
+#endif
+
 #endif

@@ -1,0 +1,2 @@
+GPIO ranges handled:
+0: pinctrl_mtk_v2 GPIOS [512 - 699] PINS [0 - 187]

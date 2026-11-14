@@ -1,1 +1,0 @@
-../pmsr/spmtwam.h

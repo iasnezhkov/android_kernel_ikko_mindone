@@ -654,7 +654,6 @@ static inline void musb_platform_disable_wakeup(struct musb *musb)
 		musb->ops->enable_wakeup(musb, false);
 }
 
-/* #if LINUX_VERSION_CODE >= KERNEL_VERSION(3, 10, 0) */
 static inline const char *otg_state_string(enum usb_otg_state state)
 {
 	return usb_otg_state_string(state);

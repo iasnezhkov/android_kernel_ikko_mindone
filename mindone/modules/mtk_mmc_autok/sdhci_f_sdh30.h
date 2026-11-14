@@ -1,1 +1,0 @@
-../cqhci/sdhci_f_sdh30.h

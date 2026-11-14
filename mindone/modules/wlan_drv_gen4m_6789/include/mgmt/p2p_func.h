@@ -343,15 +343,6 @@ void p2pFuncGetStationInfo(IN struct ADAPTER *prAdapter,
 struct MSDU_INFO *p2pFuncProcessP2pProbeRsp(IN struct ADAPTER *prAdapter,
 		IN uint8_t ucBssIdx, IN struct MSDU_INFO *prMgmtTxMsdu);
 
-#if 0 /* LINUX_VERSION_CODE >= KERNEL_VERSION(3, 2, 0) */
-uint32_t
-p2pFuncCalculateExtra_IELenForBeacon(IN struct ADAPTER *prAdapter,
-		IN uint8_t ucBssIndex, IN struct STA_RECORD *prStaRec);
-
-void p2pFuncGenerateExtra_IEForBeacon(IN struct ADAPTER *prAdapter,
-		IN struct MSDU_INFO *prMsduInfo);
-
-#else
 uint32_t p2pFuncCalculateP2p_IELenForBeacon(IN struct ADAPTER *prAdapter,
 		IN uint8_t ucBssIndex, IN struct STA_RECORD *prStaRec);
 
@@ -363,7 +354,6 @@ uint32_t p2pFuncCalculateWSC_IELenForBeacon(IN struct ADAPTER *prAdapter,
 
 void p2pFuncGenerateWSC_IEForBeacon(IN struct ADAPTER *prAdapter,
 		IN struct MSDU_INFO *prMsduInfo);
-#endif
 uint32_t
 p2pFuncCalculateP2p_IELenForAssocRsp(IN struct ADAPTER *prAdapter,
 		IN uint8_t ucBssIndex, IN struct STA_RECORD *prStaRec);

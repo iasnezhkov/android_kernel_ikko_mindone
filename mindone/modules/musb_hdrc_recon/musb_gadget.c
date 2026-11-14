@@ -2286,7 +2286,9 @@ static int musb_gadget_vbus_draw
 
 	if (!READ_ONCE(musb->vbus_draw_ready))
 		return -ESHUTDOWN;
-	WRITE_ONCE(musb->vbus_draw, min(mA, 500U));
+	WRITE_ONCE(musb->vbus_draw,
+		   READ_ONCE(musb->g.speed) == USB_SPEED_UNKNOWN ?
+		   0 : min(mA, 500U));
 	mod_delayed_work(system_power_efficient_wq, &musb->vbus_draw_work, 0);
 	return 0;
 }
@@ -2484,7 +2486,7 @@ int musb_gadget_setup(struct musb *musb)
 	 */
 
 	INIT_DELAYED_WORK(&musb->vbus_draw_work, musb_vbus_draw_work);
-	musb->vbus_draw = 100;
+	musb->vbus_draw = 0;
 	WRITE_ONCE(musb->vbus_draw_ready, true);
 	musb->g.ops = &musb_gadget_operations;
 	musb->g.max_speed = USB_SPEED_HIGH;
@@ -2747,10 +2749,9 @@ void musb_g_suspend(struct musb *musb)
 
 	switch (musb->xceiv->otg->state) {
 	case OTG_STATE_B_IDLE:
-		if ((devctl & MUSB_DEVCTL_VBUS) != MUSB_DEVCTL_VBUS)
-			break;
-		musb->xceiv->otg->state = OTG_STATE_B_PERIPHERAL;
-		fallthrough;
+		if ((devctl & MUSB_DEVCTL_VBUS) == MUSB_DEVCTL_VBUS)
+			musb->xceiv->otg->state = OTG_STATE_B_PERIPHERAL;
+		break;
 	case OTG_STATE_B_PERIPHERAL:
 		musb->is_suspended = 1;
 		if (musb->async_callbacks && musb->gadget_driver &&
@@ -2820,7 +2821,6 @@ void musb_g_disconnect(struct musb *musb)
 		break;
 	}
 
-	(void)musb_gadget_vbus_draw(&musb->g, 100);
 	musb->is_active = 0;
 }
 

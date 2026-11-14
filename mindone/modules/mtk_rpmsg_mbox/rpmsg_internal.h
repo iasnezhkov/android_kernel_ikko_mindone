@@ -14,7 +14,7 @@
 
 #include <linux/rpmsg.h>
 #include <linux/poll.h>
-#include <linux/version.h>
+#include <mindone/compat-rpmsg.h>
 
 #define to_rpmsg_device(d) container_of(d, struct rpmsg_device, dev)
 #define to_rpmsg_driver(d) container_of(d, struct rpmsg_driver, drv)
@@ -67,17 +67,11 @@ struct rpmsg_endpoint_ops {
 
 	int (*send)(struct rpmsg_endpoint *ept, void *data, int len);
 	int (*sendto)(struct rpmsg_endpoint *ept, void *data, int len, u32 dst);
-#if LINUX_VERSION_CODE < KERNEL_VERSION(6, 18, 0)
-	int (*send_offchannel)(struct rpmsg_endpoint *ept, u32 src, u32 dst,
-				  void *data, int len);
-#endif
+	MINDONE_RPMSG_SEND_OFFCHANNEL_OP
 
 	int (*trysend)(struct rpmsg_endpoint *ept, void *data, int len);
 	int (*trysendto)(struct rpmsg_endpoint *ept, void *data, int len, u32 dst);
-#if LINUX_VERSION_CODE < KERNEL_VERSION(6, 18, 0)
-	int (*trysend_offchannel)(struct rpmsg_endpoint *ept, u32 src, u32 dst,
-			     void *data, int len);
-#endif
+	MINDONE_RPMSG_TRYSEND_OFFCHANNEL_OP
 	__poll_t (*poll)(struct rpmsg_endpoint *ept, struct file *filp,
 			     poll_table *wait);
 	int (*set_flow_control)(struct rpmsg_endpoint *ept, bool pause, u32 dst);

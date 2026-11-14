@@ -5,7 +5,6 @@
 #include <uapi/gpu/arm/midgard/mali_kbase_kinstr_jm_reader.h>
 
 #ifdef __KERNEL__
-#include <linux/version.h>
 #include <linux/static_key.h>
 #else
 

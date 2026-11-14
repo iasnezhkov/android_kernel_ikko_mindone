@@ -1,0 +1,666 @@
+registered pin groups:
+group: GPIO0
+pin 0 (GPIO0)
+
+group: GPIO1
+pin 1 (GPIO1)
+
+group: GPIO2
+pin 2 (GPIO2)
+
+group: GPIO3
+pin 3 (GPIO3)
+
+group: GPIO4
+pin 4 (GPIO4)
+
+group: GPIO5
+pin 5 (GPIO5)
+
+group: GPIO6
+pin 6 (GPIO6)
+
+group: GPIO7
+pin 7 (GPIO7)
+
+group: GPIO8
+pin 8 (GPIO8)
+
+group: GPIO9
+pin 9 (GPIO9)
+
+group: GPIO10
+pin 10 (GPIO10)
+
+group: GPIO11
+pin 11 (GPIO11)
+
+group: GPIO12
+pin 12 (GPIO12)
+
+group: GPIO13
+pin 13 (GPIO13)
+
+group: GPIO14
+pin 14 (GPIO14)
+
+group: GPIO15
+pin 15 (GPIO15)
+
+group: GPIO16
+pin 16 (GPIO16)
+
+group: GPIO17
+pin 17 (GPIO17)
+
+group: GPIO18
+pin 18 (GPIO18)
+
+group: GPIO19
+pin 19 (GPIO19)
+
+group: GPIO20
+pin 20 (GPIO20)
+
+group: GPIO21
+pin 21 (GPIO21)
+
+group: GPIO22
+pin 22 (GPIO22)
+
+group: GPIO23
+pin 23 (GPIO23)
+
+group: GPIO24
+pin 24 (GPIO24)
+
+group: GPIO25
+pin 25 (GPIO25)
+
+group: GPIO26
+pin 26 (GPIO26)
+
+group: GPIO27
+pin 27 (GPIO27)
+
+group: GPIO28
+pin 28 (GPIO28)
+
+group: GPIO29
+pin 29 (GPIO29)
+
+group: GPIO30
+pin 30 (GPIO30)
+
+group: GPIO31
+pin 31 (GPIO31)
+
+group: GPIO32
+pin 32 (GPIO32)
+
+group: GPIO33
+pin 33 (GPIO33)
+
+group: GPIO34
+pin 34 (GPIO34)
+
+group: GPIO35
+pin 35 (GPIO35)
+
+group: GPIO36
+pin 36 (GPIO36)
+
+group: GPIO37
+pin 37 (GPIO37)
+
+group: GPIO38
+pin 38 (GPIO38)
+
+group: GPIO39
+pin 39 (GPIO39)
+
+group: GPIO40
+pin 40 (GPIO40)
+
+group: GPIO41
+pin 41 (GPIO41)
+
+group: GPIO42
+pin 42 (GPIO42)
+
+group: GPIO43
+pin 43 (GPIO43)
+
+group: GPIO44
+pin 44 (GPIO44)
+
+group: GPIO45
+pin 45 (GPIO45)
+
+group: GPIO46
+pin 46 (GPIO46)
+
+group: GPIO47
+pin 47 (GPIO47)
+
+group: GPIO48
+pin 48 (GPIO48)
+
+group: GPIO49
+pin 49 (GPIO49)
+
+group: GPIO50
+pin 50 (GPIO50)
+
+group: GPIO51
+pin 51 (GPIO51)
+
+group: GPIO52
+pin 52 (GPIO52)
+
+group: GPIO53
+pin 53 (GPIO53)
+
+group: GPIO54
+pin 54 (GPIO54)
+
+group: GPIO55
+pin 55 (GPIO55)
+
+group: GPIO56
+pin 56 (GPIO56)
+
+group: GPIO57
+pin 57 (GPIO57)
+
+group: GPIO58
+pin 58 (GPIO58)
+
+group: GPIO59
+pin 59 (GPIO59)
+
+group: GPIO60
+pin 60 (GPIO60)
+
+group: GPIO61
+pin 61 (GPIO61)
+
+group: GPIO62
+pin 62 (GPIO62)
+
+group: GPIO63
+pin 63 (GPIO63)
+
+group: GPIO64
+pin 64 (GPIO64)
+
+group: GPIO65
+pin 65 (GPIO65)
+
+group: GPIO66
+pin 66 (GPIO66)
+
+group: GPIO67
+pin 67 (GPIO67)
+
+group: GPIO68
+pin 68 (GPIO68)
+
+group: GPIO69
+pin 69 (GPIO69)
+
+group: GPIO70
+pin 70 (GPIO70)
+
+group: GPIO71
+pin 71 (GPIO71)
+
+group: GPIO72
+pin 72 (GPIO72)
+
+group: GPIO73
+pin 73 (GPIO73)
+
+group: GPIO74
+pin 74 (GPIO74)
+
+group: GPIO75
+pin 75 (GPIO75)
+
+group: GPIO76
+pin 76 (GPIO76)
+
+group: GPIO77
+pin 77 (GPIO77)
+
+group: GPIO78
+pin 78 (GPIO78)
+
+group: GPIO79
+pin 79 (GPIO79)
+
+group: GPIO80
+pin 80 (GPIO80)
+
+group: GPIO81
+pin 81 (GPIO81)
+
+group: GPIO82
+pin 82 (GPIO82)
+
+group: GPIO83
+pin 83 (GPIO83)
+
+group: GPIO84
+pin 84 (GPIO84)
+
+group: GPIO85
+pin 85 (GPIO85)
+
+group: GPIO86
+pin 86 (GPIO86)
+
+group: GPIO87
+pin 87 (GPIO87)
+
+group: GPIO88
+pin 88 (GPIO88)
+
+group: GPIO89
+pin 89 (GPIO89)
+
+group: GPIO90
+pin 90 (GPIO90)
+
+group: GPIO91
+pin 91 (GPIO91)
+
+group: GPIO92
+pin 92 (GPIO92)
+
+group: GPIO93
+pin 93 (GPIO93)
+
+group: GPIO94
+pin 94 (GPIO94)
+
+group: GPIO95
+pin 95 (GPIO95)
+
+group: GPIO96
+pin 96 (GPIO96)
+
+group: GPIO97
+pin 97 (GPIO97)
+
+group: GPIO98
+pin 98 (GPIO98)
+
+group: GPIO99
+pin 99 (GPIO99)
+
+group: GPIO100
+pin 100 (GPIO100)
+
+group: GPIO101
+pin 101 (GPIO101)
+
+group: GPIO102
+pin 102 (GPIO102)
+
+group: GPIO103
+pin 103 (GPIO103)
+
+group: GPIO104
+pin 104 (GPIO104)
+
+group: GPIO105
+pin 105 (GPIO105)
+
+group: GPIO106
+pin 106 (GPIO106)
+
+group: GPIO107
+pin 107 (GPIO107)
+
+group: GPIO108
+pin 108 (GPIO108)
+
+group: GPIO109
+pin 109 (GPIO109)
+
+group: GPIO110
+pin 110 (GPIO110)
+
+group: GPIO111
+pin 111 (GPIO111)
+
+group: GPIO112
+pin 112 (GPIO112)
+
+group: GPIO113
+pin 113 (GPIO113)
+
+group: GPIO114
+pin 114 (GPIO114)
+
+group: GPIO115
+pin 115 (GPIO115)
+
+group: GPIO116
+pin 116 (GPIO116)
+
+group: GPIO117
+pin 117 (GPIO117)
+
+group: GPIO118
+pin 118 (GPIO118)
+
+group: GPIO119
+pin 119 (GPIO119)
+
+group: GPIO120
+pin 120 (GPIO120)
+
+group: GPIO121
+pin 121 (GPIO121)
+
+group: GPIO122
+pin 122 (GPIO122)
+
+group: GPIO123
+pin 123 (GPIO123)
+
+group: GPIO124
+pin 124 (GPIO124)
+
+group: GPIO125
+pin 125 (GPIO125)
+
+group: GPIO126
+pin 126 (GPIO126)
+
+group: GPIO127
+pin 127 (GPIO127)
+
+group: GPIO128
+pin 128 (GPIO128)
+
+group: GPIO129
+pin 129 (GPIO129)
+
+group: GPIO130
+pin 130 (GPIO130)
+
+group: GPIO131
+pin 131 (GPIO131)
+
+group: GPIO132
+pin 132 (GPIO132)
+
+group: GPIO133
+pin 133 (GPIO133)
+
+group: GPIO134
+pin 134 (GPIO134)
+
+group: GPIO135
+pin 135 (GPIO135)
+
+group: GPIO136
+pin 136 (GPIO136)
+
+group: GPIO137
+pin 137 (GPIO137)
+
+group: GPIO138
+pin 138 (GPIO138)
+
+group: GPIO139
+pin 139 (GPIO139)
+
+group: GPIO140
+pin 140 (GPIO140)
+
+group: GPIO141
+pin 141 (GPIO141)
+
+group: GPIO142
+pin 142 (GPIO142)
+
+group: GPIO143
+pin 143 (GPIO143)
+
+group: GPIO144
+pin 144 (GPIO144)
+
+group: GPIO145
+pin 145 (GPIO145)
+
+group: GPIO146
+pin 146 (GPIO146)
+
+group: GPIO147
+pin 147 (GPIO147)
+
+group: GPIO148
+pin 148 (GPIO148)
+
+group: GPIO149
+pin 149 (GPIO149)
+
+group: GPIO150
+pin 150 (GPIO150)
+
+group: GPIO151
+pin 151 (GPIO151)
+
+group: GPIO152
+pin 152 (GPIO152)
+
+group: GPIO153
+pin 153 (GPIO153)
+
+group: GPIO154
+pin 154 (GPIO154)
+
+group: GPIO155
+pin 155 (GPIO155)
+
+group: GPIO156
+pin 156 (GPIO156)
+
+group: GPIO157
+pin 157 (GPIO157)
+
+group: GPIO158
+pin 158 (GPIO158)
+
+group: GPIO159
+pin 159 (GPIO159)
+
+group: GPIO160
+pin 160 (GPIO160)
+
+group: GPIO161
+pin 161 (GPIO161)
+
+group: GPIO162
+pin 162 (GPIO162)
+
+group: GPIO163
+pin 163 (GPIO163)
+
+group: GPIO164
+pin 164 (GPIO164)
+
+group: GPIO165
+pin 165 (GPIO165)
+
+group: GPIO166
+pin 166 (GPIO166)
+
+group: GPIO167
+pin 167 (GPIO167)
+
+group: GPIO168
+pin 168 (GPIO168)
+
+group: GPIO169
+pin 169 (GPIO169)
+
+group: GPIO170
+pin 170 (GPIO170)
+
+group: GPIO171
+pin 171 (GPIO171)
+
+group: GPIO172
+pin 172 (GPIO172)
+
+group: GPIO173
+pin 173 (GPIO173)
+
+group: GPIO174
+pin 174 (GPIO174)
+
+group: GPIO175
+pin 175 (GPIO175)
+
+group: GPIO176
+pin 176 (GPIO176)
+
+group: GPIO177
+pin 177 (GPIO177)
+
+group: GPIO178
+pin 178 (GPIO178)
+
+group: GPIO179
+pin 179 (GPIO179)
+
+group: GPIO180
+pin 180 (GPIO180)
+
+group: GPIO181
+pin 181 (GPIO181)
+
+group: GPIO182
+pin 182 (GPIO182)
+
+group: GPIO183
+pin 183 (GPIO183)
+
+group: GPIO184
+pin 184 (GPIO184)
+
+group: GPIO185
+pin 185 (GPIO185)
+
+group: GPIO186
+pin 186 (GPIO186)
+
+group: GPIO187
+pin 187 (GPIO187)
+
+group: GPIO188
+pin 188 (GPIO188)
+
+group: GPIO189
+pin 189 (GPIO189)
+
+group: GPIO190
+pin 190 (GPIO190)
+
+group: GPIO191
+pin 191 (GPIO191)
+
+group: GPIO192
+pin 192 (GPIO192)
+
+group: GPIO193
+pin 193 (GPIO193)
+
+group: GPIO194
+pin 194 (GPIO194)
+
+group: GPIO195
+pin 195 (GPIO195)
+
+group: GPIO196
+pin 196 (GPIO196)
+
+group: GPIO197
+pin 197 (GPIO197)
+
+group: GPIO198
+pin 198 (GPIO198)
+
+group: GPIO199
+pin 199 (GPIO199)
+
+group: GPIO200
+pin 200 (GPIO200)
+
+group: GPIO201
+pin 201 (GPIO201)
+
+group: GPIO202
+pin 202 (GPIO202)
+
+group: GPIO203
+pin 203 (GPIO203)
+
+group: GPIO204
+pin 204 (GPIO204)
+
+group: GPIO205
+pin 205 (GPIO205)
+
+group: GPIO206
+pin 206 (GPIO206)
+
+group: GPIO207
+pin 207 (GPIO207)
+
+group: GPIO208
+pin 208 (GPIO208)
+
+group: GPIO209
+pin 209 (GPIO209)
+
+group: GPIO210
+pin 210 (GPIO210)
+
+group: GPIO211
+pin 211 (GPIO211)
+
+group: GPIO212
+pin 212 (GPIO212)
+
+group: GPIO213
+pin 213 (GPIO213)
+
+group: GPIO214
+pin 214 (GPIO214)
+
+group: GPIO215
+pin 215 (GPIO215)
+
+group: GPIO216
+pin 216 (GPIO216)
+
+group: GPIO217
+pin 217 (GPIO217)
+
+group: GPIO218
+pin 218 (GPIO218)
+
+group: GPIO219
+pin 219 (GPIO219)
+
+group: GPIO220
+pin 220 (GPIO220)
+
+group: GPIO221
+pin 221 (GPIO221)

@@ -112,7 +112,7 @@ def execute(directory, name, defs, functions, fixture, cases):
 
 
 def rejected(result):
-    return result["returncode"] != 0 and re.search(r"Assertion failed:|runtime error:|ERROR: AddressSanitizer", result["stderr"])
+    return result["returncode"] != 0 and re.search(r"Assertion failed:|Assertion `[^\n]*\x27 failed|runtime error:|ERROR: AddressSanitizer", result["stderr"])
 
 
 def main():

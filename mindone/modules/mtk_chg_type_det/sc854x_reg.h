@@ -1,1 +1,0 @@
-../mtk_charger_algorithm_class/sc854x_reg.h

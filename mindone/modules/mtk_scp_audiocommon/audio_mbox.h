@@ -1,1 +1,0 @@
-../mtk_scp_audio/audio_mbox.h

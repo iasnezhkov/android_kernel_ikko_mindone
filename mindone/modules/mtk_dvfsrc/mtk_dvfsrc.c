@@ -8,13 +8,13 @@
 #include <linux/iopoll.h>
 #include <linux/module.h>
 #include <linux/notifier.h>
+#include <linux/of.h>
 #include <linux/of_device.h>
 #include <linux/platform_device.h>
 #include <linux/soc/mediatek/mtk_dvfsrc.h>
 #include "mtk_sip_svc_ext.h"
 #include <linux/soc/mediatek/mtk_sip_svc.h>
 #include <dt-bindings/soc/mtk,dvfsrc.h>
-#include "mtk-scpsys.h"
 
 /* Private */
 #define DVFSRC_OPP_BW_QUERY
@@ -52,11 +52,6 @@ struct dvfsrc_opp {
 	u32 dram_opp;
 };
 
-struct dvfsrc_domain {
-	u32 id;
-	u32 state;
-};
-
 struct dvfsrc_opp_desc {
 	const struct dvfsrc_opp *opps;
 	u32 num_opp;
@@ -65,8 +60,6 @@ struct dvfsrc_opp_desc {
 struct mtk_dvfsrc;
 struct dvfsrc_soc_data {
 	const int *regs;
-	u32 num_domains;
-	struct dvfsrc_domain *domains;
 	u32 num_opp_desc;
 	const struct dvfsrc_opp_desc *opps_desc;
 	int (*get_target_level)(struct mtk_dvfsrc *dvfsrc);
@@ -100,8 +93,6 @@ struct mtk_dvfsrc {
 	const struct dvfsrc_opp_desc *curr_opps;
 	void __iomem *regs;
 	spinlock_t req_lock;
-	struct mutex pstate_lock;
-	struct notifier_block scpsys_notifier;
 	bool dvfsrc_enable;
 #ifdef DVFSRC_FORCE_OPP_SUPPORT
 	bool opp_forced;
@@ -1000,60 +991,6 @@ int mtk_dvfsrc_query_info(const struct device *dev, u32 cmd, int *data)
 }
 EXPORT_SYMBOL(mtk_dvfsrc_query_info);
 
-static int dvfsrc_set_performance(struct notifier_block *b,
-				  unsigned long pstate, void *v)
-{
-	bool match = false;
-	int i;
-	struct mtk_dvfsrc *dvfsrc;
-	struct scp_event_data *sc = v;
-	struct dvfsrc_domain *d;
-	u32 highest;
-
-	if (sc->event_type != MTK_SCPSYS_PSTATE)
-		return 0;
-
-	dvfsrc = container_of(b, struct mtk_dvfsrc, scpsys_notifier);
-
-	/* feature not support */
-	if (!dvfsrc->dvd->num_domains)
-		return 0;
-
-	d = dvfsrc->dvd->domains;
-
-	if (pstate > dvfsrc->curr_opps->num_opp) {
-		dev_err(dvfsrc->dev, "pstate out of range = %ld\n", pstate);
-		return 0;
-	}
-
-	mutex_lock(&dvfsrc->pstate_lock);
-
-	for (i = 0, highest = 0; i < dvfsrc->dvd->num_domains; i++, d++) {
-		if (sc->domain_id == d->id) {
-			d->state = pstate;
-			match = true;
-		}
-		highest = max(highest, d->state);
-	}
-
-	if (!match)
-		goto out;
-
-	/* pstat start from level 1, array index start from 0 */
-	mtk_dvfsrc_send_request(dvfsrc->dev, MTK_DVFSRC_CMD_OPP_REQUEST,
-				highest - 1);
-
-out:
-	mutex_unlock(&dvfsrc->pstate_lock);
-	return 0;
-}
-
-static void pstate_notifier_register(struct mtk_dvfsrc *dvfsrc)
-{
-	dvfsrc->scpsys_notifier.notifier_call = dvfsrc_set_performance;
-	register_scpsys_notifier(&dvfsrc->scpsys_notifier);
-}
-
 static int mtk_dvfsrc_probe(struct platform_device *pdev)
 {
 	struct arm_smccc_res ares;
@@ -1080,7 +1017,6 @@ static int mtk_dvfsrc_probe(struct platform_device *pdev)
 		return PTR_ERR(dvfsrc->regs);
 
 	spin_lock_init(&dvfsrc->req_lock);
-	mutex_init(&dvfsrc->pstate_lock);
 #ifdef DVFSRC_FORCE_OPP_SUPPORT
 	spin_lock_init(&dvfsrc->force_lock);
 #endif
@@ -1116,8 +1052,6 @@ static int mtk_dvfsrc_probe(struct platform_device *pdev)
 #endif
 	dvfsrc->curr_opps = &dvfsrc->dvd->opps_desc[dvfsrc->dram_type];
 	platform_set_drvdata(pdev, dvfsrc);
-	if (dvfsrc->dvd->num_domains)
-		pstate_notifier_register(dvfsrc);
 
 	dvfsrc->regulator = platform_device_register_data(dvfsrc->dev,
 			"mtk-dvfsrc-regulator", -1, NULL, 0);

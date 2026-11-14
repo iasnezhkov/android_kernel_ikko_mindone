@@ -1,38 +1,41 @@
 // SPDX-License-Identifier: GPL-2.0
 
 #include <linux/extcon-provider.h>
-#include <linux/mindone_power_supply_compat.h>
+#include <mindone/compat-power-supply.h>
+#include <mindone/extcon-mtk-usb.h>
 #include <linux/module.h>
+#include <linux/mutex.h>
+#include <linux/notifier.h>
 #include <linux/of.h>
 #include <linux/platform_device.h>
 #include <linux/power_supply.h>
-#include <linux/regulator/consumer.h>
+#include <linux/property.h>
 #include <linux/spinlock.h>
 #include <linux/usb/role.h>
+#include <linux/usb/typec_altmode.h>
+#include <linux/usb/typec_mux.h>
 #include <linux/workqueue.h>
-#include <drivers/misc/mediatek/typec/tcpc/inc/tcpm.h>
-
-#define PD_ROLE_NONE	0xff
 
 struct mtk_extcon_info {
 	struct device *dev;
 	struct extcon_dev *edev;
 	struct usb_role_switch *role_sw;
-	struct regulator *vbus;
+	struct usb_role_switch *port_sw;
+	struct typec_mux_dev *mux;
 	struct power_supply *chg_psy;
-	struct tcpc_device *tcpc_dev;
 	struct notifier_block psy_nb;
-	struct notifier_block tcpc_nb;
 	struct workqueue_struct *wq;
 	struct work_struct role_work;
 	spinlock_t state_lock;
 	enum usb_role role;
-	u8 typec_state;
-	u8 pd_data_role;
-	bool typec_event_seen;
-	bool vbus_on;
+	enum usb_role port_role;
+	bool port_audio;
 	bool bypss_typec_sink;
 };
+
+static DEFINE_MUTEX(mtk_usb_extcon_audio_lock);
+static RAW_NOTIFIER_HEAD(mtk_usb_extcon_audio_chain);
+static bool mtk_usb_extcon_audio;
 
 static const unsigned int usb_extcon_cable[] = {
 	EXTCON_USB,
@@ -40,13 +43,48 @@ static const unsigned int usb_extcon_cable[] = {
 	EXTCON_NONE,
 };
 
+int mtk_usb_extcon_register_audio_notifier(struct notifier_block *nb)
+{
+	int ret;
+
+	mutex_lock(&mtk_usb_extcon_audio_lock);
+	ret = raw_notifier_chain_register(&mtk_usb_extcon_audio_chain, nb);
+	if (!ret && mtk_usb_extcon_audio)
+		nb->notifier_call(nb, MTK_USB_EXTCON_AUDIO_ATTACH, NULL);
+	mutex_unlock(&mtk_usb_extcon_audio_lock);
+	return ret;
+}
+EXPORT_SYMBOL_GPL(mtk_usb_extcon_register_audio_notifier);
+
+int mtk_usb_extcon_unregister_audio_notifier(struct notifier_block *nb)
+{
+	int ret;
+
+	mutex_lock(&mtk_usb_extcon_audio_lock);
+	ret = raw_notifier_chain_unregister(&mtk_usb_extcon_audio_chain, nb);
+	mutex_unlock(&mtk_usb_extcon_audio_lock);
+	return ret;
+}
+EXPORT_SYMBOL_GPL(mtk_usb_extcon_unregister_audio_notifier);
+
+static void mtk_usb_extcon_report_audio(bool audio)
+{
+	mutex_lock(&mtk_usb_extcon_audio_lock);
+	if (mtk_usb_extcon_audio != audio) {
+		mtk_usb_extcon_audio = audio;
+		raw_notifier_call_chain(&mtk_usb_extcon_audio_chain,
+					audio ? MTK_USB_EXTCON_AUDIO_ATTACH :
+						MTK_USB_EXTCON_AUDIO_DETACH,
+					NULL);
+	}
+	mutex_unlock(&mtk_usb_extcon_audio_lock);
+}
+
 static int mtk_usb_extcon_data_port(struct mtk_extcon_info *extcon)
 {
 	union power_supply_propval val;
 	int ret;
 
-	if (!extcon->bypss_typec_sink)
-		return 1;
 	ret = power_supply_get_property(extcon->chg_psy,
 					POWER_SUPPLY_PROP_USB_TYPE, &val);
 	if (ret)
@@ -56,39 +94,34 @@ static int mtk_usb_extcon_data_port(struct mtk_extcon_info *extcon)
 }
 
 static int mtk_usb_extcon_desired_role(struct mtk_extcon_info *extcon,
-				       enum usb_role *role)
+				       enum usb_role *role, bool *audio)
 {
 	unsigned long flags;
-	u8 typec_state, pd_data_role;
+	enum usb_role port_role;
 	int data;
 
 	spin_lock_irqsave(&extcon->state_lock, flags);
-	typec_state = extcon->typec_state;
-	pd_data_role = extcon->pd_data_role;
+	port_role = extcon->port_role;
+	*audio = extcon->port_audio;
 	spin_unlock_irqrestore(&extcon->state_lock, flags);
 
-	switch (typec_state) {
-	case TYPEC_ATTACHED_SRC:
-		*role = pd_data_role == PD_ROLE_UFP ? USB_ROLE_DEVICE :
-						       USB_ROLE_HOST;
-		return 0;
-	case TYPEC_ATTACHED_SNK:
-	case TYPEC_ATTACHED_NORP_SRC:
-	case TYPEC_ATTACHED_CUSTOM_SRC:
-	case TYPEC_ATTACHED_DBGACC_SNK:
-		if (pd_data_role == PD_ROLE_DFP) {
-			*role = USB_ROLE_HOST;
-			return 0;
-		}
-		data = mtk_usb_extcon_data_port(extcon);
-		if (data < 0)
-			return data;
-		*role = data ? USB_ROLE_DEVICE : USB_ROLE_NONE;
-		return 0;
-	default:
+	if (*audio) {
 		*role = USB_ROLE_NONE;
 		return 0;
 	}
+	if (port_role == USB_ROLE_HOST) {
+		*role = USB_ROLE_HOST;
+		return 0;
+	}
+	if (!extcon->bypss_typec_sink) {
+		*role = port_role;
+		return 0;
+	}
+	data = mtk_usb_extcon_data_port(extcon);
+	if (data < 0)
+		return data;
+	*role = data ? USB_ROLE_DEVICE : USB_ROLE_NONE;
+	return 0;
 }
 
 static void mtk_usb_extcon_set_role(struct mtk_extcon_info *extcon,
@@ -122,9 +155,11 @@ static void mtk_usb_extcon_role_work(struct work_struct *work)
 	struct mtk_extcon_info *extcon =
 		container_of(work, struct mtk_extcon_info, role_work);
 	enum usb_role role;
+	bool audio;
 	int ret;
 
-	ret = mtk_usb_extcon_desired_role(extcon, &role);
+	ret = mtk_usb_extcon_desired_role(extcon, &role, &audio);
+	mtk_usb_extcon_report_audio(audio);
 	if (ret) {
 		dev_warn(extcon->dev, "charger type unreadable (%d), role kept\n",
 			 ret);
@@ -133,20 +168,47 @@ static void mtk_usb_extcon_role_work(struct work_struct *work)
 	mtk_usb_extcon_set_role(extcon, role);
 }
 
-static void mtk_usb_extcon_set_vbus(struct mtk_extcon_info *extcon, bool on)
+static int mtk_usb_extcon_port_set(struct usb_role_switch *sw,
+				   enum usb_role role)
 {
-	int ret;
+	struct mtk_extcon_info *extcon = usb_role_switch_get_drvdata(sw);
+	unsigned long flags;
 
-	if (extcon->vbus_on == on)
-		return;
-	ret = on ? regulator_enable(extcon->vbus) :
-		   regulator_disable(extcon->vbus);
-	if (ret) {
-		dev_err(extcon->dev, "vbus %s: %d\n", on ? "on" : "off", ret);
-		return;
-	}
-	extcon->vbus_on = on;
-	dev_info(extcon->dev, "vbus %s\n", on ? "on" : "off");
+	spin_lock_irqsave(&extcon->state_lock, flags);
+	extcon->port_role = role;
+	spin_unlock_irqrestore(&extcon->state_lock, flags);
+	dev_info(extcon->dev, "typec port role %s\n", usb_role_string(role));
+	queue_work(extcon->wq, &extcon->role_work);
+	return 0;
+}
+
+static enum usb_role mtk_usb_extcon_port_get(struct usb_role_switch *sw)
+{
+	struct mtk_extcon_info *extcon = usb_role_switch_get_drvdata(sw);
+	unsigned long flags;
+	enum usb_role role;
+
+	spin_lock_irqsave(&extcon->state_lock, flags);
+	role = extcon->port_role;
+	spin_unlock_irqrestore(&extcon->state_lock, flags);
+	return role;
+}
+
+static int mtk_usb_extcon_mux_set(struct typec_mux_dev *mux,
+				  struct typec_mux_state *state)
+{
+	struct mtk_extcon_info *extcon = typec_mux_get_drvdata(mux);
+	unsigned long flags;
+	bool audio;
+
+	if (state->alt)
+		return 0;
+	audio = state->mode == TYPEC_MODE_AUDIO;
+	spin_lock_irqsave(&extcon->state_lock, flags);
+	extcon->port_audio = audio;
+	spin_unlock_irqrestore(&extcon->state_lock, flags);
+	queue_work(extcon->wq, &extcon->role_work);
+	return 0;
 }
 
 static int mtk_usb_extcon_psy_notifier(struct notifier_block *nb,
@@ -158,41 +220,6 @@ static int mtk_usb_extcon_psy_notifier(struct notifier_block *nb,
 	if (event == PSY_EVENT_PROP_CHANGED && data == extcon->chg_psy)
 		queue_work(extcon->wq, &extcon->role_work);
 	return NOTIFY_DONE;
-}
-
-static int mtk_usb_extcon_tcpc_notifier(struct notifier_block *nb,
-					unsigned long event, void *data)
-{
-	struct mtk_extcon_info *extcon =
-		container_of(nb, struct mtk_extcon_info, tcpc_nb);
-	struct tcp_notify *noti = data;
-	unsigned long flags;
-
-	switch (event) {
-	case TCP_NOTIFY_SOURCE_VBUS:
-		mtk_usb_extcon_set_vbus(extcon, noti->vbus_state.mv > 0);
-		break;
-	case TCP_NOTIFY_TYPEC_STATE:
-		dev_info(extcon->dev, "typec state %u -> %u\n",
-			 noti->typec_state.old_state,
-			 noti->typec_state.new_state);
-		spin_lock_irqsave(&extcon->state_lock, flags);
-		extcon->typec_state = noti->typec_state.new_state;
-		extcon->pd_data_role = PD_ROLE_NONE;
-		extcon->typec_event_seen = true;
-		spin_unlock_irqrestore(&extcon->state_lock, flags);
-		queue_work(extcon->wq, &extcon->role_work);
-		break;
-	case TCP_NOTIFY_DR_SWAP:
-		dev_info(extcon->dev, "data role swap to %s\n",
-			 noti->swap_state.new_role == PD_ROLE_DFP ? "dfp" : "ufp");
-		spin_lock_irqsave(&extcon->state_lock, flags);
-		extcon->pd_data_role = noti->swap_state.new_role;
-		spin_unlock_irqrestore(&extcon->state_lock, flags);
-		queue_work(extcon->wq, &extcon->role_work);
-		break;
-	}
-	return NOTIFY_OK;
 }
 
 static void mtk_usb_extcon_put_role_sw(void *data)
@@ -210,22 +237,27 @@ static void mtk_usb_extcon_psy_unreg(void *data)
 	power_supply_unreg_notifier(data);
 }
 
-static void mtk_usb_extcon_tcpc_unreg(void *data)
+static void mtk_usb_extcon_mux_unreg(void *data)
 {
-	struct mtk_extcon_info *extcon = data;
+	typec_mux_unregister(data);
+}
 
-	unregister_tcp_dev_notifier(extcon->tcpc_dev, &extcon->tcpc_nb,
-				    TCP_NOTIFY_TYPE_USB | TCP_NOTIFY_TYPE_VBUS |
-				    TCP_NOTIFY_TYPE_MISC);
+static void mtk_usb_extcon_port_unreg(void *data)
+{
+	usb_role_switch_unregister(data);
+}
+
+static void mtk_usb_extcon_audio_off(void *data)
+{
+	mtk_usb_extcon_report_audio(false);
 }
 
 static int mtk_usb_extcon_probe(struct platform_device *pdev)
 {
 	struct device *dev = &pdev->dev;
+	struct usb_role_switch_desc port_desc = { };
+	struct typec_mux_desc mux_desc = { };
 	struct mtk_extcon_info *extcon;
-	const char *tcpc_name;
-	unsigned long flags;
-	u8 typec_state;
 	int ret;
 
 	extcon = devm_kzalloc(dev, sizeof(*extcon), GFP_KERNEL);
@@ -235,17 +267,9 @@ static int mtk_usb_extcon_probe(struct platform_device *pdev)
 	spin_lock_init(&extcon->state_lock);
 	INIT_WORK(&extcon->role_work, mtk_usb_extcon_role_work);
 	extcon->role = USB_ROLE_NONE;
-	extcon->typec_state = TYPEC_UNATTACHED;
-	extcon->pd_data_role = PD_ROLE_NONE;
+	extcon->port_role = USB_ROLE_NONE;
 	extcon->bypss_typec_sink =
-		of_property_read_bool(dev->of_node, "mediatek,bypss-typec-sink");
-
-	ret = of_property_read_string(dev->of_node, "tcpc", &tcpc_name);
-	if (ret)
-		return dev_err_probe(dev, ret, "no tcpc property\n");
-	extcon->tcpc_dev = tcpc_dev_get_by_name(tcpc_name);
-	if (!extcon->tcpc_dev)
-		return -EPROBE_DEFER;
+		of_property_present(dev->of_node, "mediatek,bypss-typec-sink");
 
 	extcon->chg_psy = mindone_devm_power_supply_get_by_reference(dev, "charger");
 	if (IS_ERR(extcon->chg_psy))
@@ -264,10 +288,6 @@ static int mtk_usb_extcon_probe(struct platform_device *pdev)
 				       extcon->role_sw);
 	if (ret)
 		return ret;
-
-	extcon->vbus = devm_regulator_get(dev, "vbus");
-	if (IS_ERR(extcon->vbus))
-		return dev_err_probe(dev, PTR_ERR(extcon->vbus), "no vbus\n");
 
 	extcon->edev = devm_extcon_dev_allocate(dev, usb_extcon_cable);
 	if (IS_ERR(extcon->edev))
@@ -295,34 +315,39 @@ static int mtk_usb_extcon_probe(struct platform_device *pdev)
 	if (ret)
 		return ret;
 
-	extcon->tcpc_nb.notifier_call = mtk_usb_extcon_tcpc_notifier;
-	ret = register_tcp_dev_notifier(extcon->tcpc_dev, &extcon->tcpc_nb,
-					TCP_NOTIFY_TYPE_USB |
-					TCP_NOTIFY_TYPE_VBUS |
-					TCP_NOTIFY_TYPE_MISC);
-	if (ret)
-		return dev_err_probe(dev, ret, "cannot watch %s\n", tcpc_name);
-	ret = devm_add_action_or_reset(dev, mtk_usb_extcon_tcpc_unreg, extcon);
+	ret = devm_add_action_or_reset(dev, mtk_usb_extcon_audio_off, NULL);
 	if (ret)
 		return ret;
 
-	typec_state = tcpm_inquire_typec_attach_state(extcon->tcpc_dev);
-	spin_lock_irqsave(&extcon->state_lock, flags);
-	if (!extcon->typec_event_seen)
-		extcon->typec_state = typec_state;
-	spin_unlock_irqrestore(&extcon->state_lock, flags);
-	dev_info(dev, "typec state %u at probe\n", typec_state);
+	mux_desc.fwnode = dev_fwnode(dev);
+	mux_desc.set = mtk_usb_extcon_mux_set;
+	mux_desc.drvdata = extcon;
+	extcon->mux = typec_mux_register(dev, &mux_desc);
+	if (IS_ERR(extcon->mux))
+		return dev_err_probe(dev, PTR_ERR(extcon->mux),
+				     "cannot register typec mux\n");
+	ret = devm_add_action_or_reset(dev, mtk_usb_extcon_mux_unreg,
+				       extcon->mux);
+	if (ret)
+		return ret;
 
+	port_desc.fwnode = dev_fwnode(dev);
+	port_desc.set = mtk_usb_extcon_port_set;
+	port_desc.get = mtk_usb_extcon_port_get;
+	port_desc.driver_data = extcon;
+	extcon->port_sw = usb_role_switch_register(dev, &port_desc);
+	if (IS_ERR(extcon->port_sw))
+		return dev_err_probe(dev, PTR_ERR(extcon->port_sw),
+				     "cannot register typec role switch\n");
+	ret = devm_add_action_or_reset(dev, mtk_usb_extcon_port_unreg,
+				       extcon->port_sw);
+	if (ret)
+		return ret;
+
+	dev_info(dev, "role from typec port and charger type, bypass %d\n",
+		 extcon->bypss_typec_sink);
 	queue_work(extcon->wq, &extcon->role_work);
 	return 0;
-}
-
-static void mtk_usb_extcon_shutdown(struct platform_device *pdev)
-{
-	struct mtk_extcon_info *extcon = platform_get_drvdata(pdev);
-
-	if (extcon)
-		mtk_usb_extcon_set_vbus(extcon, false);
 }
 
 static const struct of_device_id mtk_usb_extcon_of_match[] = {
@@ -333,7 +358,6 @@ MODULE_DEVICE_TABLE(of, mtk_usb_extcon_of_match);
 
 static struct platform_driver mtk_usb_extcon_driver = {
 	.probe = mtk_usb_extcon_probe,
-	.shutdown = mtk_usb_extcon_shutdown,
 	.driver = {
 		.name = "mtk-extcon-usb",
 		.of_match_table = mtk_usb_extcon_of_match,

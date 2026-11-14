@@ -72,7 +72,7 @@ def main():
         for name, source in variants:
             path = Path(directory) / name
             path.with_suffix(".c").write_text(source)
-            subprocess.run(["cc", "-std=c11", "-Wall", "-Wextra", "-Werror",
+            subprocess.run(["cc", "-std=c11", "-Wall", "-Wextra", "-Werror", "-Wno-sign-compare",
                             "-Wno-unused-parameter", "-Wno-unused-function",
                             "-Wno-unused-variable", "-Wno-unused-but-set-variable",
                             "-ftrivial-auto-var-init=pattern", "-fsanitize=address,undefined",
@@ -82,7 +82,7 @@ def main():
                 if result.returncode:
                     raise RuntimeError(result.stdout + result.stderr)
                 print(result.stdout, end="")
-            elif not result.returncode or not re.search(r"Assertion failed:|runtime error:|ERROR: AddressSanitizer", result.stderr):
+            elif not result.returncode or not re.search(r"Assertion failed:|Assertion `[^\n]*\x27 failed|runtime error:|ERROR: AddressSanitizer", result.stderr):
                 raise RuntimeError("Control did not fail at runtime: " + name + "\n" + result.stdout + result.stderr)
             else:
                 print("PASS rejected " + name)

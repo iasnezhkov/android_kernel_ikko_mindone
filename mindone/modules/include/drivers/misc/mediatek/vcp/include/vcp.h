@@ -203,8 +203,18 @@ extern phys_addr_t vcp_get_reserve_mem_virt(enum vcp_reserve_mem_id_t id);
 extern phys_addr_t vcp_get_reserve_mem_size(enum vcp_reserve_mem_id_t id);
 
 /* APIs for registering function of features */
+#if IS_ENABLED(CONFIG_MTK_VCP)
 extern void vcp_register_feature(enum feature_id id);
 extern void vcp_deregister_feature(enum feature_id id);
+#else
+static inline void vcp_register_feature(enum feature_id id)
+{
+}
+
+static inline void vcp_deregister_feature(enum feature_id id)
+{
+}
+#endif
 
 /* APIs for reset vcp */
 extern void vcp_wdt_reset(int cpu_id);

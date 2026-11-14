@@ -1,1 +1,0 @@
-../gz_ipc_mod/trusty-ramconsole.h

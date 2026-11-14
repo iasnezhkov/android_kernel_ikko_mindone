@@ -889,22 +889,15 @@
 		reg = <0x18>;
 		status = "okay";
 	};
+
+	camera_main_ois@69 {
+		compatible = "mindone,aw86006-ois";
+		reg = <0x69>;
+		status = "okay";
+	};
 };
 
 &i2c0 {
-	focaltech@38 {
-		compatible = "focaltech,fts";
-		reg = <0x38>;
-		interrupt-parent = <&pio>;
-		interrupts = <0x09 0x02 0x09 0x00>;
-		focaltech,reset-gpio = <&pio>, <0x98 0x00>;
-		focaltech,irq-gpio = <&pio>, <0x09 0x00>;
-		focaltech,vdd-gpio = <&pio>, <0x99 0x00>;
-		focaltech,max-touch-number = <0x0a>;
-		focaltech,display-coords = <0x00 0x00 0x438 0x780>;
-		status = "okay";
-	};
-
 	hynitron@58 {
 		compatible = "hyn,66xx";
 		reg = <0x58>;
@@ -933,6 +926,7 @@
 		pins_cmd_dat {
 			pinmux = <0x900>;
 			input-enable;
+			input-schmitt-enable;
 		};
 	};
 
@@ -946,12 +940,14 @@
 	ts_scl_active: ts_scl_active {
 		pins_cmd_dat {
 			pinmux = <0x8201>;
+			mediatek,drive-strength-adv = <0x07>;
 		};
 	};
 
 	ts_sda_active: ts_sda_active {
 		pins_cmd_dat {
 			pinmux = <0x8301>;
+			mediatek,drive-strength-adv = <0x07>;
 		};
 	};
 
@@ -973,6 +969,7 @@
 		pins_cmd_dat {
 			pinmux = <0x8200>;
 			output-low;
+			mediatek,drive-strength-adv = <0x06>;
 		};
 	};
 
@@ -980,6 +977,7 @@
 		pins_cmd_dat {
 			pinmux = <0x8300>;
 			output-low;
+			mediatek,drive-strength-adv = <0x06>;
 		};
 	};
 };
@@ -1177,7 +1175,7 @@
 
 &i2c7 {
 	clock-frequency = <0x61a80>;
-	status = "ok";
+	status = "okay";
 	#address-cells = <0x01>;
 	#size-cells = <0x00>;
 
@@ -1258,22 +1256,8 @@
 	};
 };
 
-&i2c6 {
-	spk: speaker_amp@5c {
-		compatible = "richtek,rt5512";
-		#sound-dai-cells = <0x00>;
-		reg = <0x5c>;
-		status = "okay";
-		sound-name-prefix = "Left";
-	};
-};
-
 &sound {
 	mediatek,spk-i2s = <0x03 0x00>;
-
-	mediatek,speaker-codec {
-		sound-dai = <&spk>;
-	};
 };
 
 &spi0 {
@@ -1437,70 +1421,4 @@
 	mediatek,hw-recovery-key = <0x09>;
 	mediatek,hw-factory-key = <0x00>;
 	status = "okay";
-};
-
-&i2c6 {
-	rt1711_typec: rt1711_type_c_port0@4e {
-		compatible = "richtek,rt1715";
-		status = "okay";
-		reg = <0x4e>;
-		rt-tcpc,name = "type_c_port0";
-		rt-tcpc,role_def = <0x05>;
-		rt-tcpc,rp_level = <0x00>;
-		rt-tcpc,vconn_supply = <0x01>;
-		rt-tcpc,notifier_supply_num = <0x03>;
-		rt1711pd,intr_gpio = <&pio>, <0x0d 0x00>;
-		rt1711pd,intr_gpio_num = <0x0d>;
-
-		pd-data {
-			pd,vid = <0x29cf>;
-			pd,pid = <0x1711>;
-			pd,source-cap-ext = [cf 29 11 17 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 01 02 00];
-			pd,mfrs = "RichtekTCPC";
-			pd,charging_policy = <0x31>;
-			pd,source-pdo-size = <0x01>;
-			pd,source-pdo-data = <0x19032>;
-			pd,sink-pdo-size = <0x02>;
-			pd,sink-pdo-data = <0x1912c 0x2d0c8>;
-			pd,id-vdo-size = <0x03>;
-			pd,id-vdo-data = <0x4029cf 0x00 0x17110000>;
-			bat,nr = <0x01>;
-			pd,country_nr = <0x00>;
-
-			bat-info0 {
-				bat,vid = <0x29cf>;
-				bat,pid = <0x1711>;
-				bat,mfrs = "bat1";
-				bat,design_cap = <0xbb8>;
-			};
-		};
-
-		dpm_caps {
-			local_dr_power;
-			local_dr_data;
-			local_no_suspend;
-			local_vconn_supply;
-			attempt_enter_dp_mode;
-			attempt_discover_cable;
-			attempt_discover_id;
-			pr_check = <0x00>;
-			dr_check = <0x00>;
-		};
-
-		displayport {
-			1st_connection = "dfp_d";
-			2nd_connection = "dfp_d";
-			signal,dp_v13;
-			typec,receptacle;
-
-			ufp_d {
-			};
-
-			dfp_d {
-				pin_assignment,mode_c;
-				pin_assignment,mode_d;
-				pin_assignment,mode_e;
-			};
-		};
-	};
 };

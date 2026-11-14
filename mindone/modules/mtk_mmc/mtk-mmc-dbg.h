@@ -1,1 +1,0 @@
-../cqhci/mtk-mmc-dbg.h

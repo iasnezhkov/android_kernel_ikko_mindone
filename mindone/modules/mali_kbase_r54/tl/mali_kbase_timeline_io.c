@@ -11,10 +11,6 @@
 #include <linux/anon_inodes.h>
 #include <linux/overflow.h>
 
-#if KERNEL_VERSION(4, 16, 0) > LINUX_VERSION_CODE
-#include <uapi/linux/eventpoll.h>
-#endif
-
 static int kbase_unprivileged_global_profiling;
 
 static int kbase_unprivileged_global_profiling_set(const char *val, const struct kernel_param *kp)
@@ -50,11 +46,7 @@ static int kbasep_timeline_io_fsync(struct file *filp, loff_t start, loff_t end,
 
 static bool timeline_is_permitted(void)
 {
-#if KERNEL_VERSION(5, 8, 0) <= LINUX_VERSION_CODE
 	return kbase_unprivileged_global_profiling || perfmon_capable();
-#else
-	return kbase_unprivileged_global_profiling || capable(CAP_SYS_ADMIN);
-#endif
 }
 
 static int kbasep_timeline_io_packet_pending(struct kbase_timeline *timeline,

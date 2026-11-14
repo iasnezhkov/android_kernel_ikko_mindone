@@ -1,23 +1,18 @@
 // SPDX-License-Identifier: GPL-2.0
 /*
  * Copyright (c) 2022 MediaTek Inc.
- * Author: Owen Chen <owen.chen@mediatek.com>
  */
 
 #include <linux/clk-provider.h>
+#include <linux/mod_devicetable.h>
 #include <linux/module.h>
 #include <linux/platform_device.h>
 
-#include "clk-mtk.h"
+#include <dt-bindings/clock/mt6789-clk.h>
+
 #include "clk-gate.h"
-
-#include <include/dt-bindings/clock/mt6789-clk.h>
-
-#define MT_CCF_BRINGUP		1
-
-/* Regular Number Definition */
-#define INV_OFS			-1
-#define INV_BIT			-1
+#include "clk-mtk.h"
+#include "clk-mt6789-pwr.h"
 
 static const struct mtk_gate_regs mfgcfg_cg_regs = {
 	.set_ofs = 0x4,
@@ -25,61 +20,44 @@ static const struct mtk_gate_regs mfgcfg_cg_regs = {
 	.sta_ofs = 0x0,
 };
 
-#define GATE_MFGCFG(_id, _name, _parent, _shift) {	\
-		.id = _id,				\
-		.name = _name,				\
-		.parent_name = _parent,			\
-		.regs = &mfgcfg_cg_regs,			\
-		.shift = _shift,			\
-		.ops = &mtk_clk_gate_ops_setclr,	\
-	}
+MT6789_PWR_GATE_OPS(mfgcfg_setclr_ops, mtk_clk_gate_ops_setclr,
+		    MT6789_PWR_MFG0 | MT6789_PWR_MFG1 | MT6789_PWR_MFG3);
+
+#define GATE_MFGCFG(_id, _name, _parent, _shift)			\
+	GATE_MTK_FLAGS(_id, _name, _parent, &mfgcfg_cg_regs, _shift,	\
+		       &mfgcfg_setclr_ops, CLK_OPS_PARENT_ENABLE)
 
 static const struct mtk_gate mfgcfg_clks[] = {
-	GATE_MFGCFG(CLK_MFGCFG_BG3D, "mfgcfg_bg3d",
-			"mfg_pll_ck"/* parent */, 0),
+	GATE_MFGCFG(CLK_MFGCFG_BG3D, "mfgcfg_bg3d", "mfg_pll_ck", 0),
 };
 
-static const struct mtk_clk_desc mfgcfg_mcd = {
+static const struct mtk_clk_desc mfgcfg_desc = {
 	.clks = mfgcfg_clks,
-	.num_clks = CLK_MFGCFG_NR_CLK,
+	.num_clks = ARRAY_SIZE(mfgcfg_clks),
 };
+
+static const struct of_device_id of_match_clk_mt6789_mfgcfg[] = {
+	{ .compatible = "mediatek,mt6789-mfg", .data = &mfgcfg_desc },
+	{ }
+};
+MODULE_DEVICE_TABLE(of, of_match_clk_mt6789_mfgcfg);
 
 static int clk_mt6789_mfgcfg_probe(struct platform_device *pdev)
 {
-	int r;
+	mt6789_clk_pwr_init(&pdev->dev);
 
-#if MT_CCF_BRINGUP
-	pr_notice("%s init begin\n", __func__);
-#endif
-
-	r = mtk_clk_simple_probe(pdev);
-	if (r)
-		dev_err(&pdev->dev,
-			"could not register clock provider: %s: %d\n",
-			pdev->name, r);
-
-#if MT_CCF_BRINGUP
-	pr_notice("%s init end\n", __func__);
-#endif
-
-	return r;
+	return mtk_clk_simple_probe(pdev);
 }
-
-static const struct of_device_id of_match_clk_mt6789_mfgcfg[] = {
-	{
-		.compatible = "mediatek,mt6789-mfg",
-		.data = &mfgcfg_mcd,
-	},
-	{}
-};
 
 static struct platform_driver clk_mt6789_mfgcfg_drv = {
 	.probe = clk_mt6789_mfgcfg_probe,
+	.remove = mtk_clk_simple_remove,
 	.driver = {
 		.name = "clk-mt6789-mfgcfg",
 		.of_match_table = of_match_clk_mt6789_mfgcfg,
 	},
 };
-
 module_platform_driver(clk_mt6789_mfgcfg_drv);
+
+MODULE_DESCRIPTION("MediaTek MT6789 mfg clocks");
 MODULE_LICENSE("GPL");

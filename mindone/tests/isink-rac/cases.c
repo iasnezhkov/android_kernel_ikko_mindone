@@ -267,6 +267,16 @@ static void bootstrap_states(void)
     CHECK(read_rac(&value) == IIO_VAL_INT && value == 0 && io_count == 0 && samples_count == 0);
     reset(); adc.imix_r = 90;
     CHECK(read_rac(&value) == IIO_VAL_INT && value == 90 && io_count == 0);
+    reset(); adc.imix_r = 0; battery_only = false;
+    value = -123;
+    CHECK(read_rac(&value) == -ENODATA && value == -123 && adc.imix_r == 0);
+    CHECK(io_count == 0 && samples_count == 0 && on_writes == 0 && locks == unlocks && awake == 0);
+    battery_only = true;
+    CHECK(read_rac(&value) == IIO_VAL_INT && value == 165 && samples_count == 4);
+    reset(); battery_only = false;
+    CHECK(run_cali() == 0 && adc.imix_r == 137 && io_count == 0 && samples_count == 0);
+    battery_only = true;
+    CHECK(run_cali() == 0 && adc.imix_r == 165 && samples_count == 4);
 }
 
 static void *race_call(void *suspend)

@@ -204,14 +204,6 @@ enum {
 	DUMP_PREFIX_OFFSET
 };
 
-/* needed by
- * common/wlan_lib.c
- * include/mgmt/rsn.h
- */
-#define LINUX_VERSION_CODE 199947
-#define CFG80211_VERSION_CODE LINUX_VERSION_CODE
-#define KERNEL_VERSION(a, b, c) (((a) << 16) + ((b) << 8) + (c))
-
 /* needed by nic/nic_cmd_event.c */
 struct wireless_dev {
 

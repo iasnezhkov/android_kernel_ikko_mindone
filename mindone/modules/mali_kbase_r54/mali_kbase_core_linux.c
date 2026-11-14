@@ -80,7 +80,6 @@
 #include <linux/mm.h>
 #include <linux/compat.h>
 #include <linux/mman.h>
-#include <linux/version.h>
 #include <linux/version_compat_defs.h>
 #include <mali_kbase_hw.h>
 #if IS_ENABLED(CONFIG_SYNC_FILE)
@@ -191,10 +190,7 @@ static const struct mali_kbase_capability_def kbase_caps_table[MALI_KBASE_NUM_CA
 #endif
 };
 
-#if (KERNEL_VERSION(5, 3, 0) <= LINUX_VERSION_CODE)
-
 static struct mutex kbase_probe_mutex;
-#endif
 
 #if IS_ENABLED(CONFIG_MALI_MTK_GPU_BM_2)
 #if IS_ENABLED(CONFIG_MTK_TINYSYS_SSPM_SUPPORT)
@@ -213,7 +209,7 @@ static void get_rec_addr(void)
 	pr_info("[GPU_QOS] DRAM virtual memory addr= %x size= %llu\n",
 		(unsigned int)rec_virt_addr, rec_size);
 
-	if (rec_virt_addr) {
+	if (rec_virt_addr && rec_size >= sizeof(struct v1_data)) {
 
 		ptr = (unsigned char *)(uintptr_t)rec_virt_addr;
 		for (i = 0; i < rec_size; i++)
@@ -635,11 +631,6 @@ static int kbase_open(struct inode *inode, struct file *filp)
 	if (!kbdev)
 		return -ENODEV;
 
-#if (KERNEL_VERSION(6, 0, 0) > LINUX_VERSION_CODE)
-
-	kbase_mem_migrate_set_address_space_ops(kbdev, filp);
-#endif
-
 	ret = kbase_device_firmware_init_once(kbdev);
 	if (ret)
 		goto out;
@@ -651,9 +642,6 @@ static int kbase_open(struct inode *inode, struct file *filp)
 	}
 
 	filp->private_data = kfile;
-#if (KERNEL_VERSION(6, 12, 0) > LINUX_VERSION_CODE)
-	filp->f_mode |= FMODE_UNSIGNED_OFFSET;
-#endif
 
 	return 0;
 
@@ -2232,11 +2220,7 @@ static __poll_t kbase_poll(struct file *filp, poll_table *wait)
 	struct kbase_context *const kctx = kbase_file_get_kctx_if_setup_complete(kfile);
 
 	if (unlikely(!kctx)) {
-#if (KERNEL_VERSION(4, 19, 0) > LINUX_VERSION_CODE)
-		return POLLERR;
-#else
 		return EPOLLERR;
-#endif
 	}
 #if IS_ENABLED(CONFIG_MALI_MTK_FENCE_DEBUG)
 	kctx->notification_fd_signal_time = 0;
@@ -2249,11 +2233,7 @@ static __poll_t kbase_poll(struct file *filp, poll_table *wait)
 #if IS_ENABLED(CONFIG_MALI_MTK_FENCE_DEBUG)
 		kctx->notification_fd_signal_time = ktime_get_ns();
 #endif
-#if (KERNEL_VERSION(4, 19, 0) > LINUX_VERSION_CODE)
-		return POLLIN | POLLRDNORM;
-#else
 		return EPOLLIN | EPOLLRDNORM;
-#endif
 	}
 
 	return 0;
@@ -2337,9 +2317,7 @@ static const struct file_operations kbase_fops = {
 	.mmap = kbase_mmap,
 	.check_flags = kbase_check_flags,
 	.get_unmapped_area = kbase_get_unmapped_area,
-#if (KERNEL_VERSION(6, 12, 0) <= LINUX_VERSION_CODE)
 	.fop_flags = FOP_UNSIGNED_OFFSET,
-#endif
 };
 
 #if IS_ENABLED(CONFIG_MALI_MIDGARD_DVFS) && \
@@ -2934,9 +2912,6 @@ static const struct file_operations fops_force_dump_mmu = {
 	.open = simple_open,
 	.read = force_dump_mmu_read,
 	.write = force_dump_mmu_write,
-#if (KERNEL_VERSION(6, 12, 0) > LINUX_VERSION_CODE)
-	.llseek = no_llseek,
-#endif
 };
 #endif
 
@@ -3793,9 +3768,7 @@ int kbase_pm_gpu_freq_init(struct kbase_device *kbdev)
 		dev_err(kbdev->dev, "No OPPs found in device tree! Scaling timeouts using %llu kHz",
 			(unsigned long long)lowest_freq_khz);
 	} else {
-#if KERNEL_VERSION(4, 11, 0) <= LINUX_VERSION_CODE
 		dev_pm_opp_put(opp_ptr);
-#endif
 
 		found_freq /= 1000;
 
@@ -4747,7 +4720,6 @@ int power_control_init(struct kbase_device *kbdev)
 
 #if defined(CONFIG_PM_OPP)
 #if defined(CONFIG_REGULATOR)
-#if (KERNEL_VERSION(6, 0, 0) <= LINUX_VERSION_CODE)
 	if (kbdev->nr_regulators > 0) {
 		kbdev->token = dev_pm_opp_set_regulators(kbdev->dev, avail_regulator_names);
 
@@ -4756,25 +4728,13 @@ int power_control_init(struct kbase_device *kbdev)
 			goto regulators_probe_defer;
 		}
 	}
-#elif (KERNEL_VERSION(4, 10, 0) <= LINUX_VERSION_CODE)
-	if (kbdev->nr_regulators > 0) {
-		kbdev->opp_table = dev_pm_opp_set_regulators(kbdev->dev, avail_regulator_names,
-							     BASE_MAX_NR_CLOCKS_REGULATORS);
-
-		if (IS_ERR(kbdev->opp_table)) {
-			err = PTR_ERR(kbdev->opp_table);
-			goto regulators_probe_defer;
-		}
-	}
-#endif
 #endif
 	err = dev_pm_opp_of_add_table(kbdev->dev);
 	CSTD_UNUSED(err);
 #endif
 	return 0;
 
-#if defined(CONFIG_PM_OPP) && \
-	((KERNEL_VERSION(4, 10, 0) <= LINUX_VERSION_CODE) && defined(CONFIG_REGULATOR))
+#if defined(CONFIG_PM_OPP) && defined(CONFIG_REGULATOR)
 regulators_probe_defer:
 	for (i = 0; i < BASE_MAX_NR_CLOCKS_REGULATORS; i++) {
 		if (kbdev->clocks[i]) {
@@ -4803,13 +4763,8 @@ void power_control_term(struct kbase_device *kbdev)
 #if defined(CONFIG_PM_OPP)
 	dev_pm_opp_of_remove_table(kbdev->dev);
 #if defined(CONFIG_REGULATOR)
-#if (KERNEL_VERSION(6, 0, 0) <= LINUX_VERSION_CODE)
 	if (kbdev->token > -EPERM)
 		dev_pm_opp_put_regulators(kbdev->token);
-#elif (KERNEL_VERSION(4, 10, 0) <= LINUX_VERSION_CODE)
-	if (!IS_ERR_OR_NULL(kbdev->opp_table))
-		dev_pm_opp_put_regulators(kbdev->opp_table);
-#endif
 #endif
 #endif
 
@@ -5136,10 +5091,8 @@ static struct dentry *init_debugfs(struct kbase_device *kbdev)
 
 #ifdef CONFIG_MALI_DEVFREQ
 #if IS_ENABLED(CONFIG_DEVFREQ_THERMAL)
-#if !IS_ENABLED(CONFIG_MALI_MTK_DEVFREQ_THERMAL)
 	if (kbdev->devfreq)
 		kbase_ipa_debugfs_init(kbdev);
-#endif
 #endif
 #endif
 
@@ -5871,28 +5824,16 @@ void kbase_sysfs_term(struct kbase_device *kbdev)
 	put_device(kbdev->dev);
 }
 
-#if (KERNEL_VERSION(6, 11, 0) > LINUX_VERSION_CODE)
-static int kbase_platform_device_remove(struct platform_device *pdev)
-#else
 static void kbase_platform_device_remove(struct platform_device *pdev)
-#endif
 {
 	struct kbase_device *kbdev = to_kbase_device(&pdev->dev);
 
 	if (!kbdev)
-#if (KERNEL_VERSION(6, 11, 0) > LINUX_VERSION_CODE)
-		return -ENODEV;
-#else
 		return;
-#endif
 
 	kbase_device_term(kbdev);
 	dev_set_drvdata(kbdev->dev, NULL);
 	kbase_device_free(kbdev);
-
-#if (KERNEL_VERSION(6, 11, 0) > LINUX_VERSION_CODE)
-	return 0;
-#endif
 }
 
 void kbase_backend_devfreq_term(struct kbase_device *kbdev)
@@ -5932,15 +5873,11 @@ static int kbase_platform_device_probe(struct platform_device *pdev)
 	kbdev->dev = &pdev->dev;
 
 #if IS_ENABLED(CONFIG_REGULATOR)
-#if (KERNEL_VERSION(6, 0, 0) <= LINUX_VERSION_CODE)
 	kbdev->token = -EPERM;
-#endif
 #endif
 
 	dev_set_drvdata(kbdev->dev, kbdev);
-#if (KERNEL_VERSION(5, 3, 0) <= LINUX_VERSION_CODE)
 	mutex_lock(&kbase_probe_mutex);
-#endif
 	err = kbase_device_init(kbdev);
 
 	if (err) {
@@ -5951,15 +5888,14 @@ static int kbase_platform_device_probe(struct platform_device *pdev)
 
 		dev_set_drvdata(kbdev->dev, NULL);
 		kbase_device_free(kbdev);
-#if (KERNEL_VERSION(5, 3, 0) <= LINUX_VERSION_CODE)
 		mutex_unlock(&kbase_probe_mutex);
-#endif
 	} else {
 
 #if IS_ENABLED(CONFIG_MALI_MTK_GPU_BM_2)
 		err = mtk_bandwith_resource_init(kbdev);
 		if (err)
 			pr_info("@%s: GPU BM init failed (JM)\n", __func__);
+		err = 0;
 #endif
 
 #if defined(CONFIG_MALI_MTK_GPU_BM_CSF)
@@ -5968,10 +5904,7 @@ static int kbase_platform_device_probe(struct platform_device *pdev)
 			pr_info("@%s: GPU BM init failed (CSF)\n", __func__);
 #endif
 
-#if (KERNEL_VERSION(6, 1, 0) <= LINUX_VERSION_CODE)
-
 		dev_info(kbdev->dev, KBASE_COMPILED_MMAP_MIN_ADDR_MSG);
-#endif
 
 		dev_info(kbdev->dev, "Probed as %s\n", dev_name(kbdev->mdev.this_device));
 #if IS_ENABLED(CONFIG_MALI_MTK_LOG_BUFFER)
@@ -5983,9 +5916,7 @@ static int kbase_platform_device_probe(struct platform_device *pdev)
 				 dev_name(kbdev->mdev.this_device), PAGE_SIZE / 1024);
 
 		kbase_increment_device_id();
-#if (KERNEL_VERSION(5, 3, 0) <= LINUX_VERSION_CODE)
 		mutex_unlock(&kbase_probe_mutex);
-#endif
 #ifdef CONFIG_MALI_ARBITER_SUPPORT
 		mutex_lock(&kbdev->pm.lock);
 		kbase_arbiter_pm_vm_event(kbdev, KBASE_VM_GPU_INITIALIZED_EVT);
@@ -6176,17 +6107,12 @@ static struct platform_driver kbase_platform_driver = {
 	},
 };
 
-#if (KERNEL_VERSION(5, 3, 0) > LINUX_VERSION_CODE) && IS_ENABLED(CONFIG_OF)
-module_platform_driver(kbase_platform_driver);
-#else
 static int __init kbase_driver_init(void)
 {
 	int ret;
 	printk(KERN_ERR "module_platform_driver() [start]\n");
 
-#if (KERNEL_VERSION(5, 3, 0) <= LINUX_VERSION_CODE)
 	mutex_init(&kbase_probe_mutex);
-#endif
 
 #ifndef CONFIG_OF
 	ret = kbase_platform_register();
@@ -6218,7 +6144,6 @@ static void __exit kbase_driver_exit(void)
 
 module_init(kbase_driver_init);
 module_exit(kbase_driver_exit);
-#endif
 MODULE_LICENSE("GPL");
 MODULE_VERSION(MALI_RELEASE_NAME " (UK version " __stringify(BASE_UK_VERSION_MAJOR) "." __stringify(
 	BASE_UK_VERSION_MINOR) ")");

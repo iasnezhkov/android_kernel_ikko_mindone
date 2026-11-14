@@ -8,6 +8,7 @@
 #include <mmu/mali_kbase_mmu_hw.h>
 #include <tl/mali_kbase_tracepoints.h>
 #include <linux/delay.h>
+#include <mtk_gpufreq.h>
 
 #if IS_ENABLED(CONFIG_MALI_MTK_LOG_BUFFER)
 #include <platform/mtk_platform_common/mtk_platform_logbuffer.h>
@@ -93,8 +94,10 @@ static int wait_ready(struct kbase_device *kbdev, unsigned int as_nr)
 #endif
 
 #if IS_ENABLED(CONFIG_MALI_MTK_TRIGGER_KE)
-	if (kbdev->exception_mask & (1u << EXCEPTION_BIT_STUCK))
+	if (kbdev->exception_mask & (1u << EXCEPTION_BIT_STUCK)) {
+		gpufreq_dump_infra_status_try();
 		BUG_ON(1);
+	}
 #endif
 
 	if (kbase_prepare_to_reset_gpu_locked(kbdev, RESET_FLAGS_HWC_UNRECOVERABLE_ERROR)) {

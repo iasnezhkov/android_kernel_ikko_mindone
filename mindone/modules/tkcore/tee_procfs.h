@@ -28,5 +28,6 @@ struct tee;
 
 int tee_init_procfs(struct tee *tee);
 void tee_exit_procfs(void);
+void tee_log_notify(void);
 
 #endif

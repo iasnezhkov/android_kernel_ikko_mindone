@@ -125,6 +125,7 @@ struct teec_operation {
 
 #pragma GCC visibility push(default)
 
+#if IS_ENABLED(CONFIG_TRUSTONIC_TEE_SUPPORT)
 TEEC_EXPORT u32
 teec_initialize_context(const char *name, struct teec_context *context);
 
@@ -162,6 +163,68 @@ teec_invoke_command(struct teec_session *session,
 
 TEEC_EXPORT void
 teec_request_cancellation(struct teec_operation *operation);
+#else
+static inline u32
+teec_initialize_context(const char *name, struct teec_context *context)
+{
+	return TEEC_ERROR_NOT_IMPLEMENTED;
+}
+
+static inline void
+teec_finalize_context(struct teec_context *context)
+{
+}
+
+static inline u32
+teec_register_shared_memory(struct teec_context *context,
+			    struct teec_shared_memory *shared_mem)
+{
+	return TEEC_ERROR_NOT_IMPLEMENTED;
+}
+
+static inline u32
+teec_allocate_shared_memory(struct teec_context *context,
+			    struct teec_shared_memory *shared_mem)
+{
+	return TEEC_ERROR_NOT_IMPLEMENTED;
+}
+
+static inline void
+teec_release_shared_memory(struct teec_shared_memory *shared_mem)
+{
+}
+
+static inline u32
+teec_open_session(struct teec_context *context,
+		  struct teec_session *session,
+		  const struct teec_uuid *destination,
+		  u32 connection_method,
+		  const void *connection_data,
+		  struct teec_operation *operation,
+		  u32 *return_origin)
+{
+	return TEEC_ERROR_NOT_IMPLEMENTED;
+}
+
+static inline void
+teec_close_session(struct teec_session *session)
+{
+}
+
+static inline u32
+teec_invoke_command(struct teec_session *session,
+		    u32 command_id,
+		    struct teec_operation *operation,
+		    u32 *return_origin)
+{
+	return TEEC_ERROR_NOT_IMPLEMENTED;
+}
+
+static inline void
+teec_request_cancellation(struct teec_operation *operation)
+{
+}
+#endif
 
 #pragma GCC visibility pop
 

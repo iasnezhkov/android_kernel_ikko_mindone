@@ -33,6 +33,7 @@ struct mml_drm_param {
 	u8 racing_height;
 };
 
+#if IS_ENABLED(CONFIG_MTK_MML)
 /*
  * mml_drm_query_cap - Query current running mode and possible support mode
  * for specific frame info.
@@ -176,5 +177,75 @@ void mml_drm_config_rdone(struct mml_drm_ctx *ctx, struct mml_submit *submit,
  * @submit:	Frame info which want mml driver to execute.
  */
 void mml_drm_dump(struct mml_drm_ctx *ctx, struct mml_submit *submit);
+#else
+static inline enum mml_mode mml_drm_query_cap(struct mml_drm_ctx *ctx,
+	struct mml_frame_info *info)
+{
+	return MML_MODE_NOT_SUPPORT;
+}
+
+static inline void mml_drm_try_frame(struct mml_drm_ctx *ctx,
+	struct mml_frame_info *info)
+{
+}
+
+static inline struct mml_drm_ctx *mml_drm_get_context(struct platform_device *pdev,
+	struct mml_drm_param *disp)
+{
+	return NULL;
+}
+
+static inline bool mml_drm_ctx_idle(struct mml_drm_ctx *ctx)
+{
+	return true;
+}
+
+static inline void mml_drm_put_context(struct mml_drm_ctx *ctx)
+{
+}
+
+static inline void mml_drm_set_panel_pixel(struct mml_drm_ctx *ctx, u32 pixel)
+{
+}
+
+static inline s32 mml_drm_racing_config_sync(struct mml_drm_ctx *ctx,
+	struct cmdq_pkt *pkt)
+{
+	return -ENODEV;
+}
+
+static inline s32 mml_drm_racing_stop_sync(struct mml_drm_ctx *ctx,
+	struct cmdq_pkt *pkt)
+{
+	return -ENODEV;
+}
+
+static inline void mml_drm_split_info(struct mml_submit *submit,
+	struct mml_submit *submit_pq)
+{
+}
+
+static inline s32 mml_drm_submit(struct mml_drm_ctx *ctx,
+	struct mml_submit *submit, void *cb_param)
+{
+	return -ENODEV;
+}
+
+static inline s32 mml_drm_stop(struct mml_drm_ctx *ctx,
+	struct mml_submit *submit, bool force)
+{
+	return -ENODEV;
+}
+
+static inline void mml_drm_config_rdone(struct mml_drm_ctx *ctx,
+	struct mml_submit *submit, struct cmdq_pkt *pkt)
+{
+}
+
+static inline void mml_drm_dump(struct mml_drm_ctx *ctx,
+	struct mml_submit *submit)
+{
+}
+#endif
 
 #endif	/* __MTK_MML_DRM_ADAPTOR_H__ */

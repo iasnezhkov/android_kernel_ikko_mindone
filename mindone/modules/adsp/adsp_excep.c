@@ -8,7 +8,7 @@
 #include <linux/sysfs.h>
 #include <linux/device.h>       /* needed by device_* */
 #include <linux/workqueue.h>
-#include <linux/mindone_sysfs_compat.h>
+#include <mindone/compat-sysfs.h>
 #include <linux/mutex.h>
 #include <linux/delay.h>
 #include <linux/io.h>

@@ -9,7 +9,7 @@
 #include <linux/init.h>		/* For init/exit macros */
 #include <linux/interrupt.h>
 #include <mindone/compat-hrtimer.h>
-#include <linux/mindone_power_supply_compat.h>
+#include <mindone/compat-power-supply.h>
 #include <linux/irq.h>
 #include <linux/irqdesc.h>	/*irq_to_desc*/
 #include <linux/kernel.h>

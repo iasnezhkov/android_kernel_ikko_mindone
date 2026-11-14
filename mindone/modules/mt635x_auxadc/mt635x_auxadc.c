@@ -970,6 +970,20 @@ static int auxadc_get_rac(struct mt635x_auxadc_device *adc_dev)
 	return ret;
 }
 
+static bool auxadc_battery_supplies_system(void)
+{
+	struct power_supply *psy;
+	union power_supply_propval prop;
+	int ret;
+
+	psy = power_supply_get_by_name("battery");
+	if (!psy)
+		return false;
+	ret = power_supply_get_property(psy, POWER_SUPPLY_PROP_STATUS, &prop);
+	power_supply_put(psy);
+	return !ret && prop.intval == POWER_SUPPLY_STATUS_DISCHARGING;
+}
+
 static int auxadc_bootstrap_imix_r(struct mt635x_auxadc_device *adc_dev)
 {
 	int i, rac, total = 0;
@@ -977,6 +991,8 @@ static int auxadc_bootstrap_imix_r(struct mt635x_auxadc_device *adc_dev)
 	lockdep_assert_held(&adc_dev->lock);
 	if (adc_dev->imix_r || adc_dev->info->imp_conv != mt6358_imp_conv)
 		return 0;
+	if (!auxadc_battery_supplies_system())
+		return -ENODATA;
 	for (i = 0; i < IMIX_R_CALI_CNT; i++) {
 		rac = auxadc_get_rac(adc_dev);
 		if (rac < 0)
@@ -1539,6 +1555,8 @@ static int auxadc_cali_imix_r(struct mt635x_auxadc_device *adc_dev)
 	}
 	if (!checked)
 		pre_uisoc = cur_uisoc;
+	if (checked && !auxadc_battery_supplies_system())
+		return 0;
 	for (i = 0; i < IMIX_R_CALI_CNT; i++) {
 		rac_val[i] = auxadc_get_rac(adc_dev);
 		if (rac_val[i] < 0)

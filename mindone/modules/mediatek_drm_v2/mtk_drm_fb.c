@@ -13,7 +13,7 @@
 #include <linux/dma-buf.h>
 
 #include "mtk_drm_drv.h"
-#include "mtk_drm_compat.h"
+#include <mindone/compat-drm-helper.h>
 #include <drivers/gpu/drm/mediatek/mediatek_v2/mtk_drm_fb.h>
 #include <drivers/gpu/drm/mediatek/mediatek_v2/mtk_drm_gem.h>
 #include "mtk_drm_crtc.h"
@@ -136,7 +136,7 @@ mtk_drm_framebuffer_init(struct drm_device *dev,
 	if (!mtk_fb)
 		return ERR_PTR(-ENOMEM);
 
-	mtk_drm_mode_fill_fb_struct(dev, &mtk_fb->base, mode);
+	mindone_drm_mode_fill_fb_struct(dev, &mtk_fb->base, mode);
 
 	mtk_fb->gem_obj = obj;
 	mtk_fb->base.obj[0] = obj;

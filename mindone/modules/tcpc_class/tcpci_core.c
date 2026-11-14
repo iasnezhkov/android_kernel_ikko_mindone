@@ -4,7 +4,7 @@
  */
 
 #include <linux/init.h>
-#include <linux/mindone_power_supply_compat.h>
+#include <mindone/compat-power-supply.h>
 #include <linux/module.h>
 #include <linux/device.h>
 #include <linux/slab.h>

@@ -4128,9 +4128,6 @@ void disp_dbg_init(struct drm_device *dev)
 		ret = dev_pm_genpd_add_notifier(dev->dev, &nb);
 		if (ret)
 			DDPMSG("dev_pm_genpd_add_notifier disp register fail!\n");
-		else
-			mtk_mux_set_quick_switch_chk_cb(
-				polling_rdma_output_line_is_not_zero);
 	}
 }
 
@@ -4144,7 +4141,6 @@ void disp_dbg_deinit(void)
 		ret = dev_pm_genpd_remove_notifier(drm_dev->dev);
 		if (ret)
 			DDPMSG("dev_pm_genpd_remove_notifier disp unregister fail!\n");
-		mtk_mux_set_quick_switch_chk_cb(NULL);
 	}
 
 	if (debug_buffer)

@@ -34,11 +34,6 @@ bool kbase_is_page_migration_enabled(void);
 
 void kbase_free_page_later(struct kbase_device *kbdev, struct page *p);
 
-#if (KERNEL_VERSION(6, 0, 0) > LINUX_VERSION_CODE)
-
-void kbase_mem_migrate_set_address_space_ops(struct kbase_device *kbdev, struct file *const filp);
-#endif
-
 void kbase_mem_migrate_init(struct kbase_device *kbdev);
 
 void kbase_mem_migrate_term(struct kbase_device *kbdev);

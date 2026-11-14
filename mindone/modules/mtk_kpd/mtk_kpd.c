@@ -13,6 +13,7 @@
 #include <linux/ioctl.h>
 #include <linux/kernel.h>
 #include <linux/module.h>
+#include <linux/mutex.h>
 #include <linux/of.h>
 #include <linux/of_address.h>
 #include <linux/of_gpio.h>
@@ -21,6 +22,7 @@
 #include <linux/platform_device.h>
 #include <linux/pm_wakeup.h>
 #include <linux/regmap.h>
+#include <linux/workqueue.h>
 
 #define KPD_NAME	"mtk-kpd"
 
@@ -59,43 +61,43 @@ static int hall_irq;
 static unsigned int hall_irq_dt_type;
 static int hall_gpio = -1;
 static int hall_state;
-static bool hall_irq_disabled;
+static bool hall_wake;
+static unsigned long hall_settle;
+static struct input_dev *hall_input;
+static struct wakeup_source *hall_ws;
+static DEFINE_MUTEX(hall_lock);
+
+static void hall_report(struct work_struct *work)
+{
+	unsigned int key;
+	int pos;
+
+	mutex_lock(&hall_lock);
+	pos = gpio_get_value(hall_gpio) ? 0 : 1;
+	if (pos != hall_state) {
+		hall_state = pos;
+		key = pos ? KEY_F2 : KEY_F3;
+		input_report_key(hall_input, key, 1);
+		input_sync(hall_input);
+		input_report_key(hall_input, key, 0);
+		input_sync(hall_input);
+		pr_info("hall position=%d\n", pos);
+	}
+	mutex_unlock(&hall_lock);
+	__pm_relax(hall_ws);
+}
+
+static DECLARE_DELAYED_WORK(hall_work, hall_report);
+
+static void hall_schedule(unsigned long delay)
+{
+	__pm_stay_awake(hall_ws);
+	mod_delayed_work(system_wq, &hall_work, delay);
+}
 
 static irqreturn_t hall_eint_handler(int irq, void *dev_id)
 {
-	struct input_dev *input = dev_id;
-	int val;
-
-	if (!hall_irq_disabled) {
-		disable_irq_nosync(irq);
-		hall_irq_disabled = true;
-	}
-
-	val = gpio_get_value(hall_gpio);
-
-	if (hall_state == 0 && val == 0) {
-		irq_set_irq_type(irq, IRQ_TYPE_EDGE_RISING);
-		hall_state = 1;
-		input_report_key(input, KEY_F2, 1);
-		input_sync(input);
-		input_report_key(input, KEY_F2, 0);
-		input_sync(input);
-	} else if (hall_state == 1 && val == 1) {
-		irq_set_irq_type(irq, IRQ_TYPE_EDGE_FALLING);
-		hall_state = 0;
-		input_report_key(input, KEY_F3, 1);
-		input_sync(input);
-		input_report_key(input, KEY_F3, 0);
-		input_sync(input);
-	}
-
-	pr_info("hall gpio level=%d\n", val);
-
-	if (hall_irq_disabled) {
-		enable_irq(irq);
-		hall_irq_disabled = false;
-	}
-
+	hall_schedule(hall_settle);
 	return IRQ_HANDLED;
 }
 
@@ -103,8 +105,8 @@ static void hall_eint_register(struct input_dev *input)
 {
 	struct device_node *node;
 	u32 debounce = 0;
+	int gpio;
 	int ret;
-	int val;
 
 	node = of_find_compatible_node(NULL, NULL, "mediatek,hall");
 	if (!node) {
@@ -112,66 +114,78 @@ static void hall_eint_register(struct input_dev *input)
 		return;
 	}
 
+	gpio = of_get_named_gpio(node, "cfg-pin", 0);
+	if (gpio < 0) {
+		pr_err("%s: cfg-pin gpio not provided\n", __func__);
+		return;
+	}
+
+	ret = gpio_request(gpio, "hall gpio");
+	if (ret < 0) {
+		pr_err("%s: unable to request hall gpio[%d]\n", __func__, gpio);
+		return;
+	}
+
 	hall_irq = irq_of_parse_and_map(node, 0);
 	if (!hall_irq) {
 		pr_err("%s: hall irq not available\n", __func__);
+		gpio_free(gpio);
 		return;
 	}
-	/* The edge handler retargets the trigger below; remember the DT type so
-	 * unregister can restore it, otherwise a module reload fails to map the
-	 * same hwirq ("irq: type mismatch, failed to map hwirq-7 for pinctrl").
-	 */
 	hall_irq_dt_type = irq_get_trigger_type(hall_irq);
+
+	if (of_property_read_u32(node, "debounce", &debounce))
+		debounce = 0;
+	hall_settle = usecs_to_jiffies(debounce);
+
+	hall_ws = wakeup_source_register(NULL, "hall");
+	hall_input = input;
+	hall_gpio = gpio;
+	hall_state = gpio_get_value(gpio) ? 0 : 1;
 
 	__set_bit(KEY_F2, input->keybit);
 	__set_bit(KEY_F3, input->keybit);
 
-	ret = request_threaded_irq(hall_irq, NULL, hall_eint_handler,
-			IRQF_TRIGGER_FALLING | IRQF_ONESHOT,
-			"hall-eint", input);
+	ret = request_irq(hall_irq, hall_eint_handler,
+			  IRQF_TRIGGER_RISING | IRQF_TRIGGER_FALLING,
+			  "hall-eint", input);
 	if (ret < 0) {
 		pr_err("%s: unable to request hall irq[%d]\n", __func__, ret);
+		hall_irq = 0;
 		return;
 	}
 
 	ret = irq_set_irq_wake(hall_irq, 1);
 	if (ret < 0)
 		pr_err("%s: irq %d enable irq wake fail\n", __func__, hall_irq);
+	hall_wake = !ret;
 
-	hall_gpio = of_get_named_gpio(node, "cfg-pin", 0);
-	if (hall_gpio < 0) {
-		pr_err("%s: cfg-pin gpio not provided\n", __func__);
-		return;
-	}
-
-	if (of_property_read_u32(node, "debounce", &debounce))
-		debounce = 0;
-
-	ret = gpio_request(hall_gpio, "hall gpio");
-	if (ret < 0) {
-		pr_err("%s: unable to request hall gpio[%d]\n", __func__, hall_gpio);
-		return;
-	}
-	gpiod_set_debounce(gpio_to_desc(hall_gpio), debounce);
-
-	val = gpio_get_value(hall_gpio);
-	if (val == 0) {
-		hall_state = 1;
-		irq_set_irq_type(hall_irq, IRQ_TYPE_EDGE_RISING);
-	} else {
-		hall_state = 0;
-		irq_set_irq_type(hall_irq, IRQ_TYPE_EDGE_FALLING);
-	}
+	hall_schedule(hall_settle);
 }
 
 static void hall_eint_unregister(struct input_dev *input)
 {
 	if (hall_irq) {
+		if (hall_wake)
+			irq_set_irq_wake(hall_irq, 0);
+		hall_wake = false;
 		free_irq(hall_irq, input);
 		irq_set_irq_type(hall_irq, hall_irq_dt_type);
+		hall_irq = 0;
 	}
-	if (hall_gpio >= 0)
+	if (hall_gpio >= 0) {
+		cancel_delayed_work_sync(&hall_work);
 		gpio_free(hall_gpio);
+		hall_gpio = -1;
+	}
+	wakeup_source_unregister(hall_ws);
+	hall_ws = NULL;
+}
+
+static void hall_resume(void)
+{
+	if (hall_irq)
+		hall_schedule(0);
 }
 
 static ssize_t hall_position_show(struct device *dev,
@@ -618,6 +632,7 @@ static int kpd_pdrv_suspend(struct platform_device *pdev, pm_message_t state)
 static int kpd_pdrv_resume(struct platform_device *pdev)
 {
 	touch_key_resume();
+	hall_resume();
 	return 0;
 }
 

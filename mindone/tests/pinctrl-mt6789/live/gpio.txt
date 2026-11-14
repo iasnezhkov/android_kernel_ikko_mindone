@@ -1,0 +1,17 @@
+gpiochip0: 222 GPIOs, parent: platform/10005000.pinctrl, pinctrl_mtk_v2:
+ gpio-0   (                    |interrupt           ) in  lo IRQ
+ gpio-1   (                    |nfc_irq             ) in  lo IRQ
+ gpio-7   (                    |hall gpio           ) in  lo IRQ
+ gpio-8   (                    |awinic_int          ) in  hi IRQ
+ gpio-9   (                    |hyn_irq_gpio        ) in  lo IRQ
+ gpio-13  (                    |type_c_port0-IRQ    ) in  hi IRQ
+ gpio-14  (                    |cd                  ) in  hi IRQ ACTIVE LOW
+ gpio-48  (                    |avdd-en             ) out lo
+ gpio-83  (                    |interrupt           ) in  lo IRQ
+ gpio-84  (                    |disp-pwm            ) out lo
+ gpio-85  (                    |reset               ) out hi
+ gpio-152 (                    |hyn_reset_gpio      ) out lo
+ gpio-153 (                    |hyn_vdd_gpio        ) out hi
+ gpio-156 (                    |awinic_rst          ) out hi
+ gpio-159 (                    |touch_key pwr gpio  ) out hi
+ gpio-199 (                    |interrupt           ) in  ?   IRQ

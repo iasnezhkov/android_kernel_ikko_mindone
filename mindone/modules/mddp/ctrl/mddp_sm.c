@@ -1,9 +1,9 @@
 /* SPDX-License-Identifier: GPL-2.0 */
 /* Copyright (c) 2020 MediaTek Inc. */
 
-#include <linux/version.h>
 #include <linux/slab.h>
 #include <linux/mutex.h>
+#include <mindone/compat-mddp.h>
 
 #include "mddp_ctrl.h"
 #include "mddp_debug.h"
@@ -63,7 +63,7 @@ void mddp_check_feature(void)
 		.android_version = 16,
 		.minor_version = 0,
 		.wifi_feature = 0,
-		.kernel_version = KERNEL_VERSION(6, 12, 0),
+		.kernel_version = MINDONE_MDDP_AP_KERNEL_VERSION,
 	};
 
 	md_msg = kzalloc(sizeof(struct mddp_md_msg_t),

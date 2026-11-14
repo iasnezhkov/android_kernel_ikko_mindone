@@ -22,6 +22,13 @@
 #include <platform/mtk_platform_common/mtk_platform_dvfs_hint_26m_perf_cnting.h>
 #include "platform/mtk_platform_common/mtk_platform_dvfs_hint_26m_perf_cnting_ex.h"
 #endif
+#if IS_ENABLED(CONFIG_MALI_MTK_GPU_FREQUENCY_TRACE)
+#ifdef CONFIG_TRACE_POWER_GPU_FREQUENCY
+#include <trace/events/power_gpu_frequency.h>
+#else
+#include "mali_power_gpu_frequency_trace.h"
+#endif
+#endif
 
 #if IS_ENABLED(CONFIG_PROC_FS)
 
@@ -288,6 +295,9 @@ void MTKGPUFreq_change_notify(u32 clk_idx, u32 gpufreq)
 {
 	struct kbase_device *kbdev = (struct kbase_device *)mtk_common_get_kbdev();
 
+#if IS_ENABLED(CONFIG_MALI_MTK_GPU_FREQUENCY_TRACE)
+	trace_gpu_frequency(gpufreq, clk_idx);
+#endif
 	if (mtk_common_rate_change_notify_fp && !IS_ERR_OR_NULL(kbdev))
 		mtk_common_rate_change_notify_fp(kbdev, clk_idx, gpufreq);
 }

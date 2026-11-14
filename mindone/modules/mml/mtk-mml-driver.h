@@ -25,7 +25,14 @@ struct mml_topology_cache;
 struct mml_task;
 struct mml_comp_config;
 
+#if IS_ENABLED(CONFIG_MTK_MML)
 struct platform_device *mml_get_plat_device(struct platform_device *pdev);
+#else
+static inline struct platform_device *mml_get_plat_device(struct platform_device *pdev)
+{
+	return NULL;
+}
+#endif
 
 static inline int of_mml_count_comps(const struct device_node *np)
 {

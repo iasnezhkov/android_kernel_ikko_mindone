@@ -283,17 +283,6 @@
 #define CFG_SUPPORT_SKB_CLONED_COPY		1
 
 /*------------------------------------------------------------------------------
- * Flags of 6G SUPPORT
- *------------------------------------------------------------------------------
- */
-#if 0 /* KERNEL_VERSION(5, 4, 0) > LINUX_VERSION_CODE */
-#ifdef CFG_SUPPORT_WIFI_6G
-#undef CFG_SUPPORT_WIFI_6G
-#endif
-#define CFG_SUPPORT_WIFI_6G			0
-#endif
-
-/*------------------------------------------------------------------------------
  * Flags of Buffer mode SUPPORT
  *------------------------------------------------------------------------------
  */

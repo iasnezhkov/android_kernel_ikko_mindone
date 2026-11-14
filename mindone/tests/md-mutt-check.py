@@ -1,17 +1,45 @@
 # SPDX-License-Identifier: GPL-2.0
 # SPDX-FileCopyrightText: 2026 The LineageOS Project
 import argparse
-import os
 from pathlib import Path
 import re
 import subprocess
 import tempfile
 
+from baseline_source import require
 
-BASELINE = "446b82f88877f8346811ec549b59f77bb0b9b048"
+
 SOURCE = "mindone/modules/md_cooling_all/src/md_cooling.c"
 CASES = ("normal-levels", "unchanged", "equal-aggregate", "peer-aggregate", "sparse-aggregate", "failure-state", "inflight-state", "failure-retry", "release-retry", "peer-failure", "real-errors", "modem-off", "scg-off", "validation", "locking")
 HEALTHY = ("normal-levels", "unchanged", "equal-aggregate", "peer-aggregate", "sparse-aggregate", "modem-off", "scg-off", "validation", "locking")
+HEADERS = {
+    "mindone/modules/board_temp/md_cooling.h": "ca2e343d12c7d5fd3343d3530d8fbde910e603942a8f2c81f79fa97a3c97a98c",
+    "mindone/modules/include/drivers/misc/mediatek/include/mt-plat/mtk_ccci_common.h": "f422efd13e6e8c7eb8725dfc1634c5b953a800b95dba517e975e09fd1919ad36",
+}
+BASELINE_FUNCTIONS = {
+    "get_md_cooling_status": "c52d737d572c8afd269b8fa76008a8cf0e4c2f4b23a2883d338b915fe5e2244d",
+    "send_throttle_msg": "eabcfc694cac1ba7ba933c20f375fa2cdee8afaa2d3156cf17cb9d1b67e99620",
+    "get_md_cdev": "6629295a281e96bf33d60b93174b32fa2ec266561c345c8fe36790d626994f51",
+    "find_max_mutt_state": "95b68f0f4caaee7d6bcfde44ea65efb380e48b633fbc091ce37219467f06c12b",
+    "state_to_md_cooling_status": "4cc016f9cc0022827ea5dec2f416f80d2a0baeea0705d38b99211570b633610c",
+    "mutt_throttle": "cd8547d208db9649f71bacfda82c43de917276d779b14ad020d91dcd63079d28",
+    "md_cooling_get_max_state": "6e742432033fc58f7e56b7e953ee22583d41bf320e90dc4962d1b83c4075b5bd",
+    "md_cooling_get_cur_state": "c4fc84a4c045d4c2621a548540b463a46fa9943d8b6e61c98e334141c9860e36",
+    "md_cooling_set_cur_state": "69875f823ca541ecb592fd8ba76ed144de6b8caf33f56b07c00819262f9ed840",
+    "md_cooling_state_to_mutt_lv": "ca62aa8b5bdff0e6efb8885ea198e1de274e7bcb4e3df5e4d56ff6a392e2760d",
+    "tx_pwr_throttle": "2da64c47f7405d53f1adde38d7287276d457406002f39499bfc1b4347a858bc6",
+    "scg_off_throttle": "5d08997a2638c34fd6586eb71c5974a3af15761611ba82f78bb81edd3df39460",
+}
+FIX = (
+    ("static unsigned long find_max_mutt_state(void)",
+     "static unsigned long find_max_mutt_state(struct md_cooling_device *requested, unsigned long state)"),
+    ("final_state = max(final_state, md_cdev->target_state);",
+     "final_state = max(final_state,\n\t\t\t\tmd_cdev == requested ? state : md_cdev->target_state);"),
+    ("\tmd_cdev->target_state = state;\n\tfinal_state = find_max_mutt_state();\n\tif (final_state == mdc->mutt_state) {\n",
+     "\tfinal_state = find_max_mutt_state(md_cdev, state);\n\tif (final_state == mdc->mutt_state) {\n\t\tmd_cdev->target_state = state;\n"),
+    ("\tnew_status = state_to_md_cooling_status(final_state);\n\tmdc->status",
+     "\tnew_status = state_to_md_cooling_status(final_state);\n\tmd_cdev->target_state = state;\n\tmdc->status"),
+)
 FUNCTIONS = ("get_md_cooling_status", "send_throttle_msg", "get_md_cdev", "find_max_mutt_state", "state_to_md_cooling_status", "mutt_throttle", "md_cooling_get_max_state", "md_cooling_get_cur_state", "md_cooling_set_cur_state", "md_cooling_state_to_mutt_lv")
 
 
@@ -94,22 +122,20 @@ def run(binary, case, expected_failure=None):
 def main():
     parser = argparse.ArgumentParser(description="Exercise exact MUTT dispatch state with CCCI failure, readback, recovery and mutation controls")
     parser.add_argument("kernel_tree", type=Path)
-    parser.add_argument("--baseline", default=BASELINE)
     parser.add_argument("--case", choices=CASES, action="append")
     args = parser.parse_args()
     tree = args.kernel_tree.resolve()
     source = (tree / SOURCE).read_text()
-    baseline = subprocess.run(["git", "-C", str(tree), "show", args.baseline + ":" + SOURCE], check=True, capture_output=True, text=True, env={**os.environ, "GIT_NO_LAZY_FETCH": "1"}).stdout
-    for path in ("mindone/modules/board_temp/md_cooling.h", "mindone/modules/include/drivers/misc/mediatek/include/mt-plat/mtk_ccci_common.h"):
-        original = subprocess.run(["git", "-C", str(tree), "show", args.baseline + ":" + path], check=True, capture_output=True, text=True, env={**os.environ, "GIT_NO_LAZY_FETCH": "1"}).stdout
-        if original != (tree / path).read_text():
-            raise ValueError("Actual header changed from the baseline: " + path)
+    baseline = source
+    for before, after in reversed(FIX):
+        baseline = replace_once(baseline, after, before)
+    for path, pin in HEADERS.items():
+        require("Actual header " + path, (tree / path).read_text(), pin)
     build = (tree / "mindone/modules/BUILD.bazel").read_text()
     if not re.search(r'name = "md_cooling_all",\s+srcs = \[\s+"md_cooling_all/src/md_cooling.c",\s+"md_cooling_all/md_cooling_debugfs.c",', build):
         raise ValueError("Actual DDK source binding changed")
-    for name in ("send_throttle_msg", "get_md_cdev", "get_md_cooling_status", "state_to_md_cooling_status", "md_cooling_get_max_state", "md_cooling_get_cur_state", "md_cooling_set_cur_state", "md_cooling_state_to_mutt_lv", "tx_pwr_throttle", "scg_off_throttle"):
-        if function(source, name) != function(baseline, name):
-            raise ValueError("Unrelated actual function changed: " + name)
+    for name, pin in BASELINE_FUNCTIONS.items():
+        require("Function " + name + " without the MUTT change", function(baseline, name), pin)
     with tempfile.TemporaryDirectory(prefix="md-mutt-") as temporary:
         directory = Path(temporary)
         actual = assemble(tree, source)

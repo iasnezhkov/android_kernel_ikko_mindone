@@ -381,9 +381,6 @@ struct kbase_mem_migrate {
 	spinlock_t free_pages_lock;
 	struct workqueue_struct *free_pages_workq;
 	struct work_struct free_pages_work;
-#if (KERNEL_VERSION(6, 0, 0) > LINUX_VERSION_CODE)
-	struct inode *inode;
-#endif
 };
 
 #if IS_ENABLED(CONFIG_MALI_MTK_UNHANDLED_PAGE_FAULT_DEBUG)
@@ -458,11 +455,7 @@ struct kbase_device {
 #if IS_ENABLED(CONFIG_REGULATOR)
 	struct regulator *regulators[BASE_MAX_NR_CLOCKS_REGULATORS];
 	unsigned int nr_regulators;
-#if (KERNEL_VERSION(6, 0, 0) <= LINUX_VERSION_CODE)
 	int token;
-#elif (KERNEL_VERSION(4, 10, 0) <= LINUX_VERSION_CODE)
-	struct opp_table *opp_table;
-#endif
 #endif
 	char devname[DEVNAME_SIZE];
 	u32 id;

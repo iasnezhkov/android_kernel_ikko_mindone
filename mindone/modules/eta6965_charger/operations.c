@@ -71,6 +71,9 @@ static int eta_enable(void *context, bool enabled)
 			ret = -EBUSY;
 			goto unlock;
 		}
+		ret = eta_update_locked(context, 0, 0x80, 0, true);
+		if (ret)
+			goto unlock;
 	}
 	ret = eta_update_locked(context, 1, 0x10, enabled ? 0x10 : 0, true);
 	if (!ret)
@@ -230,7 +233,7 @@ static int eta_initialize(void *context)
 		bool verify;
 	} settings[] = {
 		{ 6, 0xc0, 0x80, false },
-		{ 0, 0x9f, 0, true },
+		{ 0, 0x80, 0, true },
 		{ 0, 0x60, 0x60, false },
 		{ 1, 1, 1, false },
 		{ 2, 0x80, 0x80, false },
@@ -323,8 +326,7 @@ static int eta_execute(void *context, u32 operation, u32 argument, u32 *output)
 				  eta_encode(argument, 3848000, 32000, 24) << 3,
 				  false);
 	case ETA_OP_SET_IINLIM:
-		return eta_update(context, 0, 0x9f,
-				  argument < 100000 ? 0x80 :
+		return eta_update(context, 0, 0x1f,
 				  eta_encode(argument, 100000, 100000, 31), true);
 	case ETA_OP_SET_ITERM:
 		return eta_update(context, 3, 0x0f,

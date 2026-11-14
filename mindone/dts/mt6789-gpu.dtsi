@@ -24,6 +24,7 @@
 		nvmem-cell-names = "efuse_segment_cell";
 		fhctl-supply = <&fhctl>;
 		gpufreq_wrapper-supply = <&gpufreq_wrapper>;
+		#cooling-cells = <0x02>;
 	};
 
 	gpufreq_wrapper: gpufreq_wrapper {

@@ -1049,11 +1049,7 @@ static inline bool kbase_mem_allow_alloc(struct kbase_context *kctx)
 static inline void kbase_mem_mmgrab(void)
 {
 
-#if KERNEL_VERSION(4, 11, 0) > LINUX_VERSION_CODE
-	atomic_inc(&current->mm->mm_count);
-#else
 	mmgrab(current->mm);
-#endif
 }
 
 static inline int kbase_mem_group_id_get(base_mem_alloc_flags flags)

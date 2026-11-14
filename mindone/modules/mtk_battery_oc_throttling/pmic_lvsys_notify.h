@@ -29,7 +29,19 @@
 #define LVSYS_R_3400    (BIT(15) | 3400)
 #define LVSYS_R_3500	(BIT(15) | 3500)
 
+#if IS_ENABLED(CONFIG_PMIC_LVSYS_NOTIFY)
 int lvsys_register_notifier(struct notifier_block *nb);
 int lvsys_unregister_notifier(struct notifier_block *nb);
+#else
+static inline int lvsys_register_notifier(struct notifier_block *nb)
+{
+	return 0;
+}
+
+static inline int lvsys_unregister_notifier(struct notifier_block *nb)
+{
+	return 0;
+}
+#endif
 
 #endif /* __MTK_LVSYS_NOTIFY_H__ */

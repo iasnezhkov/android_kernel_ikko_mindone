@@ -42,6 +42,8 @@ static int copy_to_user(void *to, const void *from, unsigned long size) {
 }
 static void *netdev_priv(struct net_device *dev) { return dev->private; }
 static bool netif_device_present(struct net_device *dev) { return dev->present; }
+static void netdev_lock_ops(struct net_device *dev) { (void)dev; }
+static void netdev_unlock_ops(struct net_device *dev) { (void)dev; }
 static bool netif_running(struct net_device *dev) { return dev->running; }
 static int atomic_read(const atomic_t *value) { return *value; }
 static void atomic_set(atomic_t *value, int new_value) { *value = new_value; }

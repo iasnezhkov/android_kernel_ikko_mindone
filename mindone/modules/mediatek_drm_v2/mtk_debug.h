@@ -93,5 +93,4 @@ int hrt_lp_switch_get(void);
 #endif
 struct mtk_ddic_dsi_msg;
 int mtk_ddic_dsi_send_cmd(struct mtk_ddic_dsi_msg *cmd_msg, bool blocking);
-extern void mtk_mux_set_quick_switch_chk_cb(void (*callback) (void));
 #endif

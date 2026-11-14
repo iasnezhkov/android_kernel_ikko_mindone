@@ -41,7 +41,7 @@ static bool align_4gb_no_straddle(unsigned long *gap_end, struct vm_unmapped_are
 	return true;
 }
 
-#if (KERNEL_VERSION(6, 1, 0) > LINUX_VERSION_CODE) || !defined(__ANDROID_COMMON_KERNEL__)
+#if !defined(__ANDROID_COMMON_KERNEL__)
 
 static bool align_and_check(unsigned long *gap_end, unsigned long gap_start,
 			    struct vm_unmapped_area_info *info, bool is_shader_code,
@@ -68,85 +68,6 @@ static bool align_and_check(unsigned long *gap_end, unsigned long gap_start,
 static unsigned long kbase_unmapped_area_topdown(struct vm_unmapped_area_info *info,
 						 bool is_shader_code, bool is_same_4gb_page)
 {
-#if (KERNEL_VERSION(6, 1, 0) > LINUX_VERSION_CODE)
-	struct mm_struct *mm = current->mm;
-	struct vm_area_struct *vma;
-	unsigned long length, low_limit, high_limit, gap_start, gap_end;
-
-	length = info->length + info->align_mask;
-	if (length < info->length)
-		return -ENOMEM;
-
-	gap_end = info->high_limit;
-	if (gap_end < length)
-		return -ENOMEM;
-	high_limit = gap_end - length;
-
-	if (info->low_limit > high_limit)
-		return -ENOMEM;
-	low_limit = info->low_limit + length;
-
-	gap_start = mm->highest_vm_end;
-	if (gap_start <= high_limit) {
-		if (align_and_check(&gap_end, gap_start, info, is_shader_code, is_same_4gb_page))
-			return gap_end;
-	}
-
-	if (RB_EMPTY_ROOT(&mm->mm_rb))
-		return -ENOMEM;
-	vma = rb_entry(mm->mm_rb.rb_node, struct vm_area_struct, vm_rb);
-	if (vma->rb_subtree_gap < length)
-		return -ENOMEM;
-
-	while (true) {
-
-		gap_start = vma->vm_prev ? vma->vm_prev->vm_end : 0;
-		if (gap_start <= high_limit && vma->vm_rb.rb_right) {
-			struct vm_area_struct *right =
-				rb_entry(vma->vm_rb.rb_right, struct vm_area_struct, vm_rb);
-			if (right->rb_subtree_gap >= length) {
-				vma = right;
-				continue;
-			}
-		}
-
-check_current:
-
-		gap_end = vma->vm_start;
-		if (gap_end < low_limit)
-			return -ENOMEM;
-		if (gap_start <= high_limit && gap_end - gap_start >= length) {
-
-			if (gap_end > info->high_limit)
-				gap_end = info->high_limit;
-
-			if (align_and_check(&gap_end, gap_start, info, is_shader_code,
-					    is_same_4gb_page))
-				return gap_end;
-		}
-
-		if (vma->vm_rb.rb_left) {
-			struct vm_area_struct *left =
-				rb_entry(vma->vm_rb.rb_left, struct vm_area_struct, vm_rb);
-			if (left->rb_subtree_gap >= length) {
-				vma = left;
-				continue;
-			}
-		}
-
-		while (true) {
-			struct rb_node *prev = &vma->vm_rb;
-
-			if (!rb_parent(prev))
-				return -ENOMEM;
-			vma = rb_entry(rb_parent(prev), struct vm_area_struct, vm_rb);
-			if (prev == vma->vm_rb.rb_right) {
-				gap_start = vma->vm_prev ? vma->vm_prev->vm_end : 0;
-				goto check_current;
-			}
-		}
-	}
-#else
 #ifdef __ANDROID_COMMON_KERNEL__
 	struct vm_unmapped_area_info tmp_info = *info;
 	unsigned long length;
@@ -252,7 +173,6 @@ check_current:
 		mas_reset(&mas);
 	}
 #endif
-#endif
 	return -ENOMEM;
 }
 
@@ -264,13 +184,8 @@ unsigned long kbase_context_get_unmapped_area(struct kbase_context *const kctx,
 	struct vm_unmapped_area_info info;
 	unsigned long align_offset = 0;
 	unsigned long align_mask = 0;
-#if (KERNEL_VERSION(6, 1, 0) <= LINUX_VERSION_CODE)
 	unsigned long high_limit = arch_get_mmap_base(addr, mm->mmap_base);
 	unsigned long low_limit = max_t(unsigned long, PAGE_SIZE, kbase_mmap_min_addr);
-#else
-	unsigned long high_limit = mm->mmap_base;
-	unsigned long low_limit = PAGE_SIZE;
-#endif
 	unsigned int cpu_va_bits = BITS_PER_LONG;
 	unsigned int gpu_pc_bits = kctx->kbdev->gpu_props.log2_program_counter_size;
 	bool is_shader_code = false;
@@ -279,12 +194,10 @@ unsigned long kbase_context_get_unmapped_area(struct kbase_context *const kctx,
 
 	struct kbase_reg_zone *zone = kbase_ctx_reg_zone_get_nolock(kctx, SAME_VA_ZONE);
 	u64 same_va_end_addr = kbase_reg_zone_end_pfn(zone) << PAGE_SHIFT;
-#if (KERNEL_VERSION(6, 1, 0) <= LINUX_VERSION_CODE)
 	const unsigned long mmap_end = arch_get_mmap_end(addr, len, flags);
 
 	if (len > mmap_end - kbase_mmap_min_addr)
 		return -ENOMEM;
-#endif
 
 	if ((flags & MAP_FIXED) || addr)
 		return -EINVAL;
@@ -355,15 +268,8 @@ unsigned long kbase_context_get_unmapped_area(struct kbase_context *const kctx,
 	ret = kbase_unmapped_area_topdown(&info, is_shader_code, is_same_4gb_page);
 
 	if (IS_ERR_VALUE(ret) && high_limit == mm->mmap_base && high_limit < same_va_end_addr) {
-#if (KERNEL_VERSION(6, 1, 0) <= LINUX_VERSION_CODE)
-
 		info.low_limit = TASK_UNMAPPED_BASE;
 		info.high_limit = min_t(u64, mmap_end, same_va_end_addr);
-#else
-
-		info.low_limit = mm->mmap_base;
-		info.high_limit = min_t(u64, TASK_SIZE, same_va_end_addr);
-#endif
 
 		ret = kbase_unmapped_area_topdown(&info, is_shader_code, is_same_4gb_page);
 	}

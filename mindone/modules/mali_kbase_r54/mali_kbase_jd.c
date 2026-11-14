@@ -5,14 +5,9 @@
 #endif
 #include <mali_kbase.h>
 #include <linux/random.h>
-#include <linux/version.h>
 #include <linux/ratelimit.h>
 #include <linux/priority_control_manager.h>
-#if KERNEL_VERSION(4, 11, 0) <= LINUX_VERSION_CODE
 #include <linux/sched/signal.h>
-#else
-#include <linux/signal.h>
-#endif
 
 #include <mali_kbase_jm.h>
 #include <mali_kbase_kinstr_jm.h>
@@ -582,11 +577,7 @@ static bool jd_submit_atom(struct kbase_context *const kctx,
 
 	jctx->job_nr++;
 
-#if KERNEL_VERSION(4, 10, 0) > LINUX_VERSION_CODE
-	katom->start_timestamp.tv64 = 0;
-#else
 	katom->start_timestamp = 0;
-#endif
 	katom->udata = user_atom->udata;
 	katom->kctx = kctx;
 	katom->nr_extres = user_atom->nr_extres;

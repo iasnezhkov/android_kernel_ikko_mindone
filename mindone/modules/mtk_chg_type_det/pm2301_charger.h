@@ -1,1 +1,0 @@
-../mtk_charger_algorithm_class/pm2301_charger.h

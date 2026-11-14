@@ -1,1 +1,0 @@
-../mml/mtk-mml-dle-adaptor.h

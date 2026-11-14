@@ -29,7 +29,7 @@ def require(actual, expected, location):
 def validate(blob, merged):
     root = "/thermal-zones"
     targets = {}
-    for name in ("cpu0", "cpu6", "mali"):
+    for name in ("cpu0", "cpu6", "gpufreq"):
         path = get(blob, "/__symbols__", name, "s")
         require(get(blob, path, "#cooling-cells"), [2], path)
         targets[name] = get(blob, path, "phandle")[0]
@@ -43,11 +43,11 @@ def validate(blob, merged):
                      ("trip-point@1", "hot", 105000, 2000, ())]
             schema[f"cpu_{cluster}{index}"] = (1000, 250, trips + ([hot] if merged else []))
     for name in ("gpu1", "gpu2"):
-        trips = [("trip-point@0", "passive", 85000, 5000, ("mali",))]
+        trips = [("trip-point@0", "passive", 85000, 5000, ("gpufreq",))]
         schema[name] = (1000, 250, trips + ([hot] if merged and name == "gpu1" else []))
     schema["ap_ntc"] = (1000, 250, [
         hot if merged else ("hot", "hot", 42000, 1000, ()),
-        ("trip-point@1", "passive", 46000, 1000, ("cpu0", "cpu6", "mali"))])
+        ("trip-point@1", "passive", 46000, 1000, ("cpu0", "cpu6", "gpufreq"))])
     for name in ("soc1", "soc2", "md", "ltepa_ntc", "pmic6366_pmu",
                  "pmic6366_bk1", "pmic6366_bk2", "pmic6366_bk3", "consys"):
         schema[name] = (0, 0, [hot] if merged else [])

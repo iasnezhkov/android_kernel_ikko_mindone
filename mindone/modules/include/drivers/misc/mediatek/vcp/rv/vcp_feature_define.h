@@ -52,7 +52,11 @@ struct vcp_sub_feature_tb {
 	uint32_t enable;
 };
 
+#if IS_ENABLED(CONFIG_MTK_VCP)
 extern struct vcp_feature_tb feature_table[NUM_FEATURE_ID];
+#else
+static const struct vcp_feature_tb feature_table[NUM_FEATURE_ID] __maybe_unused = {};
+#endif
 
 #endif
 

@@ -152,8 +152,24 @@ static void imgsensor_mutex_unlock(struct IMGSENSOR_SENSOR_INST *psensor_inst)
 #endif
 	}
 #else
-	mutex_lock(&psensor_inst->sensor_mutex);
+	mutex_unlock(&psensor_inst->sensor_mutex);
 #endif
+}
+
+static bool imgsensor_sensor_is_open(struct IMGSENSOR_SENSOR_INST *psensor_inst)
+{
+	struct mutex *plock = &psensor_inst->sensor_mutex;
+	bool open;
+
+#if defined(IMGSENSOR_LEGACY_COMPAT) && !defined(SENSOR_PARALLEISM)
+	if (!psensor_inst->status.arch)
+		plock = &gimgsensor_mutex;
+#endif
+	mutex_lock(plock);
+	open = psensor_inst->state != IMGSENSOR_STATE_CLOSE;
+	mutex_unlock(plock);
+
+	return open;
 }
 
 MINT32 imgsensor_sensor_open(struct IMGSENSOR_SENSOR *psensor)
@@ -460,6 +476,11 @@ MINT32 imgsensor_sensor_close(struct IMGSENSOR_SENSOR *psensor)
 
 		imgsensor_mutex_lock(psensor_inst);
 
+		if (psensor_inst->state != IMGSENSOR_STATE_OPEN) {
+			imgsensor_mutex_unlock(psensor_inst);
+			return ERROR_NONE;
+		}
+
 #ifdef IMGSENSOR_OC_ENABLE
 		imgsensor_oc_interrupt(IMGSENSOR_HW_POWER_STATUS_OFF);
 #endif
@@ -626,7 +647,11 @@ int imgsensor_set_driver(struct IMGSENSOR_SENSOR *psensor)
 	struct IMGSENSOR_HW          *phw          = &pimgsensor->hw;
 	struct IMGSENSOR_SENSOR_INST *psensor_inst = &psensor->inst;
 
-	imgsensor_mutex_init(psensor_inst);
+	if (imgsensor_sensor_is_open(psensor_inst)) {
+		PK_DBG("[%s] sensor %d is open\n", __func__,
+		       psensor_inst->sensor_idx);
+		return -EBUSY;
+	}
 
 	imgsensor_i2c_init(&psensor_inst->i2c_cfg,
 		imgsensor_custom_config[(unsigned int)psensor_inst->sensor_idx].i2c_dev);
@@ -2341,11 +2366,14 @@ static void imgsensor_release_secure_flag(void)
 static int imgsensor_release(struct inode *a_pstInode, struct file *a_pstFile)
 {
 	struct IMGSENSOR *pimgsensor = &gimgsensor;
+	int i;
 
 	mutex_lock(&gimgsensor_open_mutex);
 
 	atomic_dec(&pimgsensor->imgsensor_open_cnt);
 	if (atomic_read(&pimgsensor->imgsensor_open_cnt) == 0) {
+		for (i = 0; i < IMGSENSOR_SENSOR_IDX_MAX_NUM; i++)
+			imgsensor_sensor_close(&pimgsensor->sensor[i]);
 		imgsensor_hw_release_all(&pimgsensor->hw);
 
 #ifdef CONFIG_MTK_CAM_SECURE_I2C
@@ -2489,7 +2517,12 @@ static struct platform_driver gimgsensor_platform_driver = {
 
 static int __init imgsensor_init(void)
 {
+	int i;
+
 	PK_DBG("[camerahw_probe] start\n");
+
+	for (i = 0; i < IMGSENSOR_SENSOR_IDX_MAX_NUM; i++)
+		imgsensor_mutex_init(&gimgsensor.sensor[i].inst);
 
 	if (platform_driver_register(&gimgsensor_platform_driver)) {
 		PK_PR_ERR("failed to register CAMERA_HW driver\n");

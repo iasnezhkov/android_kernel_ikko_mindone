@@ -8,10 +8,12 @@
 
 #include <linux/notifier.h>
 
-#if IS_ENABLED(CONFIG_MTK_SMI)
+#if IS_ENABLED(CONFIG_MTK_SMI_DBG)
 
 int mtk_smi_dbg_register_notifier(struct notifier_block *nb);
 int mtk_smi_dbg_unregister_notifier(struct notifier_block *nb);
+s32 mtk_smi_dbg_hang_detect(char *user);
+s32 mtk_smi_dbg_cg_status(void);
 #else
 
 static inline int mtk_smi_dbg_register_notifier(struct notifier_block *nb)
@@ -24,10 +26,15 @@ static inline int mtk_smi_dbg_unregister_notifier(struct notifier_block *nb)
 	return 0;
 }
 
-#endif /* CONFIG_MTK_SMI */
+static inline s32 mtk_smi_dbg_hang_detect(char *user)
+{
+	return 0;
+}
 
-s32 mtk_smi_dbg_hang_detect(char *user);
-
-s32 mtk_smi_dbg_cg_status(void);
+static inline s32 mtk_smi_dbg_cg_status(void)
+{
+	return 0;
+}
+#endif
 
 #endif /* __MTK_SMI_DEBUG_H */

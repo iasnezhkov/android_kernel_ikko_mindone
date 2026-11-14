@@ -1,1 +1,0 @@
-../gz_ipc_mod/tee_routing_config.h

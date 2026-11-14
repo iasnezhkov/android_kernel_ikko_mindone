@@ -18,9 +18,7 @@ module_param(kbase_page_migration_enabled, int, 0444);
 MODULE_PARM_DESC(kbase_page_migration_enabled,
 		 "Explicitly enable or disable page migration with 1 or 0 respectively.");
 
-#if (KERNEL_VERSION(6, 0, 0) <= LINUX_VERSION_CODE)
 static const struct movable_operations movable_ops;
-#endif
 
 bool kbase_is_page_migration_enabled(void)
 {
@@ -54,16 +52,8 @@ bool kbase_alloc_page_metadata(struct kbase_device *kbdev, struct page *p, dma_a
 	sema_init(&page_md->cpu_map_lock, 1);
 
 	lock_page(p);
-#if (KERNEL_VERSION(6, 0, 0) <= LINUX_VERSION_CODE)
 	mindone_set_page_movable(p, &movable_ops);
 	page_md->status = PAGE_MOVABLE_SET(page_md->status);
-#else
-
-	if (kbdev->mem_migrate.inode && kbdev->mem_migrate.inode->i_mapping) {
-		__SetPageMovable(p, kbdev->mem_migrate.inode->i_mapping);
-		page_md->status = PAGE_MOVABLE_SET(page_md->status);
-	}
-#endif
 	unlock_page(p);
 
 	return true;
@@ -176,19 +166,10 @@ static int kbasep_migrate_page_pt_mapped(struct page *old_page, struct page *new
 		ClearPagePrivate(old_page);
 		put_page(old_page);
 
-#if (KERNEL_VERSION(6, 0, 0) <= LINUX_VERSION_CODE)
 		mindone_set_page_movable(new_page, &movable_ops);
 		spin_lock(&page_md->migrate_lock);
 		page_md->status = PAGE_MOVABLE_SET(page_md->status);
 		spin_unlock(&page_md->migrate_lock);
-#else
-		if (kbdev->mem_migrate.inode->i_mapping) {
-			__SetPageMovable(new_page, kbdev->mem_migrate.inode->i_mapping);
-			spin_lock(&page_md->migrate_lock);
-			page_md->status = PAGE_MOVABLE_SET(page_md->status);
-			spin_unlock(&page_md->migrate_lock);
-		}
-#endif
 		SetPagePrivate(new_page);
 		set_page_private(new_page, (unsigned long)page_md);
 		get_page(new_page);
@@ -270,19 +251,10 @@ static int kbasep_migrate_page_allocated_mapped(struct page *old_page, struct pa
 		mindone_clear_page_movable(old_page);
 		put_page(old_page);
 
-#if (KERNEL_VERSION(6, 0, 0) <= LINUX_VERSION_CODE)
 		mindone_set_page_movable(new_page, &movable_ops);
 		spin_lock(&page_md->migrate_lock);
 		page_md->status = PAGE_MOVABLE_SET(page_md->status);
 		spin_unlock(&page_md->migrate_lock);
-#else
-		if (kbdev->mem_migrate.inode->i_mapping) {
-			__SetPageMovable(new_page, kbdev->mem_migrate.inode->i_mapping);
-			spin_lock(&page_md->migrate_lock);
-			page_md->status = PAGE_MOVABLE_SET(page_md->status);
-			spin_unlock(&page_md->migrate_lock);
-		}
-#endif
 	} else
 		dma_unmap_page(kbdev->dev, new_dma_addr, PAGE_SIZE, DMA_BIDIRECTIONAL);
 
@@ -382,12 +354,7 @@ static bool kbase_page_isolate(struct page *p, isolate_mode_t mode)
 	return IS_PAGE_ISOLATED(page_md->status);
 }
 
-#if (KERNEL_VERSION(6, 0, 0) > LINUX_VERSION_CODE)
-static int kbase_page_migrate(struct address_space *mapping, struct page *new_page,
-			      struct page *old_page, enum migrate_mode mode)
-#else
 static int kbase_page_migrate(struct page *new_page, struct page *old_page, enum migrate_mode mode)
-#endif
 {
 	int err = 0;
 	bool status_mem_pool = false;
@@ -399,9 +366,6 @@ static int kbase_page_migrate(struct page *new_page, struct page *old_page, enum
 	struct kbase_page_metadata *page_md = kbase_page_private(old_page);
 	struct kbase_device *kbdev = NULL;
 
-#if (KERNEL_VERSION(6, 0, 0) > LINUX_VERSION_CODE)
-	CSTD_UNUSED(mapping);
-#endif
 	CSTD_UNUSED(mode);
 
 	if (!kbase_is_page_migration_enabled() || !page_md || !IS_PAGE_MOVABLE(page_md->status))
@@ -534,43 +498,11 @@ static void kbase_page_putback(struct page *p)
 	}
 }
 
-#if (KERNEL_VERSION(6, 0, 0) <= LINUX_VERSION_CODE)
 static const struct movable_operations movable_ops = {
 	.isolate_page = kbase_page_isolate,
 	.migrate_page = kbase_page_migrate,
 	.putback_page = kbase_page_putback,
 };
-#else
-static const struct address_space_operations kbase_address_space_ops = {
-	.isolate_page = kbase_page_isolate,
-	.migratepage = kbase_page_migrate,
-	.putback_page = kbase_page_putback,
-};
-#endif
-
-#if (KERNEL_VERSION(6, 0, 0) > LINUX_VERSION_CODE)
-void kbase_mem_migrate_set_address_space_ops(struct kbase_device *kbdev, struct file *const filp)
-{
-	if (!kbase_is_page_migration_enabled())
-		return;
-
-	mutex_lock(&kbdev->fw_load_lock);
-
-	if (filp) {
-		filp->f_inode->i_mapping->a_ops = &kbase_address_space_ops;
-
-		if (!kbdev->mem_migrate.inode) {
-			kbdev->mem_migrate.inode = filp->f_inode;
-
-			atomic_inc(&filp->f_inode->i_count);
-		} else {
-			WARN_ON(kbdev->mem_migrate.inode != filp->f_inode);
-		}
-	}
-
-	mutex_unlock(&kbdev->fw_load_lock);
-}
-#endif
 
 void kbase_mem_migrate_init(struct kbase_device *kbdev)
 {
@@ -603,7 +535,4 @@ void kbase_mem_migrate_term(struct kbase_device *kbdev)
 
 	if (mem_migrate->free_pages_workq)
 		destroy_workqueue(mem_migrate->free_pages_workq);
-#if (KERNEL_VERSION(6, 0, 0) > LINUX_VERSION_CODE)
-	iput(mem_migrate->inode);
-#endif
 }

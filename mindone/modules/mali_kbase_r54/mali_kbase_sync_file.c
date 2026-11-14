@@ -9,7 +9,6 @@
 #include <linux/fs.h>
 #include <linux/module.h>
 #include <linux/anon_inodes.h>
-#include <linux/version.h>
 #include <linux/uaccess.h>
 #include <linux/sync_file.h>
 #include <linux/slab.h>
@@ -42,16 +41,8 @@ int kbase_sync_fence_out_create(struct kbase_jd_atom *katom, int stream_fd)
 	if (!fence)
 		return -ENOMEM;
 
-#if (KERNEL_VERSION(4, 9, 67) >= LINUX_VERSION_CODE)
-
-	dma_fence_get(fence);
-#endif
-
 	sync_file = sync_file_create(fence);
 	if (!sync_file) {
-#if (KERNEL_VERSION(4, 9, 67) >= LINUX_VERSION_CODE)
-		dma_fence_put(fence);
-#endif
 		kbase_fence_out_remove(katom);
 		return -ENOMEM;
 	}
@@ -124,13 +115,7 @@ static void kbase_fence_wait_callback(struct dma_fence *fence, struct dma_fence_
 	CSTD_UNUSED(fence);
 
 	if (dma_fence_is_signaled(katom->dma_fence.fence_in) &&
-#if (KERNEL_VERSION(4, 11, 0) <= LINUX_VERSION_CODE || \
-     (KERNEL_VERSION(4, 10, 0) > LINUX_VERSION_CODE && \
-      KERNEL_VERSION(4, 9, 68) <= LINUX_VERSION_CODE))
 	    katom->dma_fence.fence_in->error < 0)
-#else
-	    katom->dma_fence.fence_in->status < 0)
-#endif
 		katom->event_code = BASE_JD_EVENT_JOB_CANCELLED;
 
 	INIT_WORK(&katom->work, kbase_sync_fence_wait_worker);
@@ -255,11 +240,7 @@ void kbase_sync_fence_info_get(struct dma_fence *fence, struct kbase_sync_fence_
 	else
 		info->status = 0;
 
-#if (KERNEL_VERSION(5, 1, 0) > LINUX_VERSION_CODE)
-	scnprintf(info->name, sizeof(info->name), "%llu#%u", fence->context, fence->seqno);
-#else
 	scnprintf(info->name, sizeof(info->name), "%llu#%llu", fence->context, fence->seqno);
-#endif
 }
 
 #if !MALI_USE_CSF

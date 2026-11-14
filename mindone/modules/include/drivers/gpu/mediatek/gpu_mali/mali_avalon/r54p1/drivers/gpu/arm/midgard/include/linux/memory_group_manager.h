@@ -4,11 +4,6 @@
 
 #include <linux/mm.h>
 #include <linux/of.h>
-#include <linux/version.h>
-
-#if (KERNEL_VERSION(4, 17, 0) > LINUX_VERSION_CODE)
-typedef int vm_fault_t;
-#endif
 
 #define MEMORY_GROUP_MANAGER_NR_GROUPS (16)
 #if IS_ENABLED(CONFIG_MALI_MTK_SLC_ALL_CACHE_MODE)

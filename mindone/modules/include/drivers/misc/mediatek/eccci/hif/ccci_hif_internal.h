@@ -19,7 +19,6 @@
 
 extern void *ccci_hif[CCCI_HIF_NUM];
 extern struct ccci_hif_ops *ccci_hif_op[CCCI_HIF_NUM];
-extern void set_ccmni_rps(unsigned long value);
 
 struct ccci_log {
 	struct ccci_header msg;

@@ -203,7 +203,14 @@ extern void memcpy_to_vcp(void __iomem *trg,
 extern void memcpy_from_vcp(void *trg, const void __iomem *src,
 		int size);
 extern int reset_vcp(int reset);
+#if IS_ENABLED(CONFIG_MTK_VCP)
 extern struct device *vcp_get_io_device(enum VCP_IOMMU_DEV io_num);
+#else
+static inline struct device *vcp_get_io_device(enum VCP_IOMMU_DEV io_num)
+{
+	return NULL;
+}
+#endif
 
 extern int vcp_check_resource(void);
 void set_vcp_mpu(void);

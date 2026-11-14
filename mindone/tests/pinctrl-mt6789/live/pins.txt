@@ -1,0 +1,223 @@
+registered pins: 222
+pin 0 (GPIO0) 0:pinctrl_mtk_v2 000: 0000001100
+pin 1 (GPIO1) 1:pinctrl_mtk_v2 001: 0000001100
+pin 2 (GPIO2) 2:pinctrl_mtk_v2 002: 0000001110
+pin 3 (GPIO3) 3:pinctrl_mtk_v2 003: 0100001100
+pin 4 (GPIO4) 4:pinctrl_mtk_v2 004: 0001001111
+pin 5 (GPIO5) 5:pinctrl_mtk_v2 005: 0001001111
+pin 6 (GPIO6) 6:pinctrl_mtk_v2 006: 0001001111
+pin 7 (GPIO7) 7:pinctrl_mtk_v2 007: 0000001100
+pin 8 (GPIO8) 8:pinctrl_mtk_v2 008: 0001001111
+pin 9 (GPIO9) 9:pinctrl_mtk_v2 009: 0100011111
+pin 10 (GPIO10) 10:pinctrl_mtk_v2 010: 0001011100
+pin 11 (GPIO11) 11:pinctrl_mtk_v2 011: 0001011111
+pin 12 (GPIO12) 12:pinctrl_mtk_v2 012: 0100011110
+pin 13 (GPIO13) 13:pinctrl_mtk_v2 013: 0001001111
+pin 14 (GPIO14) 14:pinctrl_mtk_v2 014: 0001001111
+pin 15 (GPIO15) 15:pinctrl_mtk_v2 015: 0100000110
+pin 16 (GPIO16) 16:pinctrl_mtk_v2 016: 0100000110
+pin 17 (GPIO17) 17:pinctrl_mtk_v2 017: 0000000110
+pin 18 (GPIO18) 18:pinctrl_mtk_v2 018: 0100000110
+pin 19 (GPIO19) 19:pinctrl_mtk_v2 019: 0100000110
+pin 20 (GPIO20) 20:pinctrl_mtk_v2 020: 0100000110
+pin 21 (GPIO21) 21:pinctrl_mtk_v2 021: 0100000110
+pin 22 (GPIO22) 22:pinctrl_mtk_v2 022: 0100000110
+pin 23 (GPIO23) 23:pinctrl_mtk_v2 023: 1001000111
+pin 24 (GPIO24) 24:pinctrl_mtk_v2 024: 0000000110
+pin 25 (GPIO25) 25:pinctrl_mtk_v2 025: 0100001110
+pin 26 (GPIO26) 26:pinctrl_mtk_v2 026: 2000001110
+pin 27 (GPIO27) 27:pinctrl_mtk_v2 027: 1000001110
+pin 28 (GPIO28) 28:pinctrl_mtk_v2 028: 1001001111
+pin 29 (GPIO29) 29:pinctrl_mtk_v2 029: 1001001100
+pin 30 (GPIO30) 30:pinctrl_mtk_v2 030: 1000011100
+pin 31 (GPIO31) 31:pinctrl_mtk_v2 031: 1001011100
+pin 32 (GPIO32) 32:pinctrl_mtk_v2 032: 1000011100
+pin 33 (GPIO33) 33:pinctrl_mtk_v2 033: 1000011110
+pin 34 (GPIO34) 34:pinctrl_mtk_v2 034: 6000010110
+pin 35 (GPIO35) 35:pinctrl_mtk_v2 035: 6000010110
+pin 36 (GPIO36) 36:pinctrl_mtk_v2 036: 6000010100
+pin 37 (GPIO37) 37:pinctrl_mtk_v2 037: 6000010110
+pin 38 (GPIO38) 38:pinctrl_mtk_v2 038: 2000011100
+pin 39 (GPIO39) 39:pinctrl_mtk_v2 039: 2001011100
+pin 40 (GPIO40) 40:pinctrl_mtk_v2 040: 2000011100
+pin 41 (GPIO41) 41:pinctrl_mtk_v2 041: 2000011110
+pin 42 (GPIO42) 42:pinctrl_mtk_v2 042: 4001010111
+pin 43 (GPIO43) 43:pinctrl_mtk_v2 043: 4001010100
+pin 44 (GPIO44) 44:pinctrl_mtk_v2 044: 4001010111
+pin 45 (GPIO45) 45:pinctrl_mtk_v2 045: 4001010100
+pin 46 (GPIO46) 46:pinctrl_mtk_v2 046: 6000010110
+pin 47 (GPIO47) 47:pinctrl_mtk_v2 047: 6000010110
+pin 48 (GPIO48) 48:pinctrl_mtk_v2 048: 0100010110
+pin 49 (GPIO49) 49:pinctrl_mtk_v2 049: 6000010110
+pin 50 (GPIO50) 50:pinctrl_mtk_v2 050: 2000001100
+pin 51 (GPIO51) 51:pinctrl_mtk_v2 051: 2001001100
+pin 52 (GPIO52) 52:pinctrl_mtk_v2 052: 2001001100
+pin 53 (GPIO53) 53:pinctrl_mtk_v2 053: 2000001110
+pin 54 (GPIO54) 54:pinctrl_mtk_v2 054: 0000011110 (1 0)
+pin 55 (GPIO55) 55:pinctrl_mtk_v2 055: 0000011110 (1 0)
+pin 56 (GPIO56) 56:pinctrl_mtk_v2 056: 0001011111 (0 1)
+pin 57 (GPIO57) 57:pinctrl_mtk_v2 057: 0001011111 (0 1)
+pin 58 (GPIO58) 58:pinctrl_mtk_v2 058: 0000011110 (0 1)
+pin 59 (GPIO59) 59:pinctrl_mtk_v2 059: 0000011110 (0 1)
+pin 60 (GPIO60) 60:pinctrl_mtk_v2 060: 0000011110 (0 1)
+pin 61 (GPIO61) 61:pinctrl_mtk_v2 061: 0000011110 (0 1)
+pin 62 (GPIO62) 62:pinctrl_mtk_v2 062: 0000011110 (0 1)
+pin 63 (GPIO63) 63:pinctrl_mtk_v2 063: 0000011110 (0 1)
+pin 64 (GPIO64) 64:pinctrl_mtk_v2 064: 0000011110 (0 1)
+pin 65 (GPIO65) 65:pinctrl_mtk_v2 065: 0000011110 (0 1)
+pin 66 (GPIO66) 66:pinctrl_mtk_v2 066: 1001000111 (0 1)
+pin 67 (GPIO67) 67:pinctrl_mtk_v2 067: 1001001111 (0 1)
+pin 68 (GPIO68) 68:pinctrl_mtk_v2 068: 1000001111 (0 1)
+pin 69 (GPIO69) 69:pinctrl_mtk_v2 069: 1000001111 (0 1)
+pin 70 (GPIO70) 70:pinctrl_mtk_v2 070: 1001001110
+pin 71 (GPIO71) 71:pinctrl_mtk_v2 071: 1000031110 (1 0)
+pin 72 (GPIO72) 72:pinctrl_mtk_v2 072: 1000031111 (0 1)
+pin 73 (GPIO73) 73:pinctrl_mtk_v2 073: 1000031111 (0 1)
+pin 74 (GPIO74) 74:pinctrl_mtk_v2 074: 1000031111 (0 1)
+pin 75 (GPIO75) 75:pinctrl_mtk_v2 075: 1000031111 (0 1)
+pin 76 (GPIO76) 76:pinctrl_mtk_v2 076: 1000031111 (0 1)
+pin 77 (GPIO77) 77:pinctrl_mtk_v2 077: 1000011110 (1 0)
+pin 78 (GPIO78) 78:pinctrl_mtk_v2 078: 1001011110 (1 0)
+pin 79 (GPIO79) 79:pinctrl_mtk_v2 079: 1001011111 (1 0)
+pin 80 (GPIO80) 80:pinctrl_mtk_v2 080: 1000001110 (1 0)
+pin 81 (GPIO81) 81:pinctrl_mtk_v2 081: 1000001110 (1 0)
+pin 82 (GPIO82) 82:pinctrl_mtk_v2 082: 1000001111 (1 0)
+pin 83 (GPIO83) 83:pinctrl_mtk_v2 083: 1000001110
+pin 84 (GPIO84) 84:pinctrl_mtk_v2 084: 0100001110
+pin 85 (GPIO85) 85:pinctrl_mtk_v2 085: 0111001100
+pin 86 (GPIO86) 86:pinctrl_mtk_v2 086: 1000000110
+pin 87 (GPIO87) 87:pinctrl_mtk_v2 087: 1000000110
+pin 88 (GPIO88) 88:pinctrl_mtk_v2 088: 1000000110
+pin 89 (GPIO89) 89:pinctrl_mtk_v2 089: 1000000110
+pin 90 (GPIO90) 90:pinctrl_mtk_v2 090: 1000000110
+pin 91 (GPIO91) 91:pinctrl_mtk_v2 091: 1000000110
+pin 92 (GPIO92) 92:pinctrl_mtk_v2 092: 1000010110
+pin 93 (GPIO93) 93:pinctrl_mtk_v2 093: 1000010110
+pin 94 (GPIO94) 94:pinctrl_mtk_v2 094: 1000010110
+pin 95 (GPIO95) 95:pinctrl_mtk_v2 095: 1000010110
+pin 96 (GPIO96) 96:pinctrl_mtk_v2 096: 1000010110
+pin 97 (GPIO97) 97:pinctrl_mtk_v2 097: 1000010110
+pin 98 (GPIO98) 98:pinctrl_mtk_v2 098: 1000010110
+pin 99 (GPIO99) 99:pinctrl_mtk_v2 099: 1000010110
+pin 100 (GPIO100) 100:pinctrl_mtk_v2 100: 0000010110
+pin 101 (GPIO101) 101:pinctrl_mtk_v2 101: 0000010110
+pin 102 (GPIO102) 102:pinctrl_mtk_v2 102: 1000010110
+pin 103 (GPIO103) 103:pinctrl_mtk_v2 103: 2000010110
+pin 104 (GPIO104) 104:pinctrl_mtk_v2 104: 2000010100
+pin 105 (GPIO105) 105:pinctrl_mtk_v2 105: 1000010110
+pin 106 (GPIO106) 106:pinctrl_mtk_v2 106: 1000010110
+pin 107 (GPIO107) 107:pinctrl_mtk_v2 107: 1000010110
+pin 108 (GPIO108) 108:pinctrl_mtk_v2 108: 1000000110
+pin 109 (GPIO109) 109:pinctrl_mtk_v2 109: 1000000110
+pin 110 (GPIO110) 110:pinctrl_mtk_v2 110: 1000000110
+pin 111 (GPIO111) 111:pinctrl_mtk_v2 111: 0000000100
+pin 112 (GPIO112) 112:pinctrl_mtk_v2 112: 1000000100
+pin 113 (GPIO113) 113:pinctrl_mtk_v2 113: 1000000110
+pin 114 (GPIO114) 114:pinctrl_mtk_v2 114: 1000000100
+pin 115 (GPIO115) 115:pinctrl_mtk_v2 115: 1000000110
+pin 116 (GPIO116) 116:pinctrl_mtk_v2 116: 1000000100
+pin 117 (GPIO117) 117:pinctrl_mtk_v2 117: 1000000110
+pin 118 (GPIO118) 118:pinctrl_mtk_v2 118: 1000000100
+pin 119 (GPIO119) 119:pinctrl_mtk_v2 119: 1000000110
+pin 120 (GPIO120) 120:pinctrl_mtk_v2 120: 1000010100
+pin 121 (GPIO121) 121:pinctrl_mtk_v2 121: 1000010110
+pin 122 (GPIO122) 122:pinctrl_mtk_v2 122: 1000000100
+pin 123 (GPIO123) 123:pinctrl_mtk_v2 123: 1000000100
+pin 124 (GPIO124) 124:pinctrl_mtk_v2 124: 1000000110
+pin 125 (GPIO125) 125:pinctrl_mtk_v2 125: 1000000110
+pin 126 (GPIO126) 126:pinctrl_mtk_v2 126: 0000010110
+pin 127 (GPIO127) 127:pinctrl_mtk_v2 127: 1000000110
+pin 128 (GPIO128) 128:pinctrl_mtk_v2 128: 1000000110
+pin 129 (GPIO129) 129:pinctrl_mtk_v2 129: 0000010110
+pin 130 (GPIO130) 130:pinctrl_mtk_v2 130: 0100001111 (rsel = 7)
+pin 131 (GPIO131) 131:pinctrl_mtk_v2 131: 0100001111 (rsel = 7)
+pin 132 (GPIO132) 132:pinctrl_mtk_v2 132: 2001000111 (rsel = 7)
+pin 133 (GPIO133) 133:pinctrl_mtk_v2 133: 2001000111 (rsel = 7)
+pin 134 (GPIO134) 134:pinctrl_mtk_v2 134: 1001001111 (rsel = 7)
+pin 135 (GPIO135) 135:pinctrl_mtk_v2 135: 1001001111 (rsel = 7)
+pin 136 (GPIO136) 136:pinctrl_mtk_v2 136: 1001001111 (rsel = 7)
+pin 137 (GPIO137) 137:pinctrl_mtk_v2 137: 1001001111 (rsel = 7)
+pin 138 (GPIO138) 138:pinctrl_mtk_v2 138: 1001001111 (rsel = 7)
+pin 139 (GPIO139) 139:pinctrl_mtk_v2 139: 1001001111 (rsel = 7)
+pin 140 (GPIO140) 140:pinctrl_mtk_v2 140: 1001001111 (rsel = 7)
+pin 141 (GPIO141) 141:pinctrl_mtk_v2 141: 1001001111 (rsel = 7)
+pin 142 (GPIO142) 142:pinctrl_mtk_v2 142: 1001001111 (rsel = 7)
+pin 143 (GPIO143) 143:pinctrl_mtk_v2 143: 1001001111 (rsel = 7)
+pin 144 (GPIO144) 144:pinctrl_mtk_v2 144: 1001001111 (rsel = 7)
+pin 145 (GPIO145) 145:pinctrl_mtk_v2 145: 1001001111 (rsel = 7)
+pin 146 (GPIO146) 146:pinctrl_mtk_v2 146: 1001001111 (rsel = 7)
+pin 147 (GPIO147) 147:pinctrl_mtk_v2 147: 1001001111 (rsel = 7)
+pin 148 (GPIO148) 148:pinctrl_mtk_v2 148: 2001001111 (rsel = 7)
+pin 149 (GPIO149) 149:pinctrl_mtk_v2 149: 2001001111 (rsel = 7)
+pin 150 (GPIO150) 150:pinctrl_mtk_v2 150: 0111001110
+pin 151 (GPIO151) 151:pinctrl_mtk_v2 151: 0100001110
+pin 152 (GPIO152) 152:pinctrl_mtk_v2 152: 0100001110
+pin 153 (GPIO153) 153:pinctrl_mtk_v2 153: 0111001110
+pin 154 (GPIO154) 154:pinctrl_mtk_v2 154: 0100001110
+pin 155 (GPIO155) 155:pinctrl_mtk_v2 155: 0100001110
+pin 156 (GPIO156) 156:pinctrl_mtk_v2 156: 0111001110
+pin 157 (GPIO157) 157:pinctrl_mtk_v2 157: 0111001110
+pin 158 (GPIO158) 158:pinctrl_mtk_v2 158: 0100000110
+pin 159 (GPIO159) 159:pinctrl_mtk_v2 159: 0111000110
+pin 160 (GPIO160) 160:pinctrl_mtk_v2 160: 1001021100
+pin 161 (GPIO161) 161:pinctrl_mtk_v2 161: 1000021100
+pin 162 (GPIO162) 162:pinctrl_mtk_v2 162: 1001021100
+pin 163 (GPIO163) 163:pinctrl_mtk_v2 163: 1000021110
+pin 164 (GPIO164) 164:pinctrl_mtk_v2 164: 1001001100
+pin 165 (GPIO165) 165:pinctrl_mtk_v2 165: 1001001100
+pin 166 (GPIO166) 166:pinctrl_mtk_v2 166: 1000001100
+pin 167 (GPIO167) 167:pinctrl_mtk_v2 167: 1000XX1110
+pin 168 (GPIO168) 168:pinctrl_mtk_v2 168: 1001000100
+pin 169 (GPIO169) 169:pinctrl_mtk_v2 169: 1001001100
+pin 170 (GPIO170) 170:pinctrl_mtk_v2 170: 1000001100
+pin 171 (GPIO171) 171:pinctrl_mtk_v2 171: 0000001110
+pin 172 (GPIO172) 172:pinctrl_mtk_v2 172: 0000001110
+pin 173 (GPIO173) 173:pinctrl_mtk_v2 173: 1000001110
+pin 174 (GPIO174) 174:pinctrl_mtk_v2 174: 1000001110
+pin 175 (GPIO175) 175:pinctrl_mtk_v2 175: 0000001110
+pin 176 (GPIO176) 176:pinctrl_mtk_v2 176: 0000001100
+pin 177 (GPIO177) 177:pinctrl_mtk_v2 177: 1001010110
+pin 178 (GPIO178) 178:pinctrl_mtk_v2 178: 1001010110
+pin 179 (GPIO179) 179:pinctrl_mtk_v2 179: 1001010110
+pin 180 (GPIO180) 180:pinctrl_mtk_v2 180: 1001010110
+pin 181 (GPIO181) 181:pinctrl_mtk_v2 181: 1001000110
+pin 182 (GPIO182) 182:pinctrl_mtk_v2 182: 1000000110
+pin 183 (GPIO183) 183:pinctrl_mtk_v2 183: 1000000110
+pin 184 (GPIO184) 184:pinctrl_mtk_v2 184: 1000000110
+pin 185 (GPIO185) 185:pinctrl_mtk_v2 185: 1000000110
+pin 186 (GPIO186) 186:pinctrl_mtk_v2 186: 1000001111
+pin 187 (GPIO187) 187:pinctrl_mtk_v2 187: 1001001111
+pin 188 (GPIO188) 0:?
+pin 189 (GPIO189) 0:?
+pin 190 (GPIO190) 0:?
+pin 191 (GPIO191) 0:?
+pin 192 (GPIO192) 0:?
+pin 193 (GPIO193) 0:?
+pin 194 (GPIO194) 0:?
+pin 195 (GPIO195) 0:?
+pin 196 (GPIO196) 0:?
+pin 197 (GPIO197) 0:?
+pin 198 (GPIO198) 0:?
+pin 199 (GPIO199) 0:?
+pin 200 (GPIO200) 0:?
+pin 201 (GPIO201) 0:?
+pin 202 (GPIO202) 0:?
+pin 203 (GPIO203) 0:?
+pin 204 (GPIO204) 0:?
+pin 205 (GPIO205) 0:?
+pin 206 (GPIO206) 0:?
+pin 207 (GPIO207) 0:?
+pin 208 (GPIO208) 0:?
+pin 209 (GPIO209) 0:?
+pin 210 (GPIO210) 0:?
+pin 211 (GPIO211) 0:?
+pin 212 (GPIO212) 0:?
+pin 213 (GPIO213) 0:?
+pin 214 (GPIO214) 0:?
+pin 215 (GPIO215) 0:?
+pin 216 (GPIO216) 0:?
+pin 217 (GPIO217) 0:?
+pin 218 (GPIO218) 0:?
+pin 219 (GPIO219) 0:?
+pin 220 (GPIO220) 0:?
+pin 221 (GPIO221) 0:?

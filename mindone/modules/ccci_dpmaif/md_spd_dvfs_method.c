@@ -164,49 +164,44 @@ static const struct dvfs_ref s_ul_dvfs_tbl_v7[] = { /* 6:2 for mt6855 */
 	{0LL,          {-1, -1, -1, -1}, -1, 0xFF, 0xFF, 0xFF, 0xFF, {-1, -1, -1, -1}},
 };
 
-#define QOS_PREFER_CPU_BITMAP_V0_2_6	(0xC0)
-#define QOS_PREFER_CPU_BITMAP_V1_4_4	(0xF0)
-#define QOS_PREFER_CPU_BITMAP_V2_1_3_4	(0x70)
 
 struct dvfs_ref_tbl {
 	const struct dvfs_ref *dl_tbl;
 	const struct dvfs_ref *ul_tbl;
 	unsigned int dl_tbl_item_num;
 	unsigned int ul_tbl_item_num;
-	unsigned int prefer_core_bitmap;
 };
 
 static const struct dvfs_ref_tbl table_entry[] = {
 	{s_dl_dvfs_tbl_v0, s_ul_dvfs_tbl_v0, (unsigned int)ARRAY_SIZE(s_dl_dvfs_tbl_v0),
-		(unsigned int)ARRAY_SIZE(s_ul_dvfs_tbl_v0), QOS_PREFER_CPU_BITMAP_V0_2_6},
+		(unsigned int)ARRAY_SIZE(s_ul_dvfs_tbl_v0)},
 
 	{s_dl_dvfs_tbl_v1, s_ul_dvfs_tbl_v1, (unsigned int)ARRAY_SIZE(s_dl_dvfs_tbl_v1),
-		(unsigned int)ARRAY_SIZE(s_ul_dvfs_tbl_v1), QOS_PREFER_CPU_BITMAP_V0_2_6},
+		(unsigned int)ARRAY_SIZE(s_ul_dvfs_tbl_v1)},
 
 	{s_dl_dvfs_tbl_v2, s_ul_dvfs_tbl_v2, (unsigned int)ARRAY_SIZE(s_dl_dvfs_tbl_v2),
-		(unsigned int)ARRAY_SIZE(s_ul_dvfs_tbl_v2), QOS_PREFER_CPU_BITMAP_V1_4_4},
+		(unsigned int)ARRAY_SIZE(s_ul_dvfs_tbl_v2)},
 
 	{s_dl_dvfs_tbl_v3, s_ul_dvfs_tbl_v3, (unsigned int)ARRAY_SIZE(s_dl_dvfs_tbl_v3),
-		(unsigned int)ARRAY_SIZE(s_ul_dvfs_tbl_v3), QOS_PREFER_CPU_BITMAP_V2_1_3_4},
+		(unsigned int)ARRAY_SIZE(s_ul_dvfs_tbl_v3)},
 
 	{s_dl_dvfs_tbl_v4, s_ul_dvfs_tbl_v4, (unsigned int)ARRAY_SIZE(s_dl_dvfs_tbl_v4),
-		(unsigned int)ARRAY_SIZE(s_ul_dvfs_tbl_v4), QOS_PREFER_CPU_BITMAP_V2_1_3_4},
+		(unsigned int)ARRAY_SIZE(s_ul_dvfs_tbl_v4)},
 
 	{s_dl_dvfs_tbl_v5, s_ul_dvfs_tbl_v5, (unsigned int)ARRAY_SIZE(s_dl_dvfs_tbl_v5),
-		(unsigned int)ARRAY_SIZE(s_ul_dvfs_tbl_v5), QOS_PREFER_CPU_BITMAP_V2_1_3_4},
+		(unsigned int)ARRAY_SIZE(s_ul_dvfs_tbl_v5)},
 
 	{s_dl_dvfs_tbl_v6, s_ul_dvfs_tbl_v6, (unsigned int)ARRAY_SIZE(s_dl_dvfs_tbl_v6),
-		(unsigned int)ARRAY_SIZE(s_ul_dvfs_tbl_v6), QOS_PREFER_CPU_BITMAP_V0_2_6},
+		(unsigned int)ARRAY_SIZE(s_ul_dvfs_tbl_v6)},
 
 	{s_dl_dvfs_tbl_v7, s_ul_dvfs_tbl_v7, (unsigned int)ARRAY_SIZE(s_dl_dvfs_tbl_v7),
-		(unsigned int)ARRAY_SIZE(s_ul_dvfs_tbl_v7), QOS_PREFER_CPU_BITMAP_V0_2_6},
+		(unsigned int)ARRAY_SIZE(s_ul_dvfs_tbl_v7)},
 };
 
 static const struct dvfs_ref *s_dl_dvfs_tbl;
 static int s_dl_dvfs_items_num;
 static const struct dvfs_ref *s_ul_dvfs_tbl;
 static int s_ul_dvfs_items_num;
-static unsigned int s_prefer_cpu_bitmap;
 
 static int s_tx_done_affinity[4] = {-1};
 static struct task_struct *s_rx_push_task;
@@ -241,8 +236,6 @@ static void spd_qos_tbl_init(void)
 
 	s_ul_dvfs_tbl = table_entry[ver].ul_tbl;
 	s_ul_dvfs_items_num = table_entry[ver].ul_tbl_item_num;
-
-	s_prefer_cpu_bitmap = table_entry[ver].prefer_core_bitmap;
 
 	if (s_ul_dvfs_items_num)
 		s_curr_ul_idx = s_ul_dvfs_items_num - 1;
@@ -289,7 +282,7 @@ static inline int get_speed_hint(u64 speed, int curr_idx,
 
 static int s_final_cpu_freq[MAX_C_NUM];
 static int s_dram_lvl;
-unsigned int s_task_affinity, s_rps;
+unsigned int s_task_affinity;
 
 static inline void apply_qos_cpu_freq(void)
 {
@@ -326,32 +319,6 @@ static inline void apply_qos_dram_freq(void)
 		s_dram_lvl = dram_lvl;
 		mtk_ccci_qos_dram_update(s_dram_lvl);
 	}
-}
-
-static inline void apply_qos_rps(void)
-{
-	const struct dvfs_ref *dl_ref, *ul_ref;
-	int case_type, dl_rps = 0, ul_rps = 0;
-
-	dl_ref = &s_dl_dvfs_tbl[s_curr_dl_idx];
-	ul_ref = &s_ul_dvfs_tbl[s_curr_ul_idx];
-	dl_rps = dl_ref->rps;
-	ul_rps = ul_ref->rps;
-
-	if (dl_ref->rps & s_prefer_cpu_bitmap) {
-		s_rps = dl_ref->rps;
-		case_type = 0;
-	} else if (ul_ref->rps & s_prefer_cpu_bitmap) {
-		s_rps = ul_ref->rps;
-		case_type = 1;
-	} else {
-		s_rps = dl_ref->rps;
-		case_type = 2;
-	}
-
-	pr_info("ccci: spd: rps val:0x%x[dl:0x%x -- ul:0x%x]<%d>\n",
-			s_rps, dl_rps, ul_rps, case_type);
-	set_ccmni_rps(s_rps);
 }
 
 static inline void apply_qos_isr(void)
@@ -474,7 +441,6 @@ static inline void spd_qos_method(u64 dl_speed[], u32 dl_num, u64 ul_speed[], u3
 		apply_qos_cpu_freq();
 		apply_qos_dram_freq();
 		apply_qos_isr();
-		apply_qos_rps();
 		update_tx_done_affinity();
 
 		if (dl_change)

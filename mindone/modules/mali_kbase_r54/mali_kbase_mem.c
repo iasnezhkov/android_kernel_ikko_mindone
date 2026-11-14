@@ -3,7 +3,6 @@
 #include <linux/kernel.h>
 #include <linux/bug.h>
 #include <linux/compat.h>
-#include <linux/version.h>
 #include <linux/log2.h>
 #if IS_ENABLED(CONFIG_OF)
 #include <linux/of_platform.h>
@@ -1766,14 +1765,9 @@ void kbase_mem_kref_free(struct kref *kref)
 			WARN_ONCE(alloc->imported.umm.current_mapping_usage_count != 1,
 				  "WARNING: expected exactly 1 mapping, got %d",
 				  alloc->imported.umm.current_mapping_usage_count);
-#if (KERNEL_VERSION(6, 1, 55) <= LINUX_VERSION_CODE)
 			dma_buf_unmap_attachment_unlocked(alloc->imported.umm.dma_attachment,
 							  alloc->imported.umm.sgt,
 							  DMA_BIDIRECTIONAL);
-#else
-			dma_buf_unmap_attachment(alloc->imported.umm.dma_attachment,
-						 alloc->imported.umm.sgt, DMA_BIDIRECTIONAL);
-#endif
 			kbase_remove_dma_buf_usage(alloc->imported.umm.kctx, alloc);
 		}
 		dma_buf_detach(alloc->imported.umm.dma_buf, alloc->imported.umm.dma_attachment);
@@ -3259,12 +3253,8 @@ int kbase_user_buf_dma_map_pages(struct kbase_context *kctx, struct kbase_va_reg
 
 	for (i = 0; i < pinned_pages; i++) {
 		dma_addr_t dma_addr;
-#if (KERNEL_VERSION(4, 10, 0) > LINUX_VERSION_CODE)
-		dma_addr = dma_map_page(dev, pages[i], 0, PAGE_SIZE, dma_dir);
-#else
 		dma_addr = dma_map_page_attrs(dev, pages[i], 0, PAGE_SIZE, dma_dir,
 					      DMA_ATTR_SKIP_CPU_SYNC);
-#endif
 		if (dma_mapping_error(dev, dma_addr))
 			goto unwind_dma_map;
 
@@ -3282,11 +3272,7 @@ unwind_dma_map:
 		dma_addr_t dma_addr = alloc->imported.user_buf.dma_addrs[i];
 
 		dma_sync_single_for_device(dev, dma_addr, PAGE_SIZE, dma_dir);
-#if (KERNEL_VERSION(4, 10, 0) > LINUX_VERSION_CODE)
-		dma_unmap_page(dev, dma_addr, PAGE_SIZE, dma_dir);
-#else
 		dma_unmap_page_attrs(dev, dma_addr, PAGE_SIZE, dma_dir, DMA_ATTR_SKIP_CPU_SYNC);
-#endif
 	}
 
 	return -ENOMEM;
@@ -3387,13 +3373,8 @@ void kbase_user_buf_dma_unmap_pages(struct kbase_context *kctx, struct kbase_va_
 			user_buf_sync_read_only_page(kctx, imported_size, dma_addr,
 						     offset_within_page);
 
-#if (KERNEL_VERSION(4, 10, 0) > LINUX_VERSION_CODE)
-		dma_unmap_page(kctx->kbdev->dev, alloc->imported.user_buf.dma_addrs[i], PAGE_SIZE,
-			       dma_dir);
-#else
 		dma_unmap_page_attrs(kctx->kbdev->dev, alloc->imported.user_buf.dma_addrs[i],
 				     PAGE_SIZE, dma_dir, DMA_ATTR_SKIP_CPU_SYNC);
-#endif
 
 		if (writable)
 			set_page_dirty_lock(pages[i]);

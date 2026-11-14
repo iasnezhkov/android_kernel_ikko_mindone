@@ -13,7 +13,6 @@
 #include <mali_kbase_mem_linux.h>
 #include <tl/mali_kbase_tracepoints.h>
 #include <mali_linux_trace.h>
-#include <linux/version.h>
 #include <linux/ktime.h>
 #include <linux/pfn.h>
 #include <linux/sched.h>
@@ -634,7 +633,6 @@ out_cleanup:
 	return ret;
 }
 
-#if KERNEL_VERSION(5, 6, 0) <= LINUX_VERSION_CODE
 static void *dma_buf_kmap_page(struct kbase_mem_phy_alloc *gpu_alloc, unsigned long page_num,
 			       struct page **page)
 {
@@ -662,7 +660,6 @@ static void *dma_buf_kmap_page(struct kbase_mem_phy_alloc *gpu_alloc, unsigned l
 
 	return NULL;
 }
-#endif
 
 static int kbase_mem_copy_from_extres(struct kbase_context *kctx,
 				      struct kbase_debug_copy_buffer *buf_data)
@@ -716,23 +713,15 @@ static int kbase_mem_copy_from_extres(struct kbase_context *kctx,
 
 		for (i = 0; i < dma_to_copy / PAGE_SIZE && target_page_nr < buf_data->nr_pages;
 		     i++) {
-#if KERNEL_VERSION(5, 6, 0) <= LINUX_VERSION_CODE
 			struct page *pg;
 			void *extres_page = dma_buf_kmap_page(gpu_alloc, i, &pg);
-#else
-			void *extres_page = dma_buf_kmap(dma_buf, i);
-#endif
 			if (extres_page) {
 				ret = kbase_mem_copy_to_pinned_user_pages(pages, extres_page,
 									  &to_copy,
 									  buf_data->nr_pages,
 									  &target_page_nr, offset);
 
-#if KERNEL_VERSION(5, 6, 0) <= LINUX_VERSION_CODE
 				kbase_kunmap(pg, extres_page);
-#else
-				dma_buf_kunmap(dma_buf, i, extres_page);
-#endif
 				if (ret)
 					break;
 			}

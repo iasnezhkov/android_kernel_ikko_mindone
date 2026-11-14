@@ -114,7 +114,7 @@
 #define EINT_PLUG_OUT			(0)
 #define EINT_PLUG_IN			(1)
 #define EINT_MOISTURE_DETECTED	(2)
-#include "../../../../drivers/misc/mediatek/typec/tcpc/inc/tcpm.h" //drv Solve the problem that the headset is not recognized-pengzhipeng-20231107
+#include <mindone/extcon-mtk-usb.h>
 
 #if IS_ENABLED(CONFIG_PRIZE_TYPEC_SM_NKJ)
 
@@ -643,10 +643,7 @@ struct mt63xx_accdet_data {
 	u32 moisture_vdd_offset;
 	u32 moisture_offset;
 	u32 moisture_eint_offset;
-	//drv Solve the problem that the headset is not recognized-pengzhipeng-20231107-start
-	struct tcpc_device *tcpc_dev;
-    struct notifier_block audio_nb;
-//drv Solve the problem that the headset is not recognized-pengzhipeng-20231107-end
+	struct notifier_block audio_nb;
 };
 static struct mt63xx_accdet_data *accdet;
 
@@ -2678,26 +2675,21 @@ void accdet_eint_func_extern(int state)
 	return;
 }
 
-static int audio_tcp_notifier_call(struct notifier_block *nb,
-					unsigned long event, void *data)
+static int audio_typec_notifier_call(struct notifier_block *nb,
+				     unsigned long event, void *data)
 {
-	struct tcp_notify *noti = data;
-
 	switch (event) {
-
-	case TCP_NOTIFY_TYPEC_STATE:
-		if (noti->typec_state.old_state == TYPEC_UNATTACHED && noti->typec_state.new_state == TYPEC_ATTACHED_AUDIO){
-			pr_info("%s audio accessory Plug in, pol = %d\n", __func__,	noti->typec_state.polarity);
-			accdet_eint_func_extern(EINT_PLUG_IN);
-
-		}else if(noti->typec_state.old_state == TYPEC_ATTACHED_AUDIO && noti->typec_state.new_state == TYPEC_UNATTACHED){
-			pr_info("%s audio accessory Plug out\n", __func__);
-			accdet_eint_func_extern(EINT_PLUG_OUT);
-		}
+	case MTK_USB_EXTCON_AUDIO_ATTACH:
+		pr_info("%s audio accessory plug in\n", __func__);
+		accdet_eint_func_extern(EINT_PLUG_IN);
+		break;
+	case MTK_USB_EXTCON_AUDIO_DETACH:
+		pr_info("%s audio accessory plug out\n", __func__);
+		accdet_eint_func_extern(EINT_PLUG_OUT);
 		break;
 	default:
 		break;
-	};
+	}
 	return NOTIFY_OK;
 }
 //drv Solve the problem that the headset is not recognized-pengzhipeng-20231107-end
@@ -2954,22 +2946,11 @@ static int mt6358_accdet_probe(struct platform_device *pdev)
 	atomic_set(&accdet_first, 1);
 	mod_timer(&accdet_init_timer, (jiffies + ACCDET_INIT_WAIT_TIMER));
 	pr_info("%s done!\n", __func__);
-//drv Solve the problem that the headset is not recognized-pengzhipeng-20231107-start
-       accdet->tcpc_dev = tcpc_dev_get_by_name("type_c_port0");
-       if (!accdet->tcpc_dev) {
-               pr_notice("%s get tcpc device type_c_port0 fail\n", __func__);
-               //return -ENODEV;
-       }else{
-		    accdet->audio_nb.notifier_call = audio_tcp_notifier_call;
-			accdet->audio_nb.priority = 0;
-			ret = register_tcp_dev_notifier(accdet->tcpc_dev, &accdet->audio_nb, TCP_NOTIFY_TYPEC_STATE);
-			if (ret < 0) {
-				pr_notice("%s: register tcpc notifer fail\n", __func__);
-				//return -EINVAL;
-			}  
-		   
-	   }
-//drv Solve the problem that the headset is not recognized-pengzhipeng-20231107-end
+	accdet->audio_nb.notifier_call = audio_typec_notifier_call;
+	ret = mtk_usb_extcon_register_audio_notifier(&accdet->audio_nb);
+	if (ret)
+		pr_notice("%s: no Type-C audio accessory events: %d\n",
+			  __func__, ret);
 	//prize add by huangjiwu 20220614 start   
 	#if IS_ENABLED(CONFIG_PRIZE_TYPEC_SM_NKJ)
 	endoscope_init();
@@ -2992,6 +2973,7 @@ err_chrdevregion:
 
 static void mt6358_accdet_remove(struct platform_device *pdev)
 {
+	mtk_usb_extcon_unregister_audio_notifier(&accdet->audio_nb);
 	destroy_workqueue(accdet->eint_workqueue);
 	destroy_workqueue(accdet->dis_micbias_workqueue);
 	destroy_workqueue(accdet->accdet_workqueue);

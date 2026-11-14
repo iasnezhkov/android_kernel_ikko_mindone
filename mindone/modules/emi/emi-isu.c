@@ -4,7 +4,7 @@
  */
 
 #include <linux/device.h>
-#include <linux/mindone_sysfs_compat.h>
+#include <mindone/compat-sysfs.h>
 #include <linux/fs.h>
 #include <linux/io.h>
 #include <linux/kernel.h>

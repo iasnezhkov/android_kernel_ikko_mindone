@@ -1,1 +1,0 @@
-../ccci_ccif/ccci_common_config.h

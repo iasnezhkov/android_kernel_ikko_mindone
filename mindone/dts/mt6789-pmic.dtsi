@@ -11,7 +11,7 @@
 		clock-names = "spi", "wrap", "ulposc", "ulposc_osc";
 
 		pmic: mt6366 {
-			compatible = "mediatek,mt6366";
+			compatible = "mediatek,mt6366", "mediatek,mt6358";
 			interrupt-controller;
 			#interrupt-cells = <0x02>;
 			interrupt-parent = <&pio>;

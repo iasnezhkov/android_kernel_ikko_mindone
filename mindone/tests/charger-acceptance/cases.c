@@ -70,7 +70,7 @@ static void registered_contract(void) {
         POWER_SUPPLY_PROP_CONSTANT_CHARGE_CURRENT_MAX,
         POWER_SUPPLY_PROP_INPUT_CURRENT_LIMIT,
     };
-    assert(properties[0] == 8 && properties[1] == 30 && properties[2] == 38);
+    assert(properties[0] == 9 && properties[1] == 31 && properties[2] == 39);
     for (size_t i = 0; i < ARRAY_SIZE(properties); i++) {
         bool present = false;
         for (size_t j = 0; j < ARRAY_SIZE(charger_psy_properties); j++)

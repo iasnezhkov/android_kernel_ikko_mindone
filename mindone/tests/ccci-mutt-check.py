@@ -1,15 +1,31 @@
 # SPDX-License-Identifier: GPL-2.0
 # SPDX-FileCopyrightText: 2026 The LineageOS Project
 import argparse
-import os
 from pathlib import Path
 import re
 import subprocess
 import tempfile
 
+from baseline_source import require
 
-BASELINE = '446b82f88877f8346811ec549b59f77bb0b9b048'
+
 SOURCE = 'mindone/modules/ccci_md_all/ccci_modem.c'
+SOURCE_SHA256 = '55fce76ca15f871a72efa3bedd01305c567b1e4cb3cc1cfe2579ee4ce092064d'
+DEPENDENCIES = (
+    ('mindone/modules/ccci_md_all/ccci_bm.c', {'ccci_alloc_skb': '57746ac28d75934165df9722978dea0ca282b41a2a128da65ee2cc96f0fed59c'}),
+    ('mindone/modules/ccci_md_all/hif/ccci_hif.c', {'ccci_hif_send_skb': '51a17ed5e2a3400c06900bb1a89cb6435a7507312d6a96b9410d361d9d29ba7d'}),
+    ('mindone/modules/ccci_md_all/port/port_proxy.c', {
+        'port_get_queue_no': 'd9820cf77db4ec069a4e713ce020087743fd7ab85d8aa75e4593221683db3bc6',
+        'proxy_send_msg_to_md': '176c74ca6eb3f84d6bad68fb0ab2f070448cc1416390795eaa5a9347f0c934cc',
+        'ccci_port_send_msg_to_md': '2a25051d7fcb4aa4ba893ae9c27783f1d3704c46d545aff633cde2bca9fb9593',
+    }),
+    ('mindone/modules/ccci_ccif/ccci_hif_ccif.c', {'md_ccif_op_send_skb': '222069260ff63ed483b47b27a2d4faefebaaee6585b1e9e749e4ac884e90cc34'}),
+)
+FIX = (
+    ('#define TAG "md"\n', '#define TAG "md"\n#define MD_THROTTLING_COOLER_LV_COMMAND 3\n'),
+    ('\tcase ID_THROTTLING_CFG:\n\t\tret = ccci_port_send_msg_to_md(md_id, CCCI_SYSTEM_TX,\n\t\t\t\tMD_THROTTLING,\n\t\t\t\t*((int *)buf), 1);',
+     '\tcase ID_THROTTLING_CFG:\n\t\ttmp_data = *((int *)buf);\n\t\tret = ccci_port_send_msg_to_md(md_id, CCCI_SYSTEM_TX,\n\t\t\t\tMD_THROTTLING,\n\t\t\t\ttmp_data,\n\t\t\t\t(tmp_data & 0xff) != MD_THROTTLING_COOLER_LV_COMMAND);'),
+)
 CASES = ('healthy-command-parity', 'mutt-empty-pool', 'mutt-full-ring', 'mutt-full-usb', 'mutt-invalid-flow', 'mutt-signal-pending', 'modem-off', 'gated-before-send', 'exception-before-send', 'full-ring-state-race', 'unrelated-classes-preserved', 'invalid-id', 'ready-pool-recovery', 'transport-readback-contract', 'length-handling', 'off-null-pointer')
 
 
@@ -136,35 +152,20 @@ def run(binary, case, rejection=None):
         print(result.stdout.strip())
 
 
-def git_show(tree, baseline, path):
-    return subprocess.run(['git', '-C', str(tree), 'show', baseline + ':' + path], check=True, capture_output=True, text=True, env={**os.environ, 'GIT_NO_LAZY_FETCH': '1'}).stdout
-
-
 def main():
     parser = argparse.ArgumentParser(description='Exercise actual class3 CCCI dispatch, skb ownership, pool/full-ring backpressure and unchanged command classes')
     parser.add_argument('kernel_tree', type=Path)
-    parser.add_argument('--baseline', default=BASELINE)
     args = parser.parse_args()
     tree = args.kernel_tree.resolve()
     source = (tree / SOURCE).read_text()
-    baseline = git_show(tree, args.baseline, SOURCE)
-    expected = replace_once(baseline, '#define TAG "md"\n', '#define TAG "md"\n#define MD_THROTTLING_COOLER_LV_COMMAND 3\n')
-    old_branch = '\tcase ID_THROTTLING_CFG:\n\t\tret = ccci_port_send_msg_to_md(md_id, CCCI_SYSTEM_TX,\n\t\t\t\tMD_THROTTLING,\n\t\t\t\t*((int *)buf), 1);'
-    new_branch = '\tcase ID_THROTTLING_CFG:\n\t\ttmp_data = *((int *)buf);\n\t\tret = ccci_port_send_msg_to_md(md_id, CCCI_SYSTEM_TX,\n\t\t\t\tMD_THROTTLING,\n\t\t\t\ttmp_data,\n\t\t\t\t(tmp_data & 0xff) != MD_THROTTLING_COOLER_LV_COMMAND);'
-    expected = replace_once(expected, old_branch, new_branch)
-    if source != expected:
-        raise ValueError('Production scope exceeds the named class3 transport change')
-    for path, names in (
-        ('mindone/modules/ccci_md_all/ccci_bm.c', ('ccci_alloc_skb',)),
-        ('mindone/modules/ccci_md_all/hif/ccci_hif.c', ('ccci_hif_send_skb',)),
-        ('mindone/modules/ccci_md_all/port/port_proxy.c', ('port_get_queue_no', 'proxy_send_msg_to_md', 'ccci_port_send_msg_to_md')),
-        ('mindone/modules/ccci_ccif/ccci_hif_ccif.c', ('md_ccif_op_send_skb',)),
-    ):
+    baseline = source
+    for before, after in reversed(FIX):
+        baseline = replace_once(baseline, after, before)
+    require(SOURCE + ' without the class3 transport change', baseline, SOURCE_SHA256)
+    for path, pins in DEPENDENCIES:
         current = (tree / path).read_text()
-        old = git_show(tree, args.baseline, path)
-        for name in names:
-            if function(current, name) != function(old, name):
-                raise ValueError('Transport dependency changed: ' + name)
+        for name, pin in pins.items():
+            require('Transport dependency ' + name, function(current, name), pin)
     build = (tree / 'mindone/modules/BUILD.bazel').read_text()
     if '"ccci_md_all/ccci_modem.c",' not in build:
         raise ValueError('Dispatcher is not in the actual DDK target')

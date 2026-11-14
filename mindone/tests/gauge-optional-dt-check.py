@@ -56,7 +56,7 @@ def main():
                 if result.returncode:
                     raise RuntimeError(result.stdout + result.stderr)
                 print(result.stdout, end="")
-            elif not result.returncode or "Assertion failed:" not in result.stderr:
+            elif not result.returncode or not re.search(r"Assertion failed:|Assertion `[^\n]*\x27 failed", result.stderr):
                 raise RuntimeError("Mutation escaped runtime checks: " + name + result.stderr)
             else:
                 print("PASS rejected " + name)

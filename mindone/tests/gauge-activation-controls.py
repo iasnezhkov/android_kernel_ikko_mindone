@@ -62,7 +62,7 @@ def main():
                 (tree / relative / path).write_text(mutated if path == filename else content)
             result = subprocess.run([sys.executable, str(tests / runner), str(tree), *extra],
                                     text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=60)
-            evidence = re.search(r"^.*Assertion failed:.*$", result.stderr, re.M)
+            evidence = re.search(r"^.*(?:Assertion failed:|Assertion `).*$", result.stderr, re.M)
             if not result.returncode or not evidence or "error: " in result.stderr:
                 raise RuntimeError("Mutation did not fail an actual runtime assertion: " + name + "\n" + result.stdout + result.stderr)
             print("PASS rejected " + name + ": " + evidence.group(0))

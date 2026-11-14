@@ -4,7 +4,6 @@
  */
 
 #include <linux/file.h>
-#include <linux/version.h>
 #include <linux/fs.h>
 #include <linux/uaccess.h>
 #include <linux/slab.h>
@@ -200,21 +199,19 @@ static bool timeline_fence_enable_signaling(struct dma_fence *dma_fence)
 	return true;
 }
 
-#if LINUX_VERSION_CODE < KERNEL_VERSION(6, 18, 0)
-static void timeline_fence_value_str(struct dma_fence *dma_fence,
-				    char *str, int size)
+static void __maybe_unused timeline_fence_value_str(struct dma_fence *dma_fence,
+						    char *str, int size)
 {
 	snprintf(str, size, "%llu", dma_fence->seqno);
 }
 
-static void timeline_fence_timeline_value_str(struct dma_fence *dma_fence,
-					     char *str, int size)
+static void __maybe_unused timeline_fence_timeline_value_str(struct dma_fence *dma_fence,
+							     char *str, int size)
 {
 	struct sync_timeline *parent = fence_parent(dma_fence);
 
 	snprintf(str, size, "%d", parent->value);
 }
-#endif
 
 static const struct dma_fence_ops timeline_dma_fence_ops = {
 	.get_driver_name = timeline_fence_get_driver_name,
@@ -223,10 +220,8 @@ static const struct dma_fence_ops timeline_dma_fence_ops = {
 	.signaled = timeline_fence_signaled,
 	.wait = dma_fence_default_wait,
 	.release = timeline_fence_release,
-#if LINUX_VERSION_CODE < KERNEL_VERSION(6, 18, 0)
-	.fence_value_str = timeline_fence_value_str,
-	.timeline_value_str = timeline_fence_timeline_value_str,
-#endif
+	MINDONE_DMA_FENCE_VALUE_STR(timeline_fence_value_str)
+	MINDONE_DMA_FENCE_TIMELINE_VALUE_STR(timeline_fence_timeline_value_str)
 };
 
 /**

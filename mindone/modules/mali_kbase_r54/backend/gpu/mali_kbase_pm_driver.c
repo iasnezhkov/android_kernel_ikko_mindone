@@ -2620,15 +2620,9 @@ int kbase_pm_wait_for_l2_powered(struct kbase_device *kbdev)
 	timeout = msecs_to_jiffies(PM_TIMEOUT_MS);
 #endif
 
-#if KERNEL_VERSION(4, 13, 1) <= LINUX_VERSION_CODE
 	remaining = wait_event_killable_timeout(kbdev->pm.backend.gpu_in_desired_state_wait,
 						kbase_pm_is_in_desired_state_with_l2_powered(kbdev),
 						(long)timeout);
-#else
-	remaining = wait_event_timeout(kbdev->pm.backend.gpu_in_desired_state_wait,
-				       kbase_pm_is_in_desired_state_with_l2_powered(kbdev),
-				       (long)timeout);
-#endif
 
 	if (!remaining) {
 		kbase_pm_timed_out(kbdev, "Wait for desired PM state with L2 powered timed out");
@@ -2656,14 +2650,10 @@ static int pm_wait_for_desired_state(struct kbase_device *kbdev, bool killable_w
 	kbase_pm_update_state(kbdev);
 	spin_unlock_irqrestore(&kbdev->hwaccess_lock, flags);
 
-#if KERNEL_VERSION(4, 13, 1) <= LINUX_VERSION_CODE
 	if (killable_wait)
 		remaining = wait_event_killable_timeout(kbdev->pm.backend.gpu_in_desired_state_wait,
 							kbase_pm_is_in_desired_state(kbdev),
 							timeout);
-#else
-	killable_wait = false;
-#endif
 	if (!killable_wait)
 		remaining = wait_event_timeout(kbdev->pm.backend.gpu_in_desired_state_wait,
 					       kbase_pm_is_in_desired_state(kbdev), timeout);
@@ -2713,13 +2703,8 @@ int kbase_pm_wait_for_cores_down_scale(struct kbase_device *kbdev)
 	long remaining;
 	int err = 0;
 
-#if KERNEL_VERSION(4, 13, 1) <= LINUX_VERSION_CODE
 	remaining = wait_event_killable_timeout(kbdev->pm.backend.gpu_in_desired_state_wait,
 						core_mask_update_done(kbdev), timeout);
-#else
-	remaining = wait_event_timeout(kbdev->pm.backend.gpu_in_desired_state_wait,
-				       core_mask_update_done(kbdev), timeout);
-#endif
 
 	if (!remaining) {
 		kbase_pm_timed_out(kbdev, "Wait for cores down scaling timed out");
@@ -2763,14 +2748,10 @@ static int pm_wait_for_poweroff_work_complete(struct kbase_device *kbdev, bool k
 #endif
 	int err = 0;
 
-#if KERNEL_VERSION(4, 13, 1) <= LINUX_VERSION_CODE
 	if (killable_wait)
 		remaining = wait_event_killable_timeout(kbdev->pm.backend.poweroff_wait,
 							!is_poweroff_wait_in_progress(kbdev),
 							timeout);
-#else
-	killable_wait = false;
-#endif
 
 	if (!killable_wait)
 		remaining = wait_event_timeout(kbdev->pm.backend.poweroff_wait,
@@ -3366,13 +3347,8 @@ static int kbase_pm_do_reset(struct kbase_device *kbdev)
 		rtdata.kbdev = kbdev;
 		rtdata.timed_out = false;
 
-#if KERNEL_VERSION(6, 13, 0) <= LINUX_VERSION_CODE
-		hrtimer_setup_on_stack(&rtdata.timer, kbasep_reset_timeout, CLOCK_MONOTONIC,
-				       HRTIMER_MODE_REL);
-#else
-		hrtimer_init_on_stack(&rtdata.timer, CLOCK_MONOTONIC, HRTIMER_MODE_REL);
-		rtdata.timer.function = kbasep_reset_timeout;
-#endif
+		mindone_hrtimer_setup_on_stack(&rtdata.timer, kbasep_reset_timeout, CLOCK_MONOTONIC,
+					       HRTIMER_MODE_REL);
 		goto whitebox_directly_hard_reset;
 	}
 #endif
@@ -3390,13 +3366,8 @@ static int kbase_pm_do_reset(struct kbase_device *kbdev)
 	rtdata.kbdev = kbdev;
 	rtdata.timed_out = false;
 
-#if KERNEL_VERSION(6, 13, 0) <= LINUX_VERSION_CODE
-	hrtimer_setup_on_stack(&rtdata.timer, kbasep_reset_timeout, CLOCK_MONOTONIC,
-			       HRTIMER_MODE_REL);
-#else
-	hrtimer_init_on_stack(&rtdata.timer, CLOCK_MONOTONIC, HRTIMER_MODE_REL);
-	rtdata.timer.function = kbasep_reset_timeout;
-#endif
+	mindone_hrtimer_setup_on_stack(&rtdata.timer, kbasep_reset_timeout, CLOCK_MONOTONIC,
+				       HRTIMER_MODE_REL);
 
 	hrtimer_start(&rtdata.timer, HR_TIMER_DELAY_MSEC(RESET_TIMEOUT), HRTIMER_MODE_REL);
 

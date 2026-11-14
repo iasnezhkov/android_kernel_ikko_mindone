@@ -1,1 +1,0 @@
-../cqhci/wbsd.h

@@ -37,17 +37,19 @@ that scans Makefiles for `obj-m` without expanding variables will not see them, 
 them as failures either, and will hand you a set that looks complete and has no Wi-Fi in it.
 That happened here twice.
 
-Not everything in the load list is out-of-tree. Here, five listed modules are
-`module_outs` of the device Kleaf `kernel_build`: `8250_mtk`, `cfg80211`,
-`drm_display_helper`, `drm_dma_helper` and `reset-ti-syscon`. Four more
-(`rfkill`, `libarc4`, `zram`, `zsmalloc`) come from the GKI prebuilt. Clocks,
-pinctrl and UFS are now DDK targets. Check actual providers and dependencies rather
-than assuming every module comes from the out-of-tree group.
+Not everything in the load list is out-of-tree. Here, twenty listed modules are
+`module_outs` of the device Kleaf `kernel_build`, ACK drivers such as `8250_mtk`,
+`mtk-sd`, `cfg80211` and the pin-controller libraries `pinctrl-paris`,
+`pinctrl-mtk-common-v2` and `mtk-eint` (see the build guide for the full list). Four
+more (`rfkill`, `libarc4`, `zram`, `zsmalloc`) come from the GKI prebuilt. The clocks,
+on the ACK clk-mtk core, the power domains, the PMIC wrapper, the pinctrl data driver
+and UFS are DDK targets. Check actual providers and dependencies rather than assuming
+every module comes from the out-of-tree group.
 
 ## 3. Build modules against the exact GKI prebuilt
 
 Use Kleaf DDK with the matching GKI headers and symbol metadata. Here the base is
-`@gki_prebuilts//kernel_aarch64`, Google's `android17-6.18-2026-09_r12`, CI 16754118.
+`@gki_prebuilts//kernel_aarch64`, Google's `android17-6.18-2026-09_r13`, CI 16831611.
 `modpost` resolves imports at build time; the candidate gates then check ABI CRCs,
 providers, built-in collisions and Google symbol-list membership for the complete set.
 Do not add private kernel exports or a private symbol list to make an import pass.

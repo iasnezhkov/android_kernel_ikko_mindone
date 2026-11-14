@@ -177,6 +177,19 @@ static inline void __gpufreq_footprint_power_count(int power_count)
 #endif
 }
 
+static inline void __gpufreq_fault(const char *exception_string, ...)
+{
+	va_list args;
+	char tmp_string[512];
+
+	va_start(args, exception_string);
+	vsnprintf(tmp_string, sizeof(tmp_string), exception_string, args);
+	va_end(args);
+
+	GPUFREQ_LOGE("[FAULT]: %s", tmp_string);
+	__gpufreq_dump_infra_status(NULL, NULL, 0);
+}
+
 static inline void __gpufreq_abort(const char *exception_string, ...)
 {
 	va_list args;

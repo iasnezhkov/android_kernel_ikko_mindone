@@ -9,3 +9,12 @@ config MINDONE_DRM_HELPERS
 	help
 	  Builds drm_display_helper.ko and drm_dma_helper.ko from the
 	  unmodified ACK sources for the out-of-tree MediaTek display driver.
+
+config MINDONE_PINCTRL_MTK_PARIS
+	tristate "MindOne MediaTek paris pinctrl library modules"
+	depends on OF
+	select PINCTRL_MTK_PARIS
+	help
+	  Builds pinctrl-paris.ko, pinctrl-mtk-common-v2.ko and mtk-eint.ko
+	  from the unmodified ACK sources for the out-of-tree MT6789 pinctrl
+	  data driver.

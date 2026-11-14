@@ -91,41 +91,6 @@ ddk_module(
 )
 
 ddk_module(
-    name = "adsp",
-    srcs = [
-        "adsp/adsp_core.c",
-        "adsp/adsp_fs.c",
-        "adsp/adsp_semaphore.c",
-        "adsp/adsp_logger.c",
-        "adsp/adsp_feature_table.c",
-        "adsp/adsp_timesync.c",
-        "adsp/adsp_awake.c",
-        "adsp/adsp_reserved_mem.c",
-        "adsp/adsp_platform.c",
-        "adsp/adsp_mbox.c",
-        "adsp/adsp_platform_driver.c",
-        "adsp/adsp_excep.c",
-    ],
-    out = "adsp.ko",
-    hdrs = glob([
-        "adsp/**/*.h",
-        "adsp/**/.gitkeep",
-    ], allow_empty = True),
-    kernel_build = "//common/mindone:mindone",
-    includes = [
-        "adsp",
-        "include/drivers/misc/mediatek/slbc",
-        "include",
-        "include/include",
-    ],
-    copts = _MINDONE_COPTS,
-    deps = [
-        ":mindone_headers",
-        ":mtk_mbox",
-    ],
-)
-
-ddk_module(
     name = "archcounter_timesync",
     srcs = [
         "archcounter_timesync/archcounter_timesync.c",
@@ -141,85 +106,6 @@ ddk_module(
     ],
     copts = _MINDONE_COPTS,
     deps = [":mindone_headers"],
-)
-
-ddk_module(
-    name = "arm_dsu_pmu",
-    srcs = [
-        "arm_dsu_pmu/arm_dsu_pmu.c",
-    ],
-    out = "arm_dsu_pmu.ko",
-    hdrs = glob([
-        "arm_dsu_pmu/**/*.h",
-        "arm_dsu_pmu/**/.gitkeep",
-    ], allow_empty = True),
-    kernel_build = "//common/mindone:mindone",
-    copts = _MINDONE_COPTS,
-    deps = [":mindone_headers"],
-)
-
-ddk_module(
-    name = "atf_logger",
-    srcs = [
-        "atf_logger/tfa_debug.c",
-        "atf_logger/atf_log.c",
-    ],
-    out = "atf_logger.ko",
-    hdrs = glob([
-        "atf_logger/**/*.h",
-        "atf_logger/**/.gitkeep",
-    ], allow_empty = True),
-    kernel_build = "//common/mindone:mindone",
-    includes = [
-        "atf_logger",
-    ],
-    copts = _MINDONE_COPTS,
-    deps = [":mindone_headers"],
-)
-
-ddk_module(
-    name = "audio_ipi",
-    srcs = [
-        "audio_ipi/common/audio_ipi.c",
-        "audio_ipi/audio_task_manager.c",
-        "audio_ipi/audio_messenger_ipi.c",
-        "audio_ipi/audio_ipi_queue.c",
-        "audio_ipi/adsp_ipi_queue.c",
-        "audio_ipi/audio_ipi_dma.c",
-        "audio_ipi/audio_ringbuf.c",
-        "audio_ipi/audio_ipi_platform_common.c",
-        "audio_ipi/audio_ipi_platform.c",
-    ],
-    out = "audio_ipi.ko",
-    hdrs = glob([
-        "audio_ipi/**/*.h",
-        "audio_ipi/**/.gitkeep",
-    ], allow_empty = True),
-    kernel_build = "//common/mindone:mindone",
-    includes = [
-        "audio_ipi",
-        "include/drivers/misc/mediatek/adsp/include",
-        "include/drivers/misc/mediatek/scp/include",
-        "include/drivers/misc/mediatek/scp/rv",
-        "include/sound/soc/mediatek/audio_scp",
-        "include",
-        "include/include",
-    ],
-    local_defines = [
-        "CONFIG_ADSP_VOIP_LEGACY=1",
-        "CONFIG_MTK_AUDIODSP_SUPPORT=1",
-        "CONFIG_MTK_SCP_AUDIO=1",
-    ],
-    copts = _MINDONE_COPTS + [
-        "-include",
-        "mtk_sip_svc_ext.h",
-    ],
-    deps = [
-        ":mindone_headers",
-        ":adsp",
-        ":mtk_scp_audiocommon",
-        ":scp",
-    ],
 )
 
 ddk_module(
@@ -265,43 +151,6 @@ ddk_module(
         ":mindone_headers",
         ":leds-mtk",
     ],
-)
-
-ddk_module(
-    name = "board_temp",
-    srcs = [
-        "board_temp/board_temp.c",
-    ],
-    out = "board_temp.ko",
-    hdrs = glob([
-        "board_temp/**/*.h",
-        "board_temp/**/.gitkeep",
-    ], allow_empty = True),
-    kernel_build = "//common/mindone:mindone",
-    includes = [
-        "board_temp",
-        "include",
-    ],
-    copts = _MINDONE_COPTS,
-    deps = [":mindone_headers"],
-)
-
-ddk_module(
-    name = "bootprof",
-    srcs = [
-        "bootprof/bootprof.c",
-    ],
-    out = "bootprof.ko",
-    hdrs = glob([
-        "bootprof/**/*.h",
-        "bootprof/**/.gitkeep",
-    ], allow_empty = True),
-    kernel_build = "//common/mindone:mindone",
-    includes = [
-        "bootprof",
-    ],
-    copts = _MINDONE_COPTS,
-    deps = [":mindone_headers"],
 )
 
 ddk_module(
@@ -368,145 +217,6 @@ ddk_module(
     ],
     copts = _MINDONE_COPTS,
     deps = [":mindone_headers"],
-)
-
-ddk_module(
-    name = "c2k_usb",
-    srcs = [
-        "c2k_usb/f_rawbulk.c",
-        "c2k_usb/rawbulk.c",
-        "c2k_usb/rawbulk_transfer.c",
-    ],
-    out = "c2k_usb.ko",
-    hdrs = glob([
-        "c2k_usb/**/*.h",
-        "c2k_usb/**/.gitkeep",
-    ], allow_empty = True),
-    kernel_build = "//common/mindone:mindone",
-    includes = [
-        "c2k_usb",
-        "include/drivers/usb/gadget",
-        "include/drivers/misc/mediatek/include",
-        "include",
-    ],
-    local_defines = [
-        "CONFIG_MTK_ECCCI_C2K_USB=1",
-    ],
-    copts = _MINDONE_COPTS,
-    deps = [
-        ":mindone_headers",
-        ":ccci_md_all",
-    ],
-)
-
-ddk_module(
-    name = "c2k_usb_f_via_atc",
-    srcs = [
-        "c2k_usb_f_via_atc/f_via_atc.c",
-    ],
-    out = "c2k_usb_f_via_atc.ko",
-    hdrs = glob([
-        "c2k_usb_f_via_atc/**/*.h",
-        "c2k_usb_f_via_atc/**/.gitkeep",
-    ], allow_empty = True),
-    kernel_build = "//common/mindone:mindone",
-    includes = [
-        "c2k_usb_f_via_atc",
-        "include/drivers/usb/gadget",
-    ],
-    copts = _MINDONE_COPTS,
-    deps = [
-        ":mindone_headers",
-        ":c2k_usb",
-    ],
-)
-
-ddk_module(
-    name = "c2k_usb_f_via_ets",
-    srcs = [
-        "c2k_usb_f_via_ets/f_via_ets.c",
-    ],
-    out = "c2k_usb_f_via_ets.ko",
-    hdrs = glob([
-        "c2k_usb_f_via_ets/**/*.h",
-        "c2k_usb_f_via_ets/**/.gitkeep",
-    ], allow_empty = True),
-    kernel_build = "//common/mindone:mindone",
-    includes = [
-        "c2k_usb_f_via_ets",
-        "include/drivers/usb/gadget",
-    ],
-    copts = _MINDONE_COPTS,
-    deps = [
-        ":mindone_headers",
-        ":c2k_usb",
-    ],
-)
-
-ddk_module(
-    name = "c2k_usb_f_via_gps",
-    srcs = [
-        "c2k_usb_f_via_gps/f_via_gps.c",
-    ],
-    out = "c2k_usb_f_via_gps.ko",
-    hdrs = glob([
-        "c2k_usb_f_via_gps/**/*.h",
-        "c2k_usb_f_via_gps/**/.gitkeep",
-    ], allow_empty = True),
-    kernel_build = "//common/mindone:mindone",
-    includes = [
-        "c2k_usb_f_via_gps",
-        "include/drivers/usb/gadget",
-    ],
-    copts = _MINDONE_COPTS,
-    deps = [
-        ":mindone_headers",
-        ":c2k_usb",
-    ],
-)
-
-ddk_module(
-    name = "c2k_usb_f_via_modem",
-    srcs = [
-        "c2k_usb_f_via_modem/f_via_modem.c",
-    ],
-    out = "c2k_usb_f_via_modem.ko",
-    hdrs = glob([
-        "c2k_usb_f_via_modem/**/*.h",
-        "c2k_usb_f_via_modem/**/.gitkeep",
-    ], allow_empty = True),
-    kernel_build = "//common/mindone:mindone",
-    includes = [
-        "c2k_usb_f_via_modem",
-        "include/drivers/usb/gadget",
-    ],
-    copts = _MINDONE_COPTS,
-    deps = [
-        ":mindone_headers",
-        ":c2k_usb",
-    ],
-)
-
-ddk_module(
-    name = "c2k_usb_f_via_pcv",
-    srcs = [
-        "c2k_usb_f_via_pcv/f_via_pcv.c",
-    ],
-    out = "c2k_usb_f_via_pcv.ko",
-    hdrs = glob([
-        "c2k_usb_f_via_pcv/**/*.h",
-        "c2k_usb_f_via_pcv/**/.gitkeep",
-    ], allow_empty = True),
-    kernel_build = "//common/mindone:mindone",
-    includes = [
-        "c2k_usb_f_via_pcv",
-        "include/drivers/usb/gadget",
-    ],
-    copts = _MINDONE_COPTS,
-    deps = [
-        ":mindone_headers",
-        ":c2k_usb",
-    ],
 )
 
 ddk_module(
@@ -669,7 +379,6 @@ ddk_module(
         ":mindone_headers",
         ":archcounter_timesync",
         ":cam_qos",
-        ":mtk_smi_dbg",
     ],
 )
 
@@ -721,7 +430,6 @@ ddk_module(
     copts = _MINDONE_COPTS,
     deps = [
         ":mindone_headers",
-        ":irq_dbg",
         ":mtk_cmdq_drv_ext",
         ":mtk_smi",
     ],
@@ -749,58 +457,6 @@ ddk_module(
     copts = _MINDONE_COPTS,
     deps = [
         ":mindone_headers",
-        ":ccci_md_all",
-        ":ccci_util_lib",
-    ],
-)
-
-ddk_module(
-    name = "ccci_cldma",
-    srcs = [
-        "ccci_md_all/hif/ccci_cldma_plat.c",
-        "ccci_md_all/hif/ccci_hif_cldma.c",
-    ],
-    out = "ccci_cldma.ko",
-    hdrs = glob([
-        "ccci_md_all/**/*.h",
-        "ccci_md_all/**/.gitkeep",
-    ], allow_empty = True),
-    kernel_build = "//common/mindone:mindone",
-    includes = [
-        "ccci_md_all",
-        "ccci_md_all/inc",
-        "ccci_md_all/platform",
-        "ccci_md_all/hif",
-        "ccci_md_all/port",
-        "ccci_md_all/fsm",
-        "ccci_md_all/udc",
-        "ccci_md_all/udc/udc_lib_inc",
-        "include/drivers/misc/mediatek/ccmni",
-        "include/drivers/misc/mediatek/scp/include",
-        "include/drivers/misc/mediatek/scp/rv",
-        "include/drivers/misc/mediatek/include",
-        "include/drivers/misc/mediatek/mdpm",
-        "include/drivers/misc/mediatek/pbm",
-        "include/include",
-        "include",
-    ],
-    local_defines = [
-        "CONFIG_MTK_ECCCI_C2K_USB=1",
-        "CCCI_KMODULE_ENABLE=1",
-        "CONFIG_MTK_AEE_IPANIC=1",
-        "CONFIG_MTK_EMI=1",
-        "CONFIG_MTK_TINYSYS_SCP_SUPPORT=1",
-        "CONFIG_MTK_PBM=1",
-        "CONFIG_MTK_IRQ_DBG=1",
-        "CONFIG_MTK_MD3_SUPPORT=1",
-    ],
-    copts = _MINDONE_COPTS + [
-        "-include",
-        "mtk_sip_svc_ext.h",
-    ],
-    deps = [
-        ":mindone_headers",
-        ":ccci_ccif",
         ":ccci_md_all",
         ":ccci_util_lib",
     ],
@@ -941,13 +597,11 @@ ddk_module(
         "include",
     ],
     local_defines = [
-        "CONFIG_MTK_ECCCI_C2K_USB=1",
         "CCCI_KMODULE_ENABLE=1",
         "CONFIG_MTK_AEE_IPANIC=1",
         "CONFIG_MTK_EMI=1",
         "CONFIG_MTK_TINYSYS_SCP_SUPPORT=1",
         "CONFIG_MTK_PBM=1",
-        "CONFIG_MTK_IRQ_DBG=1",
         "CONFIG_MTK_MD3_SUPPORT=1",
     ],
     copts = _MINDONE_COPTS + [
@@ -959,58 +613,8 @@ ddk_module(
         ":ccci_util_lib",
         ":ccmni",
         ":emi",
-        ":irq_dbg",
         ":mtk_mdpm",
         ":mtk_pbm",
-    ],
-)
-
-ddk_module(
-    name = "ccci_md_clk",
-    srcs = [
-        "ccci_md_clk/ccci_md_clk.c",
-    ],
-    out = "ccci_md_clk.ko",
-    hdrs = glob([
-        "ccci_md_clk/**/*.h",
-        "ccci_md_clk/**/.gitkeep",
-    ], allow_empty = True),
-    kernel_build = "//common/mindone:mindone",
-    includes = [
-        "ccci_md_clk",
-        "include/drivers/misc/mediatek/eccci/inc",
-        "include/drivers/misc/mediatek/eccci/platform",
-        "include/drivers/misc/mediatek/include",
-    ],
-    copts = _MINDONE_COPTS,
-    deps = [
-        ":mindone_headers",
-        ":ccci_util_lib",
-    ],
-)
-
-ddk_module(
-    name = "ccci_rtc",
-    srcs = [
-        "ccci_rtc/ccci_rtc.c",
-    ],
-    out = "ccci_rtc.ko",
-    hdrs = glob([
-        "ccci_rtc/**/*.h",
-        "ccci_rtc/**/.gitkeep",
-    ], allow_empty = True),
-    kernel_build = "//common/mindone:mindone",
-    includes = [
-        "ccci_rtc",
-        "include/drivers/misc/mediatek/eccci/inc",
-        "include/drivers/misc/mediatek/eccci/platform",
-        "include/drivers/misc/mediatek/include",
-    ],
-    copts = _MINDONE_COPTS,
-    deps = [
-        ":mindone_headers",
-        ":ccci_md_all",
-        ":ccci_util_lib",
     ],
 )
 
@@ -1064,12 +668,10 @@ ddk_module(
         "ccmni",
         "include/drivers/misc/mediatek/eccci/inc",
         "include/drivers/misc/mediatek/include",
-        "include/drivers/misc/mediatek/rps",
     ],
     copts = _MINDONE_COPTS,
     deps = [
         ":mindone_headers",
-        ":rps_perf",
     ],
 )
 
@@ -1107,29 +709,6 @@ ddk_module(
     ],
     copts = _MINDONE_COPTS,
     deps = [":mindone_headers"],
-)
-
-ddk_module(
-    name = "clk-mt6789-disp_dsc",
-    srcs = [
-        "clk_mt6789_disp_dsc/clk-mt6789-disp_dsc.c",
-    ],
-    out = "clk-mt6789-disp_dsc.ko",
-    hdrs = glob([
-        "clk_mt6789_disp_dsc/**/*.h",
-        "clk_mt6789_disp_dsc/**/.gitkeep",
-    ], allow_empty = True),
-    kernel_build = "//common/mindone:mindone",
-    includes = [
-        "clk_mt6789_disp_dsc",
-        "include/drivers/clk/mediatek",
-    ],
-    copts = _MINDONE_COPTS,
-    deps = [
-        ":mindone_headers",
-        ":clk_mediatek",
-        "//common/mindone:mindone_dt_bindings_common",
-    ],
 )
 
 ddk_module(
@@ -1208,7 +787,8 @@ ddk_module(
     copts = _MINDONE_COPTS,
     deps = [
         ":mindone_headers",
-        ":clk_mediatek",
+        ":clk_mtk_ack",
+        ":clk_mt6789",
         "//common/mindone:mindone_dt_bindings_common",
     ],
 )
@@ -1231,7 +811,7 @@ ddk_module(
     copts = _MINDONE_COPTS,
     deps = [
         ":mindone_headers",
-        ":clk_mediatek",
+        ":clk_mtk_ack",
         "//common/mindone:mindone_dt_bindings_common",
     ],
 )
@@ -1254,7 +834,8 @@ ddk_module(
     copts = _MINDONE_COPTS,
     deps = [
         ":mindone_headers",
-        ":clk_mediatek",
+        ":clk_mtk_ack",
+        ":clk_mt6789",
         "//common/mindone:mindone_dt_bindings_common",
     ],
 )
@@ -1277,7 +858,7 @@ ddk_module(
     copts = _MINDONE_COPTS,
     deps = [
         ":mindone_headers",
-        ":clk_mediatek",
+        ":clk_mtk_ack",
         "//common/mindone:mindone_dt_bindings_common",
     ],
 )
@@ -1300,7 +881,8 @@ ddk_module(
     copts = _MINDONE_COPTS,
     deps = [
         ":mindone_headers",
-        ":clk_mediatek",
+        ":clk_mtk_ack",
+        ":clk_mt6789",
         "//common/mindone:mindone_dt_bindings_common",
     ],
 )
@@ -1323,7 +905,7 @@ ddk_module(
     copts = _MINDONE_COPTS,
     deps = [
         ":mindone_headers",
-        ":clk_mediatek",
+        ":clk_mtk_ack",
         "//common/mindone:mindone_dt_bindings_common",
     ],
 )
@@ -1346,7 +928,8 @@ ddk_module(
     copts = _MINDONE_COPTS,
     deps = [
         ":mindone_headers",
-        ":clk_mediatek",
+        ":clk_mtk_ack",
+        ":clk_mt6789",
         "//common/mindone:mindone_dt_bindings_common",
     ],
 )
@@ -1369,7 +952,8 @@ ddk_module(
     copts = _MINDONE_COPTS,
     deps = [
         ":mindone_headers",
-        ":clk_mediatek",
+        ":clk_mtk_ack",
+        ":clk_mt6789",
         "//common/mindone:mindone_dt_bindings_common",
     ],
 )
@@ -1392,7 +976,8 @@ ddk_module(
     copts = _MINDONE_COPTS,
     deps = [
         ":mindone_headers",
-        ":clk_mediatek",
+        ":clk_mtk_ack",
+        ":clk_mt6789",
         "//common/mindone:mindone_dt_bindings_common",
     ],
 )
@@ -1469,7 +1054,6 @@ ddk_module(
     ],
     local_defines = [
         "CONFIG_MTK_CMDQ_MBOX_EXT=1",
-        "CONFIG_MMPROFILE=1",
     ],
     copts = _MINDONE_COPTS,
     deps = [
@@ -1499,7 +1083,6 @@ ddk_module(
         "include/include",
     ],
     local_defines = [
-        "CONFIG_MMPROFILE=1",
         "CONFIG_MTK_ENABLE_GENIEZONE=1",
         "CONFIG_MTK_CMDQ_MBOX_EXT=1",
     ],
@@ -1507,7 +1090,6 @@ ddk_module(
     deps = [
         ":mindone_headers",
         ":gz_tz_system",
-        ":mmprofile",
         ":mtk_cmdq_drv_ext",
         ":tkcore",
     ],
@@ -1547,36 +1129,6 @@ ddk_module(
 )
 
 ddk_module(
-    name = "connfem",
-    srcs = [
-        "connfem/connfem_module.c",
-        "connfem/connfem_api.c",
-        "connfem/connfem_container.c",
-        "connfem/connfem_dt_parser.c",
-        "connfem/connfem_epaelna.c",
-        "connfem/connfem_subsys_bt.c",
-        "connfem/connfem_subsys_wifi.c",
-    ],
-    out = "connfem.ko",
-    hdrs = glob([
-        "connfem/**/*.h",
-        "connfem/**/.gitkeep",
-    ], allow_empty = True),
-    kernel_build = "//common/mindone:mindone",
-    includes = [
-        "connfem",
-        "connfem/include",
-        "include",
-    ],
-    local_defines = [
-        "CONNFEM_DBG=1",
-        "CONNFEM_TEST_ENABLED=0",
-    ],
-    copts = _MINDONE_COPTS,
-    deps = [":mindone_headers"],
-)
-
-ddk_module(
     name = "cpudvfs",
     srcs = [
         "cpudvfs/eem-dbg-lite.c",
@@ -1605,125 +1157,6 @@ ddk_module(
     out = "mtk_cpu_capacity.ko",
     kernel_build = "//common/mindone:mindone",
     copts = _MINDONE_COPTS,
-)
-
-ddk_module(
-    name = "cpuqos_v3",
-    srcs = [
-        "cpuqos_v3/mpam_proto.c",
-        "cpuqos_v3/cpuqos_sys_common.c",
-    ],
-    out = "cpuqos_v3.ko",
-    hdrs = glob([
-        "cpuqos_v3/**/*.h",
-        "cpuqos_v3/**/.gitkeep",
-    ], allow_empty = True),
-    kernel_build = "//common/mindone:mindone",
-    includes = [
-        "cpuqos_v3",
-        "include",
-    ],
-    copts = _MINDONE_COPTS + [
-        "-include",
-        "linux/sched/cputime.h",
-    ],
-    deps = [":mindone_headers"],
-)
-
-ddk_module(
-    name = "cqhci",
-    srcs = [
-        "cqhci/cqhci-core.c",
-        "cqhci/cqhci-crypto.c",
-    ],
-    out = "cqhci.ko",
-    hdrs = glob([
-        "cqhci/**/*.h",
-        "cqhci/**/.gitkeep",
-    ], allow_empty = True),
-    kernel_build = "//common/mindone:mindone",
-    includes = [
-        "cqhci",
-    ],
-    copts = _MINDONE_COPTS,
-    deps = [":mindone_headers"],
-)
-
-ddk_module(
-    name = "dbgtop_drm",
-    srcs = [
-        "dbgtop_drm/dbgtop_drm.c",
-    ],
-    out = "dbgtop_drm.ko",
-    hdrs = glob([
-        "dbgtop_drm/**/*.h",
-        "dbgtop_drm/**/.gitkeep",
-    ], allow_empty = True),
-    kernel_build = "//common/mindone:mindone",
-    includes = [
-        "dbgtop_drm",
-    ],
-    copts = _MINDONE_COPTS,
-    deps = [":mindone_headers"],
-)
-
-ddk_module(
-    name = "device_apc_common",
-    srcs = [
-        "device_apc_common/devapc-mtk-multi-ao.c",
-    ],
-    out = "device_apc_common.ko",
-    hdrs = glob([
-        "device_apc_common/**/*.h",
-        "device_apc_common/**/.gitkeep",
-    ], allow_empty = True),
-    kernel_build = "//common/mindone:mindone",
-    includes = [
-        "device_apc_common",
-        "include/include",
-    ],
-    copts = _MINDONE_COPTS,
-    deps = [":mindone_headers"],
-)
-
-ddk_module(
-    name = "device_apc_mt6789",
-    srcs = [
-        "device_apc_mt6789/devapc-mt6789.c",
-    ],
-    out = "device_apc_mt6789.ko",
-    hdrs = glob([
-        "device_apc_mt6789/**/*.h",
-        "device_apc_mt6789/**/.gitkeep",
-    ], allow_empty = True),
-    kernel_build = "//common/mindone:mindone",
-    includes = [
-        "device_apc_mt6789",
-    ],
-    copts = _MINDONE_COPTS,
-    deps = [
-        ":mindone_headers",
-        ":device_apc_common",
-    ],
-)
-
-ddk_module(
-    name = "devmpu",
-    srcs = [
-        "devmpu/devmpu.c",
-    ],
-    out = "devmpu.ko",
-    hdrs = glob([
-        "devmpu/**/*.h",
-        "devmpu/**/.gitkeep",
-    ], allow_empty = True),
-    kernel_build = "//common/mindone:mindone",
-    includes = [
-        "devmpu",
-        "include/include",
-    ],
-    copts = _MINDONE_COPTS,
-    deps = [":mindone_headers"],
 )
 
 ddk_module(
@@ -1778,44 +1211,11 @@ ddk_module(
         "extcon_mtk_usb/extcon_mtk_usb.c",
     ],
     out = "extcon_mtk_usb.ko",
-    hdrs = glob([
-        "extcon_mtk_usb/**/*.h",
-        "extcon_mtk_usb/**/.gitkeep",
-    ], allow_empty = True),
     kernel_build = "//common/mindone:mindone",
-    includes = [
-        "extcon_mtk_usb",
-        "extcon_mtk_usb/vendor-headers",
-        "extcon_mtk_usb/vendor-headers/drivers/power/supply",
-        "include",
-    ],
-    local_defines = [
-        "CONFIG_TCPC_CLASS=1",
-    ],
     copts = _MINDONE_COPTS,
     deps = [
         ":mindone_headers",
-        ":tcpc_class",
     ],
-)
-
-ddk_module(
-    name = "extdev_io_class",
-    srcs = [
-        "extdev_io_class/extdev_io_class.c",
-    ],
-    out = "extdev_io_class.ko",
-    hdrs = glob([
-        "extdev_io_class/**/*.h",
-        "extdev_io_class/**/.gitkeep",
-    ], allow_empty = True),
-    kernel_build = "//common/mindone:mindone",
-    includes = [
-        "extdev_io_class",
-        "include",
-    ],
-    copts = _MINDONE_COPTS,
-    deps = [":mindone_headers"],
 )
 
 ddk_module(
@@ -1847,7 +1247,7 @@ ddk_module(
         ":mindone_headers",
         ":mcupm",
         ":mtk_tinysys_ipi",
-        ":clk_mediatek",
+        ":clk_mtk_ack",
     ],
 )
 
@@ -1885,20 +1285,6 @@ ddk_module(
     includes = [
         "flashlights_dummy_gpio",
     ],
-    copts = _MINDONE_COPTS,
-    deps = [
-        ":mindone_headers",
-        ":flashlight",
-    ],
-)
-
-ddk_module(
-    name = "flashlights-lm3643",
-    srcs = [
-        "flashlights_lm3643/flashlights-lm3643.c",
-    ],
-    out = "flashlights-lm3643.ko",
-    kernel_build = "//common/mindone:mindone",
     copts = _MINDONE_COPTS,
     deps = [
         ":mindone_headers",
@@ -1987,7 +1373,6 @@ ddk_module(
     copts = _MINDONE_COPTS,
     deps = [
         ":mindone_headers",
-        ":gpueb",
         ":mediatek_drm",
         ":mtk_gpu_hal",
         ":mtk_gpu_qos",
@@ -2069,38 +1454,6 @@ ddk_module(
 )
 
 ddk_module(
-    name = "gpueb",
-    srcs = [
-        "gpueb/gpueb_init.c",
-        "gpueb/gpueb_ipi.c",
-        "gpueb/gpueb_logger.c",
-        "gpueb/gpueb_plat_service.c",
-        "gpueb/gpueb_reserved_mem.c",
-        "gpueb/gpueb_gpumpu.c",
-        "gpueb/gpueb_hwvoter_dbg.c",
-        "gpueb/gpueb_debug.c",
-        "gpueb/gpueb_timesync.c",
-    ],
-    out = "gpueb.ko",
-    hdrs = glob([
-        "gpueb/**/*.h",
-        "gpueb/**/.gitkeep",
-    ], allow_empty = True),
-    kernel_build = "//common/mindone:mindone",
-    includes = [
-        "gpueb",
-        "include/drivers/misc/mediatek/include/mt-plat",
-        "include/include",
-    ],
-    copts = _MINDONE_COPTS,
-    deps = [
-        ":mindone_headers",
-        ":mtk_mbox",
-        ":mtk_tinysys_ipi",
-    ],
-)
-
-ddk_module(
     name = "gz_ipc_mod",
     srcs = [
         "gz_ipc_mod/trusty-ipc.c",
@@ -2136,29 +1489,6 @@ ddk_module(
     kernel_build = "//common/mindone:mindone",
     includes = [
         "gz_irq_mod",
-        "include/drivers/misc/mediatek/geniezone/public",
-    ],
-    copts = _MINDONE_COPTS,
-    deps = [
-        ":mindone_headers",
-        ":gz_trusty_mod",
-    ],
-)
-
-ddk_module(
-    name = "gz_log_mod",
-    srcs = [
-        "gz_log_mod/gz-log.c",
-    ],
-    out = "gz_log_mod.ko",
-    hdrs = glob([
-        "gz_log_mod/**/*.h",
-        "gz_log_mod/**/.gitkeep",
-    ], allow_empty = True),
-    kernel_build = "//common/mindone:mindone",
-    includes = [
-        "gz_log_mod",
-        "include/drivers/misc/mediatek/include",
         "include/drivers/misc/mediatek/geniezone/public",
     ],
     copts = _MINDONE_COPTS,
@@ -2509,25 +1839,6 @@ ddk_module(
 )
 
 ddk_module(
-    name = "irq_dbg",
-    srcs = [
-        "irq_dbg/irq_dbg.c",
-    ],
-    out = "irq_dbg.ko",
-    hdrs = glob([
-        "irq_dbg/**/*.h",
-        "irq_dbg/**/.gitkeep",
-    ], allow_empty = True),
-    kernel_build = "//common/mindone:mindone",
-    includes = [
-        "irq_dbg",
-    ],
-    copts = _MINDONE_COPTS,
-    deps = [":mindone_headers"],
-)
-
-
-ddk_module(
     name = "leds-mtk",
     srcs = [
         "leds_mtk/leds-mtk.c",
@@ -2546,30 +1857,6 @@ ddk_module(
     deps = [
         ":mindone_headers",
         ":mtk_disp_notify",
-    ],
-)
-
-ddk_module(
-    name = "leds-mtk-pwm",
-    srcs = [
-        "leds_mtk_pwm/leds-mtk-pwm.c",
-    ],
-    out = "leds-mtk-pwm.ko",
-    hdrs = glob([
-        "leds_mtk_pwm/**/*.h",
-        "leds_mtk_pwm/**/.gitkeep",
-    ], allow_empty = True),
-    kernel_build = "//common/mindone:mindone",
-    includes = [
-        "leds_mtk_pwm",
-        "include",
-        "include/include",
-    ],
-    copts = _MINDONE_COPTS,
-    deps = [
-        ":mindone_headers",
-        ":leds-mtk",
-        ":mediatek_drm",
     ],
 )
 
@@ -2595,7 +1882,6 @@ ddk_module(
         ":leds-mtk",
         ":mediatek_drm",
         ":mtk_panel_ext",
-        ":rt4831a_drv",
     ],
 )
 
@@ -2862,8 +2148,6 @@ ddk_module(
         "mali_kbase_r54/platform/mtk_platform_common/mtk_ltr_pmu.c",
         "mali_kbase_r54/platform/mtk_platform_common/mtk_mfg_counter.c",
         "mali_kbase_r54/platform/mtk_platform_common/mtk_platform_common.c",
-        "mali_kbase_r54/platform/mtk_platform_common/mtk_platform_devfreq_governor.c",
-        "mali_kbase_r54/platform/mtk_platform_common/mtk_platform_devfreq_thermal.c",
         "mali_kbase_r54/platform/mtk_platform_common/mtk_platform_dvfs.c",
         "mali_kbase_r54/platform/mtk_platform_common/mtk_platform_memtrack.c",
         "mali_kbase_r54/thirdparty/mali_kbase_mmap.c",
@@ -2926,8 +2210,6 @@ ddk_module(
         "CONFIG_MALI_GATOR_SUPPORT=1",
         "CONFIG_MALI_MTK_PREVENT_PRINTK_TOO_MUCH=1",
         "CONFIG_MALI_MTK_MEMTRACK=1",
-        "CONFIG_MALI_MTK_DEVFREQ_GOVERNOR=1",
-        "CONFIG_MALI_MTK_DEVFREQ_THERMAL=1",
         "CONFIG_MALI_MTK_PROC_FS=1",
         "CONFIG_MTK_GPU_SWPM_SUPPORT=1",
         "CONFIG_MALI_MTK_GPU_BM_2=1",
@@ -2935,6 +2217,7 @@ ddk_module(
         "CONFIG_MTK_GPUFREQ_V2=1",
         "CONFIG_MALI_MTK_DVFS_POLICY=1",
         "CONFIG_MALI_MTK_DVFS_LOADING_MODE=1",
+        "CONFIG_MALI_MTK_TRIGGER_KE=1",
         "CONFIG_MTK_GPU_COMMON_DVFS_SUPPORT=1",
         "CONFIG_DEBUG_FS=1",
         "CONFIG_SYNC_FILE=1",
@@ -2961,46 +2244,6 @@ ddk_module(
         ":sspm_v3",
         ":mtk_qos",
     ],
-)
-
-ddk_module(
-    name = "mcDrvModule",
-    srcs = [
-        "mcDrvModule/admin.c",
-        "mcDrvModule/client.c",
-        "mcDrvModule/clientlib.c",
-        "mcDrvModule/clock.c",
-        "mcDrvModule/fastcall.c",
-        "mcDrvModule/iwp.c",
-        "mcDrvModule/logging.c",
-        "mcDrvModule/main.c",
-        "mcDrvModule/mcp.c",
-        "mcDrvModule/mmu.c",
-        "mcDrvModule/nq.c",
-        "mcDrvModule/protocol.c",
-        "mcDrvModule/session.c",
-        "mcDrvModule/teeclientapi.c",
-        "mcDrvModule/user.c",
-        "mcDrvModule/xen_be.c",
-        "mcDrvModule/xen_common.c",
-        "mcDrvModule/xen_fe.c",
-    ],
-    out = "mcDrvModule.ko",
-    hdrs = glob([
-        "mcDrvModule/**/*.h",
-        "mcDrvModule/**/.gitkeep",
-    ], allow_empty = True),
-    kernel_build = "//common/mindone:mindone",
-    includes = [
-        "mcDrvModule",
-        "include",
-    ],
-    local_defines = [
-        "CONFIG_ARM64=1",
-        "CONFIG_OF=1",
-    ],
-    copts = _MINDONE_COPTS,
-    deps = [":mindone_headers"],
 )
 
 ddk_module(
@@ -3050,7 +2293,6 @@ ddk_module(
     deps = [
         ":mindone_headers",
         ":ccci_md_all",
-        ":thermal_trace",
     ],
 )
 
@@ -3096,7 +2338,6 @@ ddk_module(
         "MET_USER_EVENT_SUPPORT",
         "CMDQ_AEE_READY",
         "CMDQ_LARGE_MAX_FIRSTERROR_BUFFER",
-        "CONFIG_MMPROFILE=1",
         "CONFIG_INTERCONNECT_MTK_EXTENSION=1",
         "CMDQ_SECURE_PATH_SUPPORT",
     ],
@@ -3105,35 +2346,11 @@ ddk_module(
         ":mindone_headers",
         ":cmdq_helper_inf",
         ":cmdq_sec_drv",
-        ":mmprofile",
         ":mtk_cmdq_drv_ext",
         ":mtk_icc_core",
         ":mtk_sec_heap",
         ":mtk_smi",
-        ":mtk_smi_dbg",
     ],
-)
-
-ddk_module(
-    name = "mediatek_cpufreq_hw",
-    srcs = [
-        "mediatek_cpufreq_hw/mediatek_cpufreq_hw.c",
-    ],
-    out = "mediatek_cpufreq_hw.ko",
-    hdrs = glob([
-        "mediatek_cpufreq_hw/**/*.h",
-        "mediatek_cpufreq_hw/**/.gitkeep",
-    ], allow_empty = True),
-    kernel_build = "//common/mindone:mindone",
-    includes = [
-        "mediatek_cpufreq_hw",
-        "include",
-    ],
-    local_defines = [
-        "CONFIG_CPU_FREQ_CBE_PMI=1",
-    ],
-    copts = _MINDONE_COPTS,
-    deps = [":mindone_headers"],
 )
 
 ddk_module(
@@ -3225,13 +2442,11 @@ ddk_module(
         "include",
     ],
     local_defines = [
-        "CONFIG_MTK_SLBC_MODULE=1",
         "CONFIG_INTERCONNECT_MTK_EXTENSION=1",
         "CONFIG_DRM_MEDIATEK=1",
         "CONFIG_INTERCONNECT_MTK_MMQOS_COMMON=1",
         "CONFIG_MTK_DVFSRC=1",
         "CONFIG_MTK_AEE_IPANIC=1",
-        "CONFIG_MMPROFILE=1",
         "CONFIG_MTK_CMDQ_MBOX_EXT=1",
         "CONFIG_MTK_DISP_NO_LK=1",
         "SHARE_WROT_SRAM",
@@ -3245,18 +2460,13 @@ ddk_module(
         ":mindone_headers",
         ":mindone_mml_headers",
         ":cmdq_helper_inf",
-        ":mmprofile",
         ":mmqos_common",
         ":mtk_cmdq_drv_ext",
         ":mtk_disp_notify",
         ":mtk_icc_core",
-        ":mtk_mml",
         ":mtk_panel_ext",
-        ":mtk_slbc",
         ":mtk_smi",
-        ":mtk_smi_dbg",
         ":mtk_sync",
-        ":clk_mediatek",
     ],
 )
 
@@ -3276,28 +2486,6 @@ ddk_module(
         ":mindone_headers",
         ":mtk_disp_notify",
     ],
-)
-
-ddk_module(
-    name = "mmprofile",
-    srcs = [
-        "mmprofile/mmprofile.c",
-    ],
-    out = "mmprofile.ko",
-    hdrs = glob([
-        "mmprofile/**/*.h",
-        "mmprofile/**/.gitkeep",
-    ], allow_empty = True),
-    kernel_build = "//common/mindone:mindone",
-    includes = [
-        "mmprofile",
-        "include/drivers/misc/mediatek/mmp",
-    ],
-    local_defines = [
-        "CONFIG_MMPROFILE=1",
-    ],
-    copts = _MINDONE_COPTS,
-    deps = [":mindone_headers"],
 )
 
 ddk_module(
@@ -3380,22 +2568,16 @@ ddk_module(
         "mt6358_accdet/**/.gitkeep",
     ], allow_empty = True),
     kernel_build = "//common/mindone:mindone",
-    local_defines = [
-        "CONFIG_TCPC_CLASS=1",
-        "CONFIG_USB_POWER_DELIVERY=1",
-    ],
     includes = [
         "mt6358_accdet",
         "include/sound/soc/mediatek/common",
-        "include/drivers/misc/mediatek/typec/tcpc/inc",
         "include/drivers/misc/mediatek",
-        "include/drivers/misc/mediatek/typec",
         "include",
     ],
     copts = _MINDONE_COPTS,
     deps = [
         ":mindone_headers",
-        ":tcpc_class",
+        ":extcon_mtk_usb",
     ],
 )
 
@@ -3480,24 +2662,6 @@ ddk_module(
     kernel_build = "//common/mindone:mindone",
     includes = [
         "mt6397",
-    ],
-    copts = _MINDONE_COPTS,
-    deps = [":mindone_headers"],
-)
-
-ddk_module(
-    name = "mt63xx_debug",
-    srcs = [
-        "mt63xx_debug/mt63xx_debug.c",
-    ],
-    out = "mt63xx_debug.ko",
-    hdrs = glob([
-        "mt63xx_debug/**/*.h",
-        "mt63xx_debug/**/.gitkeep",
-    ], allow_empty = True),
-    kernel_build = "//common/mindone:mindone",
-    includes = [
-        "mt63xx_debug",
     ],
     copts = _MINDONE_COPTS,
     deps = [":mindone_headers"],
@@ -3675,34 +2839,6 @@ ddk_module(
         ":mindone_headers",
         ":mtk-lpm-dbg-common-v1",
         ":mtk_lpm",
-    ],
-)
-
-ddk_module(
-    name = "mtk-ssc-dbg-v2",
-    srcs = [
-        "mtk_ssc_dbg_v2/ssc_dbg_v2.c",
-    ],
-    out = "mtk-ssc-dbg-v2.ko",
-    hdrs = glob([
-        "mtk_ssc_dbg_v2/**/*.h",
-        "mtk_ssc_dbg_v2/**/.gitkeep",
-    ], allow_empty = True),
-    kernel_build = "//common/mindone:mindone",
-    includes = [
-        "mtk_ssc_dbg_v2",
-        "include/include",
-        "include/drivers/misc/mediatek/include",
-        "include/drivers/misc/mediatek/tinysys_scmi",
-        "include/drivers/misc/mediatek/ssc/inc",
-    ],
-    copts = _MINDONE_COPTS + [
-        "-include",
-        "include/linux/soc/mediatek/mtk_sip_svc.h",
-    ],
-    deps = [
-        ":mindone_headers",
-        ":mtk_ssc",
     ],
 )
 
@@ -3924,7 +3060,6 @@ ddk_module(
         ":charger_class",
         ":mtk_charger_algorithm_class",
         ":mtk_disp_notify",
-        ":tcpc_class",
     ],
 )
 
@@ -3945,33 +3080,6 @@ ddk_module(
     ],
     copts = _MINDONE_COPTS,
     deps = [":mindone_headers"],
-)
-
-ddk_module(
-    name = "mtk_chg_type_det",
-    srcs = [
-        "mtk_chg_type_det/mtk_chg_type_det.c",
-    ],
-    out = "mtk_chg_type_det.ko",
-    hdrs = glob([
-        "mtk_chg_type_det/**/*.h",
-        "mtk_chg_type_det/**/.gitkeep",
-    ], allow_empty = True),
-    kernel_build = "//common/mindone:mindone",
-    includes = [
-        "mtk_chg_type_det",
-        "include/drivers/misc/mediatek/typec/tcpc/inc",
-        "include",
-    ],
-    local_defines = [
-        "CONFIG_TCPC_CLASS=1",
-        "CONFIG_USB_POWER_DELIVERY=1",
-    ],
-    copts = _MINDONE_COPTS,
-    deps = [
-        ":mindone_headers",
-        ":tcpc_class",
-    ],
 )
 
 ddk_module(
@@ -4081,7 +3189,6 @@ ddk_module(
     copts = _MINDONE_COPTS,
     deps = [
         ":mindone_headers",
-        ":mtk_smi_dbg",
     ],
 )
 
@@ -4099,8 +3206,18 @@ ddk_module(
     includes = [
         "mtk_cpu_power_throttling",
     ],
+    local_defines = [
+        "CONFIG_MTK_LOW_BATTERY_POWER_THROTTLING=1",
+        "CONFIG_MTK_BATTERY_OC_POWER_THROTTLING=1",
+        "CONFIG_MTK_BATTERY_PERCENT_THROTTLING=1",
+    ],
     copts = _MINDONE_COPTS,
-    deps = [":mindone_headers"],
+    deps = [
+        ":mindone_headers",
+        ":mtk_battery_oc_throttling",
+        ":mtk_bp_thl",
+        ":mtk_low_battery_throttling",
+    ],
 )
 
 ddk_module(
@@ -4221,10 +3338,7 @@ ddk_module(
         "CONFIG_MTK_DVFSRC=1",
     ],
     copts = _MINDONE_COPTS,
-    deps = [
-        ":mindone_headers",
-        ":mtk_scpsys",
-    ],
+    deps = [":mindone_headers"],
 )
 
 ddk_module(
@@ -4295,6 +3409,24 @@ ddk_module(
         ":mtk_dramc",
         ":mtk_dvfsrc",
     ],
+)
+
+ddk_module(
+    name = "mtk_socinfo",
+    srcs = [
+        "mtk_socinfo/mtk_socinfo.c",
+    ],
+    out = "mtk_socinfo.ko",
+    hdrs = glob([
+        "mtk_socinfo/**/*.h",
+        "mtk_socinfo/**/.gitkeep",
+    ], allow_empty = True),
+    kernel_build = "//common/mindone:mindone",
+    includes = [
+        "mtk_socinfo",
+    ],
+    copts = _MINDONE_COPTS,
+    deps = [":mindone_headers"],
 )
 
 ddk_module(
@@ -4412,33 +3544,6 @@ ddk_module(
 )
 
 ddk_module(
-    name = "mtk_gpu_power_throttling",
-    srcs = [
-        "mtk_gpu_power_throttling/mtk_gpu_power_throttling.c",
-    ],
-    out = "mtk_gpu_power_throttling.ko",
-    hdrs = glob([
-        "mtk_gpu_power_throttling/**/*.h",
-        "mtk_gpu_power_throttling/**/.gitkeep",
-    ], allow_empty = True),
-    kernel_build = "//common/mindone:mindone",
-    includes = [
-        "mtk_gpu_power_throttling",
-        "include/drivers/misc/mediatek/include",
-        "include/drivers/misc/mediatek/mtk-interconnect",
-        "include/drivers/misc/mediatek/mmp",
-        "include/drivers/misc/mediatek/smi",
-        "include/drivers/misc/mediatek/iommu",
-        "include/drivers/misc/mediatek/mmdvfs",
-        "include/drivers/misc/mediatek/pwm",
-        "include/drivers/misc/mediatek/pidmap",
-        "include/drivers/gpu/mediatek/gpufreq",
-    ],
-    copts = _MINDONE_COPTS,
-    deps = [":mindone_headers"],
-)
-
-ddk_module(
     name = "mtk_gpu_qos",
     srcs = [
         "mtk_gpu_qos/gpu_bm.c",
@@ -4501,7 +3606,6 @@ ddk_module(
         ":clk_fmeter_mt6789",
         ":mtk_gpu_hal",
         ":mtk_gpufreq_wrapper",
-        ":clk_mediatek",
     ],
 )
 
@@ -4531,34 +3635,6 @@ ddk_module(
     deps = [
         ":mindone_headers",
         ":mtk_gpu_hal",
-    ],
-)
-
-ddk_module(
-    name = "mtk_heap_debug",
-    srcs = [
-        "mtk_heap_debug/mtk_heap_debug.c",
-    ],
-    out = "mtk_heap_debug.ko",
-    hdrs = glob([
-        "mtk_heap_debug/**/*.h",
-        "mtk_heap_debug/**/.gitkeep",
-    ], allow_empty = True),
-    kernel_build = "//common/mindone:mindone",
-    includes = [
-        "mtk_heap_debug",
-        "include",
-        "include/drivers/misc/mediatek/include",
-    ],
-    local_defines = [
-        "MTK_M4U_DOM_NR_MAX=16",
-        "MTK_M4U_TAB_NR_MAX=3",
-    ],
-    copts = _MINDONE_COPTS,
-    deps = [
-        ":mindone_headers",
-        ":system_heap",
-        ":deferred_free_helper",
     ],
 )
 
@@ -4618,7 +3694,6 @@ ddk_module(
         ":mindone_headers",
         ":iommu_debug",
         ":iommu_secure",
-        ":mtk_smi_dbg",
     ],
 )
 
@@ -4692,7 +3767,6 @@ ddk_module(
     deps = [
         ":mindone_headers",
         ":pmic_lbat_service",
-        ":pmic_lvsys_notify",
     ],
 )
 
@@ -4820,10 +3894,15 @@ ddk_module(
     ],
     local_defines = [
         "CONFIG_PMIC_LBAT_SERVICE=1",
+        "CONFIG_MTK_LOW_BATTERY_POWER_THROTTLING=1",
+        "CONFIG_MTK_BATTERY_OC_POWER_THROTTLING=1",
     ],
     copts = _MINDONE_COPTS,
     deps = [
+        ":ccci_md_all",
         ":mindone_headers",
+        ":mtk_battery_oc_throttling",
+        ":mtk_low_battery_throttling",
         ":pmic_lbat_service",
     ],
 )
@@ -4843,76 +3922,6 @@ ddk_module(
         "mtk_mdpm",
         "include/drivers/misc/mediatek/include/mt-plat",
         "include/drivers/misc/mediatek/pbm",
-    ],
-    copts = _MINDONE_COPTS,
-    deps = [":mindone_headers"],
-)
-
-ddk_module(
-    name = "mtk_mm_heap",
-    srcs = [
-        "mtk_mm_heap/mtk_mm_heap.c",
-    ],
-    out = "mtk_mm_heap.ko",
-    hdrs = glob([
-        "mtk_mm_heap/**/*.h",
-        "mtk_mm_heap/**/.gitkeep",
-    ], allow_empty = True),
-    kernel_build = "//common/mindone:mindone",
-    includes = [
-        "mtk_mm_heap",
-    ],
-    copts = _MINDONE_COPTS,
-    deps = [
-        ":mindone_headers",
-        ":mindone_dt_bindings",
-    ],
-)
-
-ddk_module(
-    name = "mtk_mmc",
-    srcs = [
-        "mtk_mmc/mtk_mmc.c",
-    ],
-    out = "mtk_mmc.ko",
-    hdrs = glob([
-        "mtk_mmc/**/*.h",
-        "mtk_mmc/**/.gitkeep",
-    ], allow_empty = True),
-    kernel_build = "//common/mindone:mindone",
-    includes = [
-        "mtk_mmc",
-    ],
-    copts = _MINDONE_COPTS,
-    deps = [
-        ":mindone_headers",
-        ":cqhci",
-    ],
-)
-
-ddk_module(
-    name = "mtk_mmc_autok",
-    srcs = [
-        "mtk_mmc_autok/mtk_mmc_autok.c",
-    ],
-    out = "mtk_mmc_autok.ko",
-    hdrs = glob([
-        "mtk_mmc_autok/**/*.h",
-        "mtk_mmc_autok/**/.gitkeep",
-    ], allow_empty = True),
-    kernel_build = "//common/mindone:mindone",
-    includes = [
-        "mtk_mmc_autok",
-        "include/drivers/mmc/host",
-    ],
-    local_defines = [
-        "CONFIG_FPGA_EARLY_PORTING=1",
-        "CONFIG_LEDS_CLASS=1",
-        "CONFIG_MMC_DEBUG=1",
-        "CONFIG_MMC_MTK_SW_CQHCI=1",
-        "CONFIG_MMC_MTK_SW_CQHCI_DEBUG=1",
-        "CONFIG_MMC_SDHCI_EXTERNAL_DMA=1",
-        "CONFIG_MTK_SPM_V4=1",
     ],
     copts = _MINDONE_COPTS,
     deps = [":mindone_headers"],
@@ -4941,7 +3950,6 @@ ddk_module(
     copts = _MINDONE_COPTS,
     deps = [
         ":mindone_headers",
-        ":mtk_smi_dbg",
     ],
 )
 
@@ -4961,77 +3969,6 @@ ddk_module(
     ],
     copts = _MINDONE_COPTS,
     deps = [":mindone_headers"],
-)
-
-ddk_module(
-    name = "mtk_mml",
-    srcs = [
-        "mtk_mml/mtk-mml-driver.c",
-        "mtk_mml/mtk-mml-core.c",
-        "mtk_mml/mtk-mml-tile.c",
-        "mtk_mml/mtk-mml-pq-core.c",
-        "mtk_mml/mtk-mml-drm-adaptor.c",
-        "mtk_mml/mtk-mml-dle-adaptor.c",
-        "mtk_mml/mtk-mml-buf.c",
-        "mtk_mml/mtk-mml-sys.c",
-        "mtk_mml/tile_core.c",
-        "mtk_mml/tile_mdp_func.c",
-        "mtk_mml/DpTileScaler.c",
-        "mtk_mml/mtk-mml-aal.c",
-        "mtk_mml/mtk-mml-color.c",
-        "mtk_mml/mtk-mml-fg.c",
-        "mtk_mml/mtk-mml-hdr.c",
-        "mtk_mml/mtk-mml-mutex.c",
-        "mtk_mml/mtk-mml-rdma.c",
-        "mtk_mml/mtk-mml-rsz.c",
-        "mtk_mml/mtk-mml-tcc.c",
-        "mtk_mml/mtk-mml-tdshp.c",
-        "mtk_mml/mtk-mml-wrot.c",
-        "mtk_mml/mtk-mml-mmp.c",
-        "mtk_mml/mtk-mml-test.c",
-    ],
-    out = "mtk_mml.ko",
-    hdrs = glob([
-        "mtk_mml/**/*.h",
-        "mtk_mml/**/.gitkeep",
-    ], allow_empty = True),
-    kernel_build = "//common/mindone:mindone",
-    includes = [
-        "mtk_mml",
-        "include/drivers/gpu/drm/mediatek/mediatek_v2",
-        "include/drivers/devfreq",
-        "include/drivers/dma-buf/heaps",
-        "include/drivers/misc/mediatek/mmdvfs",
-        "include/drivers/misc/mediatek/smi",
-        "include/drivers/misc/mediatek/include",
-        "include/drivers/misc/mediatek/include/mt-plat",
-        "include/drivers/iommu",
-        "include/drivers/misc/mediatek/mtk-interconnect",
-        "include/drivers/misc/mediatek/cmdq/mailbox",
-        "include/drivers/misc/mediatek/slbc",
-        "include/drivers/misc/mediatek/mmp",
-        "include/include",
-        "include",
-    ],
-    local_defines = [
-        "CONFIG_MTK_SLBC_MODULE=1",
-        "CONFIG_INTERCONNECT_MTK_EXTENSION=1",
-        "CONFIG_MTK_MML_DEBUG=1",
-        "CONFIG_MMPROFILE=1",
-        "CONFIG_MTK_CMDQ_MBOX_EXT=1",
-        "CONFIG_MTK_SMI=1",
-    ],
-    copts = _MINDONE_COPTS,
-    deps = [
-        ":mindone_headers",
-        ":mmprofile",
-        ":mtk_cmdq_drv_ext",
-        ":mtk_icc_core",
-        ":mtk_slbc",
-        ":mtk_smi",
-        ":mtk_sync",
-        ":system_heap",
-    ],
 )
 
 ddk_module(
@@ -5094,21 +4031,10 @@ ddk_module(
     kernel_build = "//common/mindone:mindone",
     includes = [
         "mtk_pd_adapter",
-        "include/drivers/misc/mediatek/usb20",
-        "include/drivers/misc/mediatek/typec/tcpc/inc",
-        "include/drivers/misc/mediatek/power_throttling",
-        "include/drivers/misc/mediatek/include",
-        "include",
-    ],
-    local_defines = [
-        "CONFIG_TCPC_CLASS=1",
-        "CONFIG_USB_POWER_DELIVERY=1",
     ],
     copts = _MINDONE_COPTS,
     deps = [
-        ":mindone_headers",
         ":adapter_class",
-        ":tcpc_class",
     ],
 )
 
@@ -5143,39 +4069,24 @@ ddk_module(
 )
 
 ddk_module(
-    name = "mtk_perf_ioctl",
+    name = "mtk_pm_domains_ack",
     srcs = [
-        "mtk_perf_ioctl/perf_ioctl.c",
+        "mtk_pm_domains_ack/mtk-pm-domains.c",
     ],
-    out = "mtk_perf_ioctl.ko",
+    out = "mtk-pm-domains.ko",
     hdrs = glob([
-        "mtk_perf_ioctl/**/*.h",
-        "mtk_perf_ioctl/**/.gitkeep",
+        "mtk_pm_domains_ack/**/*.h",
+        "mtk_pm_domains_ack/**/.gitkeep",
     ], allow_empty = True),
     kernel_build = "//common/mindone:mindone",
     includes = [
-        "mtk_perf_ioctl",
+        "mtk_pm_domains_ack",
     ],
     copts = _MINDONE_COPTS,
-    deps = [":mindone_headers"],
-)
-
-ddk_module(
-    name = "mtk_pm_domain_disable_unused",
-    srcs = [
-        "mtk_pm_domain_disable_unused/mtk_pm_domain_disable_unused.c",
+    deps = [
+        ":mindone_headers",
+        "//common/mindone:mindone_dt_bindings_common",
     ],
-    out = "mtk_pm_domain_disable_unused.ko",
-    hdrs = glob([
-        "mtk_pm_domain_disable_unused/**/*.h",
-        "mtk_pm_domain_disable_unused/**/.gitkeep",
-    ], allow_empty = True),
-    kernel_build = "//common/mindone:mindone",
-    includes = [
-        "mtk_pm_domain_disable_unused",
-    ],
-    copts = _MINDONE_COPTS,
-    deps = [":mindone_headers"],
 )
 
 ddk_module(
@@ -5197,61 +4108,18 @@ ddk_module(
 )
 
 ddk_module(
-    name = "mtk_pmic_wrap",
+    name = "mtk_pmic_wrap_ack",
     srcs = [
-        "mtk_pmic_wrap/mtk_pmic_wrap.c",
+        "mtk_pmic_wrap_ack/mtk-pmic-wrap.c",
     ],
-    out = "mtk_pmic_wrap.ko",
+    out = "mtk-pmic-wrap.ko",
     hdrs = glob([
-        "mtk_pmic_wrap/**/*.h",
-        "mtk_pmic_wrap/**/.gitkeep",
+        "mtk_pmic_wrap_ack/**/*.h",
+        "mtk_pmic_wrap_ack/**/.gitkeep",
     ], allow_empty = True),
     kernel_build = "//common/mindone:mindone",
     includes = [
-        "mtk_pmic_wrap",
-    ],
-    copts = _MINDONE_COPTS,
-    deps = [":mindone_headers"],
-)
-
-ddk_module(
-    name = "mtk_printk_ctrl",
-    srcs = [
-        "mtk_printk_ctrl/mtk_printk_ctrl.c",
-    ],
-    out = "mtk_printk_ctrl.ko",
-    hdrs = glob([
-        "mtk_printk_ctrl/**/*.h",
-        "mtk_printk_ctrl/**/.gitkeep",
-    ], allow_empty = True),
-    kernel_build = "//common/mindone:mindone",
-    includes = [
-        "mtk_printk_ctrl",
-        "include/drivers/misc/mediatek/include/mt-plat",
-    ],
-    local_defines = [
-        "CONFIG_MTK_PRINTK=1",
-    ],
-    copts = _MINDONE_COPTS,
-    deps = [":mindone_headers"],
-)
-
-ddk_module(
-    name = "mtk_pwm",
-    srcs = [
-        "mtk_pwm/mtk_pwm_main.c",
-        "mtk_pwm/mtk_pwm_hal.c",
-    ],
-    out = "mtk_pwm.ko",
-    hdrs = glob([
-        "mtk_pwm/**/*.h",
-        "mtk_pwm/**/.gitkeep",
-    ], allow_empty = True),
-    kernel_build = "//common/mindone:mindone",
-    includes = [
-        "mtk_pwm",
-        "mtk_pwm/pwm_v2_include",
-        "include/drivers/misc/mediatek/include",
+        "mtk_pmic_wrap_ack",
     ],
     copts = _MINDONE_COPTS,
     deps = [":mindone_headers"],
@@ -5316,140 +4184,6 @@ ddk_module(
 )
 
 ddk_module(
-    name = "mtk_scp_audio",
-    srcs = [
-        "mtk_scp_audio/scp_audio_buf.c",
-        "mtk_scp_audio/mtk-scp-audio-driver.c",
-        "mtk_scp_audio/mtk-scp-audio-pcm.c",
-        "mtk_scp_audio/mtk-scp-audio-mem-control.c",
-    ],
-    out = "mtk_scp_audio.ko",
-    hdrs = glob([
-        "mtk_scp_audio/**/*.h",
-        "mtk_scp_audio/**/.gitkeep",
-    ], allow_empty = True),
-    kernel_build = "//common/mindone:mindone",
-    includes = [
-        "mtk_scp_audio",
-        "include/drivers/misc/mediatek/audio_ipi/include",
-        "include/drivers/misc/mediatek/scp/include",
-        "include/drivers/misc/mediatek/scp/rv",
-        "include/sound/soc/mediatek/common",
-        "include",
-        "include/include",
-    ],
-    copts = _MINDONE_COPTS,
-    deps = [
-        ":mindone_headers",
-        ":audio_ipi",
-        ":mtk_scp_audiocommon",
-        ":mtk_tinysys_ipi",
-        ":scp",
-    ],
-)
-
-ddk_module(
-    name = "mtk_scp_audiocommon",
-    srcs = [
-        "mtk_scp_audiocommon/scp_audio_ipi.c",
-        "mtk_scp_audiocommon/audio_mbox.c",
-    ],
-    out = "mtk_scp_audiocommon.ko",
-    hdrs = glob([
-        "mtk_scp_audiocommon/**/*.h",
-        "mtk_scp_audiocommon/**/.gitkeep",
-    ], allow_empty = True),
-    kernel_build = "//common/mindone:mindone",
-    includes = [
-        "mtk_scp_audiocommon",
-        "include/drivers/misc/mediatek/audio_ipi/include",
-        "include/drivers/misc/mediatek/scp/include",
-        "include/drivers/misc/mediatek/scp/rv",
-        "include",
-        "include/include",
-    ],
-    copts = _MINDONE_COPTS,
-    deps = [
-        ":mindone_headers",
-        ":mtk_mbox",
-        ":scp",
-    ],
-)
-
-ddk_module(
-    name = "mtk_scp_ultra",
-    srcs = [
-        "mtk_scp_ultra/mtk_scp_ultra.c",
-    ],
-    out = "mtk_scp_ultra.ko",
-    hdrs = glob([
-        "mtk_scp_ultra/**/*.h",
-        "mtk_scp_ultra/**/.gitkeep",
-    ], allow_empty = True),
-    kernel_build = "//common/mindone:mindone",
-    includes = [
-        "mtk_scp_ultra",
-        "include/sound/soc/mediatek/common",
-        "include/sound/soc/mediatek/ultrasound/ultra_common",
-        "include/drivers/misc/mediatek/scp/include",
-        "include",
-        "include/include",
-    ],
-    local_defines = [
-        "CONFIG_MTK_ULTRASND_PROXIMITY=1",
-    ],
-    copts = _MINDONE_COPTS,
-    deps = [
-        ":mindone_headers",
-        ":mtk_afe_external",
-    ],
-)
-
-ddk_module(
-    name = "mtk_scpsys",
-    srcs = [
-        "mtk_scpsys/mtk-scpsys-common.c",
-        "mtk_scpsys/mtk-scpsys-mt6789.c",
-    ],
-    out = "mtk_scpsys.ko",
-    hdrs = glob([
-        "mtk_scpsys/**/*.h",
-        "mtk_scpsys/**/.gitkeep",
-    ], allow_empty = True),
-    kernel_build = "//common/mindone:mindone",
-    includes = [
-        "mtk_scpsys",
-        "include",
-    ],
-    local_defines = [
-        "CONFIG_PM=1",
-    ],
-    copts = _MINDONE_COPTS,
-    deps = [
-        ":mindone_headers",
-        "//common/mindone:mindone_dt_bindings_common",
-    ],
-)
-
-ddk_module(
-    name = "mtk_scpsys_bringup",
-    srcs = [
-        "mtk_scpsys_bringup/mtk_scpsys_bringup.c",
-    ],
-    out = "mtk_scpsys_bringup.ko",
-    hdrs = glob([
-        "mtk_scpsys_bringup/**/*.h",
-        "mtk_scpsys_bringup/**/.gitkeep",
-    ], allow_empty = True),
-    kernel_build = "//common/mindone:mindone",
-    includes = [
-        "mtk_scpsys_bringup",
-    ],
-    copts = _MINDONE_COPTS,
-    deps = [":mindone_headers"],
-)
-
-ddk_module(
     name = "mtk_sec_heap",
     srcs = [
         "mtk_sec_heap/mtk_sec_heap.c",
@@ -5491,28 +4225,6 @@ ddk_module(
 )
 
 ddk_module(
-    name = "mtk_slbc",
-    srcs = [
-        "mtk_slbc/slbc.c",
-    ],
-    out = "mtk_slbc.ko",
-    hdrs = glob([
-        "mtk_slbc/**/*.h",
-        "mtk_slbc/**/.gitkeep",
-    ], allow_empty = True),
-    kernel_build = "//common/mindone:mindone",
-    includes = [
-        "mtk_slbc",
-    ],
-    local_defines = [
-        "CONFIG_MTK_SLBC=1",
-        "CONFIG_MTK_SLBC_IPI=1",
-    ],
-    copts = _MINDONE_COPTS,
-    deps = [":mindone_headers"],
-)
-
-ddk_module(
     name = "mtk_smi",
     srcs = [
         "mtk_smi/mtk_smi.c",
@@ -5541,57 +4253,6 @@ ddk_module(
 )
 
 ddk_module(
-    name = "mtk_smi_dbg",
-    srcs = [
-        "mtk_smi_dbg/mtk_smi_dbg.c",
-    ],
-    out = "mtk_smi_dbg.ko",
-    hdrs = glob([
-        "mtk_smi_dbg/**/*.h",
-        "mtk_smi_dbg/**/.gitkeep",
-    ], allow_empty = True),
-    kernel_build = "//common/mindone:mindone",
-    includes = [
-        "include/include",
-        "mtk_smi_dbg",
-        "include/drivers/iommu",
-        "include/drivers/clk/mediatek",
-        "include",
-    ],
-    local_defines = [
-        "MTK_M4U_DOM_NR_MAX=16",
-        "MTK_M4U_TAB_NR_MAX=3",
-        "CONFIG_MTK_EMI=1",
-        "CONFIG_MTK_SMI=1",
-        "CONFIG_MTK_SMI_BWC=1",
-    ],
-    copts = _MINDONE_COPTS,
-    deps = [
-        ":mindone_headers",
-        ":emi",
-        ":mtk_smi",
-    ],
-)
-
-ddk_module(
-    name = "mtk_socinfo",
-    srcs = [
-        "mtk_socinfo/mtk_socinfo.c",
-    ],
-    out = "mtk_socinfo.ko",
-    hdrs = glob([
-        "mtk_socinfo/**/*.h",
-        "mtk_socinfo/**/.gitkeep",
-    ], allow_empty = True),
-    kernel_build = "//common/mindone:mindone",
-    includes = [
-        "mtk_socinfo",
-    ],
-    copts = _MINDONE_COPTS,
-    deps = [":mindone_headers"],
-)
-
-ddk_module(
     name = "mtk_sp_spk_amp",
     srcs = [
         "mtk_sp_spk_amp/mtk_sp_spk_amp.c",
@@ -5605,24 +4266,6 @@ ddk_module(
     includes = [
         "mtk_sp_spk_amp",
         "include",
-    ],
-    copts = _MINDONE_COPTS,
-    deps = [":mindone_headers"],
-)
-
-ddk_module(
-    name = "mtk_spmi_pmic",
-    srcs = [
-        "mtk_spmi_pmic/mtk_spmi_pmic.c",
-    ],
-    out = "mtk_spmi_pmic.ko",
-    hdrs = glob([
-        "mtk_spmi_pmic/**/*.h",
-        "mtk_spmi_pmic/**/.gitkeep",
-    ], allow_empty = True),
-    kernel_build = "//common/mindone:mindone",
-    includes = [
-        "mtk_spmi_pmic",
     ],
     copts = _MINDONE_COPTS,
     deps = [":mindone_headers"],
@@ -5649,45 +4292,6 @@ ddk_module(
         ":mindone_headers",
         ":tinysys_scmi",
     ],
-)
-
-ddk_module(
-    name = "mtk_swpm",
-    srcs = [
-        "mtk_swpm/swpm_module.c",
-        "mtk_swpm/swpm_module_ext.c",
-        "mtk_swpm/mtk_swpm_common_sysfs.c",
-        "mtk_swpm/mtk_swpm_sysfs_procfs.c",
-    ],
-    out = "mtk_swpm.ko",
-    hdrs = glob([
-        "mtk_swpm/**/*.h",
-        "mtk_swpm/**/.gitkeep",
-    ], allow_empty = True),
-    kernel_build = "//common/mindone:mindone",
-    includes = [
-        "mtk_swpm",
-    ],
-    copts = _MINDONE_COPTS,
-    deps = [":mindone_headers"],
-)
-
-ddk_module(
-    name = "mtk_swpm_perf_arm_pmu",
-    srcs = [
-        "mtk_swpm_perf_arm_pmu/swpm_perf_arm_pmu.c",
-    ],
-    out = "mtk_swpm_perf_arm_pmu.ko",
-    hdrs = glob([
-        "mtk_swpm_perf_arm_pmu/**/*.h",
-        "mtk_swpm_perf_arm_pmu/**/.gitkeep",
-    ], allow_empty = True),
-    kernel_build = "//common/mindone:mindone",
-    includes = [
-        "mtk_swpm_perf_arm_pmu",
-    ],
-    copts = _MINDONE_COPTS,
-    deps = [":mindone_headers"],
 )
 
 ddk_module(
@@ -5735,67 +4339,6 @@ ddk_module(
         ":mindone_headers",
         ":mtk_mbox",
         ":mtk_rpmsg_mbox",
-    ],
-)
-
-ddk_module(
-    name = "mtk_u_ether",
-    srcs = [
-        "mtk_u_ether/u_ether.c",
-    ],
-    out = "mtk_u_ether.ko",
-    hdrs = glob([
-        "mtk_u_ether/**/*.h",
-        "mtk_u_ether/**/.gitkeep",
-    ], allow_empty = True),
-    kernel_build = "//common/mindone:mindone",
-    includes = [
-        "mtk_u_ether",
-    ],
-    copts = _MINDONE_COPTS,
-    deps = [":mindone_headers"],
-)
-
-ddk_module(
-    name = "mtk_uart_apdma",
-    srcs = [
-        "mtk_uart_apdma/mtk_uart_apdma.c",
-    ],
-    out = "mtk_uart_apdma.ko",
-    hdrs = glob([
-        "mtk_uart_apdma/**/*.h",
-        "mtk_uart_apdma/**/.gitkeep",
-    ], allow_empty = True),
-    kernel_build = "//common/mindone:mindone",
-    includes = [
-        "mtk_uart_apdma",
-    ],
-    copts = _MINDONE_COPTS,
-    deps = [":mindone_headers"],
-)
-
-ddk_module(
-    name = "mtk_usb_f_rndis",
-    srcs = [
-        "mtk_usb_f_rndis/f_rndis.c",
-        "mtk_usb_f_rndis/rndis.c",
-    ],
-    out = "mtk_usb_f_rndis.ko",
-    hdrs = glob([
-        "mtk_usb_f_rndis/**/*.h",
-        "mtk_usb_f_rndis/**/.gitkeep",
-    ], allow_empty = True),
-    kernel_build = "//common/mindone:mindone",
-    includes = [
-        "mtk_usb_f_rndis",
-        "include/drivers/usb/gadget",
-        "include/drivers/usb/gadget/udc",
-        "include",
-    ],
-    copts = _MINDONE_COPTS,
-    deps = [
-        ":mindone_headers",
-        ":mtk_u_ether",
     ],
 )
 
@@ -5893,10 +4436,8 @@ ddk_module(
         ":iommu_gz",
         ":mtk_sec_heap",
         ":mtk_smi",
-        ":mtk_smi_dbg",
         ":mtk_tinysys_ipi",
         ":mtk_vcodec_common",
-        ":vcp",
         ":mtk_icc_core",
     ],
 )
@@ -5957,61 +4498,9 @@ ddk_module(
         ":iommu_gz",
         ":mtk_sec_heap",
         ":mtk_smi",
-        ":mtk_smi_dbg",
         ":mtk_tinysys_ipi",
         ":mtk_vcodec_common",
-        ":vcp",
         ":mtk_icc_core",
-    ],
-)
-
-ddk_module(
-    name = "mtk_wdt",
-    srcs = [
-        "mtk_wdt/mtk_wdt.c",
-    ],
-    out = "mtk_wdt.ko",
-    hdrs = glob([
-        "mtk_wdt/**/*.h",
-        "mtk_wdt/**/.gitkeep",
-    ], allow_empty = True),
-    kernel_build = "//common/mindone:mindone",
-    includes = [
-        "mtk_wdt",
-    ],
-    copts = _MINDONE_COPTS,
-    deps = [":mindone_headers"],
-)
-
-ddk_module(
-    name = "musb_boost",
-    srcs = [
-        "musb_boost/musb_boost_common.c",
-        "musb_boost/usb_boost_plat.c",
-    ],
-    out = "musb_boost.ko",
-    hdrs = glob([
-        "musb_boost/**/*.h",
-        "musb_boost/**/.gitkeep",
-    ], allow_empty = True),
-    kernel_build = "//common/mindone:mindone",
-    includes = [
-        "musb_boost",
-        "include/drivers/misc/mediatek/include/mt-plat",
-        "include/drivers/usb/host",
-        "include/drivers/usb/mtu3",
-        "include/drivers/misc/mediatek/usb20",
-        "include/drivers/misc/mediatek/include/ppm_v3",
-        "include/drivers/misc/mediatek/performance/fpsgo_v3/fbt/include",
-        "include",
-    ],
-    local_defines = [
-        "CONFIG_MTK_DVFSRC=1",
-    ],
-    copts = _MINDONE_COPTS,
-    deps = [
-        ":mindone_headers",
-        ":mtk_dvfsrc",
     ],
 )
 
@@ -6074,7 +4563,6 @@ ddk_module(
     copts = _MINDONE_COPTS,
     deps = [
         ":mindone_headers",
-        ":phy_generic",
     ],
 )
 
@@ -6138,6 +4626,29 @@ ddk_module(
 )
 
 ddk_module(
+    name = "ois_aw86006",
+    srcs = [
+        "ois_aw86006/aw86006_rom.c",
+        "ois_aw86006/ois_aw86006.c",
+    ],
+    out = "ois_aw86006.ko",
+    hdrs = glob([
+        "ois_aw86006/**/*.h",
+        "ois_aw86006/**/.gitkeep",
+    ], allow_empty = True),
+    kernel_build = "//common/mindone:mindone",
+    includes = [
+        "ois_aw86006",
+    ],
+    copts = _MINDONE_COPTS,
+    deps = [
+        ":mindone_headers",
+        ":i2c_mt65xx",
+        ":imgsensor_isp6s",
+    ],
+)
+
+ddk_module(
     name = "panel-sd5302h-fhd1240-dsi-vdo-amoled-ocp2133",
     srcs = [
         "panel_sd5302h_fhd1240_dsi_vdo_amoled_ocp2133_61/panel-sd5302h-fhd1240-dsi-vdo-amoled-ocp2133.c",
@@ -6192,53 +4703,6 @@ ddk_module(
 )
 
 ddk_module(
-    name = "pd_dbg_info",
-    srcs = [
-        "pd_dbg_info/pd_dbg_info.c",
-    ],
-    out = "pd_dbg_info.ko",
-    hdrs = glob([
-        "pd_dbg_info/**/*.h",
-        "pd_dbg_info/**/.gitkeep",
-    ], allow_empty = True),
-    kernel_build = "//common/mindone:mindone",
-    includes = [
-        "pd_dbg_info",
-    ],
-    local_defines = [
-        "CONFIG_MTK_TYPEC_WATER_DETECT=1",
-        "CONFIG_PD_DBG_INFO=1",
-        "CONFIG_PRIZE_TYPEC_POSITIVE_NEGATIVE=1",
-        "CONFIG_TCPC_CLASS=1",
-        "CONFIG_USB_POWER_DELIVERY=1",
-        "CONFIG_WAIT_TX_RETRY_DONE=1",
-    ],
-    copts = _MINDONE_COPTS,
-    deps = [":mindone_headers"],
-)
-
-ddk_module(
-    name = "phy_generic",
-    srcs = [
-        "phy_generic/phy_generic.c",
-    ],
-    out = "phy_generic.ko",
-    hdrs = glob([
-        "phy_generic/**/*.h",
-        "phy_generic/**/.gitkeep",
-    ], allow_empty = True),
-    kernel_build = "//common/mindone:mindone",
-    includes = [
-        "phy_generic",
-    ],
-    local_defines = [
-        "CONFIG_NOP_USB_XCEIV=1",
-    ],
-    copts = _MINDONE_COPTS,
-    deps = [":mindone_headers"],
-)
-
-ddk_module(
     name = "phy_mtk_tphy",
     srcs = [
         "phy_mtk_tphy/phy_mtk_tphy.c",
@@ -6251,25 +4715,6 @@ ddk_module(
     kernel_build = "//common/mindone:mindone",
     includes = [
         "phy_mtk_tphy",
-    ],
-    copts = _MINDONE_COPTS,
-    deps = [":mindone_headers"],
-)
-
-ddk_module(
-    name = "pidmap",
-    srcs = [
-        "pidmap/pidmap.c",
-    ],
-    out = "pidmap.ko",
-    hdrs = glob([
-        "pidmap/**/*.h",
-        "pidmap/**/.gitkeep",
-    ], allow_empty = True),
-    kernel_build = "//common/mindone:mindone",
-    includes = [
-        "pidmap",
-        "include/drivers/misc/mediatek/include",
     ],
     copts = _MINDONE_COPTS,
     deps = [":mindone_headers"],
@@ -6297,24 +4742,6 @@ ddk_module(
 )
 
 ddk_module(
-    name = "pmic_lvsys_notify",
-    srcs = [
-        "pmic_lvsys_notify/pmic_lvsys_notify.c",
-    ],
-    out = "pmic_lvsys_notify.ko",
-    hdrs = glob([
-        "pmic_lvsys_notify/**/*.h",
-        "pmic_lvsys_notify/**/.gitkeep",
-    ], allow_empty = True),
-    kernel_build = "//common/mindone:mindone",
-    includes = [
-        "pmic_lvsys_notify",
-    ],
-    copts = _MINDONE_COPTS,
-    deps = [":mindone_headers"],
-)
-
-ddk_module(
     name = "pmic_temp",
     srcs = [
         "pmic_temp/pmic_temp.c",
@@ -6334,34 +4761,6 @@ ddk_module(
 )
 
 ddk_module(
-    name = "pmsr",
-    srcs = [
-        "pmsr/pmsr.c",
-    ],
-    out = "pmsr.ko",
-    hdrs = glob([
-        "pmsr/**/*.h",
-        "pmsr/**/.gitkeep",
-    ], allow_empty = True),
-    kernel_build = "//common/mindone:mindone",
-    includes = [
-        "pmsr",
-        "include/drivers/misc/mediatek/sspm/v2",
-        "include/drivers/misc/mediatek/tinysys_scmi",
-    ],
-    local_defines = [
-        "CONFIG_MTK_PLAT_POWER_6893=1",
-        "CONFIG_MTK_TINYSYS_SCMI=1",
-        "CONFIG_MTK_TINYSYS_SSPM_V2=1",
-    ],
-    copts = _MINDONE_COPTS,
-    deps = [
-        ":mindone_headers",
-        ":tinysys_scmi",
-    ],
-)
-
-ddk_module(
     name = "pn553",
     srcs = [
         "pn553/pn553.c",
@@ -6374,65 +4773,6 @@ ddk_module(
     kernel_build = "//common/mindone:mindone",
     includes = [
         "include",
-    ],
-    copts = _MINDONE_COPTS,
-    deps = [":mindone_headers"],
-)
-
-ddk_module(
-    name = "pwm_mtk_disp",
-    srcs = [
-        "pwm_mtk_disp/pwm_mtk_disp.c",
-    ],
-    out = "pwm_mtk_disp.ko",
-    hdrs = glob([
-        "pwm_mtk_disp/**/*.h",
-        "pwm_mtk_disp/**/.gitkeep",
-    ], allow_empty = True),
-    kernel_build = "//common/mindone:mindone",
-    includes = [
-        "pwm_mtk_disp",
-        "include",
-    ],
-    copts = _MINDONE_COPTS,
-    deps = [":mindone_headers"],
-)
-
-ddk_module(
-    name = "reboot_mode",
-    srcs = [
-        "reboot_mode/reboot_mode.c",
-    ],
-    out = "reboot_mode.ko",
-    hdrs = glob([
-        "reboot_mode/**/*.h",
-        "reboot_mode/**/.gitkeep",
-    ], allow_empty = True),
-    kernel_build = "//common/mindone:mindone",
-    includes = [
-        "reboot_mode",
-    ],
-    copts = _MINDONE_COPTS,
-    deps = [":mindone_headers"],
-)
-
-ddk_module(
-    name = "rpmb",
-    srcs = [
-        "rpmb/rpmb.c",
-    ],
-    out = "rpmb.ko",
-    hdrs = glob([
-        "rpmb/**/*.h",
-        "rpmb/**/.gitkeep",
-    ], allow_empty = True),
-    kernel_build = "//common/mindone:mindone",
-    includes = [
-        "rpmb",
-        "include/include",
-    ],
-    local_defines = [
-        "CONFIG_RPMB=1",
     ],
     copts = _MINDONE_COPTS,
     deps = [":mindone_headers"],
@@ -6461,73 +4801,6 @@ ddk_module(
     deps = [
         ":mindone_headers",
         ":ufs_mtk_rpmb",
-    ],
-)
-
-ddk_module(
-    name = "rps_perf",
-    srcs = [
-        "rps_perf/rps_perf.c",
-    ],
-    out = "rps_perf.ko",
-    hdrs = glob([
-        "rps_perf/**/*.h",
-        "rps_perf/**/.gitkeep",
-    ], allow_empty = True),
-    kernel_build = "//common/mindone:mindone",
-    includes = [
-        "rps_perf",
-        "include",
-    ],
-    copts = _MINDONE_COPTS,
-    deps = [":mindone_headers"],
-)
-
-ddk_module(
-    name = "rt4831a_drv",
-    srcs = [
-        "rt4831a_drv/rt4831a_drv.c",
-    ],
-    out = "rt4831a_drv.ko",
-    hdrs = glob([
-        "rt4831a_drv/**/*.h",
-        "rt4831a_drv/**/.gitkeep",
-    ], allow_empty = True),
-    kernel_build = "//common/mindone:mindone",
-    includes = [
-        "rt4831a_drv",
-        "include",
-    ],
-    copts = _MINDONE_COPTS,
-    deps = [":mindone_headers"],
-)
-
-ddk_module(
-    name = "rt_pd_manager",
-    srcs = [
-        "rt_pd_manager/rt_pd_manager.c",
-    ],
-    out = "rt_pd_manager.ko",
-    hdrs = glob([
-        "rt_pd_manager/**/*.h",
-        "rt_pd_manager/**/.gitkeep",
-    ], allow_empty = True),
-    kernel_build = "//common/mindone:mindone",
-    includes = [
-        "rt_pd_manager",
-    ],
-    local_defines = [
-        "CONFIG_MTK_TYPEC_WATER_DETECT=1",
-        "CONFIG_PD_DBG_INFO=1",
-        "CONFIG_PRIZE_TYPEC_POSITIVE_NEGATIVE=1",
-        "CONFIG_TCPC_CLASS=1",
-        "CONFIG_USB_POWER_DELIVERY=1",
-        "CONFIG_WAIT_TX_RETRY_DONE=1",
-    ],
-    copts = _MINDONE_COPTS,
-    deps = [
-        ":mindone_headers",
-        ":tcpc_class",
     ],
 )
 
@@ -6681,37 +4954,6 @@ ddk_module(
 )
 
 ddk_module(
-    name = "snd_soc_audiodsp_common",
-    srcs = [
-        "snd_soc_audiodsp_common/audio_buf.c",
-        "snd_soc_audiodsp_common/mtk-dsp-dai.c",
-        "snd_soc_audiodsp_common/mtk-dsp-pcm.c",
-        "snd_soc_audiodsp_common/mtk-dsp-common.c",
-        "snd_soc_audiodsp_common/mtk-dsp-platform-driver.c",
-        "snd_soc_audiodsp_common/mtk-dsp-mem-control.c",
-    ],
-    out = "snd_soc_audiodsp_common.ko",
-    hdrs = glob([
-        "snd_soc_audiodsp_common/**/*.h",
-        "snd_soc_audiodsp_common/**/.gitkeep",
-    ], allow_empty = True),
-    kernel_build = "//common/mindone:mindone",
-    includes = [
-        "snd_soc_audiodsp_common",
-        "include/drivers/misc/mediatek/audio_ipi/include",
-        "include/drivers/misc/mediatek/adsp/include",
-        "include/sound/soc/mediatek/common",
-        "include",
-    ],
-    copts = _MINDONE_COPTS,
-    deps = [
-        ":mindone_headers",
-        ":adsp",
-        ":audio_ipi",
-    ],
-)
-
-ddk_module(
     name = "snd_soc_aw87xxx",
     srcs = [
         "snd_soc_aw87xxx/aw87xxx.c",
@@ -6787,7 +5029,6 @@ ddk_module(
     copts = _MINDONE_COPTS,
     deps = [
         ":mindone_headers",
-        ":snd_soc_audiodsp_common",
         ":snd_soc_mtk_common",
     ],
 )
@@ -6820,61 +5061,19 @@ ddk_module(
     local_defines = [
         "CONFIG_COMPAT=1",
         "CONFIG_MTK_AEE_FEATURE=1",
-        "CONFIG_MTK_AUDIODSP_SUPPORT=1",
         "CONFIG_MTK_AURISYS_PHONE_CALL_SUPPORT=1",
-        "CONFIG_MTK_ECCCI_C2K_USB=1",
         "CONFIG_MTK_ECCCI_DRIVER=1",
         "CONFIG_MTK_ULTRASND_PROXIMITY=1",
         "CONFIG_MTK_VOW_SUPPORT=1",
-        "CONFIG_SND_SOC_MTK_AUDIO_DSP=1",
         "CONFIG_SND_SOC_MTK_SRAM=1",
         "CONFIG_MTK_HANG_DETECT=1",
     ],
     copts = _MINDONE_COPTS,
     deps = [
         ":mindone_headers",
-        ":adsp",
-        ":audio_ipi",
         ":ccci_md_all",
         ":ccci_util_lib",
         ":mtk_afe_external",
-        ":snd_soc_audiodsp_common",
-    ],
-)
-
-ddk_module(
-    name = "snd_soc_mtk_scp_ultra",
-    srcs = [
-        "snd_soc_mtk_scp_ultra/mtk-scp-ultra-pcm.c",
-        "snd_soc_mtk_scp_ultra/mtk-scp-ultra-mem-control.c",
-        "snd_soc_mtk_scp_ultra/mtk-scp-ultra-platform-driver.c",
-        "snd_soc_mtk_scp_ultra/mtk-scp-ultra-common.c",
-        "snd_soc_mtk_scp_ultra/ultra_ipi.c",
-    ],
-    out = "snd_soc_mtk_scp_ultra.ko",
-    hdrs = glob([
-        "snd_soc_mtk_scp_ultra/**/*.h",
-        "snd_soc_mtk_scp_ultra/**/.gitkeep",
-    ], allow_empty = True),
-    kernel_build = "//common/mindone:mindone",
-    includes = [
-        "snd_soc_mtk_scp_ultra",
-        "include/sound/soc/mediatek/common",
-        "include/sound/soc/mediatek/ultrasound/ultra_common",
-        "include/drivers/misc/mediatek/scp/include",
-        "include",
-        "include/include",
-    ],
-    local_defines = [
-        "CONFIG_MTK_HANG_DETECT=1",
-    ],
-    copts = _MINDONE_COPTS,
-    deps = [
-        ":mindone_headers",
-        ":mtk_afe_external",
-        ":mtk_scp_ultra",
-        ":mtk_tinysys_ipi",
-        ":scp",
     ],
 )
 
@@ -6920,47 +5119,6 @@ ddk_module(
         ":mindone_headers",
         ":tkcore",
     ],
-)
-
-ddk_module(
-    name = "spmi_mtk_pmif",
-    srcs = [
-        "spmi_mtk_pmif/spmi-mtk-pmif-core.c",
-        "spmi_mtk_pmif/spmi-mtk-debug.c",
-    ],
-    out = "spmi_mtk_pmif.ko",
-    hdrs = glob([
-        "spmi_mtk_pmif/**/*.h",
-        "spmi_mtk_pmif/**/.gitkeep",
-    ], allow_empty = True),
-    kernel_build = "//common/mindone:mindone",
-    includes = [
-        "spmi_mtk_pmif",
-        "include/drivers/misc/mediatek/include",
-    ],
-    local_defines = [
-        "CONFIG_MTK_HANG_DETECT=1",
-    ],
-    copts = _MINDONE_COPTS,
-    deps = [":mindone_headers"],
-)
-
-ddk_module(
-    name = "spmtwam",
-    srcs = [
-        "spmtwam/spmtwam.c",
-    ],
-    out = "spmtwam.ko",
-    hdrs = glob([
-        "spmtwam/**/*.h",
-        "spmtwam/**/.gitkeep",
-    ], allow_empty = True),
-    kernel_build = "//common/mindone:mindone",
-    includes = [
-        "spmtwam",
-    ],
-    copts = _MINDONE_COPTS,
-    deps = [":mindone_headers"],
 )
 
 ddk_module(
@@ -7048,27 +5206,6 @@ ddk_module(
 )
 
 ddk_module(
-    name = "syscon_reboot_mode",
-    srcs = [
-        "syscon_reboot_mode/syscon_reboot_mode.c",
-    ],
-    out = "syscon_reboot_mode.ko",
-    hdrs = glob([
-        "syscon_reboot_mode/**/*.h",
-        "syscon_reboot_mode/**/.gitkeep",
-    ], allow_empty = True),
-    kernel_build = "//common/mindone:mindone",
-    includes = [
-        "syscon_reboot_mode",
-    ],
-    copts = _MINDONE_COPTS,
-    deps = [
-        ":mindone_headers",
-        ":reboot_mode",
-    ],
-)
-
-ddk_module(
     name = "system_heap",
     srcs = [
         "system_heap/system_heap.c",
@@ -7101,241 +5238,13 @@ ddk_module(
 )
 
 ddk_module(
-    name = "task_turbo",
+    name = "tcpci_rt1711h",
     srcs = [
-        "task_turbo/task_turbo.c",
+        "tcpci_rt1711h/tcpci_rt1711h.c",
     ],
-    out = "task_turbo.ko",
-    hdrs = glob([
-        "task_turbo/**/*.h",
-        "task_turbo/**/.gitkeep",
-    ], allow_empty = True),
+    out = "tcpci_rt1711h.ko",
     kernel_build = "//common/mindone:mindone",
-    includes = [
-        "task_turbo",
-        "include",
-    ],
-    copts = _MINDONE_COPTS + [
-        "-include",
-        "linux/sched/cputime.h",
-    ],
-    deps = [":mindone_headers"],
-)
-
-ddk_module(
-    name = "tcpc_class",
-    srcs = [
-        "tcpc_class/tcpci_core.c",
-        "tcpc_class/tcpci_typec.c",
-        "tcpc_class/tcpci_timer.c",
-        "tcpc_class/tcpm.c",
-        "tcpc_class/tcpci.c",
-        "tcpc_class/tcpci_alert.c",
-        "tcpc_class/tcpci_event.c",
-        "tcpc_class/pd_core.c",
-        "tcpc_class/pd_policy_engine.c",
-        "tcpc_class/pd_process_evt.c",
-        "tcpc_class/pd_dpm_core.c",
-        "tcpc_class/pd_dpm_uvdm.c",
-        "tcpc_class/pd_dpm_alt_mode_dp.c",
-        "tcpc_class/pd_dpm_pdo_select.c",
-        "tcpc_class/pd_dpm_reaction.c",
-        "tcpc_class/pd_process_evt_snk.c",
-        "tcpc_class/pd_process_evt_src.c",
-        "tcpc_class/pd_process_evt_vdm.c",
-        "tcpc_class/pd_process_evt_drs.c",
-        "tcpc_class/pd_process_evt_prs.c",
-        "tcpc_class/pd_process_evt_vcs.c",
-        "tcpc_class/pd_process_evt_dbg.c",
-        "tcpc_class/pd_process_evt_tcp.c",
-        "tcpc_class/pd_process_evt_com.c",
-        "tcpc_class/pd_policy_engine_src.c",
-        "tcpc_class/pd_policy_engine_snk.c",
-        "tcpc_class/pd_policy_engine_ufp.c",
-        "tcpc_class/pd_policy_engine_vcs.c",
-        "tcpc_class/pd_policy_engine_dfp.c",
-        "tcpc_class/pd_policy_engine_dr.c",
-        "tcpc_class/pd_policy_engine_drs.c",
-        "tcpc_class/pd_policy_engine_prs.c",
-        "tcpc_class/pd_policy_engine_dbg.c",
-        "tcpc_class/pd_policy_engine_com.c",
-        "tcpc_class/pd_dpm_alt_mode_dc.c",
-        "tcpc_class/sm5602_gpio_stub.c",
-    ],
-    out = "tcpc_class.ko",
-    hdrs = glob([
-        "tcpc_class/**/*.h",
-        "tcpc_class/**/.gitkeep",
-    ], allow_empty = True),
-    kernel_build = "//common/mindone:mindone",
-    includes = [
-        "tcpc_class",
-        "include",
-    ],
-    local_defines = [
-        "CONFIG_MTK_TYPEC_WATER_DETECT=1",
-        "CONFIG_PD_DBG_INFO=1",
-        "CONFIG_PRIZE_TYPEC_POSITIVE_NEGATIVE=1",
-        "CONFIG_TCPC_CLASS=1",
-        "CONFIG_USB_POWER_DELIVERY=1",
-        "CONFIG_WAIT_TX_RETRY_DONE=1",
-    ],
     copts = _MINDONE_COPTS,
-    deps = [
-        ":mindone_headers",
-        ":pd_dbg_info",
-    ],
-)
-
-ddk_module(
-    name = "tcpc_rt1711h",
-    srcs = [
-        "tcpc_rt1711h/tcpc_rt1711h.c",
-    ],
-    out = "tcpc_rt1711h.ko",
-    hdrs = glob([
-        "tcpc_rt1711h/**/*.h",
-        "tcpc_rt1711h/**/.gitkeep",
-    ], allow_empty = True),
-    kernel_build = "//common/mindone:mindone",
-    includes = [
-        "tcpc_rt1711h",
-        "include",
-    ],
-    local_defines = [
-        "CONFIG_MTK_TYPEC_WATER_DETECT=1",
-        "CONFIG_PD_DBG_INFO=1",
-        "CONFIG_PRIZE_TYPEC_POSITIVE_NEGATIVE=1",
-        "CONFIG_TCPC_CLASS=1",
-        "CONFIG_USB_POWER_DELIVERY=1",
-        "CONFIG_WAIT_TX_RETRY_DONE=1",
-    ],
-    copts = _MINDONE_COPTS,
-    deps = [
-        ":mindone_headers",
-        ":pd_dbg_info",
-        ":tcpc_class",
-    ],
-)
-
-ddk_module(
-    name = "tcpci_late_sync",
-    srcs = [
-        "tcpci_late_sync/tcpci_late_sync.c",
-    ],
-    out = "tcpci_late_sync.ko",
-    hdrs = glob([
-        "tcpci_late_sync/**/*.h",
-        "tcpci_late_sync/**/.gitkeep",
-    ], allow_empty = True),
-    kernel_build = "//common/mindone:mindone",
-    includes = [
-        "tcpci_late_sync",
-    ],
-    local_defines = [
-        "CONFIG_MTK_TYPEC_WATER_DETECT=1",
-        "CONFIG_PD_DBG_INFO=1",
-        "CONFIG_PRIZE_TYPEC_POSITIVE_NEGATIVE=1",
-        "CONFIG_TCPC_CLASS=1",
-        "CONFIG_USB_POWER_DELIVERY=1",
-        "CONFIG_WAIT_TX_RETRY_DONE=1",
-    ],
-    copts = _MINDONE_COPTS,
-    deps = [
-        ":mindone_headers",
-        ":tcpc_class",
-    ],
-)
-
-ddk_module(
-    name = "teeperf",
-    srcs = [
-        "teeperf/main.c",
-        "teeperf/user.c",
-    ],
-    out = "teeperf.ko",
-    hdrs = glob([
-        "teeperf/**/*.h",
-        "teeperf/**/.gitkeep",
-    ], allow_empty = True),
-    kernel_build = "//common/mindone:mindone",
-    includes = [
-        "teeperf",
-        "include",
-    ],
-    copts = _MINDONE_COPTS,
-    deps = [":mindone_headers"],
-)
-
-ddk_module(
-    name = "thermal_generic_adc",
-    srcs = [
-        "thermal_generic_adc/thermal_generic_adc.c",
-    ],
-    out = "thermal_generic_adc.ko",
-    hdrs = glob([
-        "thermal_generic_adc/**/*.h",
-        "thermal_generic_adc/**/.gitkeep",
-    ], allow_empty = True),
-    kernel_build = "//common/mindone:mindone",
-    includes = [
-        "thermal_generic_adc",
-        "include",
-    ],
-    copts = _MINDONE_COPTS,
-    deps = [":mindone_headers"],
-)
-
-ddk_module(
-    name = "thermal_interface",
-    srcs = [
-        "thermal_interface/thermal_interface.c",
-    ],
-    out = "thermal_interface.ko",
-    hdrs = glob([
-        "thermal_interface/**/*.h",
-        "thermal_interface/**/.gitkeep",
-    ], allow_empty = True),
-    kernel_build = "//common/mindone:mindone",
-    includes = [
-        "thermal_interface",
-        "include/drivers/gpu/mediatek/gpufreq",
-    ],
-    local_defines = [
-        "CONFIG_DEBUG_FS=1",
-        "CONFIG_MTK_GPUFREQ_V2=1",
-        "CONFIG_MTK_MD_THERMAL=1",
-        "CONFIG_MTK_THERMAL_INTERFACE=1",
-        "CONFIG_MTK_THERMAL_JATM=1",
-        "CONFIG_MTK_TINYSYS_MCUPM_SUPPORT=1",
-        "CONFIG_MTK_TINYSYS_SSPM_SUPPORT=1",
-    ],
-    copts = _MINDONE_COPTS,
-    deps = [
-        ":mindone_headers",
-        ":mtk_gpufreq_wrapper",
-    ],
-)
-
-ddk_module(
-    name = "thermal_trace",
-    srcs = [
-        "thermal_trace/thermal_trace.c",
-    ],
-    out = "thermal_trace.ko",
-    hdrs = glob([
-        "thermal_trace/**/*.h",
-        "thermal_trace/**/.gitkeep",
-    ], allow_empty = True),
-    kernel_build = "//common/mindone:mindone",
-    includes = [
-        "thermal_trace",
-    ],
-    local_defines = [
-        "CONFIG_MTK_MD_THERMAL=1",
-    ],
-    copts = _MINDONE_COPTS,
-    deps = [":mindone_headers"],
 )
 
 ddk_module(
@@ -7488,7 +5397,6 @@ ddk_module(
         "CONFIG_MTK_WFD_SMEM_SUPPORT=1",
         "CONFIG_TEST_MTK_TRUSTED_MEMORY=1",
         "CONFIG_TMEM_MEMORY_POOL_ALLOCATOR=1",
-        "CONFIG_TRUSTONIC_TEE_SUPPORT=1",
         "CONFIG_TRUSTONIC_TRUSTED_UI=1",
     ],
     copts = _MINDONE_COPTS,
@@ -7497,7 +5405,6 @@ ddk_module(
         ":emi",
         ":gz_tz_system",
         ":iommu_gz",
-        ":mcDrvModule",
     ],
 )
 
@@ -7515,72 +5422,6 @@ ddk_module(
     includes = [
         "ufs_mtk_rpmb",
         "include",
-    ],
-    copts = _MINDONE_COPTS,
-    deps = [":mindone_headers"],
-)
-
-ddk_module(
-    name = "vcp",
-    srcs = [
-        "vcp/vcp_helper.c",
-        "vcp/vcp_excep.c",
-        "vcp/vcp_irq.c",
-        "vcp/vcp_logger.c",
-        "vcp/vcp_l1c.c",
-        "vcp/vcp_vcpctl.c",
-        "vcp/vcp_feature_table.c",
-        "vcp/vcp_awake.c",
-    ],
-    out = "vcp.ko",
-    hdrs = glob([
-        "vcp/**/*.h",
-        "vcp/**/.gitkeep",
-    ], allow_empty = True),
-    kernel_build = "//common/mindone:mindone",
-    includes = [
-        "vcp",
-        "include/drivers/misc/mediatek/vcp/include",
-        "include/drivers/misc/mediatek/include",
-        "include/drivers/misc/mediatek/vcp/rv",
-        "include/drivers/misc/mediatek/include/mt-plat",
-        "include/drivers/clk/mediatek",
-        "include",
-        "include/include",
-    ],
-    local_defines = [
-        "CONFIG_MTK_HANG_DETECT=1",
-    ],
-    copts = _MINDONE_COPTS,
-    deps = [
-        ":mindone_headers",
-        ":clk_fmeter_mt6789",
-        ":mtk_mbox",
-        ":mtk_smi_dbg",
-        ":mtk_tinysys_ipi",
-        ":vcp_status",
-    ],
-)
-
-ddk_module(
-    name = "vcp_status",
-    srcs = [
-        "vcp_status/vcp_status.c",
-    ],
-    out = "vcp_status.ko",
-    hdrs = glob([
-        "vcp_status/**/*.h",
-        "vcp_status/**/.gitkeep",
-    ], allow_empty = True),
-    kernel_build = "//common/mindone:mindone",
-    includes = [
-        "vcp_status",
-        "include/drivers/misc/mediatek/vcp/include",
-        "include/drivers/misc/mediatek/include",
-        "include/drivers/misc/mediatek/vcp/rv",
-        "include/drivers/misc/mediatek/include/mt-plat",
-        "include/drivers/clk/mediatek",
-        "include/include",
     ],
     copts = _MINDONE_COPTS,
     deps = [":mindone_headers"],
@@ -7622,7 +5463,6 @@ ddk_module(
         ":iommu_debug",
         ":mtk_cmdq_drv_ext",
         ":mtk_smi",
-        ":mtk_smi_dbg",
         ":mtk_icc_core",
     ],
 )
@@ -8022,85 +5862,52 @@ ddk_module(
 )
 
 ddk_module(
-    name = "clk_mediatek",
+    name = "clk_mtk_ack",
     srcs = [
-        "clk_mediatek/clk-apmixed.c",
-        "clk_mediatek/clk-cpumux.c",
-        "clk_mediatek/clk-gate.c",
-        "clk_mediatek/clk-mtk.c",
-        "clk_mediatek/clk-mux.c",
-        "clk_mediatek/clk-pll.c",
-        "clk_mediatek/reset.c",
+        "clk_mtk_ack/clk-gate.c",
+        "clk_mtk_ack/clk-mtk.c",
+        "clk_mtk_ack/clk-mux.c",
+        "clk_mtk_ack/clk-pll.c",
+        "clk_mtk_ack/reset.c",
     ],
-    out = "clk-mediatek.ko",
-    hdrs = glob(["clk_mediatek/*.h"], allow_empty = True),
+    out = "clk-mtk-ack.ko",
+    hdrs = glob(["clk_mtk_ack/*.h"]),
     kernel_build = "//common/mindone:mindone",
-    includes = ["clk_mediatek"],
+    includes = ["clk_mtk_ack"],
     copts = _MINDONE_COPTS,
     deps = [":mindone_headers"],
 )
 
 ddk_module(
     name = "clk_mt6789",
-    srcs = ["clk_mt6789/clk-mt6789.c"],
+    srcs = [
+        "clk_mt6789/clk-mt6789.c",
+        "clk_mt6789/clk-mt6789-pwr.c",
+    ],
     out = "clk-mt6789.ko",
+    hdrs = ["clk_mt6789/clk-mt6789-pwr.h"],
     kernel_build = "//common/mindone:mindone",
+    includes = ["clk_mt6789"],
     copts = _MINDONE_COPTS,
     deps = [
-        ":clk_mediatek",
+        ":clk_mtk_ack",
         ":mindone_headers",
         "//common/mindone:mindone_dt_bindings_common",
     ],
 )
 
 ddk_module(
-    name = "mtk_eint",
-    srcs = ["pinctrl_mediatek/mtk-eint.c"],
-    out = "mtk-eint.ko",
-    hdrs = glob(["pinctrl_mediatek/*.h"], allow_empty = True),
+    name = "pinctrl_mt6789",
+    srcs = ["pinctrl_mt6789/pinctrl-mt6789.c"],
+    out = "pinctrl-mt6789.ko",
+    hdrs = glob(["pinctrl_mt6789/*.h"]),
     kernel_build = "//common/mindone:mindone",
-    includes = ["pinctrl_mediatek"],
+    includes = [
+        "pinctrl_mt6789",
+        "include/drivers/pinctrl/mediatek",
+    ],
     copts = _MINDONE_COPTS,
     deps = [":mindone_headers"],
-)
-
-ddk_module(
-    name = "pinctrl_mtk_common_v2",
-    srcs = ["pinctrl_mediatek/pinctrl-mtk-common-v2.c"],
-    out = "pinctrl-mtk-common-v2.ko",
-    kernel_build = "//common/mindone:mindone",
-    copts = _MINDONE_COPTS,
-    deps = [
-        ":mindone_headers",
-        ":mtk_eint",
-    ],
-)
-
-ddk_module(
-    name = "pinctrl_paris",
-    srcs = ["pinctrl_mediatek/pinctrl-paris.c"],
-    out = "pinctrl-paris.ko",
-    kernel_build = "//common/mindone:mindone",
-    copts = _MINDONE_COPTS,
-    deps = [
-        ":mindone_headers",
-        ":mtk_eint",
-        ":pinctrl_mtk_common_v2",
-    ],
-)
-
-ddk_module(
-    name = "pinctrl_mt6789",
-    srcs = ["pinctrl_mediatek/pinctrl-mt6789.c"],
-    out = "pinctrl-mt6789.ko",
-    kernel_build = "//common/mindone:mindone",
-    copts = _MINDONE_COPTS,
-    deps = [
-        ":mindone_headers",
-        ":mtk_eint",
-        ":pinctrl_mtk_common_v2",
-        ":pinctrl_paris",
-    ],
 )
 
 ddk_module(
@@ -8182,14 +5989,9 @@ kernel_module_group(
     name = "mindone_modules",
     srcs = [
         ":adapter_class",
-        ":adsp",
         ":archcounter_timesync",
-        ":arm_dsu_pmu",
-        ":atf_logger",
-        ":audio_ipi",
         ":haptic_nv",
         ":backlight_cooling",
-        ":bootprof",
         ":bt_drv_connac1x",
         ":btif_drv",
         ":cache_parity",
@@ -8201,7 +6003,6 @@ kernel_module_group(
         ":camera_mem",
         ":camera_rsc_isp60",
         ":ccci_ccif",
-        ":ccci_cldma",
         ":ccci_dpmaif",
         ":ccci_fsm_scp",
         ":ccci_md_all",
@@ -8213,7 +6014,6 @@ kernel_module_group(
         ":clk_bringup",
         ":clk_disable_unused",
         ":clk_fmeter_mt6789",
-        ":clk_mediatek",
         ":clk_mt6789",
         ":clk_mt6789_audiosys",
         ":clk_mt6789_bus",
@@ -8224,6 +6024,7 @@ kernel_module_group(
         ":clk_mt6789_mfgcfg",
         ":clk_mt6789_mmsys",
         ":clk_mt6789_vcodec",
+        ":clk_mtk_ack",
         ":clkbuf",
         ":cmdq_helper_inf",
         ":cmdq_platform_mt6789",
@@ -8231,27 +6032,18 @@ kernel_module_group(
         ":connadp",
         ":cpudvfs",
         ":mtk_cpu_capacity",
-        ":cqhci",
-        ":dbgtop_drm",
         ":deferred_free_helper",
-        ":device_apc_common",
-        ":device_apc_mt6789",
-        ":devmpu",
         ":emi",
         ":eta6965_charger",
         ":extcon_mtk_usb",
-        ":extdev_io_class",
         ":fhctl",
         ":flashlight",
         ":flashlights-dummy-gpio",
-        ":flashlights-lm3643",
         ":ged",
         ":gps_drv_stp",
         ":gps_pwr",
-        ":gpueb",
         ":gz_ipc_mod",
         ":gz_irq_mod",
-        ":gz_log_mod",
         ":gz_main_mod",
         ":gz_trusty_mod",
         ":gz_tz_system",
@@ -8263,20 +6055,16 @@ kernel_module_group(
         ":iommu_debug",
         ":iommu_gz",
         ":iommu_secure",
-        ":irq_dbg",
         ":leds-mtk",
         ":leds_mtk_disp",
         ":log_store",
         ":mainaf",
         ":mali_kbase_mt6789",
-        ":mcDrvModule",
         ":mcupm",
         ":md_cooling_all",
         ":mdp_drv_mt6789",
-        ":mediatek_cpufreq_hw",
         ":mediatek_drm",
         ":mindone_ufs_screen",
-        ":mmprofile",
         ":mmqos_common",
         ":mmqos_mt6789",
         ":mt6358_accdet",
@@ -8284,13 +6072,11 @@ kernel_module_group(
         ":mt6358_regulator",
         ":mt635x_auxadc",
         ":mt6397",
-        ":mt63xx_debug",
         ":mt6577_auxadc",
         ":mt6789_dcm",
         ":mt6789_mt6366",
         ":mtk-lpm-dbg-common-v1",
         ":mtk-lpm-dbg-mt6789",
-        ":mtk-ssc-dbg-v2",
         ":mtk-vcu",
         ":mtk_afe_external",
         ":mtk_battery_oc_throttling",
@@ -8315,10 +6101,8 @@ kernel_module_group(
         ":mtk_dvfsrc_regulator",
         ":mtk_dvfsrc_start",
         ":mtk_dynamic_loading_throttling",
-        ":mtk_eint",
         ":mtk_emi",
         ":mtk_gpu_hal",
-        ":mtk_gpu_power_throttling",
         ":mtk_gpu_qos",
         ":mtk_gpufreq_mt6789",
         ":mtk_gpufreq_wrapper",
@@ -8333,99 +6117,63 @@ kernel_module_group(
         ":mtk_mbox_mailbox",
         ":mtk_md_power_throttling",
         ":mtk_mdpm",
-        ":mtk_mmc",
         ":mtk_mmdvfs",
         ":mtk_mmdvfs_debug",
-        ":mtk_mml",
         ":mtk_panel_ext",
         ":mtk_pbm",
         ":mtk_pd_adapter",
         ":mtk_pd_charging",
-        ":mtk_perf_ioctl",
-        ":mtk_pm_domain_disable_unused",
+        ":mtk_pm_domains_ack",
         ":mtk_pmic_keys",
-        ":mtk_pmic_wrap",
-        ":mtk_printk_ctrl",
-        ":mtk_pwm",
+        ":mtk_pmic_wrap_ack",
         ":mtk_qos",
         ":mtk_rpmsg_mbox",
-        ":mtk_scp_audiocommon",
-        ":mtk_scp_ultra",
         ":mtk_scp_vow",
-        ":mtk_scpsys",
         ":mtk_sec_heap",
-        ":mtk_slbc",
         ":mtk_smi",
-        ":mtk_smi_dbg",
         ":mtk_socinfo",
         ":mtk_sp_spk_amp",
         ":mtk_ssc",
         ":mtk_sync",
         ":mtk_tinysys_ipi",
-        ":mtk_u_ether",
-        ":mtk_uart_apdma",
-        ":mtk_usb_f_rndis",
         ":mtk_vcodec_common",
         ":mtk_vcodec_dec_v1",
         ":mtk_vcodec_enc_v1",
         ":mtk_vow",
-        ":mtk_wdt",
         ":musb_hdrc",
         ":musb_main",
         ":nvmem_mt635x_efuse",
         ":nvmem_mtk_devinfo",
+        ":ois_aw86006",
         ":dmabuf_page_pool",
         ":panel-sd5302h-fhd1240-dsi-vdo-amoled-ocp2133",
         ":panel_ch13721c_fhd_dsi_vdo_amoled_ocp2133",
-        ":pd_dbg_info",
-        ":phy_generic",
         ":phy_mtk_tphy",
-        ":pidmap",
         ":pinctrl_mt6789",
-        ":pinctrl_mtk_common_v2",
-        ":pinctrl_paris",
         ":pmic_lbat_service",
-        ":pmic_lvsys_notify",
         ":pmic_temp",
         ":pn553",
-        ":pwm_mtk_disp",
-        ":reboot_mode",
         ":rpmb_mtk",
-        ":rps_perf",
-        ":rt4831a_drv",
-        ":rt_pd_manager",
         ":rtc_mt6397",
         ":scp",
         ":sec_rng",
         ":sensorhub",
         ":sileadfp",
-        ":snd_soc_audiodsp_common",
         ":snd_soc_aw87xxx",
         ":snd_soc_mt6366",
         ":snd_soc_mt6789_afe",
         ":snd_soc_mtk_common",
-        ":snd_soc_mtk_scp_ultra",
         ":soc_temp_lvts",
         ":spi_mt65xx",
-        ":spmtwam",
         ":sspm_v3",
-        ":syscon_reboot_mode",
         ":system_heap",
-        ":tcpc_class",
-        ":tcpc_rt1711h",
-        ":tcpci_late_sync",
-        ":teeperf",
-        ":thermal_generic_adc",
-        ":thermal_interface",
-        ":thermal_trace",
+        ":tcpci_rt1711h",
         ":tinysys_scmi",
         ":tkcore",
         ":tkcore_drv",
         ":trusted_mem",
         ":ufs_mediatek",
         ":ufs_mtk_rpmb",
-        ":vcp",
-        ":vcp_status",
         ":vdec_fmt",
         ":widevine_driver",
         ":wlan_drv_gen4m_6789",

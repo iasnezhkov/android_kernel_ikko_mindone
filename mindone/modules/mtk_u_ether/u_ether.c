@@ -21,7 +21,7 @@
 #include <net/sch_generic.h>
 #include <linux/ip.h>
 #include <linux/ktime.h>
-#include <linux/version.h>
+#include <mindone/compat-netdev.h>
 
 #include "u_ether.h"
 #include "rndis.h"
@@ -1379,14 +1379,7 @@ EXPORT_SYMBOL_GPL(mtk_gether_setup_name_default);
 static int mtk_gether_set_mac_address(struct net_device *net,
 				      struct sockaddr_storage *ss)
 {
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 18, 0)
-	return dev_set_mac_address(net, ss, NULL);
-#else
-	struct sockaddr sa = { .sa_family = ss->ss_family };
-
-	memcpy(sa.sa_data, ss->__data, ETH_ALEN);
-	return dev_set_mac_address(net, &sa, NULL);
-#endif
+	return mindone_dev_set_ether_mac(net, ss, NULL);
 }
 
 int mtk_gether_register_netdev(struct net_device *net)

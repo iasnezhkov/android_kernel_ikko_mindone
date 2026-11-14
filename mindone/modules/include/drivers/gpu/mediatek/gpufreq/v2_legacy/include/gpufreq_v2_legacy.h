@@ -560,6 +560,7 @@ unsigned int gpufreq_get_shader_present(void);
 unsigned int gpufreq_get_segment_id(void);
 void gpufreq_dump_infra_status(void);
 void gpufreq_dump_infra_status_logbuffer(char *log_buf, int *log_len, int log_size);
+void gpufreq_dump_infra_status_try(void);
 unsigned int gpufreq_get_cur_freq(enum gpufreq_target target);
 unsigned int gpufreq_get_cur_out_freq(enum gpufreq_target target);
 unsigned int gpufreq_get_cur_avg_freq(enum gpufreq_target target);

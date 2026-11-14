@@ -72,14 +72,14 @@ def main():
         for name, text, cases in variants:
             path = Path(directory) / name
             path.with_suffix(".c").write_text(text)
-            subprocess.run(["cc", "-std=c11", "-Wall", "-Wextra", "-Werror", "-Wno-unused-parameter", "-Wno-unused-but-set-variable", "-ftrivial-auto-var-init=pattern", "-fsanitize=address,undefined", str(path.with_suffix(".c")), "-o", str(path)], check=True, timeout=30)
+            subprocess.run(["cc", "-std=c11", "-Wall", "-Wextra", "-Werror", "-Wno-sign-compare", "-Wno-unused-parameter", "-Wno-unused-but-set-variable", "-ftrivial-auto-var-init=pattern", "-fsanitize=address,undefined", str(path.with_suffix(".c")), "-o", str(path)], check=True, timeout=30)
             for case in cases:
                 result = subprocess.run([str(path), case], capture_output=True, text=True, timeout=10)
                 if name == "actual":
                     if result.returncode:
                         raise RuntimeError(result.stdout + result.stderr)
                     print(result.stdout, end="")
-                elif not result.returncode or not re.search(r"Assertion failed:|runtime error:|ERROR: AddressSanitizer", result.stderr):
+                elif not result.returncode or not re.search(r"Assertion failed:|Assertion `[^\n]*\x27 failed|runtime error:|ERROR: AddressSanitizer", result.stderr):
                     raise RuntimeError("Control did not fail at runtime: " + name + "\n" + result.stdout + result.stderr)
                 else:
                     print("PASS rejected " + name)

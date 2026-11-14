@@ -1,1 +1,0 @@
-../mtk_battery_oc_throttling/mtk_dynamic_loading_throttling.h

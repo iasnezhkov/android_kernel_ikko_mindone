@@ -292,7 +292,6 @@ struct mtk_charger {
 	int chr_type;
 	int usb_type;
 	int usb_state;
-	bool usb_input_suspended;
 
 	struct mutex cable_out_lock;
 	int cable_out_cnt;

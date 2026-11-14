@@ -994,7 +994,7 @@ void kbase_gpu_complete_hw(struct kbase_device *kbdev, unsigned int js, u32 comp
 					       ktime_to_ns(*end_timestamp),
 					       (u32)next_katom->kctx->id, 0, next_katom->work_id);
 #if IS_ENABLED(CONFIG_MALI_MTK_GPU_BM_2)
-			if(js == 0) {
+			if (js == 0 && kbdev->v1) {
 				kbdev->v1->ctx = (u32)next_katom->kctx->id;
 				kbdev->v1->job = next_katom->work_id;
 				kbdev->v1->frame = (u32)qos_get_frame_nr();
@@ -1019,7 +1019,7 @@ void kbase_gpu_complete_hw(struct kbase_device *kbdev, unsigned int js, u32 comp
 
 		if (next_katom && next_katom->gpu_rb_state ==
 						KBASE_ATOM_GPU_RB_SUBMITTED) {
-			if (js == 0) {
+			if (js == 0 && kbdev->v1) {
 				kbdev->v1->ctx = (u32)next_katom->kctx->id;
 				kbdev->v1->job = next_katom->work_id;
 				kbdev->v1->frame = (u32)qos_get_frame_nr();

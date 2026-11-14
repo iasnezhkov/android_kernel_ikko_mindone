@@ -12,6 +12,7 @@
 /dts-v1/;
 
 #include "mt6789.dtsi"
+#include <dt-bindings/usb/pd.h>
 
 / {
 	debug-kinfo {
@@ -417,7 +418,7 @@
 
 				map0 {
 					trip = <&gpu_throttle>;
-					cooling-device = <&mali 0xffffffff 0xffffffff>;
+					cooling-device = <&gpufreq 0xffffffff 0xffffffff>;
 					contribution = <0x400>;
 				};
 			};
@@ -441,7 +442,7 @@
 
 				map0 {
 					trip = <&gpu1_passive>;
-					cooling-device = <&mali 0xffffffff 0xffffffff>;
+					cooling-device = <&gpufreq 0xffffffff 0xffffffff>;
 					contribution = <1024>;
 				};
 			};
@@ -491,7 +492,7 @@
 					trip = <&ap_ntc_passive>;
 					cooling-device = <&cpu0 0xffffffff 0xffffffff>,
 							 <&cpu6 0xffffffff 0xffffffff>,
-							 <&mali 0xffffffff 0xffffffff>;
+							 <&gpufreq 0xffffffff 0xffffffff>;
 					contribution = <1024>;
 				};
 			};
@@ -801,17 +802,10 @@
 		tap_curlmt = <0xffffffff 0xffffffff 0x11da50 0x11da50>;
 	};
 
-	rt-pd-manager {
-		compatible = "mediatek,rt-pd-manager";
-	};
-
 	pd_adapter: pd_adapter {
 		compatible = "mediatek,pd_adapter";
-		boot_mode = <&chosen>;
 		adapter_name = "pd_adapter";
-		force_cv;
-		phys = <&u2port0 0x3>;
-		phy-names = "usb2-phy";
+		typec = <&rt1715>;
 	};
 
 	mtk_ctd: mtk_ctd {
@@ -844,6 +838,56 @@
 
 &mtk_gauge {
 	bat_type = <0>;
+};
+
+&i2c6 {
+	#address-cells = <1>;
+	#size-cells = <0>;
+
+	rt1715: tcpc@4e {
+		compatible = "richtek,rt1715";
+		reg = <0x4e>;
+		interrupts-extended = <&pio 13 IRQ_TYPE_LEVEL_LOW>;
+		vbus-supply = <&eta6965_otg_vbus>;
+		status = "okay";
+
+		connector {
+			compatible = "usb-c-connector";
+			label = "USB-C";
+			data-role = "dual";
+			power-role = "dual";
+			try-power-role = "sink";
+			accessory-mode-audio;
+
+			capabilities {
+				caps-0 {
+					source-pdos = <PDO_FIXED(5000, 500, PDO_FIXED_DUAL_ROLE | PDO_FIXED_DATA_SWAP)>;
+					sink-pdos = <PDO_FIXED(5000, 3000, PDO_FIXED_DUAL_ROLE | PDO_FIXED_DATA_SWAP)>;
+					op-sink-microwatt = <15000000>;
+				};
+
+				caps-1 {
+					source-pdos = <PDO_FIXED(5000, 500, PDO_FIXED_DUAL_ROLE | PDO_FIXED_DATA_SWAP)>;
+					sink-pdos = <PDO_FIXED(5000, 3000, PDO_FIXED_DUAL_ROLE | PDO_FIXED_DATA_SWAP)
+						     PDO_FIXED(9000, 2000, 0)>;
+					op-sink-microwatt = <18000000>;
+				};
+			};
+
+			ports {
+				#address-cells = <1>;
+				#size-cells = <0>;
+
+				port@0 {
+					reg = <0>;
+
+					typec_hs: endpoint {
+						remote-endpoint = <&usb_typec_glue>;
+					};
+				};
+			};
+		};
+	};
 };
 
 &mt6358_dynamic_loading_throttling {

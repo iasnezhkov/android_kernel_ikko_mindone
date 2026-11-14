@@ -25,7 +25,7 @@
 #include <linux/init.h>		/* For init/exit macros */
 #include <linux/module.h>	/* For MODULE_ marcros  */
 #include <linux/fs.h>
-#include <linux/mindone_power_supply_compat.h>
+#include <mindone/compat-power-supply.h>
 #include <linux/device.h>
 #include <linux/interrupt.h>
 #include <linux/spinlock.h>
