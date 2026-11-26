@@ -3184,13 +3184,18 @@ static int bif_voltage_get(struct mtk_gauge *gauge,
 static int ptim_battery_voltage_get(struct mtk_gauge *gauge,
 	struct mtk_gauge_sysfs_field_info *attr, int *val)
 {
-	int ret;
+	int ret, ibat = 0;
 
 	if (!IS_ERR(gauge->chan_ptim_bat_voltage)) {
-		ret = iio_read_channel_processed(
-			gauge->chan_ptim_bat_voltage, val);
+		ret = iio_read_channel_attribute(
+			gauge->chan_ptim_bat_voltage, val, &ibat,
+			IIO_CHAN_INFO_PROCESSED);
 		if (ret < 0)
 			bm_err("[%s]read fail,ret=%d\n", __func__, ret);
+		else if (ret == IIO_VAL_INT || ret == IIO_VAL_INT_MULTIPLE)
+			ret = 0;
+		else
+			ret = -EINVAL;
 	} else {
 		bm_err("[%s]chan error\n", __func__);
 		ret = -EOPNOTSUPP;

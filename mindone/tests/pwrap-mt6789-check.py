@@ -23,7 +23,8 @@ CAPS_DELTA = ('PWRAP_CAP_ARB | PWRAP_CAP_ULPOSC_CLK', 'PWRAP_CAP_ARB')
 INSERTIONS = [
     ('before', 'static const int mt6795_regs[] = {',
      ['static const int mt6789_regs[] = {', '[PWRAP_INIT_DONE2] =\t\t0x0,', '[PWRAP_TIMER_EN] =\t\t0x3E4,',
-      '[PWRAP_INT_EN] =\t\t0x450,', '[PWRAP_WACS2_CMD] =\t\t0x880,', '[PWRAP_SWINF_2_WDATA_31_0] =\t0x884,',
+      '[PWRAP_INT_EN] =\t\t0x450,', '[PWRAP_INT_FLG] =\t\t0x458,', '[PWRAP_INT_CLR] =\t\t0x45C,',
+      '[PWRAP_WACS2_CMD] =\t\t0x880,', '[PWRAP_SWINF_2_WDATA_31_0] =\t0x884,',
       '[PWRAP_SWINF_2_RDATA_31_0] =\t0x894,', '[PWRAP_WACS2_VLDCLR] =\t\t0x8A4,',
       '[PWRAP_WACS2_RDATA] =\t\t0x8A8,', '};']),
     ('after', 'PWRAP_MT6779,', ['PWRAP_MT6789,']),
@@ -36,6 +37,22 @@ INSERTIONS = [
     ('after', '{ .compatible = "mediatek,mt6779-pwrap", .data = &pwrap_mt6779 },',
      ['{ .compatible = "mediatek,mt6789-pwrap", .data = &pwrap_mt6789 },']),
 ]
+REPLACEMENTS = [
+    (['if (!HAS_CAP(wrp->master->caps, PWRAP_CAP_ARB) &&', '!pwrap_readl(wrp, PWRAP_INIT_DONE2)) {'],
+     ['if (!pwrap_readl(wrp, PWRAP_INIT_DONE2)) {']),
+    (['if (!HAS_CAP(wrp->master->caps, PWRAP_CAP_ARB)) {',
+      'pwrap_writel(wrp, 0xf, PWRAP_WDT_UNIT);',
+      'pwrap_writel(wrp, wrp->master->wdt_src, PWRAP_WDT_SRC_EN);',
+      'if (HAS_CAP(wrp->master->caps, PWRAP_CAP_WDT_SRC1))',
+      'pwrap_writel(wrp, wrp->master->wdt_src,',
+      'PWRAP_WDT_SRC_EN_1);',
+      '}'],
+     ['if (!HAS_CAP(wrp->master->caps, PWRAP_CAP_ARB))',
+      'pwrap_writel(wrp, 0xf, PWRAP_WDT_UNIT);',
+      'pwrap_writel(wrp, wrp->master->wdt_src, PWRAP_WDT_SRC_EN);',
+      'if (HAS_CAP(wrp->master->caps, PWRAP_CAP_WDT_SRC1))',
+      'pwrap_writel(wrp, wrp->master->wdt_src, PWRAP_WDT_SRC_EN_1);']),
+]
 CFLAGS = ['-std=gnu11', '-Wall', '-Wextra', '-Werror', '-Wno-unused-parameter', '-Wno-unused-function',
           '-Wno-sign-compare', '-Wno-missing-field-initializers', '-Wno-unused-variable',
           '-Wno-unused-but-set-variable', '-Wno-unused-const-variable',
@@ -45,6 +62,8 @@ REGS_BLOCK = '\n\t'.join(INSERTIONS[0][2][:-1]) + '\n};'
 REG_MUTATIONS = [
     ('TIMER_EN at the MT6873 offset', '[PWRAP_TIMER_EN] =\t\t0x3E4,', '[PWRAP_TIMER_EN] =\t\t0x3E0,'),
     ('INT_EN at the MT6873 offset', '[PWRAP_INT_EN] =\t\t0x450,', '[PWRAP_INT_EN] =\t\t0x448,'),
+    ('INT_FLG at bank 0 offset', '[PWRAP_INT_FLG] =\t\t0x458,', '[PWRAP_INT_FLG] =\t\t0x428,'),
+    ('INT_CLR at bank 0 offset', '[PWRAP_INT_CLR] =\t\t0x45C,', '[PWRAP_INT_CLR] =\t\t0x42C,'),
     ('WACS2_CMD at the MT6873 offset', '[PWRAP_WACS2_CMD] =\t\t0x880,', '[PWRAP_WACS2_CMD] =\t\t0xC80,'),
     ('write data register shifted', '[PWRAP_SWINF_2_WDATA_31_0] =\t0x884,', '[PWRAP_SWINF_2_WDATA_31_0] =\t0x888,'),
     ('read data register shifted', '[PWRAP_SWINF_2_RDATA_31_0] =\t0x894,', '[PWRAP_SWINF_2_RDATA_31_0] =\t0x898,'),
@@ -130,6 +149,11 @@ def fidelity(tree, copy):
         if neighbour < 0 or neighbour >= len(actual) or actual[neighbour] != anchor:
             fail('%s: %r is not %s %r' % (copy.name, head, where, anchor))
         del actual[start:end]
+    for modified, original in REPLACEMENTS:
+        hits = [i for i in range(len(actual) - len(modified) + 1) if actual[i:i + len(modified)] == modified]
+        if len(hits) != 1:
+            fail('%s has %d copies of replacement %r' % (copy.name, len(hits), modified[0]))
+        actual[hits[0]:hits[0] + len(modified)] = original
     if actual != upstream:
         for index, (a, b) in enumerate(zip(actual, upstream)):
             if a != b:

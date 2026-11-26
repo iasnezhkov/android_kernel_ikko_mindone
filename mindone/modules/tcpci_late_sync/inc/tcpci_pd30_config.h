@@ -1,1 +1,0 @@
-../../rt_pd_manager/inc/tcpci_pd30_config.h

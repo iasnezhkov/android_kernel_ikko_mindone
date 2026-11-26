@@ -41,12 +41,12 @@ def validate(blob, merged):
         for index in range(1, 5):
             trips = [("trip-point@0", "passive", temp, 5000, (cpu,)),
                      ("trip-point@1", "hot", 105000, 2000, ())]
-            schema[f"cpu_{cluster}{index}"] = (1000, 250, trips + ([hot] if merged else []))
+            schema[f"cpu_{cluster}{index}"] = (1000, 250, trips)
     for name in ("gpu1", "gpu2"):
         trips = [("trip-point@0", "passive", 85000, 5000, ("gpufreq",))]
         schema[name] = (1000, 250, trips + ([hot] if merged and name == "gpu1" else []))
     schema["ap_ntc"] = (1000, 250, [
-        hot if merged else ("hot", "hot", 42000, 1000, ()),
+        ("hot", "hot", 42000, 1000, ()),
         ("trip-point@1", "passive", 46000, 1000, ("cpu0", "cpu6", "gpufreq"))])
     for name in ("soc1", "soc2", "md", "ltepa_ntc", "pmic6366_pmu",
                  "pmic6366_bk1", "pmic6366_bk2", "pmic6366_bk3", "consys"):

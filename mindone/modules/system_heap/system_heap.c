@@ -28,19 +28,39 @@
 #include "deferred-free-helper.h"
 #include <uapi/linux/dma-buf.h>
 
+#include <linux/dma-resv.h>
+#include <linux/fdtable.h>
+#include <linux/fs.h>
 #include <linux/iommu.h>
-#include "mtk_heap_priv.h"
+#include <linux/math64.h>
+#include <linux/pid.h>
+#include <linux/proc_fs.h>
+#include <linux/sched/task.h>
+#include <linux/seq_file.h>
+#include <linux/uaccess.h>
+#include <linux/uidgid.h>
+#include <dt-bindings/memory/mtk-memory-port.h>
 #include "mtk_heap.h"
 #include <mindone/compat-dma-buf.h>
 
+struct dma_heap_attachment {
+	struct device *dev;
+	struct sg_table *table;
+	struct list_head list;
+	bool mapped;
+	bool uncached;
+};
+
+struct mtk_heap_dev_info {
+	struct device *dev;
+	enum dma_data_direction direction;
+	unsigned long map_attrs;
+};
 
 static struct dma_heap *sys_heap;
 static struct dma_heap *sys_uncached_heap;
 static struct dma_heap *mtk_mm_heap;
 static struct dma_heap *mtk_mm_uncached_heap;
-
-atomic64_t dma_heap_normal_total = ATOMIC64_INIT(0);
-EXPORT_SYMBOL(dma_heap_normal_total);
 
 struct system_heap_buffer {
 	struct dma_heap *heap;
@@ -52,19 +72,10 @@ struct system_heap_buffer {
 	void *vaddr;
 	struct deferred_freelist_item deferred_free;
 	bool uncached;
-	/* helper function */
-	int (*show)(const struct dma_buf *dmabuf, struct seq_file *s);
-
-	/* system heap will not strore sgtable here */
 	bool                     mapped[MTK_M4U_TAB_NR_MAX][MTK_M4U_DOM_NR_MAX];
 	struct mtk_heap_dev_info dev_info[MTK_M4U_TAB_NR_MAX][MTK_M4U_DOM_NR_MAX];
 	struct sg_table          *mapped_table[MTK_M4U_TAB_NR_MAX][MTK_M4U_DOM_NR_MAX];
-	struct mutex             map_lock; /* map iova lock */
-	pid_t                    pid;
-	pid_t                    tid;
-	char                     pid_name[TASK_COMM_LEN];
-	char                     tid_name[TASK_COMM_LEN];
-	unsigned long long       ts; /* us */
+	struct mutex             map_lock;
 };
 
 #define LOW_ORDER_GFP (GFP_HIGHUSER | __GFP_ZERO | __GFP_COMP)
@@ -83,9 +94,8 @@ static const unsigned int orders[] = {8, 4, 0};
 #define NUM_ORDERS ARRAY_SIZE(orders)
 struct dmabuf_page_pool *pools[NUM_ORDERS];
 
-/* function declare */
-static int system_buf_priv_dump(const struct dma_buf *dmabuf,
-				struct seq_file *s);
+static int is_mtk_mm_heap_dmabuf(const struct dma_buf *dmabuf);
+static void dmabuf_release_check(const struct dma_buf *dmabuf);
 
 
 static struct sg_table *dup_sg_table(struct sg_table *table)
@@ -422,17 +432,7 @@ static void *system_heap_do_vmap(struct system_heap_buffer *buffer)
 	pgprot_t pgprot = PAGE_KERNEL;
 	void *vaddr;
 
-	/*
-	 * in 32bit project compile the arithmetic division, the "/" will
-	 * cause the __aeabi_uldivmod error.
-	 *
-	 * use DO_DMA_BUFFER_COMMON_DIV and DO_DMA_BUFFER_COMMON_MOD to
-	 * intead "/".
-	 *
-	 * original code is
-	 * int npages = PAGE_ALIGN(buffer->len) / PAGE_SIZE;
-	 */
-	npages = DO_DMA_BUFFER_COMMON_DIV(PAGE_ALIGN(buffer->len), PAGE_SIZE);
+	npages = PAGE_ALIGN(buffer->len) >> PAGE_SHIFT;
 	pages = vmalloc(sizeof(struct page *) * npages);
 	tmp = pages;
 
@@ -557,19 +557,8 @@ static void mtk_mm_heap_dma_buf_release(struct dma_buf *dmabuf)
 	struct system_heap_buffer *buffer = dmabuf->priv;
 	int npages = 0;
 	int i, j;
-	unsigned long buf_len = buffer->len;
 
-	/*
-	 * in 32bit project compile the arithmetic division, the "/" will
-	 * cause the __aeabi_uldivmod error.
-	 *
-	 * use DO_DMA_BUFFER_COMMON_DIV and DO_DMA_BUFFER_COMMON_MOD to
-	 * intead "/".
-	 *
-	 * original code is
-	 * int npages = PAGE_ALIGN(buffer->len) / PAGE_SIZE;
-	 */
-	npages = DO_DMA_BUFFER_COMMON_DIV(PAGE_ALIGN(buffer->len), PAGE_SIZE);
+	npages = PAGE_ALIGN(buffer->len) >> PAGE_SHIFT;
 
 	spin_lock(&dmabuf->name_lock);
 	pr_debug("%s: inode:%lu, size:%lu, name:%s\n", __func__,
@@ -579,7 +568,6 @@ static void mtk_mm_heap_dma_buf_release(struct dma_buf *dmabuf)
 
 	dmabuf_release_check(dmabuf);
 
-	/* unmap all domains' iova */
 	for (i = 0; i < MTK_M4U_TAB_NR_MAX; i++) {
 		for (j = 0; j < MTK_M4U_DOM_NR_MAX; j++) {
 			struct sg_table *table = buffer->mapped_table[i][j];
@@ -599,43 +587,19 @@ static void mtk_mm_heap_dma_buf_release(struct dma_buf *dmabuf)
 		}
 	}
 
-	/* free buffer memory */
 	deferred_free(&buffer->deferred_free, system_heap_buf_free, npages);
-
-	if (atomic64_sub_return(buf_len, &dma_heap_normal_total) < 0) {
-		pr_info("warn: %s, total memory underflow, 0x%llx!!, reset as 0\n",
-			__func__, atomic64_read(&dma_heap_normal_total));
-		atomic64_set(&dma_heap_normal_total, 0);
-	}
 }
 
 static void system_heap_dma_buf_release(struct dma_buf *dmabuf)
 {
 	struct system_heap_buffer *buffer = dmabuf->priv;
-	unsigned long buf_len = buffer->len;
 	int npages = 0;
 
-	/*
-	 * in 32bit project compile the arithmetic division, the "/" will
-	 * cause the __aeabi_uldivmod error.
-	 *
-	 * use DO_DMA_BUFFER_COMMON_DIV and DO_DMA_BUFFER_COMMON_MOD to
-	 * intead "/".
-	 *
-	 * original code is
-	 * int npages = PAGE_ALIGN(buffer->len) / PAGE_SIZE;
-	 */
-	npages = DO_DMA_BUFFER_COMMON_DIV(PAGE_ALIGN(buffer->len), PAGE_SIZE);
+	npages = PAGE_ALIGN(buffer->len) >> PAGE_SHIFT;
 
 	dmabuf_release_check(dmabuf);
 
 	deferred_free(&buffer->deferred_free, system_heap_buf_free, npages);
-
-	if (atomic64_sub_return(buf_len, &dma_heap_normal_total) < 0) {
-		pr_info("warn: %s, total memory underflow, 0x%llx!!, reset as 0\n",
-			__func__, atomic64_read(&dma_heap_normal_total));
-		atomic64_set(&dma_heap_normal_total, 0);
-	}
 }
 
 static int system_heap_dma_buf_get_flags(struct dma_buf *dmabuf, unsigned long *flags)
@@ -715,19 +679,8 @@ static struct dma_buf *system_heap_do_allocate(struct dma_heap *heap,
 	struct list_head pages;
 	struct page *page, *tmp_page;
 	int i, ret = -ENOMEM;
-	struct task_struct *task = current->group_leader;
 
-	/*
-	 * in 32bit project compile the arithmetic division, the "/" will
-	 * cause the __aeabi_uldivmod error.
-	 *
-	 * use DO_DMA_BUFFER_COMMON_DIV and DO_DMA_BUFFER_COMMON_MOD to
-	 * intead "/".
-	 *
-	 * original code is
-	 * if (len / PAGE_SIZE > totalram_pages()) {
-	 */
-	if (DO_DMA_BUFFER_COMMON_DIV(len, PAGE_SIZE) > totalram_pages()) {
+	if ((len >> PAGE_SHIFT) > totalram_pages()) {
 		pr_info("%s error: len %ld is more than %ld\n",
 			__func__, len, totalram_pages() * PAGE_SIZE);
 		return ERR_PTR(-ENOMEM);
@@ -775,26 +728,7 @@ static struct dma_buf *system_heap_do_allocate(struct dma_heap *heap,
 	}
 
 	mutex_init(&buffer->map_lock);
-	/* add alloc pid & tid info */
-	get_task_comm(buffer->pid_name, task);
-	get_task_comm(buffer->tid_name, current);
-	buffer->pid = task_pid_nr(task);
-	buffer->tid = task_pid_nr(current);
 
-	/*
-	 * in 32bit project compile the arithmetic division, the "/" will
-	 * cause the __aeabi_uldivmod error.
-	 *
-	 * use DO_DMA_BUFFER_COMMON_DIV and DO_DMA_BUFFER_COMMON_MOD to
-	 * intead "/".
-	 *
-	 * original code is
-	 * buffer->ts  = sched_clock() / 1000;
-	 */
-	buffer->ts  = DO_DMA_BUFFER_COMMON_DIV(sched_clock(), 1000);
-	buffer->show = system_buf_priv_dump;
-
-	/* create the dmabuf */
 	exp_info.exp_name = dma_heap_get_name(heap);
 	exp_info.ops = ops;
 	exp_info.size = buffer->len;
@@ -816,8 +750,6 @@ static struct dma_buf *system_heap_do_allocate(struct dma_heap *heap,
 		dma_map_sgtable(dma_heap_get_dev(heap), table, DMA_BIDIRECTIONAL, 0);
 		dma_unmap_sgtable(dma_heap_get_dev(heap), table, DMA_BIDIRECTIONAL, 0);
 	}
-
-	atomic64_add(dmabuf->size, &dma_heap_normal_total);
 
 	return dmabuf;
 
@@ -857,16 +789,12 @@ static struct dma_buf *mtk_mm_heap_allocate(struct dma_heap *heap,
 static long __maybe_unused system_get_pool_size(struct dma_heap *heap)
 {
 	int i;
-	long num_pages = 0;
-	struct dmabuf_page_pool **pool;
+	unsigned long bytes = 0;
 
-	pool = pools;
-	for (i = 0; i < NUM_ORDERS; i++, pool++) {
-		num_pages += ((*pool)->count[POOL_LOWPAGE] +
-			      (*pool)->count[POOL_HIGHPAGE]) << (*pool)->order;
-	}
+	for (i = 0; i < NUM_ORDERS; i++)
+		bytes += dmabuf_page_pool_get_size(pools[i]);
 
-	return num_pages << PAGE_SHIFT;
+	return bytes;
 }
 
 static const struct dma_heap_ops system_heap_ops = {
@@ -915,76 +843,6 @@ static struct dma_heap_ops mtk_mm_uncached_heap_ops = {
 	.allocate = uncached_heap_not_initialized,
 };
 
-static int system_buf_priv_dump(const struct dma_buf *dmabuf,
-				struct seq_file *s)
-{
-	int i = 0, j = 0;
-	struct system_heap_buffer *buf =  NULL;
-
-	if (WARN_ON(!dmabuf || !dmabuf->priv))
-		return 0;
-
-	buf = dmabuf->priv;
-	dmabuf_dump(s, "\tbuf_priv: uncached:%d alloc_pid:%d(%s)tid:%d(%s) alloc_time:%lluus\n",
-		    !!buf->uncached,
-		    buf->pid, buf->pid_name,
-		    buf->tid, buf->tid_name,
-		    buf->ts);
-
-	if (is_system_heap_dmabuf(dmabuf))
-		return 0;
-
-	for (i = 0; i < MTK_M4U_TAB_NR_MAX; i++) {
-		for (j = 0; j < MTK_M4U_DOM_NR_MAX; j++) {
-			bool mapped = buf->mapped[i][j];
-			struct device *dev = buf->dev_info[i][j].dev;
-			struct sg_table *sgt = buf->mapped_table[i][j];
-
-			if (!mapped || !sgt || !sgt->sgl || !dev || !dev_iommu_fwspec_get(dev))
-				continue;
-
-			dmabuf_dump(s,
-				    "\tbuf_priv: tab:%-2d dom:%-2d map:%d iova:0x%-12llx attr:0x%-4lx dir:%-2d dev:%s\n",
-				    i, j, mapped,
-				    (unsigned long long)sg_dma_address(sgt->sgl),
-				    buf->dev_info[i][j].map_attrs,
-				    buf->dev_info[i][j].direction,
-				    dev_name(dev));
-		}
-	}
-
-	return 0;
-}
-
-/**
- * return none-zero value means dump fail.
- *       maybe the input dmabuf isn't this heap buffer, no need dump
- *
- * return 0 means dump pass
- */
-static int system_heap_buf_priv_dump(const struct dma_buf *dmabuf,
-				     struct dma_heap *heap,
-				     void *priv)
-{
-	struct seq_file *s = priv;
-	struct system_heap_buffer *buf = dmabuf->priv;
-
-	if (!is_system_heap_dmabuf(dmabuf) && !is_mtk_mm_heap_dmabuf(dmabuf))
-		return -EINVAL;
-
-	if (heap != buf->heap)
-		return -EINVAL;
-
-	if (buf->show)
-		return buf->show(dmabuf, s);
-
-	return -EINVAL;
-}
-
-static struct mtk_heap_priv_info system_heap_priv = {
-	.buf_priv_dump = system_heap_buf_priv_dump,
-};
-
 static int set_heap_dev_dma(struct device *heap_dev)
 {
 	if (!heap_dev)
@@ -1005,9 +863,150 @@ static int set_heap_dev_dma(struct device *heap_dev)
 	return 0;
 }
 
+#define DMA_HEAP_RSS_SEEN_MAX 1024
+#define DMA_HEAP_RSS_CMD_MAX 32
+
+struct dma_heap_rss_acc {
+	struct dma_buf **seen;
+	unsigned int seen_nr;
+	u64 rss_bytes;
+	u64 pss_bytes;
+};
+
+static DEFINE_MUTEX(dma_heap_rss_lock);
+static int dma_heap_rss_target_pid;
+static struct proc_dir_entry *dma_heap_proc_root;
+
+static int dma_heap_rss_fd_cb(const void *data, struct file *file, unsigned int fd)
+{
+	struct dma_heap_rss_acc *acc = (struct dma_heap_rss_acc *)data;
+	struct dma_buf *dmabuf;
+	unsigned int i;
+	long refs;
+
+	(void)fd;
+	if (!is_dma_buf_file(file))
+		return 0;
+	dmabuf = file->private_data;
+	if (!dmabuf)
+		return 0;
+	if (acc->seen) {
+		for (i = 0; i < acc->seen_nr; i++) {
+			if (acc->seen[i] == dmabuf)
+				return 0;
+		}
+		if (acc->seen_nr < DMA_HEAP_RSS_SEEN_MAX)
+			acc->seen[acc->seen_nr++] = dmabuf;
+	}
+	refs = file_count(file);
+	if (refs < 1)
+		refs = 1;
+	acc->rss_bytes += dmabuf->size;
+	acc->pss_bytes += div_u64(dmabuf->size, (u32)refs);
+	return 0;
+}
+
+static int dma_heap_rss_pid_show(struct seq_file *s, void *v)
+{
+	struct dma_heap_rss_acc acc = {};
+	struct task_struct *task = NULL;
+	struct pid *pid_struct;
+	int pid;
+
+	mutex_lock(&dma_heap_rss_lock);
+	pid = dma_heap_rss_target_pid;
+	dma_heap_rss_target_pid = 0;
+	mutex_unlock(&dma_heap_rss_lock);
+
+	seq_printf(s, "PID     PSS(KB)   RSS(KB)\n");
+	if (pid > 0) {
+		pid_struct = find_get_pid(pid);
+		if (pid_struct) {
+			task = get_pid_task(pid_struct, PIDTYPE_PID);
+			put_pid(pid_struct);
+		}
+		if (task) {
+			acc.seen = kcalloc(DMA_HEAP_RSS_SEEN_MAX,
+					   sizeof(*acc.seen), GFP_KERNEL);
+			task_lock(task);
+			if (task->files)
+				iterate_fd(task->files, 0, dma_heap_rss_fd_cb,
+					   &acc);
+			task_unlock(task);
+			kfree(acc.seen);
+			put_task_struct(task);
+			seq_printf(s, "%-5d   %-7llu   %llu\n", pid,
+				   acc.pss_bytes >> 10, acc.rss_bytes >> 10);
+		}
+	}
+	seq_printf(s, "-----EGL memtrack data end\n");
+	seq_printf(s, "--sum: userspace_pss:%llu KB rss:%llu KB\n",
+		   acc.pss_bytes >> 10, acc.rss_bytes >> 10);
+	seq_printf(s, "--sum: kernel rss: 0 KB\n\n");
+	return 0;
+}
+
+static int dma_heap_rss_pid_open(struct inode *inode, struct file *file)
+{
+	return single_open(file, dma_heap_rss_pid_show, pde_data(inode));
+}
+
+static ssize_t dma_heap_rss_pid_write(struct file *file, const char __user *buf,
+				      size_t count, loff_t *pos)
+{
+	char line[DMA_HEAP_RSS_CMD_MAX];
+	char *trimmed;
+	int pid;
+
+	if (count < 5 || count >= sizeof(line))
+		return -EINVAL;
+	if (copy_from_user(line, buf, count))
+		return -EFAULT;
+	line[count] = '\0';
+	if (!strstarts(line, "pid:"))
+		return -EINVAL;
+	trimmed = strim(line + 4);
+	if (kstrtoint(trimmed, 10, &pid) || pid <= 0)
+		return -EINVAL;
+
+	mutex_lock(&dma_heap_rss_lock);
+	dma_heap_rss_target_pid = pid;
+	mutex_unlock(&dma_heap_rss_lock);
+	return count;
+}
+
+static const struct proc_ops dma_heap_rss_pid_fops = {
+	.proc_open = dma_heap_rss_pid_open,
+	.proc_read = seq_read,
+	.proc_write = dma_heap_rss_pid_write,
+	.proc_lseek = seq_lseek,
+	.proc_release = single_release,
+};
+
+static int system_heap_procfs_init(void)
+{
+	struct proc_dir_entry *entry;
+
+	dma_heap_proc_root = proc_mkdir("dma_heap", NULL);
+	if (!dma_heap_proc_root)
+		return -ENOMEM;
+
+	entry = proc_create_data("rss_pid", 0660, dma_heap_proc_root,
+				 &dma_heap_rss_pid_fops, NULL);
+	if (!entry) {
+		proc_remove(dma_heap_proc_root);
+		dma_heap_proc_root = NULL;
+		return -ENOMEM;
+	}
+
+	proc_set_user(entry, make_kuid(&init_user_ns, 0),
+		      make_kgid(&init_user_ns, 1000));
+	return 0;
+}
+
 static int system_heap_create(void)
 {
-	struct dma_heap_export_info exp_info;
+	struct dma_heap_export_info exp_info = {};
 	int i, err = 0;
 
 	for (i = 0; i < NUM_ORDERS; i++) {
@@ -1023,8 +1022,7 @@ static int system_heap_create(void)
 		}
 	}
 
-	/* system & mtk_mm heap use same heap show */
-	exp_info.priv = (void *)&system_heap_priv;
+	exp_info.priv = NULL;
 
 	exp_info.name = "system";
 	exp_info.ops = &system_heap_ops;
@@ -1053,7 +1051,7 @@ static int system_heap_create(void)
 	if (err)
 		return err;
 
-	mb(); /* make sure we only set allocate after dma_mask is set */
+	mb();
 	system_uncached_heap_ops.allocate = system_uncached_heap_allocate;
 	pr_info("%s add heap[%s] success\n", __func__, exp_info.name);
 
@@ -1067,65 +1065,43 @@ static int system_heap_create(void)
 	err = set_heap_dev_dma(dma_heap_get_dev(mtk_mm_uncached_heap));
 	if (err)
 		return err;
-	mb(); /* make sure we only set allocate after dma_mask is set */
+	mb();
 	mtk_mm_uncached_heap_ops.allocate = mtk_mm_uncached_heap_allocate;
 	pr_info("%s add heap[%s] success\n", __func__, exp_info.name);
+	if (system_heap_procfs_init())
+		pr_warn("%s failed to register /proc/dma_heap/rss_pid\n", __func__);
 	return 0;
 }
 
-/* ref code: dma_buf.c, dma_buf_set_name */
-long mtk_dma_buf_set_name(struct dma_buf *dmabuf, const char *buf)
-{
-	char *name = kstrndup(buf, DMA_BUF_NAME_LEN, GFP_KERNEL);
-	long ret = 0;
-
-	if (IS_ERR(name))
-		return PTR_ERR(name);
-
-	/* different with dma_buf.c, always enable setting name */
-	spin_lock(&dmabuf->name_lock);
-	kfree(dmabuf->name);
-	dmabuf->name = name;
-	spin_unlock(&dmabuf->name_lock);
-
-	return ret;
-} EXPORT_SYMBOL_GPL(mtk_dma_buf_set_name);
-
-int is_mtk_mm_heap_dmabuf(const struct dma_buf *dmabuf)
+static int is_mtk_mm_heap_dmabuf(const struct dma_buf *dmabuf)
 {
 	if (dmabuf && dmabuf->ops == &mtk_mm_heap_buf_ops)
 		return 1;
 	return 0;
 }
-EXPORT_SYMBOL_GPL(is_mtk_mm_heap_dmabuf);
 
-int is_system_heap_dmabuf(const struct dma_buf *dmabuf)
+static int is_system_heap_dmabuf(const struct dma_buf *dmabuf)
 {
 	if (dmabuf && dmabuf->ops == &system_heap_buf_ops)
 		return 1;
 	return 0;
 }
-EXPORT_SYMBOL_GPL(is_system_heap_dmabuf);
 
-void dmabuf_release_check(const struct dma_buf *dmabuf)
+static void dmabuf_release_check(const struct dma_buf *dmabuf)
 {
 	dma_addr_t iova = 0x0;
 	const char *device_name = NULL;
 	int attach_cnt = 0;
 	struct dma_buf_attachment *attach_obj;
 
-	if (!dma_resv_trylock(dmabuf->resv)) {
-		/* get lock fail, maybe is using, skip check */
+	if (!dma_resv_trylock(dmabuf->resv))
 		return;
-	}
-	/* Don't dump inode number here, it will cause KASAN issue !! */
 	if (WARN(!list_empty(&dmabuf->attachments),
 		 "%s: size:%-8ld dbg_name:%s exp:%s, %s\n", __func__,
 		 dmabuf->size,
 		 dmabuf->name,
 		 dmabuf->exp_name,
 		 "Release dmabuf before detach all attachments, dump attach below:")) {
-		/* dump all attachment info */
 		list_for_each_entry(attach_obj, &dmabuf->attachments, node) {
 			struct dma_heap_attachment *a = NULL;
 
@@ -1136,21 +1112,16 @@ void dmabuf_release_check(const struct dma_buf *dmabuf)
 			if (a && a->mapped && dev_iommu_fwspec_get(attach_obj->dev))
 				iova = sg_dma_address(a->table->sgl);
 			device_name = dev_name(attach_obj->dev);
-			dmabuf_dump(NULL,
-				    "attach[%d]: iova:0x%-12llx attr:%-4lx mapped:%d dev:%s\n",
-				    attach_cnt, (unsigned long long)iova,
-				    attach_obj->dma_map_attrs,
-				    a ? a->mapped : -1,
-				    device_name);
+			pr_info("attach[%d]: iova:0x%-12llx attr:%-4lx mapped:%d dev:%s\n",
+				attach_cnt, (unsigned long long)iova,
+				attach_obj->dma_map_attrs,
+				a ? a->mapped : -1,
+				device_name);
 		}
-		dmabuf_dump(NULL, "Total %d devices attached\n\n", attach_cnt);
+		pr_info("Total %d devices attached\n\n", attach_cnt);
 	}
 	dma_resv_unlock(dmabuf->resv);
 }
-EXPORT_SYMBOL_GPL(dmabuf_release_check);
-
-hang_dump_cb hang_dump_proc;
-EXPORT_SYMBOL_GPL(hang_dump_proc);
 
 module_init(system_heap_create);
 MODULE_LICENSE("GPL v2");

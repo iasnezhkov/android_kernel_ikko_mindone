@@ -868,7 +868,8 @@ static bool mt6366_bypass_register(struct mt6358_regulator_info *info)
 {
 	return (info->desc.id == MT6358_ID_VCAMIO || info->desc.id == MT6358_ID_VCAMD ||
 		info->desc.id == MT6358_ID_VCAMA1 || info->desc.id == MT6358_ID_VCAMA2 ||
-		info->desc.id == MT6358_ID_VLDO28);
+		info->desc.id == MT6358_ID_VLDO28 || info->desc.id == MT6358_ID_VSIM1 ||
+		info->desc.id == MT6358_ID_VSIM2);
 }
 
 static int mt6358_regulator_probe(struct platform_device *pdev)

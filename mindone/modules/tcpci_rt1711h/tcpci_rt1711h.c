@@ -331,6 +331,51 @@ process_status:
 	return IRQ_RETVAL(irq_ret);
 }
 
+static bool rt1711h_cc_needs_retoggle(enum typec_cc_status cc1,
+				      enum typec_cc_status cc2)
+{
+	return (cc1 == TYPEC_CC_OPEN && cc2 == TYPEC_CC_OPEN) ||
+	       (cc1 == TYPEC_CC_RA && cc2 == TYPEC_CC_OPEN) ||
+	       (cc1 == TYPEC_CC_OPEN && cc2 == TYPEC_CC_RA);
+}
+
+static bool rt1711h_restart_toggling(struct rt1711h_chip *chip, u8 status)
+{
+	struct tcpm_port *port = tcpci_get_tcpm_port(chip->tcpci);
+	enum typec_cc_status cc1, cc2;
+	unsigned int base;
+	u8 role = 0;
+	int ret;
+
+	if (!tcpm_port_is_toggling(port))
+		return false;
+	ret = rt1711h_read8(chip, TCPC_ROLE_CTRL, &role);
+	if (ret < 0 || !(role & TCPC_ROLE_CTRL_DRP))
+		return false;
+	cc1 = tcpci_to_typec_cc(FIELD_GET(TCPC_CC_STATUS_CC1, status),
+				status & TCPC_CC_STATUS_TERM ||
+				tcpc_presenting_rd(role, CC1));
+	cc2 = tcpci_to_typec_cc(FIELD_GET(TCPC_CC_STATUS_CC2, status),
+				status & TCPC_CC_STATUS_TERM ||
+				tcpc_presenting_rd(role, CC2));
+	if (!rt1711h_cc_needs_retoggle(cc1, cc2))
+		return false;
+	base = (role & TCPC_ROLE_CTRL_RP_VAL) |
+	       FIELD_PREP(TCPC_ROLE_CTRL_CC1, TCPC_ROLE_CTRL_CC_RD) |
+	       FIELD_PREP(TCPC_ROLE_CTRL_CC2, TCPC_ROLE_CTRL_CC_RD);
+	ret = rt1711h_write8(chip, TCPC_ALERT, TCPC_ALERT_CC_STATUS);
+	if (ret < 0)
+		return false;
+	ret = rt1711h_write8(chip, TCPC_ROLE_CTRL, base);
+	if (ret < 0)
+		return false;
+	usleep_range(500, 1000);
+	ret = rt1711h_write8(chip, TCPC_ROLE_CTRL, base | TCPC_ROLE_CTRL_DRP);
+	if (ret < 0)
+		return false;
+	return rt1711h_write8(chip, TCPC_COMMAND, TCPC_CMD_LOOK4CONNECTION) == 0;
+}
+
 static irqreturn_t rt1711h_irq(int irq, void *dev_id)
 {
 	int ret;
@@ -352,6 +397,8 @@ static irqreturn_t rt1711h_irq(int irq, void *dev_id)
 
 		if (status & TCPC_CC_STATUS_TOGGLING)
 			rt1711h_write8(chip, TCPC_ALERT, TCPC_ALERT_CC_STATUS);
+		else if (rt1711h_restart_toggling(chip, status))
+			return IRQ_HANDLED;
 		else
 			rt1711h_init_cc_params(chip, status);
 	}

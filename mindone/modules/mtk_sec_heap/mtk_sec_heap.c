@@ -23,15 +23,39 @@
 #include <linux/of_platform.h>
 #include <linux/platform_device.h>
 
-#include "page_pool.h"
-#include "deferred-free-helper.h"
+#include <linux/dma-resv.h>
+#include <linux/sched/clock.h>
+#include <dt-bindings/memory/mtk-memory-port.h>
 
 #include <public/trusted_mem_api.h>
-#include "mtk_heap_priv.h"
 #include "mtk_heap.h"
 #include "mtk_iommu.h"
 #include "iommu_pseudo.h"
 #include <mindone/compat-dma-buf.h>
+
+struct dma_heap_attachment {
+	struct device *dev;
+	struct sg_table *table;
+	struct list_head list;
+	bool mapped;
+	bool uncached;
+};
+
+struct mtk_heap_dev_info {
+	struct device *dev;
+	enum dma_data_direction direction;
+	unsigned long map_attrs;
+};
+
+static void mtk_sec_dmabuf_release_check(const struct dma_buf *dmabuf)
+{
+	if (!dma_resv_trylock(dmabuf->resv))
+		return;
+	WARN(!list_empty(&dmabuf->attachments),
+	     "%s: size:%-8ld dbg_name:%s exp:%s\n", __func__,
+	     dmabuf->size, dmabuf->name, dmabuf->exp_name);
+	dma_resv_unlock(dmabuf->resv);
+}
 
 enum sec_heap_region_type {
 	/* MM heap */
@@ -105,10 +129,7 @@ struct mtk_sec_heap_buffer {
 	struct sg_table sg_table;
 	int vmap_cnt;
 	void *vaddr;
-	struct deferred_freelist_item deferred_free;
 	bool uncached;
-	/* helper function */
-	int (*show)(const struct dma_buf *dmabuf, struct seq_file *s);
 
 	/* secure heap will not strore sgtable here */
 	bool                     mapped[MTK_M4U_TAB_NR_MAX][MTK_M4U_DOM_NR_MAX];
@@ -183,11 +204,7 @@ static struct secure_heap_region mtk_sec_heap_region[REGION_HEAPS_NUM] = {
 	},
 };
 
-/* function declare */
 static int is_region_base_dmabuf(const struct dma_buf *dmabuf);
-static int is_page_base_dmabuf(const struct dma_buf *dmabuf);
-static int sec_buf_priv_dump(const struct dma_buf *dmabuf,
-			     struct seq_file *s);
 
 static bool region_heap_is_aligned(struct dma_heap *heap)
 {
@@ -373,7 +390,7 @@ static void tmem_region_free(struct dma_buf *dmabuf)
 	struct secure_heap_region *sec_heap;
 	struct mtk_sec_heap_buffer *buffer = NULL;
 
-	dmabuf_release_check(dmabuf);
+	mtk_sec_dmabuf_release_check(dmabuf);
 
 	buffer = dmabuf->priv;
 	sec_heap = sec_heap_region_get(buffer->heap);
@@ -403,7 +420,7 @@ static void tmem_page_free(struct dma_buf *dmabuf)
 	struct secure_heap_page *sec_heap;
 	struct mtk_sec_heap_buffer *buffer = NULL;
 
-	dmabuf_release_check(dmabuf);
+	mtk_sec_dmabuf_release_check(dmabuf);
 
 	buffer = dmabuf->priv;
 	sec_heap = sec_heap_page_get(buffer->heap);
@@ -910,11 +927,6 @@ static int is_region_base_dmabuf(const struct dma_buf *dmabuf)
 	return dmabuf && dmabuf->ops == &sec_buf_region_ops;
 }
 
-static int is_page_base_dmabuf(const struct dma_buf *dmabuf)
-{
-	return dmabuf && dmabuf->ops == &sec_buf_page_ops;
-}
-
 
 /* region base size is 4K alignment */
 static int region_base_alloc(struct secure_heap_region *sec_heap,
@@ -1123,7 +1135,6 @@ static struct dma_buf *tmem_page_allocate(struct dma_heap *heap,
 	buffer->heap = heap;
 	/* all page base memory set as noncached buffer */
 	buffer->uncached = true;
-	buffer->show = sec_buf_priv_dump;
 
 	ret = page_base_alloc(sec_heap, buffer, len);
 	if (ret)
@@ -1179,7 +1190,6 @@ static struct dma_buf *tmem_region_allocate(struct dma_heap *heap,
 
 	buffer->len = len;
 	buffer->heap = heap;
-	buffer->show = sec_buf_priv_dump;
 
 	ret = region_base_alloc(sec_heap, buffer, len, aligned);
 	if (ret)
@@ -1214,90 +1224,6 @@ static const struct dma_heap_ops sec_heap_page_ops = {
 
 static const struct dma_heap_ops sec_heap_region_ops = {
 	.allocate = tmem_region_allocate,
-};
-
-static int sec_buf_priv_dump(const struct dma_buf *dmabuf,
-			     struct seq_file *s)
-{
-	unsigned int i = 0, j = 0;
-	dma_addr_t iova = 0;
-	int region_buf = 0;
-	struct mtk_sec_heap_buffer *buf = dmabuf->priv;
-	u32 sec_handle = 0;
-
-	dmabuf_dump(s, "\t\tbuf_priv: uncached:%d alloc_pid:%d(%s)tid:%d(%s) alloc_time:%lluus\n",
-		    !!buf->uncached,
-		    buf->pid, buf->pid_name,
-		    buf->tid, buf->tid_name,
-		    buf->ts);
-
-	/* region base, only has secure handle */
-	if (is_page_base_dmabuf(dmabuf)) {
-		region_buf = 0;
-	} else if (is_region_base_dmabuf(dmabuf)) {
-		region_buf = 1;
-	} else {
-		WARN_ON(1);
-		return 0;
-	}
-
-	for (i = 0; i < MTK_M4U_TAB_NR_MAX; i++) {
-		for (j = 0; j < MTK_M4U_DOM_NR_MAX; j++) {
-			bool mapped = buf->mapped[i][j];
-			struct device *dev = buf->dev_info[i][j].dev;
-			struct sg_table *sgt = buf->mapped_table[i][j];
-			char tmp_str[40];
-			int len = 0;
-
-			if (!sgt || !sgt->sgl || !dev || !dev_iommu_fwspec_get(dev))
-				continue;
-
-			iova = sg_dma_address(sgt->sgl);
-
-			if (region_buf) {
-				sec_handle = (dma_addr_t)dmabuf_to_secure_handle(dmabuf);
-				len = scnprintf(tmp_str, 39, "sec_handle:0x%x", sec_handle);
-				if (len >= 0)
-					tmp_str[len] = '\0';/* No need memset */
-			}
-
-			dmabuf_dump(s,
-				    "\t\tbuf_priv: tab:%-2u dom:%-2u map:%d iova:0x%-12llx %s attr:0x%-4lx dir:%-2d dev:%s\n",
-				    i, j, mapped, iova,
-				    region_buf ? tmp_str : "",
-				    buf->dev_info[i][j].map_attrs,
-				    buf->dev_info[i][j].direction,
-				    dev_name(buf->dev_info[i][j].dev));
-		}
-	}
-
-	return 0;
-}
-
-/**
- * return none-zero value means dump fail.
- *       maybe the input dmabuf isn't this heap buffer, no need dump
- *
- * return 0 means dump pass
- */
-static int sec_heap_buf_priv_dump(const struct dma_buf *dmabuf,
-				  struct dma_heap *heap,
-				  void *priv)
-{
-	struct mtk_sec_heap_buffer *buf = dmabuf->priv;
-	struct seq_file *s = priv;
-
-	if (!is_mtk_sec_heap_dmabuf(dmabuf) || heap != buf->heap)
-		return -EINVAL;
-
-	if (buf->show)
-		return buf->show(dmabuf, s);
-
-	return -EINVAL;
-}
-
-static struct mtk_heap_priv_info mtk_sec_heap_priv = {
-	.buf_priv_dump = sec_heap_buf_priv_dump,
 };
 
 int is_mtk_sec_heap_dmabuf(const struct dma_buf *dmabuf)
@@ -1392,13 +1318,10 @@ EXPORT_SYMBOL_GPL(dmabuf_to_tmem_type);
 static int mtk_region_heap_create(struct device *dev,
 		enum sec_heap_region_type s, enum sec_heap_region_type e)
 {
-	struct dma_heap_export_info exp_info;
+	struct dma_heap_export_info exp_info = {};
 	int i, j;
 
-	/* region base & page base use same heap show */
-	exp_info.priv = (void *)&mtk_sec_heap_priv;
-
-	/* No need pagepool for secure heap */
+	exp_info.priv = NULL;
 	exp_info.ops = &sec_heap_region_ops;
 
 	for (i = (s + 1); i < e; i++) {
@@ -1478,10 +1401,9 @@ static struct platform_driver *const mtk_region_heap_drivers[] = {
 
 static int mtk_page_heap_create(void)
 {
-	struct dma_heap_export_info exp_info;
+	struct dma_heap_export_info exp_info = {};
 	int i;
 
-	/* No need pagepool for secure heap */
 	exp_info.ops = &sec_heap_page_ops;
 	for (i = SVP_PAGE; i < PAGE_HEAPS_NUM; i++) {
 		/* param check */

@@ -1,1 +1,0 @@
-../mtk_afe_external/mtk-afe-platform-driver.h

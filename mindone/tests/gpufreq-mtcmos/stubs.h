@@ -243,7 +243,12 @@ static void mutex_lock(int *m) { assert(!*m); *m = 1; }
 static void mutex_unlock(int *m) { assert(*m); *m = 0; }
 static void __gpufreq_footprint_power_count(int n) { (void)n; }
 static void __gpufreq_footprint_power_step(unsigned int n) { (void)n; }
-static void __gpufreq_check_bus_idle(void) { }
+static bool force_bus_idle_timeout;
+static void __gpufreq_check_bus_idle(void)
+{
+	if (force_bus_idle_timeout)
+		g_bus_idle_timeout = true;
+}
 static void __gpufreq_set_timestamp(void) { }
 static void __gpufreq_external_cg_control(void) { }
 static void __gpufreq_fault(const char *fmt, ...) { (void)fmt; faults++; }

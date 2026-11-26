@@ -2534,6 +2534,10 @@ static int mtk_charger_plug_out(struct mtk_charger *info)
 	info->chr_type = POWER_SUPPLY_TYPE_UNKNOWN;
 	info->charger_thread_polling = false;
 	info->pd_reset = false;
+	info->is_chg_done = false;
+	info->term_en = false;
+	info->term_ready_cnt = 0;
+	info->false_eoc_retry = 0;
 
 	pdata1->disable_charging_count = 0;
 	pdata1->input_current_limit_by_aicl = -1;
@@ -2581,6 +2585,10 @@ static int mtk_charger_plug_in(struct mtk_charger *info,
 	info->old_cv = 0;
 	info->stop_6pin_re_en = false;
 	info->batpro_done = false;
+	info->is_chg_done = false;
+	info->term_en = false;
+	info->term_ready_cnt = 0;
+	info->false_eoc_retry = 0;
 	smart_charging(info);
 	chr_err("mtk_is_charger_on plug in, type:%d\n", chr_type);
 
@@ -2598,6 +2606,7 @@ static int mtk_charger_plug_in(struct mtk_charger *info,
 	info->sc.disable_in_this_plug = false;
 
 	charger_dev_plug_in(info->chg1_dev);
+	charger_dev_enable_termination(info->chg1_dev, false);
 	mtk_charger_force_disable_power_path(info, CHG1_SETTING, false);
 
 	power_supply_changed(info->psy1);
@@ -3247,9 +3256,14 @@ static int psy_charger_get_property(struct power_supply *psy,
 		if (chg != NULL) {
 			bool done = false, en = false;
 
-			ret = charger_dev_is_charging_done(chg, &done);
-			if (ret && ret != -EOPNOTSUPP)
-				return ret;
+			if (chg == info->chg1_dev) {
+				done = info->is_chg_done;
+				ret = 0;
+			} else {
+				ret = charger_dev_is_charging_done(chg, &done);
+				if (ret && ret != -EOPNOTSUPP)
+					return ret;
+			}
 			if (!ret && done)
 				val->intval = POWER_SUPPLY_STATUS_FULL;
 			else {

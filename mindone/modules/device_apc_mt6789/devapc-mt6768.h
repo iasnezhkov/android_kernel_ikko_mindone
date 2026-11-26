@@ -1,1 +1,0 @@
-../device_apc_common/devapc-mt6768.h

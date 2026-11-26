@@ -31,7 +31,7 @@ PINS = (
     (PROVIDER, 'function', '__gpufreq_power_ctrl_enable', '7e88bc0844406fb5a411a5d48b702f5430c2ebf0b61dc64c5143266669d7acfd'),
     (PROVIDER, 'function', '__gpufreq_set_timestamp', 'c9d862e69f5147c4ae2d62272f4c390d42e2e42b2b2c1be4f8e2b76508841dc2'),
     (PROVIDER, 'function', '__gpufreq_check_bus_idle', '26abaab1760f1b4e490f074d1fea312a05d33868890da8ee8155c986cea4a47f'),
-    (PROVIDER, 'function', '__gpufreq_power_control', 'ac6bd36b3ea63c598f6c73fc73b3759793ec5391113657ce48edb57f5476975e'),
+    (PROVIDER, 'function', '__gpufreq_power_control', '2874c19110319042f31f7729bd03f33969c901d79d0a71a07db1d973c08239b4'),
     (WRAPPER, 'function', 'gpufreq_power_ctrl_enable', '370d3a803c5bc99381145aad782fca18293d351b7d1b928fee19ea72bb390994'),
     (WRAPPER, 'function', 'gpufreq_power_control', '15d82a3bf6ca3715c14b4d181f52486eb2d1cd9c255b61727fea951bd18d8c1a'),
     (COMMON, 'function', 'mtk_common_pm_is_mfg_active', 'a2624972c423b9947a8985b75f8b98d2aecc64ece3da486b16d11b40eb468efd'),
@@ -69,11 +69,14 @@ FUNCTIONS = ((PROVIDER, ('__gpufreq_bringup', '__gpufreq_power_ctrl_enable', '__
                          'pm_callback_power_off_nolock', 'pm_callback_power_on', 'pm_callback_power_off')))
 REUSE = ('\tif (power == GPU_PWR_ON && g_gpu.power_count == 1 && g_bus_idle_timeout) {\n'
          '\t\tg_bus_idle_timeout = false;\n'
+         '\t\tg_dvfs_state &= ~DVFS_POWEROFF;\n'
          '\t} else if (power == GPU_PWR_ON && g_gpu.power_count == 1) {\n')
 NO_REUSE = '\tif (power == GPU_PWR_ON && g_gpu.power_count == 1) {\n'
 ABORT = ('\t\tif (g_bus_idle_timeout) {\n'
+         '\t\t\tg_dvfs_state |= DVFS_POWEROFF;\n'
          '\t\t\tGPUFREQ_LOGE("bus not idle after timeout, power-off aborted, GPU stays on");\n')
 ABORT_RESTORE = ('\t\tif (g_bus_idle_timeout) {\n'
+                 '\t\t\tg_dvfs_state |= DVFS_POWEROFF;\n'
                  '\t\t\tg_gpu.power_count++;\n'
                  '\t\t\t__gpufreq_footprint_power_count(g_gpu.power_count);\n'
                  '\t\t\tGPUFREQ_LOGE("bus not idle after timeout, power-off aborted, GPU stays on");\n')
@@ -99,9 +102,10 @@ CONTROLS = (
     ('verbatim-6.12-rollback', 2, {CALLBACK: ((FAILED_OFF, ROLLBACK.replace('(GED_POWER_ON)', '(1)')),)},
      'mfg_powered && ged_state == GED_POWER_ON && off_calls == 1'),
     ('drop-provider-reuse', 0, {PROVIDER: ((REUSE, NO_REUSE),)},
-     'g_gpu.power_count == 1 && hw_on() && !g_bus_idle_timeout && on_calls == 1'),
-    ('keep-timeout-on-reuse', 0, {PROVIDER: (('\t\tg_bus_idle_timeout = false;\n\t} else if', '\t} else if'),)},
-     'g_gpu.power_count == 1 && hw_on() && !g_bus_idle_timeout && on_calls == 1'),
+     'g_gpu.power_count == 1 && hw_on() && !g_bus_idle_timeout && !(g_dvfs_state & DVFS_POWEROFF) && on_calls == 1'),
+    ('keep-timeout-on-reuse', 0, {PROVIDER: (('\t\tg_bus_idle_timeout = false;\n\t\tg_dvfs_state &= ~DVFS_POWEROFF;\n\t} else if',
+                                              '\t\tg_dvfs_state &= ~DVFS_POWEROFF;\n\t} else if'),)},
+     'g_gpu.power_count == 1 && hw_on() && !g_bus_idle_timeout && !(g_dvfs_state & DVFS_POWEROFF) && on_calls == 1'),
     ('restore-provider-count', 0, {PROVIDER: ((ABORT, ABORT_RESTORE),)},
      'g_gpu.power_count == 0 && g_bus_idle_timeout && hw_on()'),
     ('skip-bus-check', 0, {PROVIDER: (('\t\t__gpufreq_check_bus_idle();\n\t\tif (g_bus_idle_timeout) {',

@@ -35,6 +35,13 @@
 			capacity-dmips-mhz = <0x17f>;
 			cpu-idle-states = <&cpuoff_l &clusteroff_l &mcusysoff &system_mem &system_pll &system_bus &s2idle>;
 			#cooling-cells = <2>;
+			i-cache-size = <0x8000>;
+			i-cache-line-size = <64>;
+			i-cache-sets = <128>;
+			d-cache-size = <0x8000>;
+			d-cache-line-size = <64>;
+			d-cache-sets = <128>;
+			next-level-cache = <&l2_0>;
 		};
 
 		cpu1: cpu@1 {
@@ -46,6 +53,13 @@
 			capacity-dmips-mhz = <0x17f>;
 			cpu-idle-states = <&cpuoff_l &clusteroff_l &mcusysoff &system_mem &system_pll &system_bus &s2idle>;
 			#cooling-cells = <2>;
+			i-cache-size = <0x8000>;
+			i-cache-line-size = <64>;
+			i-cache-sets = <128>;
+			d-cache-size = <0x8000>;
+			d-cache-line-size = <64>;
+			d-cache-sets = <128>;
+			next-level-cache = <&l2_1>;
 		};
 
 		cpu2: cpu@2 {
@@ -57,6 +71,13 @@
 			capacity-dmips-mhz = <0x17f>;
 			cpu-idle-states = <&cpuoff_l &clusteroff_l &mcusysoff &system_mem &system_pll &system_bus &s2idle>;
 			#cooling-cells = <2>;
+			i-cache-size = <0x8000>;
+			i-cache-line-size = <64>;
+			i-cache-sets = <128>;
+			d-cache-size = <0x8000>;
+			d-cache-line-size = <64>;
+			d-cache-sets = <128>;
+			next-level-cache = <&l2_2>;
 		};
 
 		cpu3: cpu@3 {
@@ -68,6 +89,13 @@
 			capacity-dmips-mhz = <0x17f>;
 			cpu-idle-states = <&cpuoff_l &clusteroff_l &mcusysoff &system_mem &system_pll &system_bus &s2idle>;
 			#cooling-cells = <2>;
+			i-cache-size = <0x8000>;
+			i-cache-line-size = <64>;
+			i-cache-sets = <128>;
+			d-cache-size = <0x8000>;
+			d-cache-line-size = <64>;
+			d-cache-sets = <128>;
+			next-level-cache = <&l2_3>;
 		};
 
 		cpu4: cpu@4 {
@@ -79,6 +107,13 @@
 			capacity-dmips-mhz = <0x17f>;
 			cpu-idle-states = <&cpuoff_l &clusteroff_l &mcusysoff &system_mem &system_pll &system_bus &s2idle>;
 			#cooling-cells = <2>;
+			i-cache-size = <0x8000>;
+			i-cache-line-size = <64>;
+			i-cache-sets = <128>;
+			d-cache-size = <0x8000>;
+			d-cache-line-size = <64>;
+			d-cache-sets = <128>;
+			next-level-cache = <&l2_4>;
 		};
 
 		cpu5: cpu@5 {
@@ -90,6 +125,13 @@
 			capacity-dmips-mhz = <0x17f>;
 			cpu-idle-states = <&cpuoff_l &clusteroff_l &mcusysoff &system_mem &system_pll &system_bus &s2idle>;
 			#cooling-cells = <2>;
+			i-cache-size = <0x8000>;
+			i-cache-line-size = <64>;
+			i-cache-sets = <128>;
+			d-cache-size = <0x8000>;
+			d-cache-line-size = <64>;
+			d-cache-sets = <128>;
+			next-level-cache = <&l2_5>;
 		};
 
 		cpu6: cpu@100 {
@@ -101,6 +143,13 @@
 			capacity-dmips-mhz = <0x400>;
 			cpu-idle-states = <&cpuoff_b &clusteroff_b &mcusysoff &system_mem &system_pll &system_bus &s2idle>;
 			#cooling-cells = <2>;
+			i-cache-size = <0x10000>;
+			i-cache-line-size = <64>;
+			i-cache-sets = <256>;
+			d-cache-size = <0x10000>;
+			d-cache-line-size = <64>;
+			d-cache-sets = <256>;
+			next-level-cache = <&l2_6>;
 		};
 
 		cpu7: cpu@101 {
@@ -112,6 +161,102 @@
 			capacity-dmips-mhz = <0x400>;
 			cpu-idle-states = <&cpuoff_b &clusteroff_b &mcusysoff &system_mem &system_pll &system_bus &s2idle>;
 			#cooling-cells = <2>;
+			i-cache-size = <0x10000>;
+			i-cache-line-size = <64>;
+			i-cache-sets = <256>;
+			d-cache-size = <0x10000>;
+			d-cache-line-size = <64>;
+			d-cache-sets = <256>;
+			next-level-cache = <&l2_7>;
+		};
+
+		l2_0: l2-cache0 {
+			compatible = "cache";
+			cache-level = <2>;
+			cache-unified;
+			cache-size = <0x20000>;
+			cache-line-size = <64>;
+			cache-sets = <512>;
+			next-level-cache = <&l3_0>;
+		};
+
+		l2_1: l2-cache1 {
+			compatible = "cache";
+			cache-level = <2>;
+			cache-unified;
+			cache-size = <0x20000>;
+			cache-line-size = <64>;
+			cache-sets = <512>;
+			next-level-cache = <&l3_0>;
+		};
+
+		l2_2: l2-cache2 {
+			compatible = "cache";
+			cache-level = <2>;
+			cache-unified;
+			cache-size = <0x20000>;
+			cache-line-size = <64>;
+			cache-sets = <512>;
+			next-level-cache = <&l3_0>;
+		};
+
+		l2_3: l2-cache3 {
+			compatible = "cache";
+			cache-level = <2>;
+			cache-unified;
+			cache-size = <0x20000>;
+			cache-line-size = <64>;
+			cache-sets = <512>;
+			next-level-cache = <&l3_0>;
+		};
+
+		l2_4: l2-cache4 {
+			compatible = "cache";
+			cache-level = <2>;
+			cache-unified;
+			cache-size = <0x20000>;
+			cache-line-size = <64>;
+			cache-sets = <512>;
+			next-level-cache = <&l3_0>;
+		};
+
+		l2_5: l2-cache5 {
+			compatible = "cache";
+			cache-level = <2>;
+			cache-unified;
+			cache-size = <0x20000>;
+			cache-line-size = <64>;
+			cache-sets = <512>;
+			next-level-cache = <&l3_0>;
+		};
+
+		l2_6: l2-cache6 {
+			compatible = "cache";
+			cache-level = <2>;
+			cache-unified;
+			cache-size = <0x40000>;
+			cache-line-size = <64>;
+			cache-sets = <512>;
+			next-level-cache = <&l3_0>;
+		};
+
+		l2_7: l2-cache7 {
+			compatible = "cache";
+			cache-level = <2>;
+			cache-unified;
+			cache-size = <0x40000>;
+			cache-line-size = <64>;
+			cache-sets = <512>;
+			next-level-cache = <&l3_0>;
+		};
+
+		l3_0: l3-cache {
+			compatible = "cache";
+			cache-level = <3>;
+			cache-unified;
+			cache-size = <0x100000>;
+			cache-line-size = <64>;
+			cache-sets = <1024>;
 		};
 
 		cpu-map {
@@ -388,6 +533,7 @@
 		interrupt-controller;
 		reg = <0x00 0xc000000 0x00 0x40000 0x00 0xc040000 0x00 0x200000>;
 		interrupts = <GIC_PPI 9 IRQ_TYPE_LEVEL_HIGH 0>;
+		mediatek,broken-save-restore-fw;
 	};
 
 	therm_intf: therm_intf@114000 {
@@ -481,16 +627,6 @@
 
 	clk_ao: clk_ao {
 		compatible = "simple-bus";
-	};
-
-	clkitg: clkitg {
-		compatible = "simple-bus";
-		status = "okay";
-
-		bring-up {
-			compatible = "mediatek,clk-bring-up";
-			clocks = <&topckgen_clk CLK_TOP_PWRAP_ULPOSC_SEL &topckgen_clk CLK_TOP_ATB_SEL &topckgen_clk CLK_TOP_DPMAIF_MAIN_SEL &infracfg_ao_clk CLK_IFRAO_PMIC_TMR &infracfg_ao_clk CLK_IFRAO_PMIC_AP &infracfg_ao_clk CLK_IFRAO_THERM &infracfg_ao_clk CLK_IFRAO_BTIF &infracfg_ao_clk CLK_IFRAO_CCIF1_AP &infracfg_ao_clk CLK_IFRAO_CCIF1_MD &infracfg_ao_clk CLK_IFRAO_CCIF_AP &infracfg_ao_clk CLK_IFRAO_DEBUGSYS &infracfg_ao_clk CLK_IFRAO_CCIF_MD &infracfg_ao_clk CLK_IFRAO_CLDMA_BCLK &infracfg_ao_clk CLK_IFRAO_CCIF5_MD &infracfg_ao_clk CLK_IFRAO_CCIF2_AP &infracfg_ao_clk CLK_IFRAO_CCIF2_MD &infracfg_ao_clk CLK_IFRAO_CCIF4_AP &infracfg_ao_clk CLK_IFRAO_CCIF4_MD &infracfg_ao_clk CLK_IFRAO_66MP_BUS_MCLK_CKP>;
-		};
 	};
 
 	disable_unused: disable_unused {
@@ -1806,6 +1942,7 @@
 
 	nebula {
 		compatible = "android,nebula-smc-v1";
+		status = "disabled";
 		ranges;
 		#address-cells = <0x02>;
 		#size-cells = <0x02>;

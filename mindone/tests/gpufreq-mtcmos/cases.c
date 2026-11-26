@@ -249,6 +249,29 @@ int main(void)
 	fatal_case("F2 then MFG2 cannot power down", GPU_PWR_ON, f2_then_mfg2_dead);
 	fatal_case("VGPU off then VSRAM cannot return", GPU_PWR_OFF, vgpu_off_vsram_dead);
 
+	boot_off();
+	assert(call(GPU_PWR_OFF) == GPUFREQ_EINVAL);
+	assert(g_gpu.power_count == 0);
+	assert(call(GPU_PWR_ON) == 1);
+	consistent("underflow guard");
+	assert(g_gpu.buck_count == 1 && g_gpu.mtcmos_count == 1 && g_gpu.cg_count == 1);
+	assert(call(GPU_PWR_OFF) == 0);
+	cases_run++;
+
+	powered();
+	force_bus_idle_timeout = true;
+	assert(call(GPU_PWR_OFF) == -ETIMEDOUT);
+	force_bus_idle_timeout = false;
+	assert(g_gpu.power_count == 0);
+	assert(g_bus_idle_timeout);
+	assert((g_dvfs_state & DVFS_POWEROFF) != 0);
+	assert(call(GPU_PWR_ON) == 1);
+	assert(!g_bus_idle_timeout);
+	assert((g_dvfs_state & DVFS_POWEROFF) == 0);
+	assert(call(GPU_PWR_OFF) == 0);
+	consistent("bus idle timeout");
+	cases_run++;
+
 	printf("gpufreq-fault: %d cases pass\n", cases_run);
 	return 0;
 }

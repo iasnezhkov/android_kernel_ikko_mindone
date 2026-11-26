@@ -145,7 +145,7 @@ GED_ERROR ged_gpufreq_init(void)
 
 	async_dvfs_node = of_find_compatible_node(NULL, NULL, "mediatek,gpu_async_ratio");
 	if (unlikely(!async_dvfs_node)) {
-		GED_LOGE("Failed to find async_dvfs_node");
+		GED_LOGD("async_dvfs_node not present");
 	} else {
 		of_property_read_u32(async_dvfs_node, "async-ratio-support",
 							&g_async_ratio_support);

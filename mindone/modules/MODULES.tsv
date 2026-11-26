@@ -25,7 +25,6 @@ ccmni	ccmni.ko	ddk	yes	vendor_dlkm	ccmni
 cfg80211	cfg80211.ko	in-tree	yes	vendor_dlkm	-
 charger_class	charger_class.ko	ddk	yes	vendor_dlkm,recovery	charger_class
 charger_cooling	charger_cooling.ko	ddk	yes	vendor_dlkm	charger_cooling
-clk_bringup	clk_bringup.ko	ddk	yes	vendor_dlkm,recovery	clk_bringup
 clk_disable_unused	clk_disable_unused.ko	ddk	yes	vendor_dlkm	clk_disable_unused
 clk_fmeter_mt6789	clk_fmeter_mt6789.ko	ddk	yes	vendor_boot,recovery	clk_fmeter_mt6789
 clk_mt6789	clk-mt6789.ko	ddk	yes	vendor_boot,recovery	clk_mt6789
@@ -71,18 +70,13 @@ hynitron_touch	hynitron_touch.ko	ddk	yes	vendor_dlkm,recovery	hynitron_touch
 i2c-dev	i2c-dev.ko	in-tree	yes	vendor_dlkm	-
 i2c_mt65xx	i2c_mt65xx.ko	ddk	yes	vendor_dlkm,recovery	i2c_mt65xx
 imgsensor_isp6s	imgsensor_isp6s.ko	ddk	yes	vendor_dlkm	imgsensor_isp6s
-industrialio-triggered-buffer	industrialio-triggered-buffer.ko	in-tree	yes	-	-
 iommu_debug	iommu_debug.ko	ddk	yes	vendor_dlkm,recovery	iommu_debug
 iommu_gz	iommu_gz.ko	ddk	yes	vendor_dlkm	iommu_gz
 iommu_secure	iommu_secure.ko	ddk	yes	vendor_dlkm,recovery	iommu_secure
-kfifo_buf	kfifo_buf.ko	in-tree	yes	-	-
 leds-mtk	leds-mtk.ko	ddk	yes	vendor_dlkm,recovery	leds_mtk
 leds_mtk_disp	leds_mtk_disp.ko	ddk	yes	vendor_dlkm,recovery	leds_mtk_disp
 libarc4	libarc4.ko	gki	-	vendor_dlkm	-
 log_store	log_store.ko	ddk	yes	vendor_boot,recovery	log_store
-mac80211	mac80211.ko	in-tree	yes	-	-
-main2af	main2af.ko	ddk	no	-	main2af
-main3af	main3af.ko	ddk	no	-	main3af
 mainaf	mainaf.ko	ddk	yes	vendor_dlkm	mainaf
 mali_kbase_mt6789	mali_kbase_mt6789.ko	ddk	yes	vendor_dlkm	mali_kbase_r54
 mcupm	mcupm.ko	ddk	yes	vendor_dlkm	mcupm
@@ -145,6 +139,7 @@ mtk_kpd	mtk_kpd.ko	ddk	yes	vendor_dlkm,recovery	mtk_kpd
 mtk_low_battery_throttling	mtk_low_battery_throttling.ko	ddk	yes	vendor_dlkm,recovery	mtk_low_battery_throttling
 mtk_lpm	mtk_lpm.ko	ddk	yes	vendor_dlkm	mtk_lpm
 mtk_lpm_plat_v1	mtk_lpm_plat_v1.ko	ddk	yes	vendor_dlkm	mtk_lpm_plat_v1
+mtk_lvts_thermal_ack	lvts_thermal.ko	ddk	yes	vendor_dlkm	mtk_lvts_thermal_ack
 mtk_mbox	mtk_mbox.ko	ddk	yes	vendor_dlkm,recovery	mtk_mbox
 mtk_mbox_mailbox	mtk_mbox_mailbox.ko	ddk	yes	vendor_dlkm,recovery	mtk_mbox_mailbox
 mtk_md_power_throttling	mtk_md_power_throttling.ko	ddk	yes	vendor_dlkm	mtk_md_power_throttling
@@ -177,6 +172,7 @@ musb_hdrc	musb_hdrc.ko	ddk	yes	vendor_dlkm,recovery	musb_hdrc_recon
 musb_main	musb_main.ko	ddk	yes	vendor_dlkm,recovery	musb_main
 nvmem_mt635x_efuse	nvmem_mt635x_efuse.ko	ddk	yes	vendor_dlkm	nvmem_mt635x_efuse
 nvmem_mtk_devinfo	nvmem_mtk_devinfo.ko	ddk	yes	vendor_boot,recovery	nvmem_mtk_devinfo
+ois_mindone	ois_mindone.ko	ddk	yes	vendor_dlkm	ois_mindone
 panel-sd5302h-fhd1240-dsi-vdo-amoled-ocp2133	panel-sd5302h-fhd1240-dsi-vdo-amoled-ocp2133.ko	ddk	yes	vendor_dlkm,recovery	panel_control,panel_sd5302h_fhd1240_dsi_vdo_amoled_ocp2133_61
 panel_ch13721c_fhd_dsi_vdo_amoled_ocp2133	panel_ch13721c_fhd_dsi_vdo_amoled_ocp2133.ko	ddk	yes	vendor_dlkm,recovery	panel_ch13721c_fhd_dsi_vdo_amoled_ocp2133,panel_control
 phy-generic	phy-generic.ko	in-tree	yes	vendor_dlkm,recovery	-
@@ -200,11 +196,7 @@ snd_soc_aw87xxx	snd_soc_aw87xxx.ko	ddk	yes	vendor_dlkm	snd_soc_aw87xxx
 snd_soc_mt6366	snd_soc_mt6366.ko	ddk	yes	vendor_dlkm	snd_soc_mt6366
 snd_soc_mt6789_afe	snd_soc_mt6789_afe.ko	ddk	yes	vendor_dlkm	snd_soc_mt6789_afe
 snd_soc_mtk_common	snd_soc_mtk_common.ko	ddk	yes	vendor_dlkm	snd_soc_mtk_common
-soc_temp_lvts	soc_temp_lvts.ko	ddk	yes	vendor_dlkm	soc_temp_lvts
-spi_mt65xx	spi_mt65xx.ko	ddk	yes	vendor_dlkm,recovery	spi_mt65xx
 sspm_v3	sspm_v3.ko	ddk	yes	vendor_dlkm	sspm_v3
-sub2af	sub2af.ko	ddk	no	-	sub2af
-subaf	subaf.ko	ddk	no	-	mainaf,subaf
 syscon-reboot-mode	syscon-reboot-mode.ko	in-tree	yes	vendor_dlkm,recovery	-
 system_heap	system_heap.ko	ddk	yes	vendor_dlkm,recovery	system_heap
 tcpci_rt1711h	tcpci_rt1711h.ko	ddk	yes	vendor_dlkm,recovery	tcpci_rt1711h

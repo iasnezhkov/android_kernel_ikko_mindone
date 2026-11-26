@@ -4,7 +4,7 @@
  */
 #include "ged_ge.h"
 #include <mindone/compat-module.h>
-#include "mtk_heap.h"
+#include <linux/dma-buf.h>
 
 #include <ged_bridge.h>
 
@@ -334,7 +334,7 @@ int ged_dmabuf_set_name(int32_t share_fd, char *name)
 		return -1;
 	}
 
-	ret = mtk_dma_buf_set_name(dmabuf, name);
+	ret = dma_buf_set_name(dmabuf, name);
 
 	dma_buf_put(dmabuf);
 

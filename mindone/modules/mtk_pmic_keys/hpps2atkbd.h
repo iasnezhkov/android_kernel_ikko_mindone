@@ -1,1 +1,0 @@
-../mtk_kpd/hpps2atkbd.h

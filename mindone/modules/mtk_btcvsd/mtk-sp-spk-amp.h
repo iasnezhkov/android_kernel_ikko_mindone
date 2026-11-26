@@ -1,1 +1,0 @@
-../include/sound/soc/mediatek/common/mtk-sp-spk-amp.h

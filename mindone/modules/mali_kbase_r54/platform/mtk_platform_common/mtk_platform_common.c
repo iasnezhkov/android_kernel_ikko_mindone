@@ -733,7 +733,7 @@ void mtk_common_csf_debugfs_init(struct kbase_device *kbdev)
 int mtk_common_device_init(struct kbase_device *kbdev)
 {
 	if (IS_ERR_OR_NULL(kbdev)) {
-		dev_info(kbdev->dev, "@%s: invalid kbdev", __func__);
+		pr_info("@%s: invalid kbdev\n", __func__);
 		return -1;
 	}
 
@@ -850,7 +850,7 @@ int mtk_common_device_init(struct kbase_device *kbdev)
 void mtk_common_device_term(struct kbase_device *kbdev)
 {
 	if (IS_ERR_OR_NULL(kbdev)) {
-		dev_info(kbdev->dev, "@%s: invalid kbdev", __func__);
+		pr_info("@%s: invalid kbdev\n", __func__);
 		return;
 	}
 

@@ -49,7 +49,7 @@ every module comes from the out-of-tree group.
 ## 3. Build modules against the exact GKI prebuilt
 
 Use Kleaf DDK with the matching GKI headers and symbol metadata. Here the base is
-`@gki_prebuilts//kernel_aarch64`, Google's `android17-6.18-2026-09_r13`, CI 16831611.
+`@gki_prebuilts//kernel_aarch64`, Google's `android17-6.18-2026-09_r15`, CI 16990439.
 `modpost` resolves imports at build time; the candidate gates then check ABI CRCs,
 providers, built-in collisions and Google symbol-list membership for the complete set.
 Do not add private kernel exports or a private symbol list to make an import pass.

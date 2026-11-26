@@ -13,6 +13,7 @@
  * GNU General Public License for more details.
  */
 
+#include <linux/clk.h>
 #include <linux/module.h>
 #include <linux/kernel.h>
 #include <linux/init.h>
@@ -30,6 +31,7 @@
 #endif
 
 #include "linux/tee_core.h"
+#include <linux/tee_clkmgr.h>
 #include <linux/tee_ioc.h>
 
 #include <tee_shm.h>
@@ -929,6 +931,7 @@ static void init_tkcore_shared_mem(void)
 	}
 
 	rmem = of_reserved_mem_lookup(rmem_node);
+	of_node_put(rmem_node);
 	if (!rmem) {
 		pr_err("tkcoredrv: cannot lookup reserved memory\n");
 		return;
@@ -1131,6 +1134,7 @@ static int init_log(struct tee *tee)
 						"trustkernel,tkcore");
 	if (node) {
 		irq_num = irq_of_parse_and_map(node, 0);
+		of_node_put(node);
 	} else {
 		pr_err("tkcoredrv: node not found\n");
 		irq_num = 0;
@@ -1276,15 +1280,49 @@ static void tz_tee_deinit(struct platform_device *pdev)
 	tee_wait_queue_exit(&ptee->wait_queue);
 }
 
+static DEFINE_MUTEX(tkcore_spi_clk_lock);
+static unsigned int tkcore_spi_clk_count;
+
+static void tkcore_spi_clk_enable(const void *clk)
+{
+	int ret;
+
+	mutex_lock(&tkcore_spi_clk_lock);
+	ret = clk_prepare_enable((struct clk *)clk);
+	if (ret)
+		pr_err("tkcoredrv: SPI0 TEE clock enable failed: %d\n", ret);
+	else
+		tkcore_spi_clk_count++;
+	mutex_unlock(&tkcore_spi_clk_lock);
+}
+
+static void tkcore_spi_clk_disable(const void *clk)
+{
+	mutex_lock(&tkcore_spi_clk_lock);
+	if (!tkcore_spi_clk_count) {
+		pr_warn("tkcoredrv: SPI0 TEE clock disable underflow\n");
+		mutex_unlock(&tkcore_spi_clk_lock);
+		return;
+	}
+	tkcore_spi_clk_count--;
+	clk_disable_unprepare((struct clk *)clk);
+	mutex_unlock(&tkcore_spi_clk_lock);
+}
+
 static int tz_tee_probe(struct platform_device *pdev)
 {
 	int ret = 0;
 	struct device *dev = &pdev->dev;
+	struct clk *spi_clk;
 	struct tee *tee;
 	struct tee_tz *ptee;
 
-	tee = tee_core_alloc(dev, _TEE_TZ_NAME, pdev->id, &tee_tz_fops,
-				sizeof(struct tee_tz));
+	spi_clk = devm_clk_get(dev, "spi0");
+	if (IS_ERR(spi_clk))
+		return PTR_ERR(spi_clk);
+
+	tee = tee_core_alloc(dev, _TEE_TZ_NAME, pdev->id < 0 ? 0 : pdev->id,
+			     &tee_tz_fops, sizeof(struct tee_tz));
 	if (!tee)
 		return -ENOMEM;
 
@@ -1297,12 +1335,18 @@ static int tz_tee_probe(struct platform_device *pdev)
 	if (ret)
 		goto bail0;
 
-	ret = tee_core_add(tee);
+	ret = tee_clkmgr_register1("spi", 0, tkcore_spi_clk_enable,
+				   tkcore_spi_clk_disable, spi_clk);
 	if (ret)
 		goto bail1;
 
+	ret = tee_core_add(tee);
+	if (ret)
+		goto bail2;
+
 	ret = __tee_get(tee);
 	if (ret) {
+		tee_clkmgr_unregister("spi", 0);
 		tz_tee_deinit(pdev);
 		tee_core_del(tee);
 
@@ -1311,6 +1355,8 @@ static int tz_tee_probe(struct platform_device *pdev)
 
 	return 0;
 
+bail2:
+	tee_clkmgr_unregister("spi", 0);
 bail1:
 	tz_tee_deinit(pdev);
 bail0:
@@ -1322,6 +1368,7 @@ static void tz_tee_remove(struct platform_device *pdev)
 {
 	struct tee *tee = platform_get_drvdata(pdev);
 
+	tee_clkmgr_unregister("spi", 0);
 	tz_tee_deinit(pdev);
 	tee_core_del(tee);
 	return;
@@ -1333,6 +1380,7 @@ static const struct of_device_id tz_tee_match[] = {
 	},
 	{},
 };
+MODULE_DEVICE_TABLE(of, tz_tee_match);
 
 static struct platform_driver tz_tee_driver = {
 	.probe = tz_tee_probe,
@@ -1342,14 +1390,6 @@ static struct platform_driver tz_tee_driver = {
 		.name = "tzdrv",
 		.owner = THIS_MODULE,
 		.of_match_table = tz_tee_match,
-	},
-};
-
-static struct platform_device tz_0_plt_device = {
-	.name = "tzdrv",
-	.id = 0,
-	.dev = {
-		/*	.platform_data = tz_0_tee_data,*/
 	},
 };
 
@@ -1363,25 +1403,15 @@ static int __init tee_tz_init(void)
 	if (rc < 0)
 		return rc;
 
-	rc = platform_device_register(&tz_0_plt_device);
-	if (rc < 0) {
-		pr_err(
-			"failed to register the platform devices 0 (rc=%d)\n",
-			rc);
-		goto err0;
-	}
-
 	rc = platform_driver_register(&tz_tee_driver);
 	if (rc < 0) {
 		pr_err("failed to probe the platform driver (rc=%d)\n",
 			rc);
-		goto err1;
+		goto err0;
 	}
 
 	return 0;
 
-err1:
-	platform_device_unregister(&tz_0_plt_device);
 err0:
 	tee_exit_smc_xfer();
 
@@ -1392,7 +1422,6 @@ static void __exit tee_tz_exit(void)
 {
 	pr_info("TrustKernel TEE Driver Release\n");
 
-	platform_device_unregister(&tz_0_plt_device);
 	platform_driver_unregister(&tz_tee_driver);
 
 	tee_exit_smc_xfer();

@@ -340,7 +340,7 @@ int mmdvfs_dbg_clk_set(int step, bool is_force)
 				|| (last_force_step >= 0 && step < last_force_step)) {
 				regulator_set_voltage(
 					dbg_data->reg, volt, INT_MAX);
-				if (!IS_ERR(vcore_reg_id)) {
+				if (!IS_ERR_OR_NULL(vcore_reg_id)) {
 					v_real = regulator_get_voltage(vcore_reg_id);
 					pr_notice("%s: step=%d volt=%d r_volt=%d is_force=%d\n",
 							__func__, step, volt, v_real, is_force);
@@ -350,7 +350,7 @@ int mmdvfs_dbg_clk_set(int step, bool is_force)
 				set_all_clk(drv_data, volt, false);
 				regulator_set_voltage(
 					dbg_data->reg, volt, INT_MAX);
-				if (!IS_ERR(vcore_reg_id)) {
+				if (!IS_ERR_OR_NULL(vcore_reg_id)) {
 					v_real = regulator_get_voltage(vcore_reg_id);
 					pr_notice("%s: step=%d volt=%d r_volt=%d is_force=%d\n",
 							__func__, step, volt, v_real, is_force);
@@ -582,9 +582,12 @@ static int mmdvfs_probe(struct platform_device *pdev)
 	if (ret)
 		pr_notice("Failed to register notifier: %d\n", ret);
 
-	vcore_reg_id = regulator_get(dev, "_vcore");
+	vcore_reg_id = devm_regulator_get_optional(dev, "_vcore");
 	if (IS_ERR(vcore_reg_id)) {
-		pr_info("regulator_get vcore_reg_id failed: %ld\n",
+		if (PTR_ERR(vcore_reg_id) == -ENODEV)
+			vcore_reg_id = NULL;
+		else
+			pr_info("regulator_get vcore_reg_id failed: %ld\n",
 				PTR_ERR(vcore_reg_id));
 	}
 

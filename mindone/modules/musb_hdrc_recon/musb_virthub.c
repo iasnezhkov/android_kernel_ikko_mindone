@@ -49,8 +49,6 @@ int musb_port_suspend(struct musb *musb, bool do_suspend)
 	 */
 	power = musb_readb(mbase, MUSB_POWER);
 	if (do_suspend) {
-		int retries = 10000;
-
 		if (power & MUSB_POWER_RESUME)
 			return -EBUSY;
 
@@ -58,12 +56,15 @@ int musb_port_suspend(struct musb *musb, bool do_suspend)
 			power |= MUSB_POWER_SUSPENDM;
 			musb_writeb(mbase, MUSB_POWER, power);
 
-			/* Needed for OPT A tests */
 			power = musb_readb(mbase, MUSB_POWER);
-			while (power & MUSB_POWER_SUSPENDM) {
-				power = musb_readb(mbase, MUSB_POWER);
-				if (retries-- < 1)
-					break;
+			if (otg->host->b_hnp_enable) {
+				int retries = 10000;
+
+				while (power & MUSB_POWER_SUSPENDM) {
+					power = musb_readb(mbase, MUSB_POWER);
+					if (retries-- < 1)
+						break;
+				}
 			}
 		}
 

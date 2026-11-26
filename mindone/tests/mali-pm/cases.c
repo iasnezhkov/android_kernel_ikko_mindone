@@ -69,7 +69,7 @@ int main(void) {
     probe_off_commit = true;
     idle_read_after[0] = 0;
     pm_callback_power_off(&kbdev);
-    assert(off_calls == 1 && reads_total == 100000 && delay_calls == 100000 && hw_on() && !(g_dvfs_state & DVFS_POWEROFF));
+    assert(off_calls == 1 && reads_total == 100000 && delay_calls == 100000 && hw_on() && (g_dvfs_state & DVFS_POWEROFF));
 #if MODEL == 0 || MODEL == 2
     assert(g_gpu.power_count == 0 && g_bus_idle_timeout && hw_on());
 #else
@@ -87,7 +87,7 @@ int main(void) {
     clear_events();
 #if MODEL == 0
     assert(pm_callback_power_on(&kbdev) == 1);
-    assert(g_gpu.power_count == 1 && hw_on() && !g_bus_idle_timeout && on_calls == 1);
+    assert(g_gpu.power_count == 1 && hw_on() && !g_bus_idle_timeout && !(g_dvfs_state & DVFS_POWEROFF) && on_calls == 1);
     assert(mfg_powered && ged_state == GED_POWER_ON && commit_calls == 1);
     assert(strcmp(events, "provider_on,commit,ged_on,notify_on,pmu_resume,") == 0);
 #elif MODEL == 1
@@ -108,7 +108,7 @@ int main(void) {
 #elif MODEL == 1
     assert(g_gpu.power_count == 1 && hw_on() && !mfg_powered && bus_phase == 1);
 #else
-    assert(g_gpu.power_count == -1 && hw_on() && mfg_powered && ged_state == GED_POWER_ON && bus_phase == 1);
+    assert(g_gpu.power_count == 0 && hw_on() && mfg_powered && ged_state == GED_POWER_ON && bus_phase == 1);
 #endif
     report("off_after_bus_recovery");
 
@@ -119,7 +119,7 @@ int main(void) {
 #elif MODEL == 1
     assert(g_gpu.power_count == 1 && hw_on() && !mfg_powered);
 #else
-    assert(g_gpu.power_count == -2 && hw_on() && mfg_powered);
+    assert(g_gpu.power_count == 0 && hw_on() && mfg_powered);
 #endif
     report("next_cycle");
 
@@ -135,7 +135,7 @@ int main(void) {
 #elif MODEL == 1
     assert(g_gpu.power_count == 1 && hw_on() && bus_phase == 1 && off_calls == 3 && on_calls == 2);
 #elif MODEL == 2
-    assert(g_gpu.power_count == -2 && hw_on() && bus_phase == 1 && off_calls == 3 && on_calls == 0);
+    assert(g_gpu.power_count == 0 && hw_on() && bus_phase == 1 && off_calls == 3 && on_calls == 0);
 #else
     assert(g_gpu.power_count == 0 && hw_off() && bus_phase == 3 && off_calls == 3 && on_calls == 0);
 #endif

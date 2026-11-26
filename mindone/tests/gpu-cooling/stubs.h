@@ -26,6 +26,7 @@
 #define ERR_PTR(e) ((void *)(long)(e))
 #define PTR_ERR(p) ((long)(p))
 #define IS_ERR(p) IS_ERR_VALUE(p)
+#define IS_ERR_OR_NULL(p) (!(p) || IS_ERR(p))
 
 void event(const char *name);
 void get_random_bytes(void *buf, size_t len);

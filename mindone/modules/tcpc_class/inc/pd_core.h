@@ -11,7 +11,7 @@
 #include "tcpci_timer.h"
 #include "tcpci_event.h"
 #include "pd_dbg_info.h"
-#include <drivers/misc/mediatek/typec/tcpc/inc/tcpm.h>
+#include "tcpm.h"
 
 #define PD_BUG_ON(x)	WARN_ON(x)
 /*---------------------------------------------------------------------------*/

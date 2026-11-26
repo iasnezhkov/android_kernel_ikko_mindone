@@ -86,6 +86,7 @@
 		interrupts = <GIC_SPI 191 IRQ_TYPE_LEVEL_HIGH 0>;
 		clocks = <&topckgen_clk CLK_TOP_MSDCPLL_D2 &topckgen_clk CLK_TOP_SPI_SEL &infracfg_ao_clk CLK_IFRAO_SPI0>;
 		clock-names = "parent-clk", "sel-clk", "spi-clk";
+		status = "disabled";
 	};
 
 	spi1: spi1@11010000 {

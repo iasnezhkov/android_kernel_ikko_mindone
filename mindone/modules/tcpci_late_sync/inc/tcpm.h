@@ -1,1 +1,0 @@
-../../include/drivers/misc/mediatek/typec/tcpc/inc/tcpm.h

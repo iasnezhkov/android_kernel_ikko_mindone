@@ -5,6 +5,8 @@
 
 void *mindone_chr_probe(void *pdev);
 void mindone_chr_remove(void *binding);
+int mindone_chr_suspend(void *binding);
+int mindone_chr_resume(void *binding);
 int mindone_chr_driver_register(void);
 void mindone_chr_driver_unregister(void);
 int mindone_chr_boot_tag(void *pdev, unsigned char *tag);
@@ -24,5 +26,8 @@ void mindone_chr_settle(void);
 void mindone_chr_power_off(void);
 void *mindone_chr_irq_register(void *pdev, void (*callback)(void *), void *context);
 void mindone_chr_irq_unregister(void *irq);
+void *mindone_chr_ws_register(void);
+void mindone_chr_ws_unregister(void *ws);
+void mindone_chr_ws_hold(void *ws, unsigned int msec);
 
 #endif

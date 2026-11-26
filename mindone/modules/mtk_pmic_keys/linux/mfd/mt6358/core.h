@@ -1,1 +1,0 @@
-../../../../mt6358_accdet/linux/mfd/mt6358/core.h

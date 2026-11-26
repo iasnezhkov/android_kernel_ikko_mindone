@@ -107,10 +107,10 @@ static const struct resource mt6357_auxadc_resources[] = {
 };
 
 static const struct resource mt6366_keys_resources[] = {
-	DEFINE_RES_IRQ(MT6366_IRQ_PWRKEY),
-	DEFINE_RES_IRQ(MT6366_IRQ_HOMEKEY),
-	DEFINE_RES_IRQ(MT6366_IRQ_PWRKEY_R),
-	DEFINE_RES_IRQ(MT6366_IRQ_HOMEKEY_R),
+	DEFINE_RES_IRQ_NAMED(MT6366_IRQ_PWRKEY, "powerkey"),
+	DEFINE_RES_IRQ_NAMED(MT6366_IRQ_HOMEKEY, "homekey"),
+	DEFINE_RES_IRQ_NAMED(MT6366_IRQ_PWRKEY_R, "powerkey_r"),
+	DEFINE_RES_IRQ_NAMED(MT6366_IRQ_HOMEKEY_R, "homekey_r"),
 };
 
 static const struct resource mt6359p_auxadc_resources[] = {

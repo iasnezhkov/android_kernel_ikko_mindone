@@ -10,6 +10,8 @@
 #include <linux/of.h>
 #include <linux/of_platform.h>
 #include <linux/platform_device.h>
+#include <linux/pm.h>
+#include <linux/pm_wakeup.h>
 #include <linux/power_supply.h>
 #include <linux/reboot.h>
 #include <linux/regmap.h>
@@ -266,6 +268,42 @@ void mindone_chr_irq_unregister(void *handle)
 	kfree(irq);
 }
 
+void *mindone_chr_ws_register(void)
+{
+	return wakeup_source_register(NULL, "mtk_chg_det");
+}
+
+void mindone_chr_ws_unregister(void *ws)
+{
+	if (ws)
+		wakeup_source_unregister(ws);
+}
+
+void mindone_chr_ws_hold(void *ws, unsigned int msec)
+{
+	if (ws)
+		__pm_wakeup_event(ws, msec);
+}
+
+static int mindone_chr_platform_suspend(struct device *dev)
+{
+	void *binding = dev_get_drvdata(dev);
+
+	return binding ? mindone_chr_suspend(binding) : 0;
+}
+
+static int mindone_chr_platform_resume(struct device *dev)
+{
+	void *binding = dev_get_drvdata(dev);
+
+	return binding ? mindone_chr_resume(binding) : 0;
+}
+
+static const struct dev_pm_ops mindone_chr_pm_ops = {
+	SYSTEM_SLEEP_PM_OPS(mindone_chr_platform_suspend,
+			    mindone_chr_platform_resume)
+};
+
 static int mindone_chr_platform_probe(struct platform_device *pdev)
 {
 	void *binding = mindone_chr_probe(pdev);
@@ -297,6 +335,7 @@ static struct platform_driver mindone_chr_driver = {
 	.driver = {
 		.name = "mtk-charger-detection",
 		.of_match_table = mindone_chr_of_match,
+		.pm = pm_sleep_ptr(&mindone_chr_pm_ops),
 	},
 };
 

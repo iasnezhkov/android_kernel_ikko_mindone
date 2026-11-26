@@ -1,1 +1,1 @@
-../adsp/mtk_sip_svc_ext.h
+../include/mtk_sip_svc_ext.h

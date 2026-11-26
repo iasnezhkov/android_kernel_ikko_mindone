@@ -1,1 +1,0 @@
-../mtk_dvfsrc/mtk-scpsys.h

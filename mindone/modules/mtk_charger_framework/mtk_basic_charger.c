@@ -26,6 +26,7 @@
 #include <linux/module.h>	/* For MODULE_ marcros  */
 #include <linux/fs.h>
 #include <mindone/compat-power-supply.h>
+#include <linux/delay.h>
 #include <linux/device.h>
 #include <linux/interrupt.h>
 #include <linux/spinlock.h>
@@ -521,6 +522,67 @@ done:
 	return is_basic;
 }
 
+static void mtk_basic_update_termination(struct mtk_charger *info, bool chg_done)
+{
+	u32 hw_cv_uV = 0, iterm_uA = 0;
+	int hw_cv_mV, iterm_mA, vbat_mV, ibat_mA;
+
+	if (chg_done)
+		return;
+	if (charger_dev_get_constant_voltage(info->chg1_dev, &hw_cv_uV) || !hw_cv_uV)
+		hw_cv_uV = info->setting.cv;
+	if (charger_dev_get_eoc_current(info->chg1_dev, &iterm_uA) || !iterm_uA)
+		iterm_uA = 120000;
+	hw_cv_mV = (int)(hw_cv_uV / 1000);
+	iterm_mA = (int)(iterm_uA / 1000);
+	if (hw_cv_mV <= 0)
+		return;
+	vbat_mV = get_battery_voltage(info);
+	ibat_mA = get_battery_current(info);
+	if (!info->term_en) {
+		if (vbat_mV >= hw_cv_mV - 15 && ibat_mA >= 0 && ibat_mA <= iterm_mA + 100) {
+			if (++info->term_ready_cnt >= 2) {
+				charger_dev_enable_termination(info->chg1_dev, true);
+				info->term_en = true;
+			}
+		} else {
+			info->term_ready_cnt = 0;
+		}
+	} else {
+		if (vbat_mV < hw_cv_mV - 30 || ibat_mA > iterm_mA + 180) {
+			info->term_ready_cnt = 0;
+			charger_dev_enable_termination(info->chg1_dev, false);
+			info->term_en = false;
+		}
+	}
+}
+
+static bool mtk_basic_validate_chg_done(struct mtk_charger *info, bool chg_done)
+{
+	u32 hw_cv_uV = 0;
+	int hw_cv_mV, vbat_mV;
+
+	if (!chg_done || info->is_chg_done)
+		return chg_done;
+	if (charger_dev_get_constant_voltage(info->chg1_dev, &hw_cv_uV) || !hw_cv_uV)
+		hw_cv_uV = info->setting.cv;
+	hw_cv_mV = (int)(hw_cv_uV / 1000);
+	vbat_mV = get_battery_voltage(info);
+	if (hw_cv_mV > 0 && vbat_mV > 0 && vbat_mV < hw_cv_mV - 50 && info->false_eoc_retry < 3) {
+		info->false_eoc_retry++;
+		info->term_en = false;
+		info->term_ready_cnt = 0;
+		chr_err("%s premature HW EOC rejected: vbat=%d cv=%d retry=%u\n",
+			__func__, vbat_mV, hw_cv_mV, info->false_eoc_retry);
+		charger_dev_enable_termination(info->chg1_dev, false);
+		charger_dev_enable(info->chg1_dev, false);
+		msleep(50);
+		charger_dev_enable(info->chg1_dev, true);
+		return false;
+	}
+	return true;
+}
+
 static int do_algorithm(struct mtk_charger *info)
 {
 	struct chg_alg_device *alg;
@@ -535,6 +597,7 @@ static int do_algorithm(struct mtk_charger *info)
 	pdata = &info->chg_data[CHG1_SETTING];
 	if (charger_dev_is_charging_done(info->chg1_dev, &chg_done))
 		chg_done = info->is_chg_done;
+	chg_done = mtk_basic_validate_chg_done(info, chg_done);
 	is_basic = select_charging_current_limit(info, &info->setting);
 
 	if (info->is_chg_done != chg_done) {
@@ -665,6 +728,7 @@ static int do_algorithm(struct mtk_charger *info)
 					info->chg1_dev, true);
 			}
 		}
+		mtk_basic_update_termination(info, chg_done);
 	}
 
 	if (pdata->input_current_limit == 0 ||

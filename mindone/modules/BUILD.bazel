@@ -347,7 +347,6 @@ ddk_module(
         ":mtk_cmdq_drv_ext",
         ":mtk_sec_heap",
         ":mtk_smi",
-        ":system_heap",
     ],
 )
 
@@ -706,25 +705,6 @@ ddk_module(
     kernel_build = "//common/mindone:mindone",
     includes = [
         "charger_cooling",
-    ],
-    copts = _MINDONE_COPTS,
-    deps = [":mindone_headers"],
-)
-
-ddk_module(
-    name = "clk_bringup",
-    srcs = [
-        "clk_bringup/clk_bringup.c",
-    ],
-    out = "clk_bringup.ko",
-    hdrs = glob([
-        "clk_bringup/**/*.h",
-        "clk_bringup/**/.gitkeep",
-    ], allow_empty = True),
-    kernel_build = "//common/mindone:mindone",
-    includes = [
-        "clk_bringup",
-        "include",
     ],
     copts = _MINDONE_COPTS,
     deps = [":mindone_headers"],
@@ -1357,10 +1337,7 @@ ddk_module(
         "CONFIG_MTK_GPU_MT6789_SUPPORT=1",
         "GED_SKI_SUPPORT",
         "CONFIG_MTK_GPU_FW_IDLE=1",
-        "CONFIG_MTK_GPU_APO_SUPPORT=1",
         "CONFIG_MTK_GPU_POWER_ON_OFF_TEST=1",
-        "MTK_GPU_SLC_POLICY",
-        "MTK_GPU_MEMSYS_UTIL",
         "CONFIG_DRM_MEDIATEK=1",
         "CONFIG_MTK_FPSGO_V3=1",
         "CONFIG_MTK_GPUFREQ_V2=1",
@@ -1380,7 +1357,6 @@ ddk_module(
         ":mtk_gpufreq_mt6789",
         ":mtk_tinysys_ipi",
         ":sspm_v3",
-        ":system_heap",
     ],
 )
 
@@ -1908,68 +1884,6 @@ ddk_module(
 )
 
 ddk_module(
-    name = "main2af",
-    srcs = [
-        "main2af/main2_lens.c",
-        "main2af/AW86014AF.c",
-        "main2af/AW86014PCSRAF.c",
-        "main2af/AK7371AF.c",
-        "main2af/AK7374AF.c",
-        "main2af/bu64748_function.c",
-        "main2af/bu64748af.c",
-        "main2af/LC89821x_STMV.c",
-        "main2af/LC898212XDAF_F.c",
-        "main2af/LC898217AF.c",
-        "main2af/LC898217AFA.c",
-        "main2af/LC898217AFB.c",
-        "main2af/LC898217AFC.c",
-        "main2af/DW9718TAF.c",
-        "main2af/GT9772AF.c",
-        "main2af/AW86017CSRAF.c",
-        "main2af/DW9800WAF.c",
-    ],
-    out = "main2af.ko",
-    hdrs = glob([
-        "main2af/**/*.h",
-        "main2af/**/.gitkeep",
-    ], allow_empty = True),
-    kernel_build = "//common/mindone:mindone",
-    includes = [
-        "main2af",
-        "include",
-    ],
-    local_defines = [
-        "CONFIG_OF=1",
-    ],
-    copts = _MINDONE_COPTS,
-    deps = [":mindone_headers"],
-)
-
-ddk_module(
-    name = "main3af",
-    srcs = [
-        "main3af/main3_lens.c",
-        "main3af/BU24253AF.c",
-        "main3af/GT9772AF.c",
-    ],
-    out = "main3af.ko",
-    hdrs = glob([
-        "main3af/**/*.h",
-        "main3af/**/.gitkeep",
-    ], allow_empty = True),
-    kernel_build = "//common/mindone:mindone",
-    includes = [
-        "main3af",
-        "include",
-    ],
-    local_defines = [
-        "CONFIG_OF=1",
-    ],
-    copts = _MINDONE_COPTS,
-    deps = [":mindone_headers"],
-)
-
-ddk_module(
     name = "mainaf",
     srcs = [
         "mainaf/main_lens.c",
@@ -2044,7 +1958,6 @@ ddk_module(
         "mali_kbase_r54/backend/gpu/mali_kbase_cache_policy_backend.c",
         "mali_kbase_r54/backend/gpu/mali_kbase_clk_rate_trace_mgr.c",
         "mali_kbase_r54/backend/gpu/mali_kbase_debug_job_fault_backend.c",
-        "mali_kbase_r54/backend/gpu/mali_kbase_devfreq.c",
         "mali_kbase_r54/backend/gpu/mali_kbase_gpuprops_backend.c",
         "mali_kbase_r54/backend/gpu/mali_kbase_instr_backend.c",
         "mali_kbase_r54/backend/gpu/mali_kbase_irq_linux.c",
@@ -2081,11 +1994,6 @@ ddk_module(
         "mali_kbase_r54/hwcnt/mali_kbase_hwcnt_types.c",
         "mali_kbase_r54/hwcnt/mali_kbase_hwcnt_virtualizer.c",
         "mali_kbase_r54/hwcnt/mali_kbase_hwcnt_watchdog_if_timer.c",
-        "mali_kbase_r54/ipa/backend/mali_kbase_ipa_counter_common_jm.c",
-        "mali_kbase_r54/ipa/backend/mali_kbase_ipa_counter_jm.c",
-        "mali_kbase_r54/ipa/mali_kbase_ipa.c",
-        "mali_kbase_r54/ipa/mali_kbase_ipa_debugfs.c",
-        "mali_kbase_r54/ipa/mali_kbase_ipa_simple.c",
         "mali_kbase_r54/mali_kbase_as_fault_debugfs.c",
         "mali_kbase_r54/mali_kbase_cache_policy.c",
         "mali_kbase_r54/mali_kbase_ccswe.c",
@@ -2203,7 +2111,6 @@ ddk_module(
     local_defines = [
         "CONFIG_MALI_REAL_HW=1",
         "CONFIG_MALI_MIDGARD_DVFS=1",
-        "CONFIG_MALI_DEVFREQ=1",
         "CONFIG_GPU_MT6789=1",
         "CONFIG_MALI_MTK_COMMON=1",
         "CONFIG_MALI_TRACE_POWER_GPU_WORK_PERIOD=1",
@@ -4217,7 +4124,6 @@ ddk_module(
     deps = [
         ":mindone_headers",
         ":iommu_gz",
-        ":system_heap",
         ":trusted_mem",
         ":mtk_iommu",
         "//common/mindone:mindone_dt_bindings_common",
@@ -4626,6 +4532,28 @@ ddk_module(
 )
 
 ddk_module(
+    name = "ois_mindone",
+    srcs = [
+        "ois_mindone/ois_mindone.c",
+    ],
+    out = "ois_mindone.ko",
+    hdrs = glob([
+        "ois_mindone/**/*.h",
+        "ois_mindone/**/.gitkeep",
+    ], allow_empty = True),
+    kernel_build = "//common/mindone:mindone",
+    includes = [
+        "ois_mindone",
+    ],
+    copts = _MINDONE_COPTS,
+    deps = [
+        ":mindone_headers",
+        ":i2c_mt65xx",
+        ":imgsensor_isp6s",
+    ],
+)
+
+ddk_module(
     name = "panel-sd5302h-fhd1240-dsi-vdo-amoled-ocp2133",
     srcs = [
         "panel_sd5302h_fhd1240_dsi_vdo_amoled_ocp2133_61/panel-sd5302h-fhd1240-dsi-vdo-amoled-ocp2133.c",
@@ -5030,7 +4958,6 @@ ddk_module(
     includes = [
         "snd_soc_mtk_common",
         "include/drivers/misc/mediatek/audio_ipi/include",
-        "include/drivers/misc/mediatek/adsp/include",
         "include/sound/soc/mediatek/common",
         "include/drivers/misc/mediatek/include",
         "include",
@@ -5055,47 +4982,21 @@ ddk_module(
 )
 
 ddk_module(
-    name = "soc_temp_lvts",
+    name = "mtk_lvts_thermal_ack",
     srcs = [
-        "soc_temp_lvts/src/soc_temp_lvts.c",
+        "mtk_lvts_thermal_ack/lvts_thermal.c",
     ],
-    out = "soc_temp_lvts.ko",
+    out = "lvts_thermal.ko",
     hdrs = glob([
-        "soc_temp_lvts/**/*.h",
-        "soc_temp_lvts/**/.gitkeep",
+        "mtk_lvts_thermal_ack/**/*.h",
+        "mtk_lvts_thermal_ack/**/.gitkeep",
     ], allow_empty = True),
     kernel_build = "//common/mindone:mindone",
     includes = [
-        "soc_temp_lvts",
-        "include",
+        "mtk_lvts_thermal_ack",
     ],
     copts = _MINDONE_COPTS,
     deps = [":mindone_headers"],
-)
-
-ddk_module(
-    name = "spi_mt65xx",
-    srcs = [
-        "spi_mt65xx/spi_mt65xx.c",
-    ],
-    out = "spi_mt65xx.ko",
-    hdrs = glob([
-        "spi_mt65xx/**/*.h",
-        "spi_mt65xx/**/.gitkeep",
-    ], allow_empty = True),
-    kernel_build = "//common/mindone:mindone",
-    includes = [
-        "include",
-        "spi_mt65xx",
-    ],
-    local_defines = [
-        "CONFIG_SPI_FSL_SPI=1",
-    ],
-    copts = _MINDONE_COPTS,
-    deps = [
-        ":mindone_headers",
-        ":tkcore",
-    ],
 )
 
 ddk_module(
@@ -5130,56 +5031,6 @@ ddk_module(
         ":emi",
         ":tinysys_scmi",
     ],
-)
-
-ddk_module(
-    name = "sub2af",
-    srcs = [
-        "sub2af/sub2_lens.c",
-        "sub2af/DW9718SAF.c",
-    ],
-    out = "sub2af.ko",
-    hdrs = glob([
-        "sub2af/**/*.h",
-        "sub2af/**/.gitkeep",
-    ], allow_empty = True),
-    kernel_build = "//common/mindone:mindone",
-    includes = [
-        "sub2af",
-        "include",
-    ],
-    local_defines = [
-        "CONFIG_OF=1",
-    ],
-    copts = _MINDONE_COPTS,
-    deps = [":mindone_headers"],
-)
-
-ddk_module(
-    name = "subaf",
-    srcs = [
-        "subaf/sub_lens.c",
-        "mainaf/common/bu6424af/BU6424AF.c",
-        "subaf/BU6429AF.c",
-        "mainaf/common/dw9714af/DW9714AF.c",
-        "mainaf/common/dw9814af/DW9814AF.c",
-        "subaf/DW9718AF.c",
-        "mainaf/common/lc898214af/LC898214AF.c",
-        "subaf/WV511AAF.c",
-        "subaf/AK7371AF.c",
-    ],
-    out = "subaf.ko",
-    hdrs = glob([
-        "subaf/**/*.h",
-        "subaf/**/.gitkeep",
-    ], allow_empty = True),
-    kernel_build = "//common/mindone:mindone",
-    includes = [
-        "subaf",
-        "include",
-    ],
-    copts = _MINDONE_COPTS,
-    deps = [":mindone_headers"],
 )
 
 ddk_module(
@@ -5988,7 +5839,6 @@ kernel_module_group(
         ":mddp",
         ":charger_class",
         ":charger_cooling",
-        ":clk_bringup",
         ":clk_disable_unused",
         ":clk_fmeter_mt6789",
         ":clk_mt6789",
@@ -6101,6 +5951,7 @@ kernel_module_group(
         ":mtk_pd_adapter",
         ":mtk_pd_charging",
         ":mtk_pm_domains_ack",
+        ":mtk_lvts_thermal_ack",
         ":mtk_pmic_keys",
         ":mtk_pmic_wrap_ack",
         ":mtk_qos",
@@ -6121,6 +5972,7 @@ kernel_module_group(
         ":musb_main",
         ":nvmem_mt635x_efuse",
         ":nvmem_mtk_devinfo",
+        ":ois_mindone",
         ":dmabuf_page_pool",
         ":panel-sd5302h-fhd1240-dsi-vdo-amoled-ocp2133",
         ":panel_ch13721c_fhd_dsi_vdo_amoled_ocp2133",
@@ -6139,8 +5991,6 @@ kernel_module_group(
         ":snd_soc_mt6366",
         ":snd_soc_mt6789_afe",
         ":snd_soc_mtk_common",
-        ":soc_temp_lvts",
-        ":spi_mt65xx",
         ":sspm_v3",
         ":system_heap",
         ":tcpci_rt1711h",

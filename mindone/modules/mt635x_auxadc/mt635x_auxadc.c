@@ -1274,7 +1274,8 @@ static void mt6358_batadc_cali_init(struct mt635x_auxadc_device *adc_dev)
 	auxadc_efuse = devm_nvmem_device_get(adc_dev->dev, "auxadc_efuse_dev");
 	ret = PTR_ERR_OR_ZERO(auxadc_efuse);
 	if (ret) {
-		dev_info(adc_dev->dev, "Error: Get efuse failed (%d)\n", ret);
+		if (ret != -EPROBE_DEFER)
+			dev_info(adc_dev->dev, "Error: Get efuse failed (%d)\n", ret);
 		return;
 	}
 

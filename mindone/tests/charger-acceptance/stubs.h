@@ -33,6 +33,7 @@ struct mtk_charger {
     struct charger_device *chg1_dev, *chg2_dev, *dvchg1_dev, *dvchg2_dev;
     struct charger_data chg_data[CHGS_SETTING_MAX];
     bool enable_hv_charging;
+    bool is_chg_done;
     int config, chr_type, usb_type, wakes;
 };
 static struct mtk_charger info;

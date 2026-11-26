@@ -97,11 +97,11 @@ static int nfc_irq_level(struct nfc_dev *nfc)
 
 static void nfc_set_ven(struct nfc_dev *nfc, bool high)
 {
-	if (nfc->ven_high == high)
+	if (READ_ONCE(nfc->ven_high) == high)
 		return;
 	pinctrl_select_state(nfc->pins->pinctrl,
 			     high ? nfc->pins->ven_high : nfc->pins->ven_low);
-	nfc->ven_high = high;
+	WRITE_ONCE(nfc->ven_high, high);
 	usleep_range(GPIO_SET_WAIT_US, GPIO_SET_WAIT_US + 100);
 }
 
@@ -137,6 +137,17 @@ static void nfc_enable_irq(struct nfc_dev *nfc)
 	spin_unlock_irqrestore(&nfc->irq_enabled_lock, flags);
 }
 
+static bool nfc_is_irq_enabled(struct nfc_dev *nfc)
+{
+	unsigned long flags;
+	bool enabled;
+
+	spin_lock_irqsave(&nfc->irq_enabled_lock, flags);
+	enabled = nfc->irq_enabled;
+	spin_unlock_irqrestore(&nfc->irq_enabled_lock, flags);
+	return enabled;
+}
+
 static irqreturn_t nfc_irq_handler(int irq, void *dev_id)
 {
 	struct nfc_dev *nfc = dev_id;
@@ -144,7 +155,7 @@ static irqreturn_t nfc_irq_handler(int irq, void *dev_id)
 	if (device_may_wakeup(&nfc->client->dev))
 		pm_wakeup_event(&nfc->client->dev, WAKEUP_SRC_TIMEOUT_MS);
 	nfc_disable_irq(nfc);
-	wake_up(&nfc->read_wq);
+	wake_up_all(&nfc->read_wq);
 	return IRQ_HANDLED;
 }
 
@@ -152,24 +163,34 @@ static int nfc_wait_irq(struct nfc_dev *nfc)
 {
 	int ret;
 
-	while (!nfc_irq_level(nfc)) {
+	for (;;) {
+		if (READ_ONCE(nfc->release_read))
+			return 1;
+		if (!READ_ONCE(nfc->ven_high))
+			return -EIO;
+		if (nfc_irq_level(nfc))
+			return 0;
 		nfc_enable_irq(nfc);
 		if (!nfc_irq_level(nfc)) {
-			ret = wait_event_interruptible(nfc->read_wq,
-						       !nfc->irq_enabled);
-			if (ret)
+			ret = wait_event_interruptible(
+				nfc->read_wq,
+				!nfc_is_irq_enabled(nfc) ||
+				READ_ONCE(nfc->release_read) ||
+				!READ_ONCE(nfc->ven_high));
+			if (ret) {
+				nfc_disable_irq(nfc);
 				return ret;
+			}
 		}
 		nfc_disable_irq(nfc);
-		if (nfc_irq_level(nfc))
-			break;
-		if (!nfc->ven_high)
-			return -EIO;
-		if (nfc->release_read)
+		if (READ_ONCE(nfc->release_read))
 			return 1;
+		if (!READ_ONCE(nfc->ven_high))
+			return -EIO;
+		if (nfc_irq_level(nfc))
+			return 0;
 		dev_warn_ratelimited(&nfc->client->dev, "spurious interrupt\n");
 	}
-	return 0;
 }
 
 static ssize_t nfc_read(struct file *filp, char __user *buf, size_t count,
@@ -228,66 +249,90 @@ static ssize_t nfc_write(struct file *filp, const char __user *buf,
 
 static int nfc_power(struct nfc_dev *nfc, unsigned long arg)
 {
+	int ret = 0;
+
+	mutex_lock(&nfc->dev_ref_mutex);
 	switch (arg) {
 	case NFC_POWER_OFF:
 		nfc_disable_irq(nfc);
 		nfc_set_dwl(nfc, false);
 		nfc_set_ven(nfc, false);
 		nfc->ven_on_by_nfc = false;
-		return 0;
+		wake_up_all(&nfc->read_wq);
+		break;
 	case NFC_POWER_ON:
-		nfc_enable_irq(nfc);
 		nfc_set_dwl(nfc, false);
 		nfc_set_ven(nfc, true);
 		nfc->ven_on_by_nfc = true;
-		return 0;
+		break;
 	case NFC_FW_DWL_VEN_TOGGLE:
 		nfc_disable_irq(nfc);
 		nfc_set_dwl(nfc, true);
 		nfc_set_ven(nfc, false);
 		nfc_set_ven(nfc, true);
-		nfc_enable_irq(nfc);
-		return 0;
+		nfc->ven_on_by_nfc = true;
+		wake_up_all(&nfc->read_wq);
+		break;
 	case NFC_FW_DWL_HIGH:
 		nfc_set_dwl(nfc, true);
-		return 0;
+		break;
 	case NFC_VEN_FORCED_HARD_RESET:
 		nfc_disable_irq(nfc);
 		nfc_set_ven(nfc, false);
 		nfc_set_ven(nfc, true);
-		nfc_enable_irq(nfc);
-		return 0;
+		nfc->ven_on_by_nfc = true;
+		wake_up_all(&nfc->read_wq);
+		break;
 	case NFC_FW_DWL_LOW:
 		nfc_set_dwl(nfc, false);
-		return 0;
+		break;
 	default:
-		return -EINVAL;
+		ret = -EINVAL;
+		break;
 	}
+	mutex_unlock(&nfc->dev_ref_mutex);
+	return ret;
 }
 
 static int nfc_ese_power(struct nfc_dev *nfc, unsigned long arg)
 {
+	int ret = 0;
+
+	mutex_lock(&nfc->dev_ref_mutex);
 	switch (arg) {
 	case ESE_POWER_ON:
-		nfc->ven_on_by_nfc = nfc->ven_high;
+		nfc->ven_on_by_nfc = READ_ONCE(nfc->ven_high);
 		nfc_set_ven(nfc, true);
-		return 0;
+		break;
 	case ESE_POWER_OFF:
-		if (!nfc->ven_on_by_nfc)
+		if (!nfc->ven_on_by_nfc) {
+			nfc_disable_irq(nfc);
 			nfc_set_ven(nfc, false);
-		return 0;
+			wake_up_all(&nfc->read_wq);
+		}
+		break;
 	case ESE_POWER_STATE:
-		return nfc->ven_high;
+		ret = READ_ONCE(nfc->ven_high);
+		break;
 	default:
-		return -EINVAL;
+		ret = -EINVAL;
+		break;
 	}
+	mutex_unlock(&nfc->dev_ref_mutex);
+	return ret;
 }
 
 static int nfc_gpio_status(struct nfc_dev *nfc, u32 __user *arg)
 {
-	int levels[] = { nfc_irq_level(nfc), nfc->ven_high, nfc->dwl_high };
+	int levels[3];
 	u32 status = 0;
 	int i;
+
+	mutex_lock(&nfc->dev_ref_mutex);
+	levels[0] = nfc_irq_level(nfc);
+	levels[1] = READ_ONCE(nfc->ven_high);
+	levels[2] = nfc->dwl_high;
+	mutex_unlock(&nfc->dev_ref_mutex);
 
 	for (i = 0; i < ARRAY_SIZE(levels); i++) {
 		int v = levels[i] < 0 ? GPIO_STATUS_INVALID : levels[i];
@@ -325,10 +370,8 @@ static int nfc_open(struct inode *inode, struct file *filp)
 
 	filp->private_data = nfc;
 	mutex_lock(&nfc->dev_ref_mutex);
-	if (nfc->dev_ref_count == 0) {
+	if (nfc->dev_ref_count == 0)
 		nfc_set_dwl(nfc, false);
-		nfc_enable_irq(nfc);
-	}
 	nfc->dev_ref_count++;
 	mutex_unlock(&nfc->dev_ref_mutex);
 	return 0;
@@ -339,11 +382,11 @@ static int nfc_flush(struct file *filp, fl_owner_t id)
 	struct nfc_dev *nfc = filp->private_data;
 
 	if (!mutex_trylock(&nfc->read_mutex)) {
-		nfc->release_read = true;
+		WRITE_ONCE(nfc->release_read, true);
 		nfc_disable_irq(nfc);
-		wake_up(&nfc->read_wq);
+		wake_up_all(&nfc->read_wq);
 		mutex_lock(&nfc->read_mutex);
-		nfc->release_read = false;
+		WRITE_ONCE(nfc->release_read, false);
 	}
 	mutex_unlock(&nfc->read_mutex);
 	return 0;
@@ -357,6 +400,9 @@ static int nfc_release(struct inode *inode, struct file *filp)
 	if (nfc->dev_ref_count == 1) {
 		nfc_disable_irq(nfc);
 		nfc_set_dwl(nfc, false);
+		nfc_set_ven(nfc, false);
+		nfc->ven_on_by_nfc = false;
+		wake_up_all(&nfc->read_wq);
 	}
 	if (nfc->dev_ref_count > 0)
 		nfc->dev_ref_count--;
@@ -438,13 +484,6 @@ static int nfc_i2c_probe(struct i2c_client *client)
 	if (ret < 0)
 		return dev_err_probe(dev, ret, "irq gpio has no interrupt\n");
 	client->irq = ret;
-	nfc->irq_enabled = true;
-	ret = devm_request_irq(dev, client->irq, nfc_irq_handler,
-			       IRQF_TRIGGER_HIGH, client->name, nfc);
-	if (ret)
-		return dev_err_probe(dev, ret, "cannot request irq %d\n",
-				     client->irq);
-	nfc_disable_irq(nfc);
 
 	nfc_set_ven(nfc, true);
 	nfc_set_ven(nfc, false);
@@ -452,6 +491,15 @@ static int nfc_i2c_probe(struct i2c_client *client)
 
 	i2c_set_clientdata(client, nfc);
 	device_init_wakeup(dev, true);
+
+	ret = devm_request_irq(dev, client->irq, nfc_irq_handler,
+			       IRQF_TRIGGER_HIGH | IRQF_NO_AUTOEN,
+			       client->name, nfc);
+	if (ret) {
+		device_init_wakeup(dev, false);
+		return dev_err_probe(dev, ret, "cannot request irq %d\n",
+				     client->irq);
+	}
 
 	nfc->misc.minor = MISC_DYNAMIC_MINOR;
 	nfc->misc.name = "nxp-nci";
@@ -480,9 +528,11 @@ static int nfc_i2c_suspend(struct device *dev)
 {
 	struct nfc_dev *nfc = dev_get_drvdata(dev);
 
-	if (device_may_wakeup(dev) && nfc->irq_enabled &&
+	mutex_lock(&nfc->dev_ref_mutex);
+	if (device_may_wakeup(dev) && READ_ONCE(nfc->ven_high) &&
 	    !enable_irq_wake(nfc->client->irq))
 		nfc->irq_wake_up = true;
+	mutex_unlock(&nfc->dev_ref_mutex);
 	return 0;
 }
 
@@ -490,8 +540,10 @@ static int nfc_i2c_resume(struct device *dev)
 {
 	struct nfc_dev *nfc = dev_get_drvdata(dev);
 
+	mutex_lock(&nfc->dev_ref_mutex);
 	if (nfc->irq_wake_up && !disable_irq_wake(nfc->client->irq))
 		nfc->irq_wake_up = false;
+	mutex_unlock(&nfc->dev_ref_mutex);
 	return 0;
 }
 

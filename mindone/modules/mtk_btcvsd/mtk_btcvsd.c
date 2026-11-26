@@ -1,13 +1,8 @@
 // SPDX-License-Identifier: GPL-2.0
-//
-// Mediatek ALSA BT SCO CVSD/MSBC Driver
-//
 // Copyright (c) 2019 MediaTek Inc.
-// Author: KaiChieh Chuang <kaichieh.chuang@mediatek.com>
 
 #include <linux/mfd/syscon.h>
 #include <linux/module.h>
-#include <linux/timer.h>
 #include <linux/of_address.h>
 #include <linux/sched/clock.h>
 
@@ -25,12 +20,10 @@
 	(BT_CVSD_TX_NREADY | BT_CVSD_RX_READY | BT_CVSD_RX_OVERFLOW |\
 	 BT_CVSD_INTERRUPT)
 
-/* TX */
 #define SCO_TX_ENCODE_SIZE (60)
-/* 18 = 6 * 180 / SCO_TX_ENCODE_SIZE */
+
 #define SCO_TX_PACKER_BUF_NUM (18)
 
-/* RX */
 #define SCO_RX_PLC_SIZE (30)
 #define SCO_RX_PACKER_BUF_NUM (64)
 #define SCO_RX_PACKET_MASK (0x3F)
@@ -129,8 +122,8 @@ struct mtk_btcvsd_snd {
 	unsigned int irq_disabled:1;
 	unsigned int bypass_bt_access:1;
 
-	spinlock_t tx_lock;	/* spinlock for bt tx stream control */
-	spinlock_t rx_lock;	/* spinlock for bt rx stream control */
+	spinlock_t tx_lock;
+	spinlock_t rx_lock;
 	wait_queue_head_t tx_wait;
 	wait_queue_head_t rx_wait;
 
@@ -210,8 +203,10 @@ static void mtk_btcvsd_snd_set_state(struct mtk_btcvsd_snd *bt,
 				     struct mtk_btcvsd_snd_stream *bt_stream,
 				     int state)
 {
-	int pre_state = bt_stream->state;
-	int pre_irq_disabled = bt->irq_disabled;
+	dev_dbg(bt->dev, "%s(), stream %d, state %d, tx->state %d, rx->state %d, irq_disabled %d\n",
+		__func__,
+		bt_stream->stream, state,
+		bt->tx->state, bt->rx->state, bt->irq_disabled);
 
 	bt_stream->state = state;
 
@@ -229,11 +224,6 @@ static void mtk_btcvsd_snd_set_state(struct mtk_btcvsd_snd *bt,
 			bt->irq_disabled = 0;
 		}
 	}
-	dev_dbg(bt->dev,
-		"%s(), stream %d, state %d->%d, tx->state %d, rx->state %d, irq_disabled %d->%d\n"
-		, __func__,
-		bt_stream->stream, pre_state, state, bt->tx->state,
-		bt->rx->state, pre_irq_disabled, bt->irq_disabled);
 }
 
 static int mtk_btcvsd_snd_tx_init(struct mtk_btcvsd_snd *bt)
@@ -321,7 +311,6 @@ static void mtk_btcvsd_snd_data_transfer(enum bt_sco_direct dir,
 	}
 }
 
-/* write encoded mute data to bt sram */
 static int btcvsd_tx_clean_buffer(struct mtk_btcvsd_snd *bt)
 {
 	void *dst;
@@ -333,43 +322,39 @@ static int btcvsd_tx_clean_buffer(struct mtk_btcvsd_snd *bt)
 	if (bt->bypass_bt_access)
 		return -EIO;
 
-	/* prepare encoded mute data */
 	if (band == BT_SCO_NB)
 		memset(bt->tx->temp_packet_buf, 170, SCO_PACKET_180);
 	else
-		memcpy(bt->tx->temp_packet_buf,
-		       table_msbc_silence, SCO_PACKET_180);
+		memset(bt->tx->temp_packet_buf, 85, SCO_PACKET_180);
 
-	/* write mute data to bt tx sram buffer */
 	spin_lock_irqsave(&bt->tx_lock, flags);
 	num_valid_addr = bt->tx->buffer_info.num_valid_addr;
 
 	dev_info(bt->dev, "%s(), band %d, num_valid_addr %u\n",
 		 __func__, band, num_valid_addr);
 
-	connsys_addr_tx = *bt->bt_reg_pkt_w;
-	ap_addr_tx = (unsigned long)bt->bt_sram_bank2_base +
-		     (connsys_addr_tx & 0xFFFF);
+	if (!num_valid_addr) {
+		spin_unlock_irqrestore(&bt->tx_lock, flags);
+		return 0;
+	}
 
+	connsys_addr_tx = *bt->bt_reg_pkt_w;
 	if (connsys_addr_tx == 0xdeadfeed) {
-		/* bt return 0xdeadfeed if read register during bt sleep */
 		dev_warn(bt->dev, "%s(), connsys_addr_tx == 0xdeadfeed\n",
 			 __func__);
 		spin_unlock_irqrestore(&bt->tx_lock, flags);
 		return -EIO;
 	}
-
+	ap_addr_tx = (unsigned long)bt->bt_sram_bank2_base +
+		     (connsys_addr_tx & 0xFFFF);
 	dst = (void *)ap_addr_tx;
-
-	dev_info(bt->dev, "%s(), clean addr 0x%lx\n", __func__, ap_addr_tx);
 
 	mtk_btcvsd_snd_data_transfer(BT_SCO_DIRECT_ARM2BT,
 				     bt->tx->temp_packet_buf, dst,
 				     bt->tx->buffer_info.packet_length,
 				     bt->tx->buffer_info.packet_num);
-
-	spin_unlock_irqrestore(&bt->tx_lock, flags);
 	bt->write_tx = 1;
+	spin_unlock_irqrestore(&bt->tx_lock, flags);
 
 	return 0;
 }
@@ -396,8 +381,8 @@ static int mtk_btcvsd_read_from_bt(struct mtk_btcvsd_snd *bt,
 		     (connsys_addr_rx & 0xFFFF);
 
 	if (connsys_addr_rx == 0xdeadfeed) {
-		/* bt return 0xdeadfeed if read register during bt sleep */
-		dev_warn(bt->dev, "%s(), connsys_addr_rx == 0xdeadfeed\n",
+
+		dev_warn(bt->dev, "%s(), connsys_addr_rx == 0xdeadfeed",
 			 __func__);
 		return -EIO;
 	}
@@ -451,7 +436,7 @@ static int mtk_btcvsd_write_to_bt(struct mtk_btcvsd_snd *bt,
 		     (connsys_addr_tx & 0xFFFF);
 
 	if (connsys_addr_tx == 0xdeadfeed) {
-		/* bt return 0xdeadfeed if read register during bt sleep */
+
 		dev_warn(bt->dev, "%s(), connsys_addr_tx == 0xdeadfeed\n",
 			 __func__);
 		return -EIO;
@@ -470,17 +455,15 @@ static int mtk_btcvsd_write_to_bt(struct mtk_btcvsd_snd *bt,
 	spin_unlock_irqrestore(&bt->tx_lock, flags);
 
 	dst = (u8 *)ap_addr_tx;
-	//codec_id: 0 default, 1 CVSD codec, 2 MSBC codec
+
 	codec_id = (*bt->bt_reg_ctl >> 25) & 3;
-	if ((!bt->tx->mute) &&
-	    ((codec_id == 0) || codec_id == bt->band + 1)) {
+	if (!bt->tx->mute && (codec_id == 0 || codec_id == bt->band + 1)) {
 		mtk_btcvsd_snd_data_transfer(BT_SCO_DIRECT_ARM2BT,
 					     bt->tx->temp_packet_buf, dst,
 					     packet_length, packet_num);
 		bt->write_tx = 1;
 	}
 
-	/* store bt tx buffer sram info */
 	bt->tx->buffer_info.packet_length = packet_length;
 	bt->tx->buffer_info.packet_num = packet_num;
 	for (i = 0; i < bt->tx->buffer_info.num_valid_addr; i++) {
@@ -491,15 +474,22 @@ static int mtk_btcvsd_write_to_bt(struct mtk_btcvsd_snd *bt,
 	}
 	if (new_ap_addr_tx) {
 		unsigned int next_idx;
+		bool stored = false;
 
 		spin_lock_irqsave(&bt->tx_lock, flags);
-		bt->tx->buffer_info.num_valid_addr++;
-		next_idx = bt->tx->buffer_info.num_valid_addr - 1;
-		bt->tx->buffer_info.bt_sram_addr[next_idx] = ap_addr_tx;
+		next_idx = bt->tx->buffer_info.num_valid_addr;
+		if (next_idx < ARRAY_SIZE(bt->tx->buffer_info.bt_sram_addr)) {
+			bt->tx->buffer_info.bt_sram_addr[next_idx] = ap_addr_tx;
+			bt->tx->buffer_info.num_valid_addr = next_idx + 1;
+			stored = true;
+		}
 		spin_unlock_irqrestore(&bt->tx_lock, flags);
-		dev_info(bt->dev, "%s(), new ap_addr_tx = 0x%lx, num_valid_addr %d\n",
-			 __func__, ap_addr_tx,
-			 bt->tx->buffer_info.num_valid_addr);
+		if (stored)
+			dev_info(bt->dev, "%s(), new ap_addr_tx = 0x%lx, num_valid_addr %u\n",
+				 __func__, ap_addr_tx, next_idx + 1);
+		else
+			dev_warn_once(bt->dev, "%s(), bt_sram_addr table full\n",
+				      __func__);
 	}
 
 	if (bt->tx->mute)
@@ -513,13 +503,8 @@ static irqreturn_t mtk_btcvsd_snd_irq_handler(int irq_id, void *dev)
 	struct mtk_btcvsd_snd *bt = dev;
 	unsigned int packet_type, packet_num, packet_length;
 	unsigned int buf_cnt_tx, buf_cnt_rx, control;
-	static DEFINE_RATELIMIT_STATE(_rs, 2 * HZ, 1);
-
-	if (__ratelimit(&_rs))
-		dev_info(bt->dev, "%s(), irq_id=%d\n", __func__, irq_id);
 
 	bt->write_tx = 0;
-
 	if (bt->bypass_bt_access)
 		goto irq_handler_exit;
 
@@ -568,7 +553,7 @@ static irqreturn_t mtk_btcvsd_snd_irq_handler(int irq_id, void *dev)
 
 		if (connsys_addr_tx == 0xdeadfeed ||
 		    connsys_addr_rx == 0xdeadfeed) {
-			/* bt return 0xdeadfeed if read reg during bt sleep */
+
 			dev_warn(bt->dev, "%s(), connsys_addr_tx == 0xdeadfeed\n",
 				 __func__);
 			goto irq_handler_exit;
@@ -594,10 +579,7 @@ static irqreturn_t mtk_btcvsd_snd_irq_handler(int irq_id, void *dev)
 		if (bt->rx->xrun) {
 			if (bt->rx->packet_w - bt->rx->packet_r <=
 			    SCO_RX_PACKER_BUF_NUM - 2 * buf_cnt_rx) {
-				/*
-				 * free space is larger then
-				 * twice interrupt rx data size
-				 */
+
 				bt->rx->xrun = 0;
 				dev_warn(bt->dev, "%s(), rx->xrun 0!\n",
 					 __func__);
@@ -620,15 +602,12 @@ static irqreturn_t mtk_btcvsd_snd_irq_handler(int irq_id, void *dev)
 		}
 	}
 
-	/* tx */
 	bt->tx->timeout = 0;
 	if ((bt->tx->state == BT_SCO_STATE_RUNNING ||
 	     bt->tx->state == BT_SCO_STATE_ENDING) &&
 	    bt->tx->trigger_start) {
 		if (bt->tx->xrun) {
-			/* prepared data is larger then twice
-			 * interrupt tx data size
-			 */
+
 			if (bt->tx->packet_w - bt->tx->packet_r >=
 			    2 * buf_cnt_tx) {
 				bt->tx->xrun = 0;
@@ -653,11 +632,9 @@ static irqreturn_t mtk_btcvsd_snd_irq_handler(int irq_id, void *dev)
 	}
 
 	*bt->bt_reg_ctl &= ~BT_CVSD_CLEAR;
-	if (bt->tx->state == BT_SCO_STATE_IDLE || bt->write_tx == 0) {
+	if (bt->tx->state == BT_SCO_STATE_IDLE || bt->write_tx == 0)
 		*bt->bt_reg_ctl |= BT_CVSD_TX_UNDERFLOW;
-		dev_info(bt->dev, "%s(), tx underflow, state = %d, write_tx = %d\n",
-			 __func__, bt->tx->state, bt->write_tx);
-	}
+
 	if (bt->rx->state == BT_SCO_STATE_RUNNING ||
 	    bt->rx->state == BT_SCO_STATE_ENDING) {
 		bt->rx->wait_flag = 1;
@@ -675,9 +652,6 @@ static irqreturn_t mtk_btcvsd_snd_irq_handler(int irq_id, void *dev)
 irq_handler_exit:
 	*bt->bt_reg_ctl |= BT_CVSD_TX_UNDERFLOW;
 	*bt->bt_reg_ctl &= ~BT_CVSD_CLEAR;
-	dev_warn(bt->dev, "%s(), irq_handler_exit, bt_reg_ctl = 0x%x\n",
-		 __func__, *bt->bt_reg_ctl);
-
 	return IRQ_HANDLED;
 }
 
@@ -685,17 +659,15 @@ static int wait_for_bt_irq(struct mtk_btcvsd_snd *bt,
 			   struct mtk_btcvsd_snd_stream *bt_stream)
 {
 	unsigned long long t1, t2;
-	/* one interrupt period = 22.5ms */
+
 	unsigned long long timeout_limit = 22500000;
 	int max_timeout_trial = 2;
 	int ret;
-	struct timespec64 ts64;
 
 	bt_stream->wait_flag = 0;
 
 	while (max_timeout_trial && !bt_stream->wait_flag) {
-		ktime_get_ts64(&ts64);
-		t1 = timespec64_to_ns(&ts64);
+		t1 = ktime_get_ns();
 		if (bt_stream->stream == SNDRV_PCM_STREAM_PLAYBACK) {
 			ret = wait_event_interruptible_timeout(bt->tx_wait,
 				bt_stream->wait_flag,
@@ -706,9 +678,8 @@ static int wait_for_bt_irq(struct mtk_btcvsd_snd *bt,
 				nsecs_to_jiffies(timeout_limit));
 		}
 
-		ktime_get_ts64(&ts64);
-		t2 = timespec64_to_ns(&ts64);
-		t2 = t2 - t1; /* in ns (10^9) */
+		t2 = ktime_get_ns();
+		t2 = t2 - t1;
 
 		if (t2 > timeout_limit) {
 			dev_warn(bt->dev, "%s(), stream %d, timeout %llu, limit %llu, ret %d, flag %d\n",
@@ -718,10 +689,7 @@ static int wait_for_bt_irq(struct mtk_btcvsd_snd *bt,
 		}
 
 		if (ret < 0) {
-			/*
-			 * error, -ERESTARTSYS if it was interrupted by
-			 * a signal
-			 */
+
 			dev_warn(bt->dev, "%s(), stream %d, error, trial left %d\n",
 				 __func__,
 				 bt_stream->stream, max_timeout_trial);
@@ -729,7 +697,7 @@ static int wait_for_bt_irq(struct mtk_btcvsd_snd *bt,
 			bt_stream->timeout = 1;
 			return ret;
 		} else if (ret == 0) {
-			/* conidtion is false after timeout */
+
 			max_timeout_trial--;
 			dev_warn(bt->dev, "%s(), stream %d, error, timeout, condition is false, trial left %d\n",
 				 __func__,
@@ -750,15 +718,13 @@ static ssize_t mtk_btcvsd_snd_read(struct mtk_btcvsd_snd *bt,
 				   size_t count)
 {
 	ssize_t read_size = 0, read_count = 0, cur_read_idx, cont;
-	unsigned int cur_buf_ofs = 0;
 	unsigned long avail;
 	unsigned long flags;
 	unsigned int packet_size = bt->rx->packet_size;
-	struct timespec64 ts64;
 
 	while (count) {
 		spin_lock_irqsave(&bt->rx_lock, flags);
-		/* available data in RX packet buffer */
+
 		avail = (bt->rx->packet_w - bt->rx->packet_r) * packet_size;
 
 		cur_read_idx = (bt->rx->packet_r & SCO_RX_PACKET_MASK) *
@@ -774,7 +740,6 @@ static ssize_t mtk_btcvsd_snd_read(struct mtk_btcvsd_snd *bt,
 			continue;
 		}
 
-		/* count must be multiple of packet_size */
 		if (count % packet_size != 0 ||
 		    avail % packet_size != 0) {
 			dev_warn(bt->dev, "%s(), count %zu or d %lu is not multiple of packet_size %dd\n",
@@ -789,13 +754,13 @@ static ssize_t mtk_btcvsd_snd_read(struct mtk_btcvsd_snd *bt,
 		else
 			read_size = count;
 
-		/* calculate continue space */
 		cont = bt->rx->buf_size - cur_read_idx;
 		if (read_size > cont)
 			read_size = cont;
 
-		if ((copy_to_iter(bt->rx_packet_buf + cur_read_idx, read_size, buf) != read_size)) {
-			dev_warn(bt->dev, "%s(), copy_to_user fail\n",
+		if (copy_to_iter(bt->rx_packet_buf + cur_read_idx,
+				 read_size, buf) != read_size) {
+			dev_warn(bt->dev, "%s(), copy_to_iter fail\n",
 				 __func__);
 			return -EFAULT;
 		}
@@ -805,22 +770,16 @@ static ssize_t mtk_btcvsd_snd_read(struct mtk_btcvsd_snd *bt,
 		spin_unlock_irqrestore(&bt->rx_lock, flags);
 
 		read_count += read_size;
-		cur_buf_ofs += read_size;
 		count -= read_size;
 	}
 
-	/*
-	 * save current timestamp & buffer time in times_tamp and
-	 * buf_data_equivalent_time
-	 */
-	ktime_get_ts64(&ts64);
-	bt->rx->time_stamp = timespec64_to_ns(&ts64);
+	bt->rx->time_stamp = ktime_get_ns();
 	bt->rx->buf_data_equivalent_time =
 		(unsigned long long)(bt->rx->packet_w - bt->rx->packet_r) *
 		SCO_RX_PLC_SIZE * 16 * 1000 / 2 / 64;
 	bt->rx->buf_data_equivalent_time += read_count * SCO_RX_PLC_SIZE *
 					    16 * 1000 / packet_size / 2 / 64;
-	/* return equivalent time(us) to data count */
+
 	bt->rx->buf_data_equivalent_time *= 1000;
 
 	return read_count;
@@ -830,28 +789,20 @@ static ssize_t mtk_btcvsd_snd_write(struct mtk_btcvsd_snd *bt,
 				    struct iov_iter *buf,
 				    size_t count)
 {
-	int written_size = count, avail = 0, cur_write_idx, write_size, cont;
-	unsigned int cur_buf_ofs = 0;
+	int written_size = count, avail, cur_write_idx, write_size, cont;
 	unsigned long flags;
 	unsigned int packet_size = bt->tx->packet_size;
-	struct timespec64 ts64;
 
-	/*
-	 * save current timestamp & buffer time in time_stamp and
-	 * buf_data_equivalent_time
-	 */
-	ktime_get_ts64(&ts64);
-	bt->tx->time_stamp = timespec64_to_ns(&ts64);
+	bt->tx->time_stamp = ktime_get_ns();
 	bt->tx->buf_data_equivalent_time =
 		(unsigned long long)(bt->tx->packet_w - bt->tx->packet_r) *
 		packet_size * 16 * 1000 / 2 / 64;
 
-	/* return equivalent time(us) to data count */
 	bt->tx->buf_data_equivalent_time *= 1000;
 
 	while (count) {
 		spin_lock_irqsave(&bt->tx_lock, flags);
-		/* free space of TX packet buffer */
+
 		avail = bt->tx->buf_size -
 			(bt->tx->packet_w - bt->tx->packet_r) * packet_size;
 
@@ -868,7 +819,6 @@ static ssize_t mtk_btcvsd_snd_write(struct mtk_btcvsd_snd *bt,
 			continue;
 		}
 
-		/* count must be multiple of bt->tx->packet_size */
 		if (count % packet_size != 0 ||
 		    avail % packet_size != 0) {
 			dev_warn(bt->dev, "%s(), count %zu or avail %d is not multiple of packet_size %d\n",
@@ -882,14 +832,13 @@ static ssize_t mtk_btcvsd_snd_write(struct mtk_btcvsd_snd *bt,
 		else
 			write_size = count;
 
-		/* calculate continue space */
 		cont = bt->tx->buf_size - cur_write_idx;
 		if (write_size > cont)
 			write_size = cont;
 
-		if ((copy_from_iter(bt->tx_packet_buf +
-				   cur_write_idx, write_size, buf) != write_size)) {
-			dev_warn(bt->dev, "%s(), copy_from_user fail\n",
+		if (copy_from_iter(bt->tx_packet_buf + cur_write_idx,
+				   write_size, buf) != write_size) {
+			dev_warn(bt->dev, "%s(), copy_from_iter fail\n",
 				 __func__);
 			return -EFAULT;
 		}
@@ -897,7 +846,6 @@ static ssize_t mtk_btcvsd_snd_write(struct mtk_btcvsd_snd *bt,
 		spin_lock_irqsave(&bt->tx_lock, flags);
 		bt->tx->packet_w += write_size / packet_size;
 		spin_unlock_irqrestore(&bt->tx_lock, flags);
-		cur_buf_ofs += write_size;
 		count -= write_size;
 	}
 
@@ -913,7 +861,6 @@ static struct mtk_btcvsd_snd_stream *get_bt_stream
 		return bt->rx;
 }
 
-/* pcm ops */
 static const struct snd_pcm_hardware mtk_btcvsd_hardware = {
 	.info = (SNDRV_PCM_INFO_MMAP | SNDRV_PCM_INFO_INTERLEAVED |
 		 SNDRV_PCM_INFO_RESUME),
@@ -944,9 +891,7 @@ static int mtk_pcm_btcvsd_open(struct snd_soc_component *component,
 		bt->rx->substream = substream;
 	}
 
-	/* set the wait_for_avail to 2 sec*/
 	substream->wait_time = msecs_to_jiffies(2 * 1000);
-
 	return ret;
 }
 
@@ -968,7 +913,6 @@ static int mtk_pcm_btcvsd_hw_params(struct snd_soc_component *component,
 				    struct snd_pcm_hw_params *hw_params)
 {
 	struct mtk_btcvsd_snd *bt = snd_soc_component_get_drvdata(component);
-	dev_dbg(bt->dev, "%s(), stream %d\n", __func__, substream->stream);
 
 	if (substream->stream == SNDRV_PCM_STREAM_PLAYBACK &&
 	    params_buffer_bytes(hw_params) % bt->tx->packet_size != 0) {
@@ -986,11 +930,8 @@ static int mtk_pcm_btcvsd_hw_free(struct snd_soc_component *component,
 				  struct snd_pcm_substream *substream)
 {
 	struct mtk_btcvsd_snd *bt = snd_soc_component_get_drvdata(component);
-	dev_dbg(bt->dev, "%s(), stream %d, bt->disable_write_silence %d\n",
-		__func__, substream->stream, bt->disable_write_silence);
 
-	if ((substream->stream == SNDRV_PCM_STREAM_PLAYBACK) &&
-	    (bt->disable_write_silence == 0))
+	if (substream->stream == SNDRV_PCM_STREAM_PLAYBACK && !bt->disable_write_silence)
 		btcvsd_tx_clean_buffer(bt);
 
 	return 0;
@@ -1048,7 +989,7 @@ static snd_pcm_uframes_t mtk_pcm_btcvsd_pointer(
 	int byte = 0;
 	int hw_packet_ptr;
 	int packet_diff;
-	spinlock_t *lock;	/* spinlock for bt stream control */
+	spinlock_t *lock;
 	unsigned long flags;
 
 	if (substream->stream == SNDRV_PCM_STREAM_PLAYBACK) {
@@ -1063,17 +1004,15 @@ static snd_pcm_uframes_t mtk_pcm_btcvsd_pointer(
 	hw_packet_ptr = substream->stream == SNDRV_PCM_STREAM_PLAYBACK ?
 			bt->tx->packet_r : bt->rx->packet_w;
 
-	/* get packet diff from last time */
 	if (hw_packet_ptr >= bt_stream->prev_packet_idx) {
 		packet_diff = hw_packet_ptr - bt_stream->prev_packet_idx;
 	} else {
-		/* integer overflow */
+
 		packet_diff = (INT_MAX - bt_stream->prev_packet_idx) +
 			      (hw_packet_ptr - INT_MIN) + 1;
 	}
 	bt_stream->prev_packet_idx = hw_packet_ptr;
 
-	/* increased bytes */
 	byte = packet_diff * bt_stream->packet_size;
 
 	frame = btcvsd_bytes_to_frame(substream, byte);
@@ -1100,7 +1039,6 @@ static int mtk_pcm_btcvsd_copy(struct snd_soc_component *component,
 		return mtk_btcvsd_snd_read(bt, buf, count);
 }
 
-/* kcontrol */
 static const char *const btsco_band_str[] = {"NB", "WB"};
 
 static const struct soc_enum btcvsd_enum[] = {
@@ -1176,8 +1114,6 @@ static int btcvsd_bypass_set(struct snd_kcontrol *kcontrol,
 	struct mtk_btcvsd_snd *bt = snd_soc_component_get_drvdata(cmpnt);
 
 	bt->bypass_bt_access = ucontrol->value.integer.value[0];
-	dev_dbg(bt->dev, "%s(), bypass_bt_access %d\n",
-		__func__, bt->bypass_bt_access);
 	return 0;
 }
 
@@ -1355,7 +1291,7 @@ static const struct snd_soc_component_driver mtk_btcvsd_snd_platform = {
 	.prepare	= mtk_pcm_btcvsd_prepare,
 	.trigger	= mtk_pcm_btcvsd_trigger,
 	.pointer	= mtk_pcm_btcvsd_pointer,
-	.copy = mtk_pcm_btcvsd_copy,
+	.copy		= mtk_pcm_btcvsd_copy,
 };
 
 static int mtk_btcvsd_snd_probe(struct platform_device *pdev)
@@ -1367,14 +1303,12 @@ static int mtk_btcvsd_snd_probe(struct platform_device *pdev)
 	struct device *dev = &pdev->dev;
 	u32 disable_write_silence = 0;
 
-	/* init btcvsd private data */
 	btcvsd = devm_kzalloc(dev, sizeof(*btcvsd), GFP_KERNEL);
 	if (!btcvsd)
 		return -ENOMEM;
 	platform_set_drvdata(pdev, btcvsd);
 	btcvsd->dev = dev;
 
-	/* init tx/rx */
 	btcvsd->rx = devm_kzalloc(btcvsd->dev, sizeof(*btcvsd->rx), GFP_KERNEL);
 	if (!btcvsd->rx)
 		return -ENOMEM;
@@ -1392,12 +1326,9 @@ static int mtk_btcvsd_snd_probe(struct platform_device *pdev)
 	mtk_btcvsd_snd_tx_init(btcvsd);
 	mtk_btcvsd_snd_rx_init(btcvsd);
 
-	/* irq */
 	irq_id = platform_get_irq(pdev, 0);
-	if (irq_id <= 0) {
-		dev_err(dev, "%pOFn no irq found\n", dev->of_node);
+	if (irq_id <= 0)
 		return irq_id < 0 ? irq_id : -ENXIO;
-	}
 
 	ret = devm_request_irq(dev, irq_id, mtk_btcvsd_snd_irq_handler,
 			       IRQF_TRIGGER_NONE, "BTCVSD_ISR_Handle",
@@ -1409,7 +1340,6 @@ static int mtk_btcvsd_snd_probe(struct platform_device *pdev)
 
 	btcvsd->irq_id = irq_id;
 
-	/* iomap */
 	btcvsd->bt_pkv_base = of_iomap(dev->of_node, 0);
 	if (!btcvsd->bt_pkv_base) {
 		dev_err(dev, "iomap bt_pkv_base fail\n");
@@ -1432,7 +1362,6 @@ static int mtk_btcvsd_snd_probe(struct platform_device *pdev)
 		goto unmap_bank2_err;
 	}
 
-	/* get offset */
 	ret = of_property_read_u32_array(dev->of_node, "mediatek,offset",
 					 offset,
 					 ARRAY_SIZE(offset));
@@ -1440,15 +1369,6 @@ static int mtk_btcvsd_snd_probe(struct platform_device *pdev)
 		dev_warn(dev, "%s(), get offset fail, ret %d\n", __func__, ret);
 		goto unmap_bank2_err;
 	}
-	/* get disable_write_silence */
-	ret = of_property_read_u32(dev->of_node, "disable_write_silence",
-				     &disable_write_silence);
-	if (ret) {
-		dev_dbg(dev,
-			"%s(), get disable_write_silence fail %d, set 0\n"
-			, __func__, ret);
-	}
-
 	btcvsd->infra_misc_offset = offset[0];
 	btcvsd->conn_bt_cvsd_mask = offset[1];
 	btcvsd->cvsd_mcu_read_offset = offset[2];
@@ -1461,9 +1381,10 @@ static int mtk_btcvsd_snd_probe(struct platform_device *pdev)
 			       btcvsd->cvsd_mcu_write_offset;
 	btcvsd->bt_reg_ctl = btcvsd->bt_pkv_base +
 			     btcvsd->cvsd_packet_indicator;
-	btcvsd->disable_write_silence = (u8) disable_write_silence;
+	of_property_read_u32(dev->of_node, "disable_write_silence",
+			     &disable_write_silence);
+	btcvsd->disable_write_silence = (u8)disable_write_silence;
 
-	/* init state */
 	mtk_btcvsd_snd_set_state(btcvsd, btcvsd->tx, BT_SCO_STATE_IDLE);
 	mtk_btcvsd_snd_set_state(btcvsd, btcvsd->rx, BT_SCO_STATE_IDLE);
 
@@ -1487,7 +1408,6 @@ static void mtk_btcvsd_snd_remove(struct platform_device *pdev)
 
 	iounmap(btcvsd->bt_pkv_base);
 	iounmap(btcvsd->bt_sram_bank2_base);
-	return;
 }
 
 static const struct of_device_id mtk_btcvsd_snd_dt_match[] = {

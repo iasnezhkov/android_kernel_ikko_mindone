@@ -1724,17 +1724,21 @@ EXPORT_SYMBOL(ged_gpu_predict_apo_notify);
 
 int ged_get_autosuspend_stress(void)
 {
-	return g_autosuspend_stress;
+	return READ_ONCE(g_autosuspend_stress);
 }
 EXPORT_SYMBOL(ged_get_autosuspend_stress);
 
 void ged_set_autosuspend_stress(int enable)
 {
+#if defined(CONFIG_MTK_GPU_APO_SUPPORT)
 	unsigned long ulIRQFlags;
 
 	spin_lock_irqsave(&g_sApoLock, ulIRQFlags);
-	g_autosuspend_stress = enable;
+	WRITE_ONCE(g_autosuspend_stress, enable);
 	spin_unlock_irqrestore(&g_sApoLock, ulIRQFlags);
+#else
+	WRITE_ONCE(g_autosuspend_stress, enable);
+#endif
 }
 EXPORT_SYMBOL(ged_set_autosuspend_stress);
 

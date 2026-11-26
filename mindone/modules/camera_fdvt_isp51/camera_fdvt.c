@@ -1005,7 +1005,7 @@ struct dma_buf *aie_imem_sec_alloc(u32 size, bool IsSecure)
 	if (IS_ERR(my_dma_buf))
 		return NULL;
 
-	mtk_dma_buf_set_name(my_dma_buf, "AIE_FAKE_NODE");
+	dma_buf_set_name(my_dma_buf, "AIE_FAKE_NODE");
 	return my_dma_buf;
 }
 

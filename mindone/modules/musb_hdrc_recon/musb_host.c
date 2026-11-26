@@ -3368,9 +3368,12 @@ static int musb_bus_suspend(struct usb_hcd *hcd)
 	u8 devctl;
 	int ret;
 
-	ret = musb_port_suspend(musb, true);
-	if (ret)
-		return ret;
+	if (!(musb->port1_status & USB_PORT_STAT_SUSPEND) ||
+	    musb->xceiv->otg->state != OTG_STATE_A_SUSPEND) {
+		ret = musb_port_suspend(musb, true);
+		if (ret)
+			return ret;
+	}
 
 	if (!is_host_active(musb))
 		return 0;

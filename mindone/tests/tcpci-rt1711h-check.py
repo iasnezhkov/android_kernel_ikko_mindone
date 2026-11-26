@@ -17,10 +17,11 @@ SOURCE = 'mindone/modules/tcpci_rt1711h/tcpci_rt1711h.c'
 ACK_DRIVER = 'drivers/usb/typec/tcpm/tcpci_rt1711h.c'
 ACK_TCPCI = 'drivers/usb/typec/tcpm/tcpci.c'
 ACK_HEADER = 'include/linux/usb/tcpci.h'
-CASES = ('exhaustive', 'injected', 'quiet')
+CASES = ('exhaustive', 'injected', 'quiet', 'retoggle')
 CALL = '\treturn rt1711h_alert(chip);\n'
 ACK_CALL = '\treturn tcpci_irq(chip->tcpci);\n'
 SHUTDOWN_LINE = '\t.shutdown = rt1711h_shutdown,\n'
+RETOGGLE_LINE = '\t\telse if (rt1711h_restart_toggling(chip, status))\n\t\t\treturn IRQ_HANDLED;\n'
 SECOND_SOURCE = (
     ('#define RT1711H_VID\t\t0x29CF\n#define RT1715_ALT_VID\t\t0x6DCF\n', '#define RT1711H_VID\t\t0x29CF\n'),
     ('\tu16 did;\n\tu16 alt_vid;\n', '\tu16 did;\n'),
@@ -44,6 +45,16 @@ MUTANTS = (
      '\t\t\t\tstatus & ~TCPC_ALERT_RX_STATUS);\n', '\trt1711h_write16(chip, TCPC_ALERT, status);\n'),
     ('vsafe0v-ignored', '\tif (chip->data.vbus_vsafe0v)\n\t\tmask |= TCPC_ALERT_EXTENDED_STATUS;\n', ''),
     ('handled-always', '\treturn IRQ_RETVAL(irq_ret);\n', '\treturn IRQ_HANDLED;\n'),
+    ('retoggle-skips-ra-cc1', ' ||\n\t       (cc1 == TYPEC_CC_RA && cc2 == TYPEC_CC_OPEN)', ''),
+    ('retoggle-skips-ra-cc2', ' ||\n\t       (cc1 == TYPEC_CC_OPEN && cc2 == TYPEC_CC_RA)', ''),
+    ('retoggle-matches-audio', '(cc1 == TYPEC_CC_OPEN && cc2 == TYPEC_CC_RA);',
+     '(cc1 == TYPEC_CC_OPEN && cc2 == TYPEC_CC_RA) || (cc1 == TYPEC_CC_RA && cc2 == TYPEC_CC_RA);'),
+    ('retoggle-ignores-port-state', '\tif (!tcpm_port_is_toggling(port))\n\t\treturn false;\n', ''),
+    ('retoggle-ignores-drp-bit', 'if (ret < 0 || !(role & TCPC_ROLE_CTRL_DRP))', 'if (ret < 0)'),
+    ('retoggle-keeps-rp', 'base = (role & TCPC_ROLE_CTRL_RP_VAL) |\n\t       FIELD_PREP(TCPC_ROLE_CTRL_CC1, TCPC_ROLE_CTRL_CC_RD)',
+     'base = (role & TCPC_ROLE_CTRL_RP_VAL) |\n\t       FIELD_PREP(TCPC_ROLE_CTRL_CC1, TCPC_ROLE_CTRL_CC_RP)'),
+    ('retoggle-no-look4conn', 'return rt1711h_write8(chip, TCPC_COMMAND, TCPC_CMD_LOOK4CONNECTION) == 0;',
+     'return true;'),
 )
 FLAGS = ['cc', '-std=gnu11', '-g', '-Wall', '-Wextra', '-Werror', '-Wno-unused-function', '-Wno-unused-parameter',
          '-Wno-unused-variable', '-Wno-sign-compare', '-Wno-missing-field-initializers',
@@ -139,11 +150,13 @@ def normalized(text):
 
 def reverted(source):
     for part in (define(source, 'RT1711H_TCPCI_ALERT_MASK', SOURCE), function(source, 'rt1711h_alert', SOURCE),
+                 function(source, 'rt1711h_cc_needs_retoggle', SOURCE),
+                 function(source, 'rt1711h_restart_toggling', SOURCE),
                  function(source, 'rt1711h_shutdown', SOURCE)):
         if source.count(part) != 1:
             fail('an added part is not unique in ' + SOURCE)
         source = source.replace(part + '\n', '', 1) if (part + '\n') in source else source.replace(part, '', 1)
-    for before, after in ((CALL, ACK_CALL), (SHUTDOWN_LINE, ''), *SECOND_SOURCE):
+    for before, after in ((CALL, ACK_CALL), (SHUTDOWN_LINE, ''), (RETOGGLE_LINE, ''), *SECOND_SOURCE):
         if source.count(before) != 1:
             fail(f'expected one {before.strip()!r} in {SOURCE}')
         source = source.replace(before, after, 1)
@@ -193,7 +206,12 @@ def unit(source, ack_tcpci, header):
              mask, ack_irq,
              block(source, 'struct rt1711h_chip_info {', SOURCE), block(source, 'struct rt1711h_chip {', SOURCE),
              function(source, 'rt1711h_read16', SOURCE), function(source, 'rt1711h_write16', SOURCE),
+             function(source, 'rt1711h_read8', SOURCE), function(source, 'rt1711h_write8', SOURCE),
+             function(source, 'rt1711h_init_cc_params', SOURCE),
              define(source, 'RT1711H_TCPCI_ALERT_MASK', SOURCE), function(source, 'rt1711h_alert', SOURCE),
+             function(source, 'rt1711h_cc_needs_retoggle', SOURCE),
+             function(source, 'rt1711h_restart_toggling', SOURCE),
+             function(source, 'rt1711h_irq', SOURCE),
              '#include "cases.c"']
     return '\n'.join(parts) + '\n'
 

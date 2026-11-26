@@ -2,13 +2,12 @@
 <!-- SPDX-FileCopyrightText: 2026 The LineageOS Project -->
 # Drivers
 
-`mindone/modules/` declares 194 `ddk_module` targets in
-`mindone/modules/BUILD.bazel`; the `mindone_modules` group selects 190.
-The normal boot load lists contain 214 modules: 190 of those DDK outputs,
+`mindone/modules/` declares 189 `ddk_module` targets in
+`mindone/modules/BUILD.bazel`; the `mindone_modules` group selects all 189.
+The normal boot load lists contain 213 modules: 189 of those DDK outputs,
 20 device in-tree outputs and four GKI modules (`libarc4`, `rfkill`, `zram`,
-`zsmalloc`). 23 in-tree outputs are declared in `mindone/BUILD.bazel`; three
-of them (`mac80211`, `industrialio-triggered-buffer`, `kfifo_buf`) are not in those
-lists. The base is Google's `android17-6.18-2026-09_r13` prebuilt, CI 16831611.
+`zsmalloc`). All 20 in-tree outputs declared in `mindone/BUILD.bazel` are in
+those lists. The base is Google's `android17-6.18-2026-09_r15` prebuilt, CI 16990439.
 
 Mali kbase is **r54p1** in the M28 and later sets; earlier sets used r32p1.
 The `mali_kbase_mt6789` target now builds `mali_kbase_r54/`.
@@ -20,8 +19,9 @@ Wi-Fi/BT, sensors, thermal, charging, the cellular modem interface. Most of it h
 driver for MT6789, and iKKO published nothing. These trees were ported from MediaTek's own
 published sources for the MT6789 family and corrected where they were wrong for this board.
 Where the Android Common Kernel has the driver, it replaces the vendor copy: the clk-mtk
-core, the power-domain, PMIC-wrapper and pin-controller drivers and the TCPM Type-C stack
-come from the r13 sources, with MT6789 data added where r13 lacks it.
+core, the power-domain, PMIC-wrapper, PMIC-keys, BT-CVSD, LVTS thermal and pin-controller
+drivers and the TCPM Type-C stack come from the ACK 6.18 sources, with MT6789 data added
+where ACK lacks it.
 
 ## Inventory
 
@@ -31,23 +31,24 @@ come from the r13 sources, with MT6789 data added where r13 lacks it.
 `python3 mindone/tests/modules-tsv-check.py --write` regenerates it from `BUILD.bazel` and the
 load lists; without `--write` the check fails when the table is stale.
 
-The four unused AF wrappers `subaf`, `sub2af`, `main2af` and `main3af` retain
-DDK definitions but are removed from `mindone_modules` and the combined and vendor-DLKM load lists.
-`mainaf` remains selected for the main camera actuator. In the companion ROM,
-`libarc4` moves from `vendor_dlkm` to `system_dlkm`; its vendor list consequently
-contains 192 entries, while this kernel's vendor request list contains 193.
+The four unused AF wrappers (`subaf`, `sub2af`, `main2af`, `main3af`), `spi_mt65xx` and
+`clk_bringup` have been removed; `mainaf` remains selected for the main camera actuator,
+`ois_mindone` drives the 0x5A30 OIS MCU and `tkcore_drv` manages the fingerprint SPI0 clock
+directly. In the companion ROM, `libarc4` moves from `vendor_dlkm` to `system_dlkm`; its
+vendor list consequently contains 191 entries, while this kernel's vendor request list
+contains 192.
 
 ## Load order
 
 `mindone/vendor_boot.modules.load` (21 modules, the
 first-stage ramdisk set) and `mindone/vendor_dlkm.modules.load`
-(193, the rest) request 214 modules, with no overlap between the
+(192, the rest) request 213 modules, with no overlap between the
 two files. Both are wired directly into the `mindone_images` `kernel_images` target in
 `mindone/BUILD.bazel`, which selects their requested staging lists. For recovery
 there is a third, shorter list:
 `mindone/vendor_boot.modules.load.recovery`
-(109). Counts exclude empty and comment lines. The combined
-`mindone/modules/modules.load` has 214 entries and the same set as the two normal boot
+(107). Counts exclude empty and comment lines. The combined
+`mindone/modules/modules.load` has 213 entries and the same set as the two normal boot
 lists. Recovery uses `modules_recovery_list` in `mindone/BUILD.bazel`. These are
 requested staging lists.
 

@@ -330,6 +330,9 @@ struct mtk_charger {
 	int safety_timer_cmd;
 	bool vbusov_stat;
 	bool is_chg_done;
+	bool term_en;
+	u8 term_ready_cnt;
+	u8 false_eoc_retry;
 	/* ATM */
 	bool atm_enabled;
 

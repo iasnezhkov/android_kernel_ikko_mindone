@@ -42,6 +42,7 @@
 #include <usb20.h>
 
 int musb_fake_CDP;
+static struct delayed_work idle_work;
 
 /*
  * kernel_init_done should be set in early-init stage through
@@ -2838,7 +2839,18 @@ static int musb_resume_noirq(struct device *dev)
 	return 0;
 }
 
+static int musb_suspend(struct device *dev)
+{
+	struct musb *musb = dev_to_musb(dev);
+
+	if (musb)
+		timer_delete_sync(&musb->idle_timer);
+	cancel_delayed_work_sync(&idle_work);
+	return 0;
+}
+
 const struct dev_pm_ops musb_dev_pm_ops = {
+	.suspend = musb_suspend,
 	.suspend_noirq = musb_suspend_noirq,
 	.resume_noirq = musb_resume_noirq,
 };
@@ -3204,7 +3216,7 @@ enum musb_uwk_vers {
 #define USB_WK_CTRL		0x420
 #define USB_CDEN		BIT(6)
 #define USB_IP_SLEEP		BIT(12)
-#define USB_CDDEBOUNCE(x)	(((x) & 0xf) << 28)
+#define USB_CDDEBOUNCE(x)	(((x) & 0xfU) << 28)
 #define MISC_CONFIG		0xf08
 #define USB_CD_CLR		BIT(7)
 
@@ -3325,8 +3337,17 @@ static void mt_usb_wakeup(struct musb *musb, bool enable)
 			if (pericfg == NULL)
 				return;
 			regmap_read(pericfg, USB_WK_CTRL, &tmp);
-			tmp &= ~(USB_CDEN | USB_CDDEBOUNCE(0x8));
+			tmp &= ~(USB_CDEN | USB_CDDEBOUNCE(0xf));
 			regmap_write(pericfg, USB_WK_CTRL, tmp);
+			if (infracg != NULL) {
+				regmap_read(infracg, MISC_CONFIG, &tmp);
+				tmp |= USB_CD_CLR;
+				regmap_write(infracg, MISC_CONFIG, tmp);
+				udelay(50);
+				regmap_read(infracg, MISC_CONFIG, &tmp);
+				tmp &= ~USB_CD_CLR;
+				regmap_write(infracg, MISC_CONFIG, tmp);
+			}
 			break;
 		case MUSB_UWK_V3:
 			if (IS_ERR_OR_NULL(pericfg))
@@ -3673,8 +3694,6 @@ exit:
 EXPORT_SYMBOL(usb_enable_clock);
 #endif
 
-static struct delayed_work idle_work;
-
 void do_idle_work(struct work_struct *data)
 {
 	struct musb *musb = mtk_musb;
@@ -3715,7 +3734,7 @@ void do_idle_work(struct work_struct *data)
 	default:
 		break;
 	}
-	DBG(0, "otg_state %s to %s, is_active<%d>\n",
+	DBG(2, "otg_state %s to %s, is_active<%d>\n",
 			otg_state_string(old_state),
 			otg_state_string(musb->xceiv->otg->state),
 			musb->is_active);
@@ -3742,10 +3761,11 @@ static void mt_usb_try_idle(struct musb *musb, unsigned long timeout)
 		timeout = default_timeout;
 
 	/* Never idle if active, or when VBUS timeout is not set as host */
-	if (musb->is_active || ((musb->a_wait_bcon == 0)
-				&& (musb->xceiv->otg->state
-				== OTG_STATE_A_WAIT_BCON))) {
-		DBG(0, "%s active, deleting timer\n",
+	if (musb->is_active ||
+	    musb->xceiv->otg->state == OTG_STATE_A_SUSPEND ||
+	    ((musb->a_wait_bcon == 0) &&
+	     (musb->xceiv->otg->state == OTG_STATE_A_WAIT_BCON))) {
+		DBG(2, "%s active, deleting timer\n",
 			otg_state_string(musb->xceiv->otg->state));
 		timer_delete(&musb->idle_timer);
 		last_timer = jiffies;
@@ -3756,13 +3776,13 @@ static void mt_usb_try_idle(struct musb *musb, unsigned long timeout)
 		if (!timer_pending(&musb->idle_timer))
 			last_timer = timeout;
 		else {
-			DBG(0, "Longer idle timer already pending, ignoring\n");
+			DBG(2, "Longer idle timer already pending, ignoring\n");
 			return;
 		}
 	}
 	last_timer = timeout;
 
-	DBG(0, "%s inactive, for idle timer for %lu ms\n",
+	DBG(2, "%s inactive, for idle timer for %lu ms\n",
 	    otg_state_string(musb->xceiv->otg->state),
 	    (unsigned long)jiffies_to_msecs(timeout - jiffies));
 	mod_timer(&musb->idle_timer, timeout);
@@ -4525,6 +4545,7 @@ err_phy_init:
 static int mt_usb_exit(struct musb *musb)
 {
 	timer_delete_sync(&musb->idle_timer);
+	cancel_delayed_work_sync(&idle_work);
 #ifndef FPGA_PLATFORM
 	if (reg_vusb) {
 		regulator_disable(reg_vusb);
@@ -4805,19 +4826,24 @@ skip_irq_fix:
 		break;
 	default:
 		dev_info(&pdev->dev, "Error 'dr_mode' property\n");
-		return -EINVAL;
+		ret = -EINVAL;
+		goto err2;
 	}
 
 	DBG(0, "get dr_mode: %d\n", pdata->dr_mode);
 
 #if IS_ENABLED(CONFIG_MTK_MUSB_DUAL_ROLE)
-	/* assign usb-role-sw */
 	otg_sx = &glue->otg_sx;
 
-	otg_sx->vbus = devm_regulator_get(&pdev->dev, "vbus");
+	otg_sx->vbus = devm_regulator_get_optional(&pdev->dev, "vbus");
 	if (IS_ERR(otg_sx->vbus)) {
-		dev_info(&pdev->dev, "failed to get vbus\n");
-		return PTR_ERR(otg_sx->vbus);
+		if (PTR_ERR(otg_sx->vbus) == -ENODEV) {
+			otg_sx->vbus = NULL;
+		} else {
+			dev_info(&pdev->dev, "failed to get vbus\n");
+			ret = PTR_ERR(otg_sx->vbus);
+			goto err2;
+		}
 	}
 
 	otg_sx->manual_drd_enabled =
@@ -4828,12 +4854,13 @@ skip_irq_fix:
 		otg_sx->edev = extcon_get_edev_by_phandle(&musb_pdev->dev, 0);
 		if (IS_ERR(otg_sx->edev)) {
 			dev_info(&musb_pdev->dev, "couldn't get extcon device\n");
-			return PTR_ERR(otg_sx->edev);
+			ret = PTR_ERR(otg_sx->edev);
+			goto err2;
 		}
 	}
 #endif
 
-#endif /* FPGA_PLATFORM */
+#endif
 
 	ret = platform_device_add_data(musb_pdev, pdata, sizeof(*pdata));
 	if (ret) {
@@ -4859,7 +4886,6 @@ skip_irq_fix:
 
 err2:
 	platform_device_put(musb_pdev);
-	platform_device_unregister(glue->musb_pdev);
 
 err_unregister_usb_phy:
 	usb_phy_generic_unregister(glue->usb_phy);

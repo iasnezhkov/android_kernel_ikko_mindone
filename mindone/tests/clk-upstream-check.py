@@ -31,6 +31,13 @@ CFLAGS = ['-std=gnu11', '-Wall', '-Werror', '-Wno-unused-function', '-Wno-unused
           '-Wno-tautological-constant-out-of-range-compare', '-fsanitize=address,undefined',
           '-fno-sanitize-recover=all', '-g']
 EN_MASK_PLLS = ('mainpll', 'univpll', 'mmpll', 'npupll')
+BRINGUP_CRITICAL_CLKS = frozenset({
+    'pwrap_ulposc_sel', 'atb_sel', 'dpmaif_main_sel',
+    'ifrao_pmic_tmr', 'ifrao_pmic_ap', 'ifrao_therm', 'ifrao_btif',
+    'ifrao_ccif1_ap', 'ifrao_ccif1_md', 'ifrao_ccif_ap', 'ifrao_debugsys',
+    'ifrao_ccif_md', 'ifrao_cldmabclk', 'ifrao_ccif5_md', 'ifrao_ccif2_ap',
+    'ifrao_ccif2_md', 'ifrao_ccif4_ap', 'ifrao_ccif4_md', 'ifrao_66mp_mclkp',
+})
 MT6789_PATCHES = [
     ('clk-mux.c', 'mux update on every enable', 'if (mux->reparent && mux->data->upd_shift >= 0) {',
      'if (mux->data->upd_shift >= 0) {'),
@@ -70,17 +77,39 @@ def pll_div_enable_order(fork, ack):
         [t for t in ftrace if t.startswith('D')] == [t for t in atrace if t.startswith('D')]
 
 
+def bringup_critical_flag(fork, ack):
+    m = re.match(r'^(?:nospm: )?(\S+) clk provider=(\S+) flags=(\S*) (.*)$', fork)
+    n = re.match(r'^(?:nospm: )?(\S+) clk provider=(\S+) flags=(\S*) (.*)$', ack)
+    if not m or not n or m.group(1) != n.group(1) or m.group(1) not in BRINGUP_CRITICAL_CLKS:
+        return False
+    if m.group(2) != n.group(2) or m.group(4) != n.group(4):
+        return False
+    fflags = set(f for f in m.group(3).split('|') if f)
+    aflags = set(f for f in n.group(3).split('|') if f)
+    return aflags == fflags | {'CLK_IS_CRITICAL'} and 'CLK_IS_CRITICAL' not in fflags
+
+
 ALLOWED = [
     ('PLL div-enable order', pll_div_enable_order,
      'fork sets en_mask before BIT(pll_en_bit) in prepare and clears it after in unprepare; ACK sets it after '
      'and clears it before; same register (en_reg == reg), same accesses and delays, same final state'),
+    ('bring-up critical clocks', bringup_critical_flag,
+     '19 clocks formerly held by clk_bringup.ko carry CLK_IS_CRITICAL directly in clk_mt6789/clk_mt6789_bus'),
 ]
 MUTATIONS = [
     ('clk_mt6789_bus', 'infra gate set_ofs', '\t.set_ofs = 0x80,', '\t.set_ofs = 0x84,'),
     ('clk_mt6789_bus', 'infra gate parent', '"ifrao_ufs", "ufs_ck"', '"ifrao_ufs", "axi_ck"'),
     ('clk_mt6789_bus', 'infra gate shift', '"ifrao_ap_dma", "apdma_ck", 31', '"ifrao_ap_dma", "apdma_ck", 30'),
-    ('clk_mt6789_bus', 'infra ID swap', 'GATE_IFRAO0(CLK_IFRAO_PMIC_TMR, "ifrao_pmic_tmr"',
-     'GATE_IFRAO0(CLK_IFRAO_PMIC_AP, "ifrao_pmic_tmr"'),
+    ('clk_mt6789_bus', 'infra ID swap', 'GATE_IFRAO0_CRIT(CLK_IFRAO_PMIC_TMR, "ifrao_pmic_tmr"',
+     'GATE_IFRAO0_CRIT(CLK_IFRAO_PMIC_AP, "ifrao_pmic_tmr"'),
+    ('clk_mt6789_bus', 'bring-up critical dropped (ifrao)', 'GATE_IFRAO0_CRIT(CLK_IFRAO_PMIC_TMR, "ifrao_pmic_tmr"',
+     'GATE_IFRAO0(CLK_IFRAO_PMIC_TMR, "ifrao_pmic_tmr"'),
+    ('clk_mt6789/clk-mt6789.c', 'bring-up critical dropped (top)',
+     'MUX_GATE_CLR_SET_UPD_FLAGS(CLK_TOP_PWRAP_ULPOSC_SEL, "pwrap_ulposc_sel", pwrap_ulposc_parents,\n'
+     '\t\tCLK_CFG(8), CLK_CFG_SET(8), CLK_CFG_CLR(8), 8, 3, 15, CLK_CFG_UPDATE1, 2,\n'
+     '\t\tCLK_SET_RATE_PARENT | CLK_IS_CRITICAL),',
+     'MUX_GATE_CLR_SET_UPD(CLK_TOP_PWRAP_ULPOSC_SEL, "pwrap_ulposc_sel", pwrap_ulposc_parents,\n'
+     '\t\tCLK_CFG(8), CLK_CFG_SET(8), CLK_CFG_CLR(8), 8, 3, 15, CLK_CFG_UPDATE1, 2),'),
     ('clk_mt6789_bus', 'gates lose CLK_OPS_PARENT_ENABLE',
      '&mtk_clk_gate_ops_setclr, CLK_OPS_PARENT_ENABLE)', '&mtk_clk_gate_ops_setclr, 0)', 'all'),
     ('clk_mt6789_vcodec', 'venc gates not inverted', 'MT6789_PWR_GATE_OPS(ven1_setclr_inv_ops, mtk_clk_gate_ops_setclr_inv,',
@@ -258,7 +287,10 @@ def compare(golden, dump):
     def keyed(text):
         rows = {}
         for line in text.splitlines():
-            key = line.split(' |')[0]
+            if ' clk provider=' in line:
+                key = line.split(' provider=')[0]
+            else:
+                key = line.split(' |')[0]
             if key in rows:
                 fail('duplicate dump line key: ' + key)
             rows[key] = line
@@ -473,6 +505,9 @@ def main():
             if not used[label]:
                 fail('allowed difference "%s" no longer occurs; drop it' % label)
             print('clk-upstream: intentional difference "%s" on %d lines: %s' % (label, used[label], reason))
+        if used['bring-up critical clocks'] != len(BRINGUP_CRITICAL_CLKS):
+            fail('expected %d bring-up critical lines, got %d' %
+                 (len(BRINGUP_CRITICAL_CLKS), used['bring-up critical clocks']))
         summary = re.search(r'summary clocks=(\d+) errors=(\d+)', dump)
         print('clk-upstream: ACK core with the new data drivers matches the fork on %s clocks' % summary.group(1))
         if args.live:
@@ -496,8 +531,13 @@ def main():
             if mutant is None:
                 verdict = 'build/run: ' + err[:120]
             else:
-                diffs, _ = compare(golden, mutant)
-                verdict = '%d differing lines, first %s' % (len(diffs), diffs[0][0][:80]) if diffs else None
+                diffs, mused = compare(golden, mutant)
+                if diffs:
+                    verdict = '%d differing lines, first %s' % (len(diffs), diffs[0][0][:80])
+                elif mused['bring-up critical clocks'] != used['bring-up critical clocks']:
+                    verdict = 'bring-up critical count %d != %d' % (mused['bring-up critical clocks'], used['bring-up critical clocks'])
+                else:
+                    verdict = None
             print('clk-upstream: mutation %-36s %s' % (label, 'caught (%s)' % verdict if verdict else 'SURVIVED'))
             if not verdict:
                 survivors.append(label)

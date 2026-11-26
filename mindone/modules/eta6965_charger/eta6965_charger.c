@@ -7,6 +7,7 @@
 #include <linux/of_gpio.h>
 #include <linux/gpio.h>
 #include <linux/kernel.h>
+#include <linux/pm_wakeup.h>
 #include <linux/power_supply.h>
 #include <linux/slab.h>
 #include <linux/regulator/driver.h>
@@ -77,6 +78,10 @@ struct eta6965_device {
 	struct mutex		lock;
 	struct charger_device	*chg_dev;
 	bool			suspended;
+	bool			notify_on_resume;
+	bool			suspend_reg08_valid;
+	u8			suspend_reg08;
+	struct wakeup_source	*ws;
 	int			usb_input_current_limit;
 	struct pinctrl		*pinctrl;
 	struct pinctrl_state	*ce_low;
@@ -561,6 +566,12 @@ static int eta6965_psy_get_property(struct power_supply *psy,
 		} else {
 			ret = eta6965_psy_read_property(binding->eta, property,
 						       &value->intval);
+			if (ret == -ENODATA) {
+				mutex_lock(&binding->eta->lock);
+				if (READ_ONCE(binding->eta->suspended))
+					binding->eta->notify_on_resume = true;
+				mutex_unlock(&binding->eta->lock);
+			}
 		}
 	}
 	mutex_unlock(&eta6965_binding_lock);
@@ -583,10 +594,22 @@ static int eta6965_psy_set_property(struct power_supply *psy,
 	mutex_lock(&eta6965_binding_lock);
 	if (eta6965_otg_binding == binding && binding->active &&
 	    binding->psy == psy) {
+		bool suspended;
+
+		mutex_lock(&binding->eta->lock);
 		if (property == POWER_SUPPLY_PROP_INPUT_CURRENT_LIMIT)
 			binding->eta->usb_input_current_limit = value->intval;
-		power_supply_changed(psy);
-		ret = 0;
+		suspended = READ_ONCE(binding->eta->suspended);
+		if (suspended)
+			binding->eta->notify_on_resume = true;
+		mutex_unlock(&binding->eta->lock);
+		if (suspended) {
+			ret = property == POWER_SUPPLY_PROP_ONLINE ?
+			      -ENODATA : 0;
+		} else {
+			power_supply_changed(psy);
+			ret = 0;
+		}
 	}
 	mutex_unlock(&eta6965_binding_lock);
 	return ret;
@@ -663,10 +686,15 @@ static int eta6965_probe(struct i2c_client *client)
 	if (of_property_read_string(eta->dev->of_node, "charger_name", &chg_name))
 		chg_name = "primary_chg";
 
+	eta->ws = wakeup_source_register(NULL, "eta6965_resume");
+
 	eta->chg_dev = charger_device_register(chg_name, eta->dev, eta,
 					       &eta6965_chg_ops, &eta6965_chg_props);
-	if (IS_ERR(eta->chg_dev))
+	if (IS_ERR(eta->chg_dev)) {
+		if (eta->ws)
+			wakeup_source_unregister(eta->ws);
 		return PTR_ERR(eta->chg_dev);
+	}
 	dev_info(eta->dev, "eta6965: registered as \"%s\"\n", chg_name);
 
 	eta6965_dump_register(eta);
@@ -675,6 +703,8 @@ static int eta6965_probe(struct i2c_client *client)
 		if (g_eta6965) {
 			mutex_unlock(&eta6965_binding_lock);
 			charger_device_unregister(eta->chg_dev);
+			if (eta->ws)
+				wakeup_source_unregister(eta->ws);
 			return -EBUSY;
 		}
 		g_eta6965 = eta;
@@ -693,6 +723,8 @@ static void eta6965_remove(struct i2c_client *client)
 	mutex_unlock(&eta6965_binding_lock);
 	if (eta && !IS_ERR(eta->chg_dev))
 		charger_device_unregister(eta->chg_dev);
+	if (eta && eta->ws)
+		wakeup_source_unregister(eta->ws);
 }
 
 static const struct of_device_id eta6965_of_match[] = {
@@ -713,6 +745,10 @@ static int eta6965_suspend(struct device *dev)
 
 	if (eta) {
 		mutex_lock(&eta->lock);
+		eta->suspend_reg08_valid =
+			mindone_eta_io_read(eta, ETA6965_REG_08,
+					    &eta->suspend_reg08) == 0;
+		eta->notify_on_resume = false;
 		WRITE_ONCE(eta->suspended, true);
 		mutex_unlock(&eta->lock);
 	}
@@ -722,11 +758,37 @@ static int eta6965_suspend(struct device *dev)
 static int eta6965_resume(struct device *dev)
 {
 	struct eta6965_device *eta = i2c_get_clientdata(to_i2c_client(dev));
+	bool notify = false;
 
 	if (eta) {
+		u8 reg08 = 0;
+		int rc;
+
 		mutex_lock(&eta->lock);
 		WRITE_ONCE(eta->suspended, false);
+		notify = eta->notify_on_resume;
+		eta->notify_on_resume = false;
+		rc = mindone_eta_io_read(eta, ETA6965_REG_08, &reg08);
+		if (!eta->suspend_reg08_valid || rc != 0 ||
+		    ((reg08 ^ eta->suspend_reg08) &
+		     (REG08_VBUS_STAT_MASK | REG08_PG_STAT_MASK |
+		      REG08_CHRG_STAT_MASK)))
+			notify = true;
+		eta->suspend_reg08_valid = false;
 		mutex_unlock(&eta->lock);
+
+		if (notify) {
+			mutex_lock(&eta6965_binding_lock);
+			if (eta6965_otg_binding &&
+			    eta6965_otg_binding->active &&
+			    eta6965_otg_binding->eta == eta &&
+			    eta6965_otg_binding->psy) {
+				if (eta->ws)
+					__pm_wakeup_event(eta->ws, 2000);
+				power_supply_changed(eta6965_otg_binding->psy);
+			}
+			mutex_unlock(&eta6965_binding_lock);
+		}
 	}
 	return 0;
 }

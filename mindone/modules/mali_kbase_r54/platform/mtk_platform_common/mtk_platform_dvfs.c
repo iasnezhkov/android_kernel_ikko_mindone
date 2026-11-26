@@ -323,12 +323,14 @@ void mtk_set_gpu_idle_time(unsigned int val){
 #if IS_ENABLED(CONFIG_MALI_MIDGARD_DVFS) && IS_ENABLED(CONFIG_MALI_MTK_DVFS_POLICY)
 int mtk_set_core_mask(u64 core_mask)
 {
+#if IS_ENABLED(CONFIG_MALI_DEVFREQ)
 	struct kbase_device *kbdev = (struct kbase_device *)mtk_common_get_kbdev();
-	int ret = 0;
 
 	kbase_devfreq_set_core_mask(kbdev, core_mask);
-
-	return ret;
+#else
+	(void)core_mask;
+#endif
+	return 0;
 }
 
 u64 mtk_common_get_system_timer(void)

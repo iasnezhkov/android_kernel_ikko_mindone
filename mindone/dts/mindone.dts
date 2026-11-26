@@ -539,6 +539,14 @@
 		compatible = "sil,silead_fp-pins";
 	};
 
+	tkcore_drv: tkcore_drv {
+		compatible = "trustkernel,tzdrv";
+		clocks = <&infracfg_ao_clk CLK_IFRAO_SPI0>;
+		clock-names = "spi0";
+		assigned-clocks = <&topckgen_clk CLK_TOP_SPI_SEL>;
+		assigned-clock-parents = <&topckgen_clk CLK_TOP_MSDCPLL_D2>;
+	};
+
 	flashlight_core: flashlight_core {
 		compatible = "mediatek,flashlight_core";
 		low-battery-level = <0x02>;
@@ -591,8 +599,6 @@
 			regulator-name = "usb-otg-vbus";
 			regulator-min-microvolt = <0x426030>;
 			regulator-max-microvolt = <0x588040>;
-			regulator-min-microamp = <0x7a120>;
-			regulator-max-microamp = <0x2dc6c0>;
 		};
 	};
 

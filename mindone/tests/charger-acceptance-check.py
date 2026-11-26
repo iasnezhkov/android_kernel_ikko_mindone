@@ -39,11 +39,14 @@ def main():
     parser.add_argument("kernel_tree", type=Path)
     parser.add_argument("--evidence", type=Path)
     parser.add_argument("--baseline", action="store_true")
-    parser.add_argument("--base", default="e6fa454ff9035dffb3420846714377feddc97047")
+    parser.add_argument("--base",
+                        help="commit in --reference-repo holding the pre-fix 6.12 baseline (required with --baseline)")
     parser.add_argument("--reference-repo", type=Path,
                         help="repository that holds --base (default: the kernel tree); an android17-6.18 clone "
                              "needs an android16-6.12 clone here")
     args = parser.parse_args()
+    if args.baseline and not args.base:
+        raise SystemExit("charger-acceptance-check: --baseline requires --base <commit>")
     root = args.kernel_tree.resolve()
     paths = (
         "mindone/modules/charger_cooling/charger_cooling.c",

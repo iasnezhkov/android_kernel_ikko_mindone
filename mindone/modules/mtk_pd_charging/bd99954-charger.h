@@ -1,1 +1,0 @@
-../mtk_charger_algorithm_class/bd99954-charger.h

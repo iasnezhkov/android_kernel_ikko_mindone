@@ -1,1 +1,0 @@
-../mt635x_auxadc/ad7606.h

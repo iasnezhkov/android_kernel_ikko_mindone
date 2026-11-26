@@ -1,1 +1,0 @@
-../mtk_u_ether/ndis.h

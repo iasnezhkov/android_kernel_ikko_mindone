@@ -715,13 +715,17 @@ static const struct proc_ops musb_mode_fops = {
 static int musb_vbus_show(struct seq_file *sf, void *unused)
 {
 	struct musb *musb = sf->private;
-	struct mt_usb_glue *glue =
-		container_of(&musb, struct mt_usb_glue, mtk_musb);
+	struct mt_usb_glue *glue = dev_get_drvdata(musb->controller->parent);
+	struct otg_switch_mtk *otg_sx;
 
-	struct otg_switch_mtk *otg_sx = &glue->otg_sx;
+	if (!glue)
+		return -ENODEV;
+	otg_sx = &glue->otg_sx;
 
 	seq_printf(sf, "vbus state: %s\n(echo on/off)\n",
-		   regulator_is_enabled(otg_sx->vbus) ? "on" : "off");
+		   otg_sx->vbus ?
+		   (regulator_is_enabled(otg_sx->vbus) ? "on" : "off") :
+		   "none");
 
 	return 0;
 }
@@ -736,13 +740,15 @@ static ssize_t musb_vbus_write(struct file *file, const char __user *ubuf,
 {
 	struct seq_file *sf = file->private_data;
 	struct musb *musb = sf->private;
-	struct mt_usb_glue *glue =
-		container_of(&musb, struct mt_usb_glue, mtk_musb);
-
-	struct otg_switch_mtk *otg_sx = &glue->otg_sx;
+	struct mt_usb_glue *glue = dev_get_drvdata(musb->controller->parent);
+	struct otg_switch_mtk *otg_sx;
 
 	char buf[16];
 	bool enable;
+
+	if (!glue)
+		return -ENODEV;
+	otg_sx = &glue->otg_sx;
 
 	memset(buf, 0x00, sizeof(buf));
 	if (copy_from_user(&buf, ubuf, min_t(size_t, sizeof(buf) - 1, count)))

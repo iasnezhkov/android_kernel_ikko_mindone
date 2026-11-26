@@ -1,1 +1,0 @@
-../mt635x_auxadc/ltc2497.h

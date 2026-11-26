@@ -30,6 +30,14 @@ int tee_clkmgr_register(const char *clkname, int master_id,
 			void *enable_fn, void *disable_fn,
 			void *p1, void *p2, void *p3, size_t argnum);
 
+int tee_clkmgr_unregister(const char *clkname, int master_id);
+
+int tee_clkmgr_unregister(const char *clkname, int master_id);
+
+int tee_clkmgr_unregister(const char *clkname, int master_id);
+
+int tee_clkmgr_unregister(const char *clkname, int master_id);
+
 #define tee_clkmgr_register0(clkname, id, e, d) \
 	tee_clkmgr_register((clkname), (id), \
 		(void *) (e), (void *) (d), \

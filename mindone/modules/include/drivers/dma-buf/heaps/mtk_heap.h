@@ -13,18 +13,11 @@
 #define _MTK_DMABUFHEAP_H
 #include <linux/dma-buf.h>
 
-extern atomic64_t dma_heap_normal_total;
-
-/* return 0 means error */
 u32 dmabuf_to_secure_handle(const struct dma_buf *dmabuf);
 
-int is_system_heap_dmabuf(const struct dma_buf *dmabuf);
-int is_mtk_mm_heap_dmabuf(const struct dma_buf *dmabuf);
 #if IS_ENABLED(CONFIG_MTK_TRUSTED_MEMORY_SUBSYSTEM)
 int is_mtk_sec_heap_dmabuf(const struct dma_buf *dmabuf);
 #endif
-
-long mtk_dma_buf_set_name(struct dma_buf *dmabuf, const char *buf);
 
 /*
  * dmabuf_to_sec_id() - Get iommu_sec_id corresponding to dma-buf

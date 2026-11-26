@@ -6,7 +6,7 @@
 
 ### An unofficial forward-port — an independent research project
 
-**Google android17-6.18 r13 GKI core · arm64 · 4 KiB pages · Helio G99 (MT6789 / MT8781)**
+**Google android17-6.18 r15 GKI core · arm64 · 4 KiB pages · Helio G99 (MT6789 / MT8781)**
 
 </div>
 
@@ -17,13 +17,13 @@
 ## 🎯 What this tree is for
 
 The device shipped with Linux 5.10. This repository ports its device support to
-Google's **`android17-6.18-2026-09_r13` GKI prebuilt**, CI **16831611**
+Google's **`android17-6.18-2026-09_r15` GKI prebuilt**, CI **16990439**
 (`6.18.32-android17-5`). The shipped core is Google's binary. Device code is supplied
 as loadable vendor modules and device DTB/DTBO outputs, not additions to the GKI core.
 
 ```text
 core             @gki_prebuilts//kernel_aarch64
-base             android17-6.18-2026-09_r13, CI 16831611
+base             android17-6.18-2026-09_r15, CI 16990439
 mixed build      device DTB/DTBO and in-tree platform modules
 Kleaf DDK        out-of-tree device drivers
 external imports Google's abi_symbollist for the release
@@ -41,8 +41,8 @@ use proprietary legacy backends and vendor-specific HIDL interfaces.
 | Device tree | `mindone/dts/`, reconstructed and adapted for this board |
 | Configuration | `mindone/mindone.fragment` over `gki_defconfig` |
 | Device modules | `mindone/modules/BUILD.bazel` DDK targets and the platform module outputs in `mindone/BUILD.bazel` |
-| Normal boot lists | `mindone/vendor_boot.modules.load` (21) and `mindone/vendor_dlkm.modules.load` (193); combined `mindone/modules/modules.load` (214) |
-| Recovery list | `mindone/vendor_boot.modules.load.recovery` (109), selected by `modules_recovery_list` |
+| Normal boot lists | `mindone/vendor_boot.modules.load` (21) and `mindone/vendor_dlkm.modules.load` (192); combined `mindone/modules/modules.load` (213) |
+| Recovery list | `mindone/vendor_boot.modules.load.recovery` (107), selected by `modules_recovery_list` |
 | Version forks | `mindone/modules/include/mindone/compat-*.h` only |
 | KMI contract | Google's symbol list for the release; no private allowlist for additional core imports |
 
@@ -56,7 +56,7 @@ separately. They are not supplied as device-support source in this repository.
 
 ## 🚀 Build
 
-Use an Android Common Kernel workspace pinned to the `manifest.xml` of CI **16831611**,
+Use an Android Common Kernel workspace pinned to the `manifest.xml` of CI **16990439**,
 with this repository at `common`, checked out on **`android17-6.18`**. Configure the
 workspace's Kleaf prebuilt extension for that CI, including its filegroup declaration,
 DDK header archive, `vmlinux.symvers`, images and GKI module archives.
@@ -107,24 +107,40 @@ vendor copy: `arm_dsu_pmu`, `mediatek-cpufreq-hw`, `thermal-generic-adc`, `reboo
 `pinctrl-mtk-common-v2` and `mtk-eint` are built from this tree as in-tree modules.
 `i2c-dev` is added the same way, because the GKI core does not provide `/dev/i2c-*`.
 
-Other ACK drivers lack MT6789 support in r13 or are not built as GKI modules. They are
-carried as DDK modules copied from the r13 sources, with what this board needs added:
+Other ACK drivers lack MT6789 support in r15 or are not built as GKI modules. They are
+carried as DDK modules copied from the ACK 6.18 sources, with what this board needs added:
 
-- **Clocks.** `clk-mtk-ack` is the clk-mtk core of r13 as one module. The MT6789 clock
+- **Clocks.** `clk-mtk-ack` is the clk-mtk core of ACK 6.18 as one module. The MT6789 clock
   modules are data drivers over it and keep their module names, compatibles, clock names
-  and dt-bindings IDs. The core differs from r13 in two places the MT6789 hardware needs:
+  and dt-bindings IDs; the 19 clocks formerly held by `clk_bringup.ko` carry native
+  `CLK_IS_CRITICAL` flags. The core differs from ACK in two places the MT6789 hardware needs:
   a mux is updated on every enable, and PLL rate changes go through the FHCTL hook.
 - **Power domains.** `mtk-pm-domains` describes the fifteen MT6789 domains with their
   bus-protection steps, and waits 100 µs after the power acknowledgement before it
   releases clocks and isolation, as MediaTek's MT6789 sequence does.
-- **PMIC wrapper.** `mtk-pmic-wrap` gains the MT6789 register map and capabilities.
+- **PMIC wrapper & keys.** `mtk-pmic-wrap` gains the MT6789 register map (including bank-3
+  `INT_FLG`/`INT_CLR` at `0x458`/`0x45C`) and guards `PWRAP_WDT_SRC_EN*` and cold `pwrap_init()`
+  behind `!PWRAP_CAP_ARB` so arbiter SoCs never overwrite offset `0x0`.
+  `mtk_pmic_keys` is the ACK 6.18 `mtk-pmic-keys` driver with corrected MT6358/MT6366
+  long-press reset bitmasks (`TOP_RST_MISC` bits 9/8/13:12), named MT6366 key IRQs,
+  grandparent `pwrap` regmap fallback, separate press/release handlers and
+  `device_init_wakeup` integration.
+- **BT CVSD SCO audio.** `mtk_btcvsd` is the ACK 6.18 `mtk-btcvsd` driver with DT-driven IRQ
+  trigger flags (`IRQF_TRIGGER_NONE`), `0xdeadfeed` sleep-guard handling and `bt_sram_addr`
+  bounds checking in `btcvsd_tx_clean_buffer()`, `disable_write_silence` DT support and
+  `ktime_get_ns()`.
+- **Thermal (LVTS).** `lvts_thermal` is the ACK 6.18 LVTS driver with MT6789 manual-RCK v5
+  calibration, Stage-3 113.5 °C hardware protection, the virtual `soc_max` zone, full
+  NOIRQ suspend/resume re-initialization, lifecycle/concurrency hardening and fixes for
+  the dead `LVTS_CALSCALE` write and 32-bit shift overflow in `lvts_temp_to_raw()`.
 - **Pin controller.** `pinctrl-mt6789` is only the SoC data, on the ACK libraries above.
 - **USB Type-C.** The RT1715 port controller runs on the kernel's TCPM through
   `tcpci_rt1711h`, as a `usb-c-connector` that sinks 5 V by default. The driver
-  dispatches its own alerts, because r13 does not export `tcpci_irq()`, and turns its
-  VBUS supply off at shutdown. `extcon_mtk_usb` provides the role and mode switch, the
-  charger's PD adapter is backed by the TCPM power supply, and the headset detector
-  takes Type-C audio accessories from `extcon_mtk_usb`.
+  dispatches its own alerts, because r15 does not export `tcpci_irq()`, restarts DRP
+  toggling when CC stops on Ra/Open in `TOGGLING`, and turns its VBUS supply off at
+  shutdown. `extcon_mtk_usb` provides the role and mode switch, the charger's PD adapter
+  is backed by the TCPM power supply, and the headset detector takes Type-C audio
+  accessories from `extcon_mtk_usb`.
 
 Behaviour changes of 6.18 that compile cleanly but break at runtime were found on the
 device and fixed in this tree:
@@ -140,7 +156,8 @@ device and fixed in this tree:
 
 Board-specific corrections:
 
-- **Camera.** The flip camera is one IMX766 with one DW9800W actuator and one
+- **Camera.** The flip camera is one IMX766 with one DW9800W actuator, one 0x5A30 OIS
+  MCU (`ois_mindone`, driven at 100 kHz over I2C4 and synced with sensor power) and one
   calibration EEPROM, reached through two sensor indices. Both indices power the sensor
   the same way and only one may hold its supplies at a time; camera 1 reads the same
   EEPROM and drives the same actuator through `/dev/SUBAF`. The IMX766 driver writes the
@@ -165,18 +182,32 @@ Board-specific corrections:
   registers a `gpufreq` cooling device and the GPU and skin thermal zones map to it.
   MediaTek's dormant devfreq governor and cooling code are removed from r54.
 - **Charging.** A USB host's current budget is used only on a real Type-C port with a
-  host present, and a source without a host never puts the charger into HiZ. CPU and
-  modem power throttling register with the low-battery, battery over-current and
-  battery-percent detectors.
+  host present, and a source without a host never puts the charger into HiZ. Charger
+  detection defers s2idle wake races until `eta6965` resumes and retries transient
+  `-ENODATA`, and hardware termination (`EN_TERM`) is gated to CV taper with premature
+  EOC recovery. CPU and modem power throttling register with the low-battery, battery
+  over-current and battery-percent detectors.
+- **USB OTG host.** `musb_hdrc` stops re-arming its idle timer in `A_SUSPEND`, drains
+  idle work during system suspend, clears the MT6789 `UWK_V2` wakeup latch on resume
+  and avoids the OPT-A register spin when HNP is not active.
+- **TEE SPI.** `tkcore_drv` owns the fingerprint SPI0 clock directly from DT, removing
+  the `spi_mt65xx` fork.
+- **NFC.** `pn553` fixes flush/power-off deadlocks, IRQ/VEN resource leaks and suspend
+  wakeup handling.
+- **DMA-BUF & DT hygiene.** `system_heap` exposes `/proc/dma_heap/rss_pid` for Android
+  memtrack and prunes dead debug metadata; the MT6789 DT declares CPU L1/L2/L3 cache
+  topology and the GIC quirk.
 
 Not built, because nothing on this device uses them: the audio DSP chain, the video
 companion processor, MML, MMProfile, SLBC, the dummy Trustonic driver, the C2K USB
-bypass, `cpuqos_v3`, `musb_boost`, `flashlights-lm3643` and a set of MediaTek debug,
-logging and stub drivers for blocks this SoC does not have; their sources are removed.
-`mtk_heap_debug` is not built either; its headers are still shared with other modules.
-The vendor forks that the ACK drivers above replace, the PMIC wrapper, the SCP power
-domains and the Richtek Type-C stack, are no longer built; their directories remain in
-the tree. The forks of the clock core and the pin controller are removed.
+bypass, `cpuqos_v3`, `musb_boost`, `flashlights-lm3643`, `mtk_heap_debug`, the four
+unused camera AF wrappers (`main2af`, `main3af`, `subaf`, `sub2af`), `spi_mt65xx` and
+a set of MediaTek debug, logging and stub drivers for blocks this SoC does not have;
+their sources are removed.
+The vendor forks that the ACK drivers above replace — the PMIC wrapper, the SCP power
+domains, the LVTS thermal driver and the Richtek Type-C stack — are no longer built;
+the remaining reference directories stay in tree until device acceptance. The forks of
+the clock core and the pin controller are removed.
 
 ## 🖥 Hardware
 

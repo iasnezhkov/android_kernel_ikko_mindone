@@ -29,7 +29,7 @@ PINS = (
     (PROVIDER, '__gpufreq_get_idx_by_fgpu', '4738a3fcb614742b5a573dac6a11dc87ebadd14ffe43c310cdcaa454d0c34b5c'),
     (PROVIDER, '__gpufreq_init_opp_table', 'da23bfb1008c2e83e4b508a10a94104887ad0ca85c0e54e6ce2effda460bd6c2'),
     (PROVIDER, '__gpufreq_generic_commit_gpu', '97ae27e782533399cd86befb8f05135f6324ff7025cde52f8ceb06e0cb888f81'),
-    (PROVIDER, '__gpufreq_power_control', 'ac6bd36b3ea63c598f6c73fc73b3759793ec5391113657ce48edb57f5476975e'),
+    (PROVIDER, '__gpufreq_power_control', '2874c19110319042f31f7729bd03f33969c901d79d0a71a07db1d973c08239b4'),
     (WRAPPER, 'gpufreq_validate_target', '054368aba6e65aa015793860afdb4ba1ea7eccefbc714d1ef478e3d910a32faf'),
     (WRAPPER, 'gpufreq_set_limit', 'd8ba6877dca0490af48af8059f013bd0e7c9e43830a6def8e2321521a1747e95'),
     (WRAPPER, 'gpufreq_commit', '311bb1d18feeb7c669a3f66579ef6cb28ee0a276723ffbe1fb99c9c4a887c7b7'),
@@ -37,8 +37,8 @@ PINS = (
     (WRAPPER, 'gpufreq_register_gpuppm_fp', '06416d2643ad5608fc292acefd1691deb2ba2112c1a6c6358be697980b1b95db'),
 )
 BASELINE_PINS = (
-    ('__gpufreq_pdrv_probe', 'e9b2a41d946b569a37da1f991475dd4870c1905103e3d314b6b4473e66020a87'),
-    ('__gpufreq_pdrv_remove', 'c9d88684b358996b09320ed651a0e4295b9246351e5b2bd711a4c830723c8e51'),
+    ('__gpufreq_pdrv_probe', '26da865548a8fd25bc25178bc021c6e599d0145db39abc198a96d506030b64f1'),
+    ('__gpufreq_pdrv_remove', '68aa320a126793b3dfbc2f780aa8d76cdcce4cabf5bed51554434c5561793e95'),
 )
 FIX = (
     ('__gpufreq_pdrv_probe', '\tif (!g_gpueb_support)\n\t\t__gpufreq_init_cooling(pdev);\n\n', ''),
@@ -77,7 +77,8 @@ WRAPPER_STATICS = (
     'static raw_spinlock_t gpufreq_ipi_lock;',
 )
 WRAPPER_FUNCTIONS = ('gpufreq_validate_target', 'gpufreq_set_limit', 'gpufreq_commit',
-                     'gpufreq_register_gpufreq_fp', 'gpufreq_register_gpuppm_fp')
+                     'gpufreq_register_gpufreq_fp', 'gpufreq_register_gpuppm_fp',
+                     'gpufreq_unregister_gpufreq_fp', 'gpufreq_unregister_gpuppm_fp')
 CASES = ('registration-mt6789', 'registration-mt6789t', 'table-shape', 'every-state', 'immediate-throttle', 'recovery',
          'out-of-range', 'composition', 'boost-floor', 'powered-off', 'limit-failure', 'probe-eb', 'probe-bringup',
          'register-failure', 'reset-failure', 'rebind-reset', 'remove-order')
@@ -108,7 +109,8 @@ CONTROLS = (
     ('register-before-gpuppm', ((PROBE_CALL, ''), ('\tret = gpuppm_init(TARGET_GPU, g_gpueb_support);\n',
                                                    PROBE_CALL + '\tret = gpuppm_init(TARGET_GPU, g_gpueb_support);\n')),
      'registration-mt6789', 'register_calls == 1'),
-    ('unregister-after-free', ((REMOVE_CALL, ''), ('\tkfree(g_power_table);\n', '\tkfree(g_power_table);\n' + REMOVE_CALL)),
+    ('unregister-after-free', ((REMOVE_CALL, ''), ('\tkfree(g_power_table);\n\tg_power_table = NULL;\n\tif (g_apmixed_base) {',
+                                                   '\tkfree(g_power_table);\n\tg_power_table = NULL;\n' + REMOVE_CALL + '\tif (g_apmixed_base) {')),
      'remove-order', 'position("cooling_unregister") < position("free_working_table")'),
     ('missing-unregister', ((REMOVE_CALL, ''),), 'remove-order', 'unregister_calls == 1'),
 )

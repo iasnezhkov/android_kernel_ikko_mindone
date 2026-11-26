@@ -1479,6 +1479,18 @@ void gpufreq_register_gpuppm_fp(struct gpuppm_platform_fp *platform_fp)
 }
 EXPORT_SYMBOL(gpufreq_register_gpuppm_fp);
 
+void gpufreq_unregister_gpufreq_fp(void)
+{
+	gpufreq_fp = NULL;
+}
+EXPORT_SYMBOL(gpufreq_unregister_gpufreq_fp);
+
+void gpufreq_unregister_gpuppm_fp(void)
+{
+	gpuppm_fp = NULL;
+}
+EXPORT_SYMBOL(gpufreq_unregister_gpuppm_fp);
+
 static int gpufreq_wrapper_pdrv_probe(struct platform_device *pdev)
 {
 	struct device_node *of_wrapper = pdev->dev.of_node;

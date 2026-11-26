@@ -452,97 +452,7 @@
 		};
 	};
 
-	cpu_little4 {
-		trips {
-			hot {
-				type = "hot";
-				hysteresis = <0x7d0>;
-				temperature = <0x1c138>;
-			};
-		};
-	};
-
-	cpu_little3 {
-		trips {
-			hot {
-				type = "hot";
-				hysteresis = <0x7d0>;
-				temperature = <0x1c138>;
-			};
-		};
-	};
-
-	cpu_little2 {
-		trips {
-			hot {
-				type = "hot";
-				hysteresis = <0x7d0>;
-				temperature = <0x1c138>;
-			};
-		};
-	};
-
-	cpu_little1 {
-		trips {
-			hot {
-				type = "hot";
-				hysteresis = <0x7d0>;
-				temperature = <0x1c138>;
-			};
-		};
-	};
-
-	cpu_big4 {
-		trips {
-			hot {
-				type = "hot";
-				hysteresis = <0x7d0>;
-				temperature = <0x1c138>;
-			};
-		};
-	};
-
-	cpu_big3 {
-		trips {
-			hot {
-				type = "hot";
-				hysteresis = <0x7d0>;
-				temperature = <0x1c138>;
-			};
-		};
-	};
-
-	cpu_big2 {
-		trips {
-			hot {
-				type = "hot";
-				hysteresis = <0x7d0>;
-				temperature = <0x1c138>;
-			};
-		};
-	};
-
-	cpu_big1 {
-		trips {
-			hot {
-				type = "hot";
-				hysteresis = <0x7d0>;
-				temperature = <0x1c138>;
-			};
-		};
-	};
-
 	consys {
-		trips {
-			hot {
-				type = "hot";
-				hysteresis = <0x7d0>;
-				temperature = <0x1c138>;
-			};
-		};
-	};
-
-	ap_ntc {
 		trips {
 			hot {
 				type = "hot";
@@ -592,10 +502,6 @@
 		alignment = <0x00 0x1000>;
 		alloc-ranges = <0x00 0x40000000 0x00 0x80000000>;
 	};
-};
-
-&spi0 {
-	tee-only;
 };
 
 &android {
@@ -889,6 +795,12 @@
 		reg = <0x18>;
 		status = "okay";
 	};
+
+	camera_main_ois: camera_main_ois@69 {
+		compatible = "mindone,ois-5a30";
+		reg = <0x69>;
+		status = "okay";
+	};
 };
 
 &i2c0 {
@@ -1079,21 +991,17 @@
 
 &nfc_gpio {
 	interrupt-parent = <&pio>;
-	pinctrl-names = "mtknfc", "ven_high", "ven_low", "dwn_high", "dwn_low", "eint_high", "eint_low", "irq_init";
-	pinctrl-0 = <&nfc_default>;
-	pinctrl-1 = <&nfc_ven_high>;
-	pinctrl-2 = <&nfc_ven_low>;
-	pinctrl-3 = <&nfc_dwn_high>;
-	pinctrl-4 = <&nfc_dwn_low>;
-	pinctrl-5 = <&nfc_eint_high>;
-	pinctrl-6 = <&nfc_eint_low>;
-	pinctrl-7 = <&nfc_irq_init>;
+	pinctrl-names = "ven_high", "ven_low", "dwn_high", "dwn_low", "eint_high", "eint_low", "irq_init";
+	pinctrl-0 = <&nfc_ven_high>;
+	pinctrl-1 = <&nfc_ven_low>;
+	pinctrl-2 = <&nfc_dwn_high>;
+	pinctrl-3 = <&nfc_dwn_low>;
+	pinctrl-4 = <&nfc_eint_high>;
+	pinctrl-5 = <&nfc_eint_low>;
+	pinctrl-6 = <&nfc_irq_init>;
 };
 
 &pio {
-	nfc_default: mtknfc {
-	};
-
 	nfc_dwn_high: state_rst_high {
 		pins_cmd_dat {
 			pinmux = <0xc00>;
@@ -1236,19 +1144,6 @@
 
 &sound {
 	mediatek,spk-i2s = <0x03 0x00>;
-};
-
-&spi0 {
-	#address-cells = <0x01>;
-	#size-cells = <0x00>;
-	status = "okay";
-
-	silead_fp@0 {
-		compatible = "sil,silead_fp";
-		reg = <0x00>;
-		spi-max-frequency = <0x7a1200>;
-		status = "okay";
-	};
 };
 
 &silead_fp {

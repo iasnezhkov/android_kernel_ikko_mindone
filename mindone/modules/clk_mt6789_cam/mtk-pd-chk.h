@@ -1,1 +1,0 @@
-../clk_bringup/mtk-pd-chk.h

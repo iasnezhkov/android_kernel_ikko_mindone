@@ -1,1 +1,0 @@
-../backlight_cooling/backlight_cooling.h

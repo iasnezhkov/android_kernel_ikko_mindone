@@ -628,15 +628,16 @@ GED_ERROR check_frame_base_optimize(void)
 
 	app_node = of_find_compatible_node(NULL, NULL, "mediatek,mali");
 	if (!app_node) {
-		GED_LOGE("No mali node.");
+		GED_LOGD("No mali node.");
 	} else {
 		ret_temp = of_property_read_u32(app_node, "gpu-frame-base-optimize",
 			&g_ged_frame_base_optimize);
 		if (unlikely(ret_temp))
-			GED_LOGE("fail to read gpu-frame-base-optimize (%d)", ret_temp);
+			GED_LOGD("gpu-frame-base-optimize not set (%d)", ret_temp);
+		of_node_put(app_node);
 	}
 
-	GED_LOGE("%s. g_ged_frame_base_optimize: %d",
+	GED_LOGD("%s. g_ged_frame_base_optimize: %d",
 		__func__, g_ged_frame_base_optimize);
 
 	return ret;
@@ -652,7 +653,7 @@ static int ged_segment_id_init(struct platform_device *pdev)
 
 	efuse_cell = nvmem_cell_get(&pdev->dev, "mt6985_efuse_segment_cell");
 	if (IS_ERR(efuse_cell)) {
-		GED_LOGE("fail to get mt6985_efuse_segment_cell (%ld)", PTR_ERR(efuse_cell));
+		GED_LOGD("mt6985_efuse_segment_cell not present (%ld)", PTR_ERR(efuse_cell));
 
 		g_ged_segment_id = NO_SEGMENT;
 		goto done;

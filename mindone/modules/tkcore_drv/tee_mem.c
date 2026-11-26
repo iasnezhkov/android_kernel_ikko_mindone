@@ -439,10 +439,9 @@ unsigned long tkcore_shm_pool_alloc(struct device *dev,
 
 	alignment = ALIGN(alignment, 0x20);
 
-	if (size > (pool->size - pool->used))
-		goto failed_out;
-
 	mutex_lock(&pool->lock);
+	if (size > (pool->size - pool->used))
+		goto failed_out_unlock;
 
 	/**
 	 * Algorithm: Smallest waste (best fit):
@@ -510,8 +509,11 @@ unsigned long tkcore_shm_pool_alloc(struct device *dev,
 		} else
 			_KFREE(next_chunk);
 
+		unsigned long paddr;
+
 		betterchunk->counter = 1;
 		pool->used += size;
+		paddr = betterchunk->paddr;
 
 		mutex_unlock(&pool->lock);
 
@@ -519,7 +521,7 @@ unsigned long tkcore_shm_pool_alloc(struct device *dev,
 		tee_shm_pool_dump(dev, pool, false);
 #endif
 
-		return betterchunk->paddr;
+		return paddr;
 	}
 
 failed_out_unlock:

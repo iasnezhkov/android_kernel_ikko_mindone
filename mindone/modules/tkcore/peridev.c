@@ -193,6 +193,39 @@ int tee_clkmgr_register(const char *clkname, int id, void *e, void *d,
 }
 EXPORT_SYMBOL(tee_clkmgr_register);
 
+int tee_clkmgr_unregister(const char *clkname, int id)
+{
+	struct clkmgr_handle *w, *tmp;
+	uint32_t token;
+	size_t n;
+
+	for (n = 0; n < ARRAY_SIZE(clkid); n++) {
+		if (clkid[n] && strcmp(clkname, clkid[n]) == 0)
+			break;
+	}
+	if (n == ARRAY_SIZE(clkid))
+		return -EINVAL;
+	if ((id << TEE_CLKMGR_TOKEN_ID_SHIFT) &
+	    (TEE_CLKMGR_TOKEN_TYPE_MASK << TEE_CLKMGR_TOKEN_TYPE_SHIFT))
+		return -EINVAL;
+
+	token = TEE_CLKMGR_TOKEN((uint32_t)n, (uint32_t)id);
+
+	mutex_lock(&clk_list_lock);
+	list_for_each_entry_safe(w, tmp, &clk_list, le) {
+		if (w->token == token) {
+			list_del(&w->le);
+			mutex_unlock(&clk_list_lock);
+			kfree(w);
+			return 0;
+		}
+	}
+	mutex_unlock(&clk_list_lock);
+
+	return -ENOENT;
+}
+EXPORT_SYMBOL(tee_clkmgr_unregister);
+
 int tee_spi_cfg_padsel(uint32_t padsel)
 {
 	struct TEEC_Context context;
