@@ -12,7 +12,7 @@
 #include <string.h>
 
 typedef uint32_t u32;
-typedef uint64_t u64;
+typedef unsigned long long u64;
 typedef long ssize_t;
 typedef long long loff_t;
 
