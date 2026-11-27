@@ -1,0 +1,6 @@
+{
+  "ack_tag": "android17-6.18-2026-09_r15",
+  "ack_commit": "3bdb5dacc0fd9ce8cdb5f6c4fde0941d36e8bd74",
+  "gki_build_id": "16990439",
+  "gki_target": "kernel_aarch64"
+}

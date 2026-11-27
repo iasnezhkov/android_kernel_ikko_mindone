@@ -8,6 +8,7 @@
 #include "kd_imgsensor_api.h"
 #include <linux/ratelimit.h>
 #include <linux/thermal.h>
+#include <mindone/i2c-mt65xx.h>
 
 struct IMGSENSOR_I2C gi2c;
 #ifdef SENSOR_PARALLEISM
@@ -129,6 +130,7 @@ static void imgsensor_register_tz(struct device *dev,
 static int imgsensor_i2c_probe_0(struct i2c_client *client)
 {
 	gi2c.inst[IMGSENSOR_I2C_DEV_0].pi2c_client = client;
+	mtk_i2c_set_slow_target(client->adapter->nr, client->addr, 1000000);
 	imgsensor_register_tz(&client->dev, DUAL_CAMERA_MAIN_SENSOR);
 	return 0;
 }
@@ -194,6 +196,10 @@ static int imgsensor_i2c_probe_7(struct i2c_client *client)
 
 static void imgsensor_i2c_remove(struct i2c_client *client)
 {
+	if (gi2c.inst[IMGSENSOR_I2C_DEV_0].pi2c_client == client) {
+		mtk_i2c_set_slow_target(client->adapter->nr, client->addr, 0);
+		gi2c.inst[IMGSENSOR_I2C_DEV_0].pi2c_client = NULL;
+	}
 }
 
 static struct i2c_driver gi2c_driver[IMGSENSOR_I2C_DEV_MAX_NUM] = {

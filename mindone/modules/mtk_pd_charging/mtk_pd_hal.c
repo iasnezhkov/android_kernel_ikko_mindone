@@ -273,8 +273,6 @@ int pd_hal_get_mivr(struct chg_alg_device *alg,
 
 	hal = chg_alg_dev_get_drv_hal_data(alg);
 
-	charger_dev_get_mivr(hal->chg1_dev, mivr1);
-
 	if (chgidx == CHG1)
 		charger_dev_get_mivr(hal->chg1_dev, mivr1);
 	else if (chgidx == CHG2)
@@ -388,7 +386,6 @@ int pd_hal_set_input_current(struct chg_alg_device *alg,
 		return -EINVAL;
 
 	hal = chg_alg_dev_get_drv_hal_data(alg);
-	charger_dev_set_input_current(hal->chg1_dev, ua);
 
 	if (chgidx == CHG1)
 		charger_dev_set_input_current(hal->chg1_dev, ua);
@@ -447,7 +444,6 @@ int pd_hal_set_charging_current(struct chg_alg_device *alg,
 		return -EINVAL;
 
 	hal = chg_alg_dev_get_drv_hal_data(alg);
-	charger_dev_set_charging_current(hal->chg1_dev, ua);
 
 	if (chgidx == CHG1)
 		charger_dev_set_charging_current(hal->chg1_dev, ua);

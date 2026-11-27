@@ -101,16 +101,25 @@ static bool is_typec_adapter(struct mtk_charger *info)
 	return false;
 }
 
+static bool is_pd_ready(const struct mtk_charger *info)
+{
+	switch (info->pd_type) {
+	case MTK_PD_CONNECT_PE_READY_SNK:
+	case MTK_PD_CONNECT_PE_READY_SNK_PD30:
+	case MTK_PD_CONNECT_PE_READY_SNK_APDO:
+		return true;
+	default:
+		return false;
+	}
+}
+
 static bool skip_legacy_algorithm(struct mtk_charger *info,
 	struct chg_alg_device *alg)
 {
 	if (alg->alg_id != PE_ID && alg->alg_id != PE2_ID)
 		return false;
 
-	return info->pd_reset ||
-		info->pd_type == MTK_PD_CONNECT_PE_READY_SNK ||
-		info->pd_type == MTK_PD_CONNECT_PE_READY_SNK_PD30 ||
-		info->pd_type == MTK_PD_CONNECT_PE_READY_SNK_APDO;
+	return info->pd_reset || is_pd_ready(info);
 }
 
 static void set_algorithm_current_limit(struct mtk_charger *info,
@@ -166,14 +175,8 @@ static int usb_sdp_limit(struct mtk_charger *info)
 	if (info->chr_type != POWER_SUPPLY_TYPE_USB ||
 	    info->usb_type != POWER_SUPPLY_USB_TYPE_SDP)
 		return -1;
-	switch (info->pd_type) {
-	case MTK_PD_CONNECT_PE_READY_SNK:
-	case MTK_PD_CONNECT_PE_READY_SNK_PD30:
-	case MTK_PD_CONNECT_PE_READY_SNK_APDO:
+	if (is_pd_ready(info))
 		return -1;
-	default:
-		break;
-	}
 	rp = adapter_dev_get_property(info->pd_adapter, TYPEC_RP_LEVEL);
 	if (rp == 1500 || rp == 3000)
 		return -1;
@@ -254,7 +257,17 @@ static bool select_charging_current_limit(struct mtk_charger *info,
 		goto done;
 	}
 
-	if (info->chr_type == POWER_SUPPLY_TYPE_USB &&
+	if (is_pd_ready(info)) {
+		pdata->input_current_limit =
+			info->data.ac_charger_input_current;
+		pdata->charging_current_limit =
+			info->data.ac_charger_current;
+		if (info->config == DUAL_CHARGERS_IN_SERIES) {
+			pdata2->input_current_limit =
+				pdata->input_current_limit;
+			pdata2->charging_current_limit = 2000000;
+		}
+	} else if (info->chr_type == POWER_SUPPLY_TYPE_USB &&
 	    info->usb_type == POWER_SUPPLY_USB_TYPE_SDP) {
 		pdata->input_current_limit =
 				info->data.usb_charger_current;

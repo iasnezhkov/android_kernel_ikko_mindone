@@ -264,6 +264,9 @@ static void check_script(struct dev *d, const struct timing_regs *r_slow, const 
 	for (s = 0; s < STEPS; s++) {
 		int before = d->xfers, writes = d->m.writes, i, ret;
 		bool slow = script[s].target;
+		unsigned int prev_hw = d->i2c.hw_speed_hz;
+		unsigned int want_hz = slow ? hz : DT_HZ;
+		const struct timing_regs *want = slow ? r_slow : r_dt;
 		struct timing_regs after;
 		struct mtk_i2c_speed now;
 
@@ -277,14 +280,18 @@ static void check_script(struct dev *d, const struct timing_regs *r_slow, const 
 			else
 				assert(x->speed_hz == DT_HZ && same_regs(&x->regs, r_dt));
 		}
-		if (!slow && !script[s].fail_at)
+		if (prev_hw == want_hz && !script[s].fail_at)
 			assert(d->m.writes == writes);
-		if (script[s].clock_fail)
+		if (script[s].clock_fail) {
 			assert(d->m.writes == writes && d->xfers == before);
-		after = timing_regs(&d->i2c);
-		assert(same_regs(&after, r_dt));
-		now = live(&d->i2c);
-		assert(same_speed(&now, &d->i2c.dt_speed));
+			assert(d->i2c.hw_speed_hz == prev_hw);
+		} else {
+			after = timing_regs(&d->i2c);
+			assert(same_regs(&after, want));
+			now = live(&d->i2c);
+			assert(same_speed(&now, slow ? &d->i2c.slow_speed : &d->i2c.dt_speed));
+			assert(d->i2c.hw_speed_hz == want_hz);
+		}
 		assert(d->m.clock_on == 0);
 	}
 }
@@ -403,6 +410,9 @@ static void case_rate_change(void)
 	set_param("");
 	assert(run_step(d, mtk_i2c_transfer, wrrd) == 2);
 	assert(same_regs(&d->xfer[d->xfers - 1].regs, &r400) && d->xfer[d->xfers - 1].speed_hz == DT_HZ);
+	writes = d->m.writes;
+	assert(run_step(d, mtk_i2c_transfer, wrrd) == 2);
+	assert(same_regs(&d->xfer[d->xfers - 1].regs, &r400) && d->m.writes == writes);
 	printf("PASS rate-change: 100 -> 50 -> 100 kHz computes each set once and takes 100 kHz back from the cache, "
 	       "another adapter, off and an empty value leave 0x69 on the DT registers without reprogramming the "
 	       "controller\n");
@@ -430,6 +440,9 @@ static void case_from_hs(void)
 		assert(ret == 2);
 		assert(d->xfer[d->xfers - 1].speed_hz == 100000 && same_regs(&d->xfer[d->xfers - 1].regs, &r100));
 		assert(same_speed(&d->i2c.slow_speed, &s100));
+		ret = run_step(d, mtk_i2c_transfer, &script[3]);
+		assert(ret == 2);
+		assert(d->xfer[d->xfers - 1].speed_hz == 3400000 && same_regs(&d->xfer[d->xfers - 1].regs, &rhs));
 		{
 			struct timing_regs after = timing_regs(&d->i2c);
 
@@ -720,25 +733,28 @@ static void check_fast_script(struct dev *d, const struct timing_regs *r_fast, c
 	for (s = 0; s < FAST_STEPS; s++) {
 		const struct fast_step *st = &fast_script[s];
 		int before = d->xfers, writes = d->m.writes, i, ret;
+		unsigned int prev_hw = d->i2c.hw_speed_hz;
 		const struct timing_regs *want = st->hz == FAST_HZ ? r_fast : st->hz == SLOW_HZ ? r_slow : r_dt;
 		struct timing_regs after;
-		struct mtk_i2c_speed now;
 
 		ret = run_fast_step(d, st);
-		if (st->clock_fail)
+		if (st->clock_fail) {
 			assert(ret == -EIO && d->m.writes == writes && d->xfers == before);
-		else if (st->fail_at)
+			assert(d->i2c.hw_speed_hz == prev_hw);
+		} else if (st->fail_at) {
 			assert(ret == st->fail_ret);
-		else
+		} else {
 			assert(ret == st->num);
+		}
 		for (i = before; i < d->xfers; i++)
 			assert(d->xfer[i].speed_hz == st->hz && same_regs(&d->xfer[i].regs, want));
-		if (st->hz == DT_HZ && !st->fail_at)
+		if (prev_hw == st->hz && !st->fail_at)
 			assert(d->m.writes == writes);
-		after = timing_regs(&d->i2c);
-		assert(same_regs(&after, r_dt));
-		now = live(&d->i2c);
-		assert(same_speed(&now, &d->i2c.dt_speed));
+		if (!st->clock_fail) {
+			after = timing_regs(&d->i2c);
+			assert(same_regs(&after, want));
+			assert(d->i2c.hw_speed_hz == st->hz);
+		}
 		assert(d->m.clock_on == 0);
 	}
 }

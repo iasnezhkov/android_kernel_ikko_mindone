@@ -328,6 +328,7 @@ struct mtk_i2c {
 	struct mtk_i2c_ac_timing ac_timing;
 	const struct mtk_i2c_compatible *dev_comp;
 	unsigned int parent_clk;
+	unsigned int hw_speed_hz;
 	unsigned int slow_hz;
 	struct mtk_i2c_speed dt_speed;
 	struct mtk_i2c_speed slow_speed;
@@ -1231,6 +1232,7 @@ static int mtk_i2c_set_speed(struct mtk_i2c *i2c, unsigned int parent_clk)
 	i2c->parent_clk = parent_clk;
 	mtk_i2c_calc_timing(i2c, parent_clk);
 	mtk_i2c_save_speed(i2c, &i2c->dt_speed);
+	i2c->hw_speed_hz = i2c->dt_speed.speed_hz;
 
 	return 0;
 }
@@ -1240,11 +1242,13 @@ static void mtk_i2c_use_speed(struct mtk_i2c *i2c,
 {
 	mtk_i2c_load_speed(i2c, speed);
 	mtk_i2c_init_hw(i2c);
+	i2c->hw_speed_hz = speed->speed_hz;
 }
 
 static int mtk_i2c_prepare_slow(struct mtk_i2c *i2c, unsigned int hz)
 {
 	struct mtk_i2c_speed fresh = { .speed_hz = hz };
+	struct mtk_i2c_speed prev;
 	int ret, i;
 
 	if (i2c->ch_offset_i2c)
@@ -1260,6 +1264,7 @@ static int mtk_i2c_prepare_slow(struct mtk_i2c *i2c, unsigned int hz)
 	}
 
 	i2c->slow_hz = 0;
+	mtk_i2c_save_speed(i2c, &prev);
 	mtk_i2c_load_speed(i2c, &fresh);
 	ret = mtk_i2c_calc_timing(i2c, i2c->parent_clk);
 	if (!ret) {
@@ -1268,7 +1273,7 @@ static int mtk_i2c_prepare_slow(struct mtk_i2c *i2c, unsigned int hz)
 		i2c->slow_next = (i2c->slow_next + 1) % MTK_I2C_TARGETS;
 		i2c->slow_hz = hz;
 	}
-	mtk_i2c_load_speed(i2c, &i2c->dt_speed);
+	mtk_i2c_load_speed(i2c, &prev);
 
 	if (ret) {
 		dev_warn(i2c->dev, "slow_target: no timing for %u Hz\n", hz);
@@ -1747,6 +1752,7 @@ static int mtk_i2c_transfer(struct i2c_adapter *adap,
 	u8 *dma_multi_wr_buf;
 	struct i2c_msg multi_msg[1];
 	struct mtk_i2c *i2c = i2c_get_adapdata(adap);
+	const struct mtk_i2c_speed *want_speed;
 	unsigned int slow_hz;
 
 	slow_hz = mtk_i2c_slow_hz(i2c, msgs, num);
@@ -1760,8 +1766,9 @@ static int mtk_i2c_transfer(struct i2c_adapter *adap,
 	if (ret)
 		return ret;
 
-	if (slow_hz)
-		mtk_i2c_use_speed(i2c, &i2c->slow_speed);
+	want_speed = slow_hz ? &i2c->slow_speed : &i2c->dt_speed;
+	if (i2c->hw_speed_hz != want_speed->speed_hz)
+		mtk_i2c_use_speed(i2c, want_speed);
 
 	i2c->auto_restart = i2c->dev_comp->auto_restart;
 
@@ -1851,8 +1858,6 @@ static int mtk_i2c_transfer(struct i2c_adapter *adap,
 	ret = num;
 
 err_exit:
-	if (slow_hz)
-		mtk_i2c_use_speed(i2c, &i2c->dt_speed);
 	mtk_i2c_clock_disable(i2c);
 	return ret;
 }

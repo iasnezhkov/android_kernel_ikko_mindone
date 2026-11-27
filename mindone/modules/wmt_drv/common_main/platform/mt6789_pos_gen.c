@@ -18,78 +18,40 @@
 #include <linux/types.h>
 #include <linux/clk.h>
 #include <linux/io.h>
+#include <linux/pinctrl/consumer.h>
 #include "osal_typedef.h"
 #include "mt6789.h"
 #include "mt6789_pos_gen.h"
 #include "mtk_wcn_consys_hw.h"
 
 
+static void consys_select_pinctrl_state(const char *name)
+{
+	struct pinctrl *pinctrl = mtk_wcn_consys_get_pinctrl();
+	struct pinctrl_state *state;
+	int ret;
+
+	if (IS_ERR_OR_NULL(pinctrl)) {
+		pr_notice("consys pinctrl unavailable for %s\n", name);
+		return;
+	}
+
+	state = pinctrl_lookup_state(pinctrl, name);
+	if (IS_ERR(state)) {
+		pr_notice("consys pinctrl state %s missing: %ld\n",
+			name, PTR_ERR(state));
+		return;
+	}
+
+	ret = pinctrl_select_state(pinctrl, state);
+	if (ret)
+		pr_notice("consys pinctrl select %s failed: %d\n", name, ret);
+}
+
 void consys_set_if_pinmux_mt6789_gen(int enable)
 {
-	void __iomem *vir_addr_consys_gen_gpio_base = NULL;
-	void __iomem *vir_addr_consys_gen_iocfg_rt_base = NULL;
-
-	vir_addr_consys_gen_gpio_base = ioremap(CONSYS_GEN_GPIO_BASE_ADDR, 0x470);
-	vir_addr_consys_gen_iocfg_rt_base = ioremap(CONSYS_GEN_IOCFG_RT_BASE_ADDR, 0x10);
-
-	if (!vir_addr_consys_gen_gpio_base) {
-		pr_notice("vir_addr_consys_gen_gpio_base(%x) ioremap fail\n",
-			CONSYS_GEN_GPIO_BASE_ADDR);
-		return;
-	}
-
-	if (!vir_addr_consys_gen_iocfg_rt_base) {
-		pr_notice("vir_addr_consys_gen_iocfg_rt_base(%x) ioremap fail\n",
-			CONSYS_GEN_IOCFG_RT_BASE_ADDR);
-		iounmap(vir_addr_consys_gen_gpio_base);
-		return;
-	}
-
-	if (enable == 1) {
-		/* set pinmux for the interface between D-die and A-die (Aux1) */
-		CONSYS_REG_WRITE_MASK(vir_addr_consys_gen_gpio_base +
-			CONSYS_GEN_GPIO_MODE22_OFFSET_ADDR, 0x11111110, 0x77777770);
-		CONSYS_REG_WRITE_MASK(vir_addr_consys_gen_gpio_base +
-			CONSYS_GEN_GPIO_MODE23_OFFSET_ADDR, 0x11, 0x77);
-
-		/* set BT_SPI and TOP_SPI pinmux driving to 4mA */
-		/* (TOP_SPI 8 mA for bring up ), */
-		/* others keep default driving 2mA */
-		CONSYS_REG_WRITE_MASK(vir_addr_consys_gen_iocfg_rt_base +
-			CONSYS_GEN_DRV_CFG1_OFFSET_ADDR, 0x9048, 0x3FFFFFF8);
-
-		/* set GPIO156 or GPIO59 pinmux for TCXO mode (Aux2) */
-		#if CLK_CTRL_TCXOENA_REQ
-			if (wmt_plat_soc_co_clock_flag_get() == 0) {
-				CONSYS_REG_WRITE_MASK(vir_addr_consys_gen_gpio_base +
-					CONSYS_GEN_GPIO_MODE7_OFFSET_ADDR, 0x2000, 0x7000);
-				CONSYS_REG_WRITE_MASK(vir_addr_consys_gen_gpio_base +
-					CONSYS_GEN_GPIO_MODE19_OFFSET_ADDR, 0x20000, 0x70000);
-			}
-		#endif
-	} else {
-		/* set pinmux for the interface between D-die and A-die (Aux0) */
-		CONSYS_REG_WRITE_MASK(vir_addr_consys_gen_gpio_base +
-			CONSYS_GEN_GPIO_MODE22_OFFSET_ADDR, 0x0, 0x77777770);
-		CONSYS_REG_WRITE_MASK(vir_addr_consys_gen_gpio_base +
-			CONSYS_GEN_GPIO_MODE23_OFFSET_ADDR, 0x0, 0x77);
-
-		/* set GPIO59 or GPIO156 pinmux for TCXO mode (Aux0) */
-		#if CLK_CTRL_TCXOENA_REQ
-			if (wmt_plat_soc_co_clock_flag_get() == 0) {
-				CONSYS_REG_WRITE_MASK(vir_addr_consys_gen_gpio_base +
-					CONSYS_GEN_GPIO_MODE7_OFFSET_ADDR, 0x0, 0x7000);
-				CONSYS_REG_WRITE_MASK(vir_addr_consys_gen_gpio_base +
-					CONSYS_GEN_GPIO_MODE19_OFFSET_ADDR, 0x0, 0x70000);
-			}
-		#endif
-	}
-
-	if (vir_addr_consys_gen_gpio_base)
-		iounmap(vir_addr_consys_gen_gpio_base);
-
-	if (vir_addr_consys_gen_iocfg_rt_base)
-		iounmap(vir_addr_consys_gen_iocfg_rt_base);
+	consys_select_pinctrl_state(enable == 1 ?
+		"consys_if_active" : "consys_if_sleep");
 }
 
 void consys_hw_reset_bit_set_mt6789_gen(int enable)
@@ -628,28 +590,8 @@ void consys_identify_adie_mt6789_gen(void)
 
 void consys_wifi_ctrl_setting_mt6789_gen(void)
 {
-	void __iomem *vir_addr_consys_gen_gpio_base = NULL;
-
-	vir_addr_consys_gen_gpio_base = ioremap(CONSYS_GEN_GPIO_BASE_ADDR, 0x470);
-
-	if (!vir_addr_consys_gen_gpio_base) {
-		pr_notice("vir_addr_consys_gen_gpio_base(%x) ioremap fail\n",
-			CONSYS_GEN_GPIO_BASE_ADDR);
-		return;
-	}
-
-	/* CONN_WF_CTRL2 swtich to GPIO mode, GPIO output value = 1 */
-	if (mtk_wcn_consys_get_adie_chipid() == SECONDARY_ADIE) {
-		CONSYS_SET_BIT(vir_addr_consys_gen_gpio_base +
-			CONSYS_GEN_GPIO_DIR5_SET_OFFSET_ADDR, (0x1 << 25));
-		CONSYS_SET_BIT(vir_addr_consys_gen_gpio_base +
-			CONSYS_GEN_GPIO_DOUT5_SET_OFFSET_ADDR, (0x1 << 25));
-		CONSYS_REG_WRITE_MASK(vir_addr_consys_gen_gpio_base +
-			CONSYS_GEN_GPIO_MODE23_OFFSET_ADDR, 0x0, 0x70);
-	}
-
-	if (vir_addr_consys_gen_gpio_base)
-		iounmap(vir_addr_consys_gen_gpio_base);
+	if (mtk_wcn_consys_get_adie_chipid() == SECONDARY_ADIE)
+		consys_select_pinctrl_state("consys_wifi_ctrl_gpio");
 }
 
 void consys_bus_timeout_config_mt6789_gen(void)
@@ -725,22 +667,6 @@ int consys_polling_goto_idle_mt6789_gen(unsigned int *pconsys_ver_id)
 
 void consys_wifi_ctrl_switch_conn_mode_mt6789_gen(void)
 {
-	void __iomem *vir_addr_consys_gen_gpio_base = NULL;
-
-	vir_addr_consys_gen_gpio_base = ioremap(CONSYS_GEN_GPIO_BASE_ADDR, 0x470);
-
-	if (!vir_addr_consys_gen_gpio_base) {
-		pr_notice("vir_addr_consys_gen_gpio_base(%x) ioremap fail\n",
-			CONSYS_GEN_GPIO_BASE_ADDR);
-		return;
-	}
-
-	/* CONN_WF_CTRL2 swtich to CONN mode */
-	if (mtk_wcn_consys_get_adie_chipid() == SECONDARY_ADIE) {
-		CONSYS_REG_WRITE_MASK(vir_addr_consys_gen_gpio_base +
-			CONSYS_GEN_GPIO_MODE23_OFFSET_ADDR, 0x10, 0x70);
-	}
-
-	if (vir_addr_consys_gen_gpio_base)
-		iounmap(vir_addr_consys_gen_gpio_base);
+	if (mtk_wcn_consys_get_adie_chipid() == SECONDARY_ADIE)
+		consys_select_pinctrl_state("consys_wifi_ctrl_conn");
 }

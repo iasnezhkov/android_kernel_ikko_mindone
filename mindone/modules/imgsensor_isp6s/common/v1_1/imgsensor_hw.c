@@ -285,14 +285,20 @@ static enum IMGSENSOR_RETURN imgsensor_hw_power_step(
 	if (ret == IMGSENSOR_RETURN_SUCCESS && device &&
 	    status == IMGSENSOR_HW_POWER_STATUS_ON)
 		imgsensor_power_notify(IMGSENSOR_POWER_PIN_ON, sensor_idx, info->pin);
-	mdelay(info->pin_on_delay);
+	if (info->pin_on_delay >= 20)
+		msleep(info->pin_on_delay);
+	else if (info->pin_on_delay > 0)
+		usleep_range(info->pin_on_delay * 1000, info->pin_on_delay * 1000 + 500);
 	if (ret != IMGSENSOR_RETURN_SUCCESS &&
 	    status == IMGSENSOR_HW_POWER_STATUS_ON && device &&
 	    (device->id == IMGSENSOR_HW_ID_GPIO ||
 	     device->id == IMGSENSOR_HW_ID_MCLK)) {
 		device->set(device->pinstance, sensor_idx, info->pin,
 			info->pin_state_off);
-		mdelay(info->pin_on_delay);
+		if (info->pin_on_delay >= 20)
+			msleep(info->pin_on_delay);
+		else if (info->pin_on_delay > 0)
+			usleep_range(info->pin_on_delay * 1000, info->pin_on_delay * 1000 + 500);
 	}
 	return ret;
 }
@@ -402,13 +408,21 @@ enum IMGSENSOR_RETURN imgsensor_hw_power(
 	mutex_lock(&phw->power_mutex);
 	if (pwr_status == IMGSENSOR_HW_POWER_STATUS_ON &&
 	    imgsensor_hw_power_held(phw, sensor_idx)) {
+		unsigned long deadline = jiffies + msecs_to_jiffies(IMGSENSOR_HW_POWER_WAIT_MS);
+
 		owner = phw->power_owner;
 		start = jiffies;
-		mutex_unlock(&phw->power_mutex);
-		wait_event_timeout(phw->power_wait,
-				   !imgsensor_hw_power_held(phw, sensor_idx),
-				   msecs_to_jiffies(IMGSENSOR_HW_POWER_WAIT_MS));
-		mutex_lock(&phw->power_mutex);
+		while (imgsensor_hw_power_held(phw, sensor_idx)) {
+			long rem = (long)(deadline - jiffies);
+
+			if (rem <= 0)
+				break;
+			mutex_unlock(&phw->power_mutex);
+			wait_event_timeout(phw->power_wait,
+					   !imgsensor_hw_power_held(phw, sensor_idx),
+					   rem);
+			mutex_lock(&phw->power_mutex);
+		}
 		if (!imgsensor_hw_power_held(phw, sensor_idx))
 			pr_info("%s: sensor %d waited %u ms for sensor %d to release the shared supplies\n",
 				__func__, sensor_idx, jiffies_to_msecs(jiffies - start), owner);

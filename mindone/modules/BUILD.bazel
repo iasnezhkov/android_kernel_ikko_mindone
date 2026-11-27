@@ -369,7 +369,6 @@ ddk_module(
     ],
     local_defines = [
         "MINDONE_NO_COMPAT_IOCTL=1",
-        "CONFIG_COMPAT=1",
         "CONFIG_PM=1",
         "CONFIG_PM_WAKELOCKS=1",
     ],
@@ -1723,7 +1722,10 @@ ddk_module(
         "IMX766_MIPI_RAW",
     ],
     copts = _MINDONE_COPTS,
-    deps = [":mindone_headers"],
+    deps = [
+        ":mindone_headers",
+        ":i2c_mt65xx",
+    ],
 )
 
 ddk_module(

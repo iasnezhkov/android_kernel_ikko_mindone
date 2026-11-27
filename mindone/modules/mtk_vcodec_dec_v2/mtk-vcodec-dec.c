@@ -556,7 +556,9 @@ static struct vb2_v4l2_buffer *get_free_buffer(struct mtk_vcodec_ctx *ctx)
 				for (i = 0; i < free_frame_buffer->num_planes; i++)
 					vb2_set_plane_payload(&dstbuf->vb.vb2_buf, i, 0);
 				v4l2_m2m_buf_done(&dstbuf->vb, VB2_BUF_STATE_DONE);
-			} else if (free_frame_buffer->status == FB_ST_FREE) {
+			} else if ((free_frame_buffer->status & FB_ST_FREE) &&
+				!(free_frame_buffer->status & FB_ST_DISPLAY) &&
+				dstbuf->vb.vb2_buf.state == VB2_BUF_STATE_ACTIVE) {
 
 				mtk_v4l2_debug(2, "[%d]status=%x queue id=%d to rdy_queue %d",
 					ctx->id, free_frame_buffer->status,
@@ -2650,10 +2652,6 @@ static void vb2ops_vdec_buf_queue(struct vb2_buffer *vb)
 		mtk_v4l2_debug(3, "[%d] vdec_if_decode() res_chg: %d\n",
 					   ctx->id, res_chg);
 		mtk_vdec_queue_res_chg_event(ctx);
-
-		while (v4l2_m2m_dst_buf_remove(ctx->m2m_ctx) != NULL)
-			mtk_v4l2_debug(3, "[%d] v4l2_m2m_dst_buf_remove()",
-					ctx->id);
 	}
 
 	ret = vdec_if_get_param(ctx, GET_PARAM_PIC_INFO,
@@ -2956,6 +2954,8 @@ static void vb2ops_vdec_stop_streaming(struct vb2_queue *q)
 
 	mutex_lock(&ctx->buf_lock);
 	for (i = 0; i < vb2_get_num_buffers(q); i++) {
+		unsigned int j;
+
 		dst_vb2_v4l2 = container_of(
 			q->bufs[i], struct vb2_v4l2_buffer, vb2_buf);
 		dstbuf = container_of(
@@ -2974,6 +2974,18 @@ static void vb2ops_vdec_stop_streaming(struct vb2_queue *q)
 		mtk_v4l2_err("[%d] id=%d still owned by driver after reset, forcing it back used=%d status=%x",
 			ctx->id, dstbuf->vb.vb2_buf.index, dstbuf->used,
 			dstbuf->frame_buffer.status);
+		if (dstbuf->used) {
+			for (j = 0; j < dstbuf->frame_buffer.num_planes; j++) {
+				if (dstbuf->frame_buffer.fb_base[j].dmabuf)
+					fput(dstbuf->frame_buffer.fb_base[j].dmabuf->file);
+			}
+			dstbuf->used = false;
+		}
+		for (j = 0; j < dst_vb2_v4l2->vb2_buf.num_planes; j++)
+			vb2_set_plane_payload(&dst_vb2_v4l2->vb2_buf, j, 0);
+		dstbuf->queued_in_vb2 = false;
+		dstbuf->queued_in_v4l2 = false;
+		dstbuf->ready_to_display = false;
 		dstbuf->frame_buffer.status = FB_ST_FREE;
 		v4l2_m2m_buf_done(&dstbuf->vb, VB2_BUF_STATE_ERROR);
 	}

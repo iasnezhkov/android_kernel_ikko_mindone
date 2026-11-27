@@ -365,10 +365,14 @@ static ssize_t mode_store(struct device *dev, struct device_attribute *attr,
 	if (ret)
 		return ret;
 	ois->target_mode = mode;
-	if (ois->ready && atomic_read(&ois->powered)) {
-		ret = ois_apply_locked(ois, mode);
-		if (ret && !atomic_read(&ois->powered))
-			ret = 0;
+	if (atomic_read(&ois->powered)) {
+		if (ois->ready) {
+			ret = ois_apply_locked(ois, mode);
+			if (ret && !atomic_read(&ois->powered))
+				ret = 0;
+		} else {
+			mod_delayed_work(system_wq, &ois->boot_work, 0);
+		}
 	}
 	mutex_unlock(&ois->lock);
 	return ret ? ret : count;

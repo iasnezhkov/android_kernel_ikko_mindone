@@ -1,0 +1,418 @@
+# SPDX-License-Identifier: GPL-2.0
+# SPDX-FileCopyrightText: 2026 The LineageOS Project
+
+name: Kernel Release
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Release tag label (e.g. k618-24)
+        required: true
+        type: string
+      ref:
+        description: Branch, tag, or commit of this repository to build
+        required: false
+        type: string
+        default: android17-6.18
+      create_draft_release:
+        description: Create a draft GitHub Release with the built assets
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+concurrency:
+  group: kernel-release-${{ github.event.release.tag_name || inputs.tag || github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    steps:
+      - name: Resolve tag and ref
+        id: meta
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+          IN_TAG: ${{ inputs.tag }}
+          IN_REF: ${{ inputs.ref }}
+        run: |
+          set -euo pipefail
+          if [ "$EVENT_NAME" = "release" ]; then
+            TAG="$RELEASE_TAG"
+            REF="refs/tags/$RELEASE_TAG"
+          else
+            TAG="$IN_TAG"
+            REF="${IN_REF:-android17-6.18}"
+          fi
+          echo "$TAG" | grep -Eq '^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$'
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "ref=$REF" >> "$GITHUB_OUTPUT"
+
+      - name: Checkout kernel source
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ steps.meta.outputs.ref }}
+          path: src
+
+      - name: Read pinned GKI base metadata
+        id: gki
+        run: |
+          python3 -B - src/mindone/gki-base.json >> "$GITHUB_OUTPUT" <<'PY'
+          import json
+          import sys
+          from pathlib import Path
+
+          pin = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+          print(f"ack_tag={pin['ack_tag']}")
+          print(f"ack_commit={pin['ack_commit']}")
+          print(f"build_id={pin['gki_build_id']}")
+          print(f"target={pin['gki_target']}")
+          PY
+
+      - name: Free runner disk space
+        run: |
+          set -euo pipefail
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL /usr/local/share/boost /usr/local/.ghcup
+          sudo docker image prune --all --force >/dev/null 2>&1 || true
+          df -h /
+
+      - name: Install workspace tools
+        run: |
+          set -euo pipefail
+          sudo apt-get update -q
+          sudo apt-get install -yq kmod zstd
+          sudo curl -fsSL https://storage.googleapis.com/git-repo-downloads/repo -o /usr/local/bin/repo
+          sudo chmod 755 /usr/local/bin/repo
+          repo version || true
+          git config --global user.name kernel-ci
+          git config --global user.email kernel-ci@users.noreply.github.com
+          git config --global color.ui false
+
+      - name: Fetch pinned Google GKI prebuilts
+        run: |
+          set -euo pipefail
+          GKI_DIR="$RUNNER_TEMP/gki-prebuilt"
+          python3 -B src/mindone/modules/tools/scripts/fetch-gki-prebuilt.py \
+            --gki-base src/mindone/gki-base.json \
+            --dest "$GKI_DIR"
+          python3 -B - "$GKI_DIR/manifest.xml" "${{ steps.gki.outputs.ack_commit }}" <<'PY'
+          import sys
+          import xml.etree.ElementTree as ET
+
+          root = ET.parse(sys.argv[1]).getroot()
+          rev = next(p.get("revision") for p in root.iter("project") if p.get("name") == "kernel/common")
+          if rev != sys.argv[2]:
+              raise SystemExit(f"manifest kernel/common revision {rev} != gki-base.json ack_commit {sys.argv[2]}")
+          print(f"Verified GKI manifest kernel/common == {rev}")
+          PY
+
+      - name: Sync pinned ACK Kleaf DDK workspace
+        run: |
+          set -euo pipefail
+          GKI_DIR="$RUNNER_TEMP/gki-prebuilt"
+          mkdir -p ws && cd ws
+          repo init --standalone-manifest -u "file://$GKI_DIR/manifest.xml" --depth=1 --no-tags
+          mkdir -p .repo/local_manifests
+          cat > .repo/local_manifests/prune-non-ddk.xml <<'XML'
+          <?xml version="1.0" encoding="UTF-8"?>
+          <manifest>
+            <remove-project name="kernel/common" />
+            <remove-project name="kernel/common-modules/wonder" />
+            <remove-project name="kernel/common-modules/trusty" />
+            <remove-project name="platform/external/virtio-media" />
+            <remove-project name="kernel/common-modules/virtual-device" />
+            <remove-project name="kernel/devices/google/raviole" />
+            <remove-project name="platform/prebuilts/jdk/jdk11" />
+            <remove-project name="platform/external/ltp" />
+            <remove-project name="platform/bootable/libbootloader" />
+            <remove-project name="platform/external/arm-trusted-firmware" />
+            <remove-project name="platform/external/boringssl" />
+            <remove-project name="platform/external/compiler-rt" />
+            <remove-project name="platform/system/libufdt" />
+            <remove-project name="platform/external/open-dice" />
+            <remove-project name="platform/external/elfutils" />
+            <remove-project name="platform/external/googletest" />
+            <remove-project name="platform/external/mtools" />
+            <remove-project name="platform/prebuilts/fuchsia_sdk" />
+            <remove-project name="device/google/cuttlefish_vmm" />
+            <remove-project name="platform/prebuilts/gcc/linux-x86/aarch64/aarch64-linux-android-4.9" />
+            <remove-project name="platform/prebuilts/gcc/linux-x86/x86/x86_64-linux-android-4.9" />
+            <remove-project name="platform/external/u-boot" />
+          </manifest>
+          XML
+          repo sync -c -j8 --no-tags
+          mv "$GITHUB_WORKSPACE/src" common
+          printf 'common --host_platform=@platforms//host\n' > user.bazelrc
+          git -C common log --oneline -1
+          df -h /
+
+      - name: Configure Kleaf prebuilt GKI extension and x86_64 fixes
+        run: |
+          python3 -B - "$PWD/ws/build/kernel" "$RUNNER_TEMP/gki-prebuilt" <<'PY'
+          import sys
+          from pathlib import Path
+
+          bk = Path(sys.argv[1])
+          gki_dir = sys.argv[2]
+
+          vk = bk / "abi/verify_ksymtab.py"
+          text = vk.read_text(encoding="utf-8")
+          old = 'if export_type.startswith("EXPORT_SYMBOL") and object in args.objects:'
+          new = 'if export_type.startswith("EXPORT_SYMBOL") and (object in args.objects or os.path.basename(object) in args.objects):'
+          if old not in text:
+              raise SystemExit("verify_ksymtab.py pattern not found")
+          vk.write_text(text.replace(old, new, 1), encoding="utf-8")
+
+          zlib_build = bk / "kleaf/bzlmod/fake_modules/zlib/BUILD.bazel"
+          zlib_build.write_text(
+              'alias(\n'
+              '    name = "zlib",\n'
+              '    actual = "@@+_repo_rules+zlib//:zlib",\n'
+              '    visibility = ["//visibility:public"],\n'
+              ')\n',
+              encoding="utf-8",
+          )
+
+          mod_bazel = bk / "kleaf/bzlmod/bazel.MODULE.bazel"
+          mtext = mod_bazel.read_text(encoding="utf-8")
+          anchor = 'register_toolchains(\n    "@kleaf_clang_toolchain//:all",'
+          if anchor not in mtext:
+              raise SystemExit("bazel.MODULE.bazel anchor not found")
+          snippet = (
+              'kernel_prebuilt_ext = use_extension(\n'
+              '    "//build/kernel/kleaf:kernel_prebuilt_ext.bzl",\n'
+              '    "kernel_prebuilt_ext",\n'
+              ')\n'
+              'kernel_prebuilt_ext.declare_kernel_prebuilts(\n'
+              '    name = "gki_prebuilts",\n'
+              f'    local_artifact_path = "{gki_dir}",\n'
+              '    target = "kernel_aarch64",\n'
+              ')\n'
+              'use_repo(kernel_prebuilt_ext, "gki_prebuilts")\n\n'
+          )
+          mod_bazel.write_text(mtext.replace(anchor, snippet + anchor, 1), encoding="utf-8")
+          print("Configured Kleaf build/kernel for prebuilt GKI")
+          PY
+
+      - name: Build device DTB, DTBO, and vendor modules
+        run: |
+          set -euo pipefail
+          cd ws
+          tools/bazel build \
+            //common:gki_aarch64_protected_module_names \
+            //common/mindone:mindone \
+            //common/mindone:mindone_modules_install \
+            //common/mindone:mindone_dtbo
+
+      - name: Assemble and verify release bundle
+        id: bundle
+        env:
+          TAG: ${{ steps.meta.outputs.tag }}
+          ACK_TAG: ${{ steps.gki.outputs.ack_tag }}
+          ACK_COMMIT: ${{ steps.gki.outputs.ack_commit }}
+          GKI_BUILD_ID: ${{ steps.gki.outputs.build_id }}
+        run: |
+          set -euo pipefail
+          cd ws
+          GKI_DIR="$RUNNER_TEMP/gki-prebuilt"
+          REL_DIR="$RUNNER_TEMP/release-assets"
+          KIT_NAME="mindone-kernel-${TAG}"
+          KIT="$RUNNER_TEMP/$KIT_NAME"
+          rm -rf "$REL_DIR" "$KIT"
+          mkdir -p "$REL_DIR" "$KIT/dtb" "$KIT/modules" "$KIT/system_dlkm/flatten/lib/modules"
+
+          STAGING=$(find -L bazel-bin/common/mindone/mindone_modules_install/staging/lib/modules -mindepth 1 -maxdepth 1 -type d)
+          [ "$(printf '%s\n' "$STAGING" | wc -l)" = "1" ]
+          DUPS=$(find -L "$STAGING" -name '*.ko' -type f -printf '%f\n' | LC_ALL=C sort | LC_ALL=C uniq -d)
+          [ -z "$DUPS" ] || { echo "duplicate .ko names: $DUPS" >&2; exit 1; }
+          find -L "$STAGING" -name '*.ko' -type f -exec cp -Lf {} "$KIT/modules/" \;
+
+          gkiko() {
+            local name="$1" cand found
+            for cand in "$name" "$(echo "$name" | tr _ -)" "$(echo "$name" | tr - _)"; do
+              found=$(find -L "$GKI_DIR/system_dlkm" -name "$cand" -type f -not -path '*/unstripped/*' | head -n 1)
+              [ -n "$found" ] && { echo "$found"; return 0; }
+            done
+            return 1
+          }
+
+          cp -f common/mindone/modules/modules.load "$KIT/modules.load"
+          cp -f common/mindone/vendor_boot.modules.load "$KIT/modules.load.ramdisk"
+          cp -f common/mindone/vendor_boot.modules.load.recovery "$KIT/modules.load.recovery"
+          cp -f common/mindone/vendor_dlkm.modules.load "$KIT/vendor_dlkm.modules.load"
+          cp -f "$GKI_DIR/system_dlkm.modules.load" "$KIT/system_dlkm.modules.load"
+          cp -f "$GKI_DIR/system_dlkm.modules.blocklist" "$KIT/system_dlkm.modules.blocklist"
+
+          while IFS= read -r mod; do
+            [ -n "$mod" ] || continue
+            [ -f "$KIT/modules/$mod" ] && continue
+            found=$(gkiko "$mod") && cp -Lf "$found" "$KIT/modules/$mod"
+          done < "$KIT/modules.load"
+
+          PROT="bazel-bin/common/gki/aarch64/protected_module_names"
+          [ -s "$PROT" ]
+          while IFS= read -r pm; do
+            [ -n "$pm" ] || continue
+            base="$(basename "$pm" .ko).ko"
+            for cand in $(printf '%s\n' "$base" "$(echo "$base" | tr _ -)" "$(echo "$base" | tr - _)" | sort -u); do
+              [ -f "$KIT/modules/$cand" ] || continue
+              found=$(gkiko "$base")
+              cp -Lf "$found" "$KIT/modules/$cand"
+              modinfo -F sig_id "$KIT/modules/$cand" | grep -q .
+            done
+          done < "$PROT"
+
+          for gf in "$GKI_DIR/system_dlkm/flatten/lib/modules"/*.ko; do
+            [ -f "$gf" ] || continue
+            cp -Lf "$gf" "$KIT/system_dlkm/flatten/lib/modules/"
+            gb=$(basename "$gf")
+            for cand in $(printf '%s\n' "$gb" "$(echo "$gb" | tr _ -)" "$(echo "$gb" | tr - _)" | sort -u); do
+              [ -f "$KIT/modules/$cand" ] || continue
+              cmp -s "$gf" "$KIT/modules/$cand" || cp -Lf "$gf" "$KIT/modules/$cand"
+            done
+          done
+
+          for a in Image Image.gz System.map vmlinux.symvers modules.builtin modules.builtin.modinfo gki-info.txt; do
+            cp -Lf "$GKI_DIR/$a" "$KIT/$a"
+          done
+          cp -Lf bazel-bin/common/mindone/mindone/mindone.dtb "$KIT/dtb/mindone.dtb"
+          cp -Lf bazel-bin/common/mindone/mindone_dtbo/dtbo.img "$KIT/dtbo.img"
+          cp -Lf bazel-bin/common/mindone/mindone/Module.symvers "$KIT/Module.symvers"
+          cp -Lf bazel-bin/common/mindone/mindone_config/out_dir/.config "$KIT/kernel.config"
+
+          SRC_COMMIT=$(git -C common rev-parse HEAD)
+          KERNEL_RELEASE=$(sed -n 's/^kernel_release=//p' "$KIT/gki-info.txt")
+          strings "$KIT/Image" | grep -Fq "Linux version $KERNEL_RELEASE"
+
+          python3 -B - "$KIT" "$KERNEL_RELEASE" "$TAG" "$SRC_COMMIT" "$ACK_TAG" "$ACK_COMMIT" "$GKI_BUILD_ID" <<'PY'
+          import hashlib
+          import json
+          import subprocess
+          import sys
+          from pathlib import Path
+
+          kit = Path(sys.argv[1])
+          krel = sys.argv[2]
+          tag, src_commit, ack_tag, ack_commit, gki_build_id = sys.argv[3:8]
+
+          mod_dir = kit / "modules"
+          kos = sorted(mod_dir.glob("*.ko"))
+          assert kos, "no .ko files staged"
+          ko_names = {p.name for p in kos}
+          ko_norm = {p.name.replace("-", "_"): p.name for p in kos}
+
+          for ko in kos:
+              vm = subprocess.check_output(["modinfo", "-F", "vermagic", str(ko)], text=True).strip()
+              if not vm or vm.split()[0] != krel:
+                  raise SystemExit(f"vermagic mismatch in {ko.name}: {vm!r} != {krel!r}")
+
+          list_counts = {}
+          for list_file in ("modules.load", "modules.load.ramdisk", "modules.load.recovery", "vendor_dlkm.modules.load"):
+              entries = [l.strip() for l in (kit / list_file).read_text().splitlines() if l.strip() and not l.strip().startswith("#")]
+              missing = [e for e in entries if e not in ko_names and e.replace("-", "_") not in ko_norm]
+              if missing:
+                  raise SystemExit(f"{list_file} missing staged modules: {missing[:10]}")
+              list_counts[list_file] = len(entries)
+
+          def sha256_of(path):
+              h = hashlib.sha256()
+              with path.open("rb") as f:
+                  while chunk := f.read(1048576):
+                      h.update(chunk)
+              return h.hexdigest()
+
+          manifest = {
+              "schema": "mindone-kernel-release-v1",
+              "tag": tag,
+              "source_commit": src_commit,
+              "ack_tag": ack_tag,
+              "ack_commit": ack_commit,
+              "gki_build_id": gki_build_id,
+              "kernel_release": krel,
+              "staged_vendor_ko_count": len(kos),
+              "staged_system_dlkm_ko_count": len(list((kit / "system_dlkm/flatten/lib/modules").glob("*.ko"))),
+              "load_list_counts": list_counts,
+              "sha256": {
+                  "Image.gz": sha256_of(kit / "Image.gz"),
+                  "Image": sha256_of(kit / "Image"),
+                  "mindone.dtb": sha256_of(kit / "dtb/mindone.dtb"),
+                  "dtbo.img": sha256_of(kit / "dtbo.img"),
+              },
+          }
+          (kit / "build-manifest.json").write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
+          print(json.dumps(manifest, indent=2))
+          PY
+
+          tar -C "$RUNNER_TEMP" -czf "$REL_DIR/${KIT_NAME}.tar.gz" "$KIT_NAME"
+          cp -f "$KIT/Image.gz" "$REL_DIR/Image.gz"
+          cp -f "$KIT/dtb/mindone.dtb" "$REL_DIR/mindone.dtb"
+          cp -f "$KIT/dtbo.img" "$REL_DIR/dtbo.img"
+          cp -f "$KIT/build-manifest.json" "$REL_DIR/build-manifest.json"
+          (
+            cd "$REL_DIR"
+            sha256sum "${KIT_NAME}.tar.gz" Image.gz mindone.dtb dtbo.img build-manifest.json > SHA256SUMS
+          )
+          cat "$REL_DIR/SHA256SUMS"
+          echo "kit_name=$KIT_NAME" >> "$GITHUB_OUTPUT"
+          echo "kernel_release=$KERNEL_RELEASE" >> "$GITHUB_OUTPUT"
+          echo "source_commit=$SRC_COMMIT" >> "$GITHUB_OUTPUT"
+
+      - name: Upload workflow artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: ${{ steps.bundle.outputs.kit_name }}
+          path: ${{ runner.temp }}/release-assets/
+          if-no-files-found: error
+
+      - name: Attach assets to published GitHub Release
+        if: github.event_name == 'release'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.meta.outputs.tag }}
+          KIT_NAME: ${{ steps.bundle.outputs.kit_name }}
+        run: |
+          set -euo pipefail
+          cd "$RUNNER_TEMP/release-assets"
+          gh release upload "$TAG" \
+            "${KIT_NAME}.tar.gz" \
+            Image.gz \
+            mindone.dtb \
+            dtbo.img \
+            build-manifest.json \
+            SHA256SUMS \
+            --clobber \
+            --repo "${{ github.repository }}"
+
+      - name: Create draft GitHub Release on manual dispatch
+        if: github.event_name == 'workflow_dispatch' && inputs.create_draft_release == true
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.meta.outputs.tag }}
+          REF: ${{ steps.meta.outputs.ref }}
+          KIT_NAME: ${{ steps.bundle.outputs.kit_name }}
+          KREL: ${{ steps.bundle.outputs.kernel_release }}
+          SRC_COMMIT: ${{ steps.bundle.outputs.source_commit }}
+          ACK_TAG: ${{ steps.gki.outputs.ack_tag }}
+          GKI_BUILD_ID: ${{ steps.gki.outputs.build_id }}
+        run: |
+          set -euo pipefail
+          cd "$RUNNER_TEMP/release-assets"
+          gh release create "$TAG" \
+            "${KIT_NAME}.tar.gz" \
+            Image.gz \
+            mindone.dtb \
+            dtbo.img \
+            build-manifest.json \
+            SHA256SUMS \
+            --draft \
+            --target "$REF" \
+            --repo "${{ github.repository }}" \
+            --title "MindOne kernel ${TAG}" \
+            --notes "Built by Kleaf DDK on ${ACK_TAG} (GKI CI ${GKI_BUILD_ID}, ${KREL}) from commit ${SRC_COMMIT}. Verify assets with sha256sum -c SHA256SUMS."

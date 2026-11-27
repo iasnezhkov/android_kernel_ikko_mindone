@@ -74,6 +74,10 @@ GPIO_LABEL = 'pinctrl_paris'
 DT_CHANGES = {
     'ts_scl_suspend': 'touch sleep keeps SCL0 in I2C mode (ts_scl_active): output-low drove the pull-up of the powered touch IC',
     'ts_sda_suspend': 'touch sleep keeps SDA0 in I2C mode (ts_sda_active): output-low drove the pull-up of the powered touch IC',
+    'consys-active': 'wmt_drv selects consys interface pinmux and drive strength through pinctrl instead of direct GPIO/IOCFG_RT register writes',
+    'consys-sleep': 'wmt_drv selects consys interface sleep GPIO mode through pinctrl instead of direct GPIO register writes',
+    'consys-wifi-ctrl-gpio': 'wmt_drv selects CONN_WF_CTRL2 GPIO output-high state through pinctrl instead of direct GPIO register writes',
+    'consys-wifi-ctrl-conn': 'wmt_drv selects CONN_WF_CTRL2 CONN function through pinctrl instead of direct GPIO register writes',
 }
 SD_PINS = 'not in gpio_init_default; the live DIR 0 under the MSDC1 function (SD card)'
 MMC0_PINS = 'mmc0 is disabled, its states are never applied; the live DIR is 0'

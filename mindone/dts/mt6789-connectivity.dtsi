@@ -45,6 +45,12 @@
 		pmic = <&pmic>;
 		clocks = <&infracfg_ao_clk CLK_IFRAO_CCIF4_AP>;
 		clock-names = "ccif";
+		pinctrl-names = "consys_if_active", "consys_if_sleep",
+			"consys_wifi_ctrl_gpio", "consys_wifi_ctrl_conn";
+		pinctrl-0 = <&consys_pins_active>;
+		pinctrl-1 = <&consys_pins_sleep>;
+		pinctrl-2 = <&consys_wifi_ctrl_gpio>;
+		pinctrl-3 = <&consys_wifi_ctrl_conn>;
 	};
 
 	wifi: wifi@18000000 {

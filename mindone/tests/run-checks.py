@@ -22,6 +22,7 @@ CHECKS = {
     'charger-acceptance': ('charger-acceptance-check.py', [TREE]),
     'charger-eoc-guard': ('charger-eoc-guard-check.py', [TREE]),
     'charger-lifecycle': ('charger-lifecycle-check.py', [TREE]),
+    'charger-pd-sdp': ('charger-pd-sdp-check.py', [TREE]),
     'chg-det-suspend': ('chg-det-suspend-check.py', [TREE]),
     'clk-disable-unused': ('clk-disable-unused-check.py', [TREE]),
     'clk-upstream': ('clk-upstream-check.py', [TREE]),
@@ -80,6 +81,7 @@ CHECKS = {
     'typec-dt': ('typec-dt-check.py', [TREE]),
     'ufs-screen': ('ufs-screen-check.py', ['--tree', TREE]),
     'usb-role-proxy': ('usb-role-proxy-check.py', [TREE]),
+    'vdec-stop-streaming': ('vdec-stop-streaming-check.py', [TREE]),
     'wifi-action-bounds': ('wifi-action-bounds-check.py', ['--tree', TREE]),
     'wifi-keepalive': ('wifi-keepalive-check.py', []),
     'wifi-roaming': ('wifi-roaming-check.py', []),
@@ -91,6 +93,7 @@ CHECKS = {
     'wifi-tail-count': ('wifi-tail-count-check.py', []),
     'wifi-wext-bounds': ('wifi-wext-bounds-check.py', []),
     'wlan-apf': ('wlan-apf-check.py', []),
+    'wmt-pinctrl': ('wmt-pinctrl-check.py', [TREE]),
     'wmt-sleep': ('wmt-sleep-check.py', [TREE]),
     'wsys-header': ('wsys-header-check.py', ['--reference-repo', REFERENCE]),
 }

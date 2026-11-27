@@ -66,10 +66,11 @@ static void wlanoidQueryOffloadInfo(void) {}
 
 static unsigned kalIoctl(struct GLUE_INFO *g,void (*oid)(void),struct PARAM_OFLD_INFO *p,unsigned size,int read,int wait,int command,unsigned *used) {
     calls++;
-    assert(calls<=2);
+    assert(calls<=3);
     *used=size;
-    if ((is_mode("fail1") && calls==1) || (is_mode("fail2") && calls==2)) return 1;
+    if ((is_mode("fail1") && calls==1) || (is_mode("fail2") && calls==2) || (is_mode("fail3") && calls==3)) return 1;
     if (oid==wlanoidSetOffloadInfo) {
+        assert(wait==FALSE);
         frag_lengths[calls-1]=p->u4BufLen;
         frag_seq[calls-1]=p->ucFragSeq;
         frag_count[calls-1]=p->ucFragNum;
@@ -91,8 +92,8 @@ static unsigned kalIoctl(struct GLUE_INFO *g,void (*oid)(void),struct PARAM_OFLD
     for(unsigned i=0;i<sizeof(response.aucBuf);i++)response.aucBuf[i]=is_mode("allzero")?0:(uint8_t)(offset+i);
     if(is_mode("firstsize"))response.u4BufLen=PKT_OFLD_BUF_SIZE+1;
     if(is_mode("firstseq"))response.ucFragSeq=1;
-    if(is_mode("truncated") && (program_len<=PKT_OFLD_BUF_SIZE || calls==2))response.u4BufLen--;
-    if(is_mode("bigtotal")){response.u4TotalLen=3000;response.u4BufLen=PKT_OFLD_BUF_SIZE;response.ucFragNum=2;}
+    if(is_mode("truncated") && calls==response.ucFragNum)response.u4BufLen--;
+    if(is_mode("bigtotal")){response.u4TotalLen=4097;response.u4BufLen=PKT_OFLD_BUF_SIZE;response.ucFragNum=3;}
     if(is_mode("zerobuf"))response.u4BufLen=0;
     if(is_mode("manyfrags"))response.ucFragNum=255;
     if(is_mode("count0"))response.ucFragNum=0;
@@ -100,6 +101,9 @@ static unsigned kalIoctl(struct GLUE_INFO *g,void (*oid)(void),struct PARAM_OFLD
     if(calls==2 && is_mode("secondseq"))response.ucFragSeq=0;
     if(calls==2 && is_mode("secondtotal"))response.u4TotalLen++;
     if(calls==2 && is_mode("secondcount"))response.ucFragNum++;
+    if(calls==3 && is_mode("thirdseq"))response.ucFragSeq=1;
+    if(calls==3 && is_mode("thirdtotal"))response.u4TotalLen++;
+    if(calls==3 && is_mode("thirdcount"))response.ucFragNum++;
     if(is_mode("consumerbound")) {
         struct CMD_INFO cmd={1,sizeof(*p),p};
         nicCmdEventQueryOfldInfo(&adapter,&cmd,(uint8_t *)&response);

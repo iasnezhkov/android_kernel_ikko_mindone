@@ -33,10 +33,10 @@ ORIGINALS = {
         ('\treturn clk_div > max_clk_div ? -EINVAL : 0;\n', '\treturn 0;\n'),
     )),
     'mtk_i2c_transfer': ('mtk_i2c_transfer', '6ccf00e80baf076bb568625b3827da6e343f36e7d6298e683c437291bc629606', (
-        ('\tunsigned int slow_hz;\n\n\tslow_hz = mtk_i2c_slow_hz(i2c, msgs, num);\n\tif (slow_hz) {\n'
+        ('\tconst struct mtk_i2c_speed *want_speed;\n\tunsigned int slow_hz;\n\n\tslow_hz = mtk_i2c_slow_hz(i2c, msgs, num);\n\tif (slow_hz) {\n'
          '\t\tret = mtk_i2c_prepare_slow(i2c, slow_hz);\n\t\tif (ret)\n\t\t\treturn ret;\n\t}\n\n', '\n'),
-        ('\tif (slow_hz)\n\t\tmtk_i2c_use_speed(i2c, &i2c->slow_speed);\n\n', ''),
-        ('\tif (slow_hz)\n\t\tmtk_i2c_use_speed(i2c, &i2c->dt_speed);\n', ''),
+        ('\twant_speed = slow_hz ? &i2c->slow_speed : &i2c->dt_speed;\n\tif (i2c->hw_speed_hz != want_speed->speed_hz)\n'
+         '\t\tmtk_i2c_use_speed(i2c, want_speed);\n\n', ''),
     )),
 }
 FUNCTIONS = ['mtk_i2c_readw', 'mtk_i2c_writew', 'mtk_i2c_init_hw', 'mtk_i2c_get_spec', 'mtk_i2c_max_step_cnt',
@@ -49,19 +49,24 @@ GLOBALS = (r'^static DEFINE_SPINLOCK\(mtk_i2c_slow_lock\);$',
 CASES = ['equivalence', 'transfer-off', 'slow-100k', 'rate-change', 'slow-from-hs', 'unsupported', 'parse', 'setter',
          'fast-1m', 'targets']
 MUTANTS = (
-    ('swap-apply-restore', (('mtk_i2c_use_speed(i2c, &i2c->slow_speed);', '@SLOW@'),
-                            ('mtk_i2c_use_speed(i2c, &i2c->dt_speed);\n\tmtk_i2c_clock_disable',
-                             'mtk_i2c_use_speed(i2c, &i2c->slow_speed);\n\tmtk_i2c_clock_disable'),
-                            ('@SLOW@', 'mtk_i2c_use_speed(i2c, &i2c->dt_speed);')),
+    ('swap-want-speed', (('want_speed = slow_hz ? &i2c->slow_speed : &i2c->dt_speed;',
+                          'want_speed = slow_hz ? &i2c->dt_speed : &i2c->slow_speed;'),),
      'slow-100k', 'same_regs(&x->regs, r_slow)'),
     ('first-message-only', (('msgs[i].addr == slow[j].addr', 'msgs[0].addr == slow[j].addr'),),
      'slow-100k', 'same_regs(&x->regs, r_slow)'),
-    ('no-restore', (('\tif (slow_hz)\n\t\tmtk_i2c_use_speed(i2c, &i2c->dt_speed);\n', ''),),
-     'slow-100k', 'same_regs(&after, r_dt)'),
+    ('no-dt-return', (('want_speed = slow_hz ? &i2c->slow_speed : &i2c->dt_speed;\n'
+                       '\tif (i2c->hw_speed_hz != want_speed->speed_hz)\n\t\tmtk_i2c_use_speed(i2c, want_speed);',
+                       'want_speed = slow_hz ? &i2c->slow_speed : &i2c->dt_speed;\n'
+                       '\tif (slow_hz && i2c->hw_speed_hz != want_speed->speed_hz)\n'
+                       '\t\tmtk_i2c_use_speed(i2c, want_speed);'),),
+     'slow-100k', 'x->speed_hz == DT_HZ && same_regs(&x->regs, r_dt)'),
+    ('always-reprogram', (('\tif (i2c->hw_speed_hz != want_speed->speed_hz)\n\t\tmtk_i2c_use_speed(i2c, want_speed);',
+                           '\tmtk_i2c_use_speed(i2c, want_speed);'),),
+     'slow-100k', 'd->m.writes == writes'),
     ('adapter-ignored', (('if (slow[j].hz && slow[j].nr == i2c->adap.nr &&', 'if (slow[j].hz &&'),),
      'transfer-off', 'same_log(&devs[0].m, &devs[1].m)'),
     ('dt-rate-reprograms', (('\treturn hz == dt_hz ? 0 : hz;\n', '\treturn hz;\n'),),
-     'transfer-off', 'same_log(&devs[0].m, &devs[1].m)'),
+     'transfer-off', 'dev_info_count == info && dev_warn_count == warn'),
     ('ten-bit-matches', (('\t\t\t    !(msgs[i].flags & I2C_M_TEN) &&\n', ''),),
      'slow-100k', 'x->speed_hz == DT_HZ && same_regs(&x->regs, r_dt)'),
     ('mixed-takes-fastest', (('if (!i || msg_hz < hz)', 'if (!i || msg_hz > hz)'),),
@@ -72,7 +77,7 @@ MUTANTS = (
      'parse', 'mtk_i2c_slow_set(bad[i], NULL) == -EINVAL'),
     ('four-targets', (('#define MTK_I2C_TARGETS\t\t\t3\n', '#define MTK_I2C_TARGETS\t\t\t4\n'),),
      'parse', 'mtk_i2c_slow_set(bad[i], NULL) == -EINVAL'),
-    ('no-dt-reload', (('\t}\n\tmtk_i2c_load_speed(i2c, &i2c->dt_speed);\n', '\t}\n'),),
+    ('no-prev-reload', (('\t}\n\tmtk_i2c_load_speed(i2c, &prev);\n', '\t}\n'),),
      'unsupported', 'same_speed(&now, &d->i2c.dt_speed)'),
     ('stale-fields', (('\tmtk_i2c_load_speed(i2c, &fresh);\n', '\ti2c->speed_hz = fresh.speed_hz;\n'),),
      'slow-from-hs', 'same_speed(&d->i2c.slow_speed, &s100)'),

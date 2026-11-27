@@ -22,7 +22,7 @@ CASES += [('read', 568, 0, 'count0'), ('read', 2048, 0, 'consumerbound')]
 CASES += [('read', 0, -14, 'valid')]
 CASES += [('read', 1489, -14, 'consumerbound+firstsize'), ('read', 568, -14, 'consumerbound+firstseq'), ('read', 2048, -14, 'consumerbound+secondseq')]
 CASES += [('read', 568, -14, mode) for mode in ('firstseq', 'truncated', 'zerobuf', 'manyfrags', 'shortinfo', 'fail1', 'putfail', 'alloc1', 'alloc2')]
-CASES += [('read', 1489, -14, 'firstsize'), ('read', 3000, -14, 'bigtotal')]
+CASES += [('read', 1489, -14, 'firstsize')]
 CASES += [('read', 2048, -14, mode) for mode in ('count0', 'count1', 'secondseq', 'secondtotal', 'secondcount', 'fail2')]
 CASES += [('producer', 568, 0, 'valid'), ('producer', 568, 0, 'nonoid')]
 CASES += [('producer', 568, 1, mode) for mode in ('shortout', 'nullout')]
@@ -30,6 +30,10 @@ CASES += [('producer', 568, 2, mode) for mode in ('zerototal', 'zerobuf', 'first
 CASES = [(kind, size, -14 if kind == 'read' and size < 2048 and expected == 0 else expected, mode)
          for kind, size, expected, mode in CASES]
 CASES += [('read', 2048, 0, mode) for mode in ('allzero', 'allzero+consumerbound')]
+CASES += [('read', 4096, 0, mode) for mode in ('valid', 'allzero', 'consumerbound', 'allzero+consumerbound')]
+CASES += [('read', 3000, 0, 'valid')]
+CASES += [('read', 4097, -14, 'valid'), ('read', 4097, -14, 'bigtotal'), ('read', 5000, -14, 'valid')]
+CASES += [('read', 4096, -14, mode) for mode in ('firstseq', 'firstsize', 'truncated', 'secondseq', 'secondtotal', 'secondcount', 'thirdseq', 'thirdtotal', 'thirdcount', 'fail3')]
 CASES += [('read', size, -14, 'valid') for size in (376, 1487, 2047)]
 CASES += [('read', 2048, -14, mode) for mode in ('firstseq', 'firstsize', 'truncated')]
 
@@ -56,12 +60,14 @@ def abi():
     size = int(re.search(r'#define PKT_OFLD_BUF_SIZE\s+(\d+)', header)[1])
     vendor = (ROOT / MODULE / 'os/linux/include/gl_vendor.h').read_text()
     maximum = int(re.search(r'#define APF_MAX_PROGRAM_LEN\s+(\d+)', vendor)[1])
+    fw_maximum = int(re.search(r'#define APF_FW_MAX_PROGRAM_LEN\s+(\d+)', vendor)[1])
     declarations = []
     for path, name in [('wlan_oid.h', 'PARAM_OFLD_INFO'), ('nic_cmd_event.h', 'CMD_OFLD_INFO')]:
         source = stripped((include / path).read_text())
         declarations.append(re.search(r'struct ' + name + r'\s*\{[^}]+\};', source)[0])
-    assert size == 1488 and maximum == 2048
-    return f'#define PKT_OFLD_BUF_SIZE {size}\n#define APF_MAX_PROGRAM_LEN {maximum}\n' + '\n'.join(declarations)
+    assert size == 1488 and maximum == 2048 and fw_maximum == 4096
+    return (f'#define PKT_OFLD_BUF_SIZE {size}\n#define APF_MAX_PROGRAM_LEN {maximum}\n'
+            f'#define APF_FW_MAX_PROGRAM_LEN {fw_maximum}\n' + '\n'.join(declarations))
 
 
 def build(directory, sources, name):
@@ -100,9 +106,9 @@ def main():
         mutants = [
             ('program-cap', 0, 'if (u4ProgLen > APF_MAX_PROGRAM_LEN)', 'if (0)', ('set', 2049, -22, 'valid')),
             ('netlink-header', 0, 'if (!nla_ok(attr, data_len))', 'if (0)', ('set', 568, -22, 'shortheader')),
-            ('read-capacity', 0, 'u4ProgLen != APF_MAX_PROGRAM_LEN ||', '0 ||', ('read', 568, -14, 'valid')),
-            ('read-capacity-weakened', 0, 'u4ProgLen != APF_MAX_PROGRAM_LEN ||', 'u4ProgLen < 568 ||', ('read', 568, -14, 'valid')),
-            ('read-capacity-inverted', 0, 'u4ProgLen != APF_MAX_PROGRAM_LEN ||', 'u4ProgLen == APF_MAX_PROGRAM_LEN ||', ('read', 2048, 0, 'valid')),
+            ('read-capacity', 0, 'u4ProgLen < APF_MAX_PROGRAM_LEN ||', '0 ||', ('read', 568, -14, 'valid')),
+            ('read-capacity-weakened', 0, 'u4ProgLen < APF_MAX_PROGRAM_LEN ||', 'u4ProgLen < 568 ||', ('read', 568, -14, 'valid')),
+            ('read-fw-cap', 0, 'u4ProgLen > APF_FW_MAX_PROGRAM_LEN ||', '0 ||', ('read', 4097, -14, 'valid')),
             ('query-sequence', 0, 'rInfo.ucFragSeq != ucCurrSeq ||', '0 ||', ('read', 2048, -14, 'firstseq')),
             ('query-fragment-size', 0, 'rInfo.u4BufLen > PKT_OFLD_BUF_SIZE ||', '0 ||', ('read', 2048, -14, 'firstsize')),
             ('query-total-stability', 0, 'rInfo.u4TotalLen != u4ProgLen', '0', ('read', 2048, -14, 'secondtotal')),

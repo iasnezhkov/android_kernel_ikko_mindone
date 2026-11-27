@@ -50,10 +50,18 @@ X
 repo sync -c -j8 --no-tags
 ```
 
-Download the `kernel_aarch64` artifacts for CI **16990439**, including
-`kernel_aarch64_filegroup_decl.tar.gz`, `kernel_aarch64_ddk_headers_archive.tar.gz`,
-`vmlinux.symvers`, the kernel images and the GKI module archives. In
-`build/kernel/kleaf/bzlmod/bazel.MODULE.bazel`, declare the local artifact directory
+Download the `kernel_aarch64` artifacts for CI **16990439** (pinned in `mindone/gki-base.json`),
+including `kernel_aarch64_filegroup_decl.tar.gz`, `kernel_aarch64_ddk_headers_archive.tar.gz`,
+`vmlinux.symvers`, the kernel images and the GKI module archives. You can fetch the exact pinned
+set with the bundled helper:
+
+```sh
+python3 mindone/modules/tools/scripts/fetch-gki-prebuilt.py \
+    --gki-base mindone/gki-base.json \
+    --dest /absolute/path/to/gki-prebuilt
+```
+
+In `build/kernel/kleaf/bzlmod/bazel.MODULE.bazel`, declare the local artifact directory
 (replace the absolute path):
 
 ```starlark
@@ -165,6 +173,12 @@ tools/bazel build //common/mindone:mindone_images
 
 Then build the ROM as described in that repository's README. The kernel command line lives in
 its `BoardConfig.mk`, not here.
+
+Publishing a GitHub Release on this repository runs `.github/workflows/release.yml`, which
+fetches the pinned GKI prebuilts from `mindone/gki-base.json`, builds `mindone.dtb`,
+`dtbo.img` and the complete Kleaf DDK module set, checks vermagic and load-list completeness,
+and attaches `Image.gz`, `mindone.dtb`, `dtbo.img`, `mindone-kernel-<tag>.tar.gz`,
+`build-manifest.json` and `SHA256SUMS` to the release.
 
 Flashing itself is out of scope for this repository: this device shares one `super` region
 between both slots, so a wrong write can leave neither slot bootable. Read the device tree's

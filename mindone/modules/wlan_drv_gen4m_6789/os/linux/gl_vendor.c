@@ -2849,9 +2849,9 @@ int mtk_cfg80211_vendor_read_packet_filter(struct wiphy *wiphy,
 			ucFragNum = rInfo.ucFragNum;
 			u4ProgLen = rInfo.u4TotalLen;
 			if (u4ProgLen == 0 ||
-				u4ProgLen > APF_MAX_PROGRAM_LEN ||
-				u4ProgLen != APF_MAX_PROGRAM_LEN ||
-				ucFragNum > DIV_ROUND_UP(APF_MAX_PROGRAM_LEN,
+				u4ProgLen < APF_MAX_PROGRAM_LEN ||
+				u4ProgLen > APF_FW_MAX_PROGRAM_LEN ||
+				ucFragNum > DIV_ROUND_UP(APF_FW_MAX_PROGRAM_LEN,
 					PKT_OFLD_BUF_SIZE) ||
 				(ucFragNum == 0 &&
 					u4ProgLen > PKT_OFLD_BUF_SIZE)) {
@@ -2879,8 +2879,14 @@ int mtk_cfg80211_vendor_read_packet_filter(struct wiphy *wiphy,
 			goto query_apf_failure;
 		}
 
-		kalMemCopy((prProg + u4RecvLen), &rInfo.aucBuf[0],
-					rInfo.u4BufLen);
+		if (u4RecvLen < APF_MAX_PROGRAM_LEN) {
+			uint32_t u4CopyLen = rInfo.u4BufLen;
+
+			if (u4CopyLen > APF_MAX_PROGRAM_LEN - u4RecvLen)
+				u4CopyLen = APF_MAX_PROGRAM_LEN - u4RecvLen;
+			kalMemCopy((prProg + u4RecvLen), &rInfo.aucBuf[0],
+					u4CopyLen);
+		}
 
 		u4RecvLen += rInfo.u4BufLen;
 		DBGLOG(REQ, INFO, "Get APF size(%d, %d) frag(%d, %d).\n",
@@ -2894,7 +2900,7 @@ int mtk_cfg80211_vendor_read_packet_filter(struct wiphy *wiphy,
 		goto query_apf_failure;
 
 	if (unlikely(nla_put(skb, APF_ATTRIBUTE_PROGRAM,
-				u4ProgLen, prProg) < 0))
+				APF_MAX_PROGRAM_LEN, prProg) < 0))
 		goto query_apf_failure;
 
 	if (prProg != NULL)

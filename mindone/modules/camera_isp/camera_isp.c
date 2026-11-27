@@ -139,7 +139,7 @@
 #define LOG_DBG(format, args...)
 #endif
 
-#define LOG_INF(format, args...) pr_info(MyTag "[%s] " format, __func__, ##args)
+#define LOG_INF(format, args...) pr_debug(MyTag "[%s] " format, __func__, ##args)
 
 #define LOG_NOTICE(format, args...)                                            \
 	pr_notice(MyTag "[%s] " format, __func__, ##args)
@@ -12018,7 +12018,6 @@ static void ISP_BH_Workqueue(struct work_struct *pWork)
 		container_of(pWork, struct IspWorkqueTable, isp_bh_work);
 
 	IRQ_LOG_PRINTER(pWorkTable->module, m_CurrentPPB, _LOG_ERR);
-	IRQ_LOG_PRINTER(pWorkTable->module, m_CurrentPPB, _LOG_INF);
 	SMI_INFO_DUMP(pWorkTable->module);
 }
 #endif

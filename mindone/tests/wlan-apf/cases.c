@@ -33,8 +33,8 @@ int main(int argc,char **argv) {
         int rc=mtk_cfg80211_vendor_read_packet_filter(&w,&d,NULL,0);
         assert(rc==expected_rc && allocations==0);
         if(rc==0) {
-            assert(replies==1 && query_len==program_len);
-            for(unsigned i=0;i<program_len;i++)assert(returned[i]==(is_mode("allzero")?0:(uint8_t)i));
+            assert(replies==1 && query_len==APF_MAX_PROGRAM_LEN);
+            for(unsigned i=0;i<APF_MAX_PROGRAM_LEN;i++)assert(returned[i]==(is_mode("allzero")?0:(uint8_t)i));
         } else assert(replies==0 && query_len==0);
     } else {
         struct PARAM_OFLD_INFO output,before;

@@ -184,9 +184,17 @@ Board-specific corrections:
 - **Charging.** A USB host's current budget is used only on a real Type-C port with a
   host present, and a source without a host never puts the charger into HiZ. Charger
   detection defers s2idle wake races until `eta6965` resumes and retries transient
-  `-ENODATA`, and hardware termination (`EN_TERM`) is gated to CV taper with premature
-  EOC recovery. CPU and modem power throttling register with the low-battery, battery
-  over-current and battery-percent detectors.
+  `-ENODATA`, keeps Type-C PD fallback budgets on the real PD/SDP path without
+  collapsing to USB SDP caps, and gates hardware termination (`EN_TERM`) to CV taper
+  with premature EOC recovery. CPU and modem power throttling register with the
+  low-battery, battery over-current and battery-percent detectors.
+- **Video decoder.** `mtk_vcodec_dec_v2` removes the orphaned resolution-change drain
+  loop, tracks free frame buffers by bitmask, and releases DMA-BUF references, payload
+  metadata and pending state cleanly on `stop_streaming`.
+- **Wi-Fi / BT connectivity.** `wmt_drv` switches GPIO/IOCFG setup to declared DT
+  pinctrl states with LNA and `-EPROBE_DEFER` guards instead of direct register writes.
+  `wlan_drv_gen4m_6789` caps APF readback to 2048 B per firmware chunk and issues
+  `CMD_ID_PKT_OFLD` as a one-way SET command, preventing `0xc0000001` install failures.
 - **USB OTG host.** `musb_hdrc` stops re-arming its idle timer in `A_SUSPEND`, drains
   idle work during system suspend, clears the MT6789 `UWK_V2` wakeup latch on resume
   and avoids the OPT-A register spin when HNP is not active.

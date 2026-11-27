@@ -336,6 +336,51 @@
 				bias-disable;
 			};
 		};
+
+		consys_pins_active: consys-active {
+			pins-drv1 {
+				pinmux = <PINMUX_GPIO177__FUNC_CONN_TOP_CLK>,
+					 <PINMUX_GPIO178__FUNC_CONN_TOP_DATA>,
+					 <PINMUX_GPIO179__FUNC_CONN_BT_CLK>,
+					 <PINMUX_GPIO180__FUNC_CONN_BT_DATA>;
+				drive-strength = <1>;
+			};
+			pins-drv0 {
+				pinmux = <PINMUX_GPIO181__FUNC_CONN_HRST_B>,
+					 <PINMUX_GPIO182__FUNC_CONN_WB_PTA>,
+					 <PINMUX_GPIO183__FUNC_CONN_WF_CTRL0>,
+					 <PINMUX_GPIO184__FUNC_CONN_WF_CTRL1>,
+					 <PINMUX_GPIO185__FUNC_CONN_WF_CTRL2>;
+				drive-strength = <0>;
+			};
+		};
+
+		consys_pins_sleep: consys-sleep {
+			pins-gpio {
+				pinmux = <PINMUX_GPIO177__FUNC_GPIO177>,
+					 <PINMUX_GPIO178__FUNC_GPIO178>,
+					 <PINMUX_GPIO179__FUNC_GPIO179>,
+					 <PINMUX_GPIO180__FUNC_GPIO180>,
+					 <PINMUX_GPIO181__FUNC_GPIO181>,
+					 <PINMUX_GPIO182__FUNC_GPIO182>,
+					 <PINMUX_GPIO183__FUNC_GPIO183>,
+					 <PINMUX_GPIO184__FUNC_GPIO184>,
+					 <PINMUX_GPIO185__FUNC_GPIO185>;
+			};
+		};
+
+		consys_wifi_ctrl_gpio: consys-wifi-ctrl-gpio {
+			pins-wf-ctrl2 {
+				pinmux = <PINMUX_GPIO185__FUNC_GPIO185>;
+				output-high;
+			};
+		};
+
+		consys_wifi_ctrl_conn: consys-wifi-ctrl-conn {
+			pins-wf-ctrl2 {
+				pinmux = <PINMUX_GPIO185__FUNC_CONN_WF_CTRL2>;
+			};
+		};
 	};
 
 	gpio_usage_mapping: gpio_usage_mapping {
