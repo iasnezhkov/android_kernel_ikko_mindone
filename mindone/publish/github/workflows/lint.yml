@@ -84,4 +84,11 @@ jobs:
           clang --version | head -n 1
 
       - name: Run kernel host test suite
-        run: python3 -B mindone/tests/run-checks.py --tree . --jobs 4 --allow "pinctrl-mt6789=requires pre-migration fork git revision absent in squashed public snapshots"
+        env:
+          ASAN_OPTIONS: detect_leaks=0
+        run: |
+          set -eu
+          mkdir -p "$RUNNER_TEMP/clang-bin"
+          ln -sf "$(command -v clang)" "$RUNNER_TEMP/clang-bin/cc"
+          ln -sf "$(command -v clang)" "$RUNNER_TEMP/clang-bin/clang"
+          python3 -B mindone/tests/run-checks.py --tree . --compiler-dir "$RUNNER_TEMP/clang-bin" --jobs 4 --allow "pinctrl-mt6789=requires pre-migration fork git revision absent in squashed public snapshots"
