@@ -14,7 +14,7 @@
 typedef uint32_t u32;
 typedef unsigned long long u64;
 typedef long ssize_t;
-typedef long long loff_t;
+typedef long loff_t;
 
 #define __user
 #define GFP_KERNEL 0

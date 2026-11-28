@@ -185,6 +185,10 @@ def main():
     for row in rows:
         detail = row.get('reason') or row.get('allowed') or row.get('last', '')
         print(f"{row['status']:<12} {row['name']:<28} {str(row.get('seconds', '')):>6}  {detail}")
+    for row in rows:
+        if row['status'] == 'fail' and row.get('output'):
+            print(f"--- {row['name']} output ---")
+            print(row['output'].rstrip())
     if unlisted:
         print('unlisted check files: ' + ', '.join(unlisted))
     if stale:
